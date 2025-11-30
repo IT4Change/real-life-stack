@@ -39,11 +39,11 @@ Eine entkoppelte Schnittstelle zwischen Frontend und Backend ermöglicht heute k
 
 ## 3. GESELLSCHAFTLICHE HERAUSFORDERUNG (max. 175 Wörter)
 
-Lokale Initiativen werden zu zentralen Akteuren bei der Bewältigung heutiger sozialer und ökologischer Herausforderungen. Doch Forschungen zeigen: Steigende Bildschirmzeit verdrängt reale Begegnungen („time displacement“, Kraut et al. 1998/2002), während gleichzeitig Nachbarschaftskontakte, Vereinsbeteiligung und lokale Unterstützung seit Jahren zurückgehen (Freiwilligensurvey 2014–2021). Bestehende „Soziale Netzwerke“ sind auf Aufmerksamkeit, Reichweite und passive Kommunikation optimiert, nicht auf lokale Zusammenarbeit und reale Begegnungen.
+Lokale Initiativen werden zu zentralen Akteuren bei der Bewältigung heutiger sozialer und ökologischer Herausforderungen. Doch Forschungen zeigen: Steigende Bildschirmzeit verdrängt reale Begegnungen („time displacement“, Kraut et al. 1998/2002), während gleichzeitig Nachbarschaftskontakte, Vereinsbeteiligung und lokale Unterstützung seit Jahren zurückgehen (Freiwilligensurvey 2014–2021). Etablierte „Soziale Netzwerke“ sind auf Aufmerksamkeit, Reichweite und passive Kommunikation optimiert, nicht auf lokale Zusammenarbeit und reale Begegnungen.
 
 Gleichzeitig fehlt es an offener digitaler Infrastruktur für lokale Selbstorganisation. Kleine Initiativen, Nachbarschaftsprojekte und Community-Gruppen besitzen meist nicht die Ressourcen, um eigene Systeme aufzubauen. Sie sind auf etablierte Plattformen angewiesen, die Kommunikation nach eigenen Regeln gestalten, Werbung einblenden und ihre Daten kontrollieren.
 
-Das Problem ist zweifach: Erstens sind aktuelle Plattformen nicht darauf ausgelegt, vertrauensbasierte Beziehungen und gemeinsames Handeln in der realen Welt zu unterstützen. Zweitens fehlt eine modulare anpassbare Infrastruktur, die Communities selbstbestimmt nutzen können.
+Das Problem ist zweifach: Erstens sind etablierte Plattformen nicht darauf ausgelegt, vertrauensbasierte Beziehungen und gemeinsames Handeln in der realen Welt zu unterstützen. Zweitens fehlt eine modulare anpassbare Infrastruktur, die Communities selbstbestimmt nutzen können.
 
 Gemeinsames Handeln kann Software nicht ersetzen, aber sie kann lokale Gruppen dabei unterstützen, sich einfacher zu organisieren, ihre Daten zu schützen und reale Begegnungen zu fördern. Hier setzt Real-Life Stack an – als Werkzeug, das echte Gemeinschaft stärkt, statt sie zu ersetzen.
 
