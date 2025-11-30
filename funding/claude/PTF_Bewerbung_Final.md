@@ -147,24 +147,23 @@ Das Projekt wird von einem multidisziplinären Team entwickelt, das über langj�
 **Anton Tranelis**:
 
 - [Utopia Map](https://github.com/utopia-os/utopia-map) - Initiator und Maintainer (Projektkoordination, Architektur, Entwicklung, UX)
+- geo-Engine (webbasierte Kartenplattform zum Erfassen und Teilen von Ortsbezogenen Informationen) - Projektkoordination, Entwicklung, UX
 
 **Ulf Gebhardt:**
-
-- [Utopia Map](https://github.com/utopia-os/utopia-map) - Entwicklung, Github-Verwaltung, Github-Workflows, Typescript & Typisierungen, Reviews, Hosting der Lösung
-- [ocelot.social](https://github.com/Ocelot-Social-Community/Ocelot-Social) - Entwicklung, Testing, Öffentlichkeitsarbeit, Hosting der Lösung, Refactoring, Bumps, Koordinierung der Entwicklung
+- [Utopia Map](https://github.com/utopia-os/utopia-map) - Entwicklung, Github-Verwaltung, Github-Workflows, Typisierungen, Reviews, Hosting
+- [ocelot.social](https://github.com/Ocelot-Social-Community/Ocelot-Social) - Entwicklung, Testing, Öffentlichkeitsarbeit, Hosting, Refactoring, Bumps, Entwicklungskoordination
 - [DEMOCRACY App](https://github.com/demokratie-live) - Architektur & Entwicklung
 
 **Sebastian Stein**:
 
 - [ocelot.social](https://github.com/Ocelot-Social-Community/Ocelot-Social) - Entwicklung, UX
-- Vairnana - Gründer, Entwicklung, UX (Vairnana war eine App mit Umkreissuche zur Förderung von Nachhaltigkeit im stationären Einzelhandel)
+- Vairnana (ehemalige App mit Umkreissuche zur Förderung von Nachhaltigkeit im stationären Einzelhandel) - Gründer, Entwicklung, UX 
 - [ESD](https://www.keysight.com/de/de/product/SL1091A/sl1091a-scienlab-energy-storage-discover-software.html) - Entwicklung, UX
 
 **Mathias Lenz:**
 
 - [Utopia Map](https://github.com/utopia-os/utopia-map) - Entwicklung, Testautomatisierung, DevOps
 - [ocelot.social](https://github.com/Ocelot-Social-Community/Ocelot-Social) - Entwicklung, Testautomatisierung, DevOps, Dokumentation
-
 ---
 
 ## 12. ARBEITSSTUNDEN
