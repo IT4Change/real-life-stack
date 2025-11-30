@@ -45,7 +45,7 @@ Eine entkoppelte Schnittstelle zwischen Frontend und Backend ermöglicht heute k
 ## 3. GESELLSCHAFTLICHE HERAUSFORDERUNG (max. 175 Wörter)
 
 
-Lokale Initiativen werden zu zentralen Akteuren bei der Bewältigung heutiger sozialer und ökologischer Herausforderungen. Doch während die meisten Menschen mehr Zeit online verbringen, nimmt lokale Vernetzung ab. Über 40% der Menschen in Deutschland fühlen sich regelmäßig einsam. Bestehende digitale Plattformen sind primär auf Aufmerksamkeit und Reichweite optimiert, nicht auf lokale Zusammenarbeit und reale Begegnungen.
+Lokale Initiativen werden zu zentralen Akteuren bei der Bewältigung heutiger sozialer und ökologischer Herausforderungen. Doch während die meisten Menschen mehr Zeit online verbringen, nimmt lokale Vernetzung ab. [Studien](https://guilfordjournals.com/doi/10.1521/jscp.2018.37.10.751) zeigen: Die Begrenzung von Social-Media-Nutzung reduziert Einsamkeit und Depression signifikant. Bestehende digitale Plattformen sind primär auf Aufmerksamkeit und Reichweite optimiert, nicht auf lokale Zusammenarbeit und reale Begegnungen.
 
 Gleichzeitig fehlt es an offener digitaler Infrastruktur für lokale Selbstorganisation. Kleine Initiativen, Nachbarschaftsprojekte und Community-Gruppen besitzen meist weder die Ressourcen noch das technische Know-how, um eigene Systeme aufzubauen. Sie sind auf zentrale Plattformen angewiesen, die ihre Daten kontrollieren, Werbung einblenden und Kommunikation nach eigenen Regeln gestalten.
 
