@@ -69,7 +69,7 @@ Zusätzlich entsteht eine selbsthostbare White-Label-App mit einer intuitiven Ad
 
 ## 5. AKTUELLER STAND (max. 100 Wörter)
 
-Auf Basis der Erfahrungen mit der [Utopia Map](https://github.com/utopia-os/utopia-map/) (seit 2022) und [ocelot.social](https://github.com/Ocelot-Social-Community/Ocelot-Social) (seit 2018) werden derzeit Anforderungsdokumente, User Stories und konzeptionelle Architekturüberlegungen erarbeitet. Es existiert ein React-basierter Click-Dummy, der zeigt, wie Karte, Kalender und Feed integriert werden können.
+Auf Basis der Erfahrungen mit der [Utopia Map](https://github.com/utopia-os/utopia-map/) (seit 2022) und [ocelot.social](https://github.com/Ocelot-Social-Community/Ocelot-Social) (seit 2018) werden derzeit Anforderungsdokumente, User Stories und konzeptionelle Architekturüberlegungen erarbeitet. Es existiert ein React-basierter [Click-Dummy](https://it4change.github.io/real-life-stack/edge/), der zeigt, wie Karte, Kalender und Feed integriert werden können.
 
 Das Datenmodell, die Backend-Architektur, die Identitätslösung sowie die Integrationsschicht zwischen Frontend-Modulen und Backend sind jedoch noch nicht implementiert. In der Förderphase sollen die Architektur finalisiert, der modulare Stack als Komponenten-Library sowie eine White-Label-Referenz-App technisch umgesetzt werden.
 
