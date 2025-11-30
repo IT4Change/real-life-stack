@@ -45,13 +45,15 @@ Eine entkoppelte Schnittstelle zwischen Frontend und Backend ermöglicht heute k
 ## 3. GESELLSCHAFTLICHE HERAUSFORDERUNG (max. 175 Wörter)
 
 
-Lokale Initiativen werden zu zentralen Akteuren bei der Bewältigung heutiger sozialer und ökologischer Herausforderungen. Doch während die meisten Menschen mehr Zeit online verbringen, nimmt lokale Vernetzung ab. [Studien](https://guilfordjournals.com/doi/10.1521/jscp.2018.37.10.751) zeigen: Die Begrenzung von Social-Media-Nutzung reduziert Einsamkeit und Depression signifikant. Bestehende digitale Plattformen sind primär auf Aufmerksamkeit und Reichweite optimiert, nicht auf lokale Zusammenarbeit und reale Begegnungen.
+Lokale Initiativen werden zu zentralen Akteuren bei der Bewältigung heutiger sozialer und ökologischer Herausforderungen. Doch während die meisten Menschen mehr Zeit online verbringen, nimmt lokale Vernetzung ab. Studien zeigen: Die Begrenzung von Social-Media-Nutzung reduziert Einsamkeit und Depression signifikant [1]. Bestehende digitale Plattformen sind primär auf Aufmerksamkeit und Reichweite optimiert, nicht auf lokale Zusammenarbeit und reale Begegnungen.
 
 Gleichzeitig fehlt es an offener digitaler Infrastruktur für lokale Selbstorganisation. Kleine Initiativen, Nachbarschaftsprojekte und Community-Gruppen besitzen meist weder die Ressourcen noch das technische Know-how, um eigene Systeme aufzubauen. Sie sind auf zentrale Plattformen angewiesen, die ihre Daten kontrollieren, Werbung einblenden und Kommunikation nach eigenen Regeln gestalten.
 
 Das Problem ist zweifach: Erstens behindern aktuelle Tools vertrauensbasierte Beziehungen und gemeinsames Handeln in der realen Welt. Zweitens fehlt eine modulare, anpassbare Infrastruktur, die Communities selbstbestimmt nutzen können.
 
 Gemeinsames Handeln kann Software nicht ersetzen, aber sie kann lokale Gruppen dabei unterstützen, sich einfacher zu organisieren, ihre Daten zu schützen und reale Begegnungen zu fördern. Genau hier setzt Real-Life Stack an – als Werkzeug, das echte Gemeinschaft stärkt, statt sie zu ersetzen.
+
+[1](https://guilfordjournals.com/doi/10.1521/jscp.2018.37.10.751)
 
 ---
 
