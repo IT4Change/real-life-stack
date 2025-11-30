@@ -43,11 +43,12 @@ jobs:
           rm -rf gh-pages
           mkdir -p gh-pages
           cp index.html gh-pages/index.html
+          REPO_NAME="${{ github.event.repository.name }}"
           for dir in "${prototypes[@]}"; do
             echo "\n📦 Building $dir"
             pushd "prototypes/$dir" >/dev/null
             npm ci
-            npm run build -- --base="/real-life-stack/${dir}/"
+            npm run build -- --base="/${REPO_NAME}/${dir}/"
             popd >/dev/null
             mkdir -p "gh-pages/$dir"
             cp -R "prototypes/$dir/dist/." "gh-pages/$dir/"
