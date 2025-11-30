@@ -28,11 +28,11 @@ Anton Tranelis
 
 ## 2. PROJEKTBESCHREIBUNG (max. 100 Wörter)
 
-Lokale Gemeinschaften brauchen digitale Werkzeuge, die echte Begegnungen fördern statt ersetzen. Real-Life Stack ist ein modularer Baukasten, mit dem Gruppen ihre eigene App für lokale Vernetzung und Zusammenarbeit bereitstellen und an ihre Bedürfnisse anpassen können. Er besteht aus einer Frontend-Komponenten-Library sowie einer darauf aufbauenden White-Label-Referenz-App.
+Lokale Gemeinschaften brauchen digitale Werkzeuge, die echte Begegnungen fördern statt ersetzen. Real-Life Stack ist ein modularer Baukasten, mit dem Gruppen eigene App für lokale Vernetzung und Zusammenarbeit bereitstellen und an ihre Bedürfnisse anpassen können. Er besteht aus einer Frontend-Komponenten-Library sowie einer darauf aufbauenden White-Label-Referenz-App.
 
 Bausteine wie Karte, Kalender, Gruppen, Feed und Profile lassen sich flexibel kombinieren und für soziale Initiativen, ökologische Projekte oder Nachbarschaftsgruppen anpassen. Geo-Filter für den Nahbereich und ein Web-of-Trust, das durch reale Treffen entsteht, unterstützen vertrauensbasierte Kooperation vor Ort.
 
-Eine entkoppelte Schnittstelle zwischen Frontend und Backend ermöglicht heute klassische Serverumgebungen und künftig auch dezentrale, verschlüsselte oder local-first Architekturen.
+Eine entkoppelte Schnittstelle zwischen Frontend und Backend ermöglicht klassische Serverumgebungen und künftig auch dezentrale, verschlüsselte oder local-first Architekturen.
 
 
 ---
@@ -176,60 +176,11 @@ Das Projekt wird von einem multidisziplinären Team entwickelt, das über langj�
 
 ## 13. MOTIVATION (max. 100 Wörter)
 
-Ulf-Final:
+Wir arbeiten seit Jahren an Software für den gesellschaftlichen Wandel da wir oft erlebt haben, wie Initiativen an unpassenden Tools scheitern. Nicht selten sind ganze Gruppen in endlosen Chats hängen bleiben, während die Energie vor Ort verloren geht.
 
-Lokale Initiativen tun sich schwer digitale Werkzeuge einzusetzen, da bestehende offene Lösungen allzu oft monolithischer Feature-Monster oder angebotene Plattformen zentralisiert sind und die Nutzerdaten zweckentfremden. Es fehlt oft an technischem Know-How, um eigene Lösungen zu entwickeln.
+Darum wollen wir Netzwerke sichtbar machen – die Menschen, Orte, Aktivitäten und Ressourcen, die Gemeinschaft entstehen lassen – und zugleich die Privatsphäre solcher Daten schützen, denn Vertrauen ist die Basis jeder Zusammenarbeit.
 
-Aus ocelot.social und Utopia Map haben wir gelernt: Selbsthostbare, anpassbare Tools funktionieren, aber es bedarf noch zu viel Tech-Know-How und die Lösungen sind zu monolithisch.
-
-Real Life Stack ist unsere Antwort: modulare, wiederverwendbare Infrastruktur für digitale Souveränität. Wir wollen Communities ermächtigen, Kontrolle über ihre Daten zu behalten und ihnen Werkzeuge an die Hand geben, die sich leicht ihren Bedürfnissen anpassen und echte Vorort-Begegnungen fördern.
-
----
-
-Version Ulf neu:
-
-Lokale Initiativen scheitern an fehlenden digitalen Werkzeugen: Softwarelösungen sind überladen und bestehende Plattformen sind zentralisiert, eigene Lösungen überfordern Communities technisch.
-
-Aus ocelot.social und Utopia Map haben wir gelernt: Selbsthostbare, anpassbare Tools funktionieren – aber jedes Projekt entwickelt zu viel neu - es bedarf noch zu viel Tech-Know-How. Gleichzeitig sehen wir Menschen, die sich nach echten Beziehungen sehnen, aber von Plattformen isoliert werden, da sie Screen-Time statt Begegnungszeit maximieren.
-
-Real Life Stack ist unsere Antwort: modulare, wiederverwendbare Infrastruktur für digitale Souveränität. Wir wollen Communities ermächtigen, Kontrolle über ihre Daten zu behalten und ihnen Werkzeuge an die Hand geben, die echte Begegnungen fördern.
-
----
-
-Version Ulf alt:
-
-Wir erleben täglich, wie lokale Initiativen an fehlenden digitalen Werkzeugen scheitern. Bestehende Plattformen passen nicht zu ihren Bedürfnissen, sind zu komplex oder zu unflexibel. Gleichzeitig fehlt Communities das technische Know-how, eigene Lösungen zu bauen.
-
-Mit ocelot.social und Utopia Map haben wir gesehen, dass selbsthostbare, anpassbare Tools funktionieren – aber jedes Projekt muss zu viel selbst entwickeln. Real-Life Stack ist unsere Antwort: Wir schaffen wiederverwendbare Infrastruktur, die anderen hilft, schneller zu starten.
-
-Uns treibt die Vision einer dezentralen, selbstbestimmten digitalen Welt an, in der Gemeinschaften Kontrolle über ihre Daten haben und Tools nutzen können, die echte Begegnungen fördern.
-
----
-
-Version ??? neu:
-
-Lokale Initiativen scheitern an unpassenden digitalen Werkzeugen: Bestehende Plattformen sind überladen, unflexibel und zentralisiert. Communities fehlt das technische Know-how für eigene Lösungen.
-
-Real Life Stack ist unsere Antwort: modulare, selbsthostbare Bausteine statt monolithischer Monster. Communities wählen nur die Komponenten, die sie brauchen – Kalender, Karte, Food-Sharing – und behalten Kontrolle über ihre Daten.
-
-Mit ocelot.social und Utopia Map haben wir erlebt, dass dezentrale Tools funktionieren, aber jedes Projekt zu viel neu entwickelt. Wir schaffen wiederverwendbare Infrastruktur, die echte Begegnungen fördert statt Screen-Time maximiert. Gebaut gemeinsam mit den Communities, die es brauchen.
-
----
-
-Version Sebastian:
-
-Wir haben genug von Einsamkeit und Scrolling.
-
-Seit Jahren entwickeln wir Software für lokale Vernetzung – und sehen, wie Menschen sich nach echten Beziehungen sehnen, aber digitale Tools sie weiter isolieren. Plattformen maximieren Screen-Time. Wir wollen Meeting-Time maximieren.
-
-In unseren eigenen Nachbarschaften erleben wir: Es ist schwer, ein Repair-Café zu finden. Werkzeug-Sharing passiert über Messenger-Chaos. Skill-Exchanges scheitern an Koordination.
-
-Real Life Stack löst das. Nicht durch mehr Features, sondern durch weniger Bildschirm und mehr Begegnung. Das ist radikal. Das ist nötig. Und wir bauen es gemeinsam mit den Communities, die es brauchen.
-
----
-Version Anton:
-
-Wir arbeiten seit Jahren an Software für gesellschaftlichen Wandel, lokale Vernetzung und digitale Souveränität. Viele Communities, die wir begleiten, benötigen Werkzeuge, die sicher, dezentral und anpassbar sind – aber große Plattformen erfüllen diese Bedürfnisse nicht. Der Real Life Stack verbindet unsere bisherigen Projekte zu einer offenen Infrastruktur, die Menschen wirklich ermächtigt. Persönlich erleben wir in unseren eigenen Netzwerken, wie schwer es ist, digitale Werkzeuge zu finden, die Vertrauen, Kooperation und Datenschutz vereinen. Diese Lücke möchten wir schließen – gemeinsam mit den Communities, für die wir entwickeln.
+Aus diesen Erfahrungen heraus entwickeln wir Real-Life Stack: eine modulare Infrastruktur, die Communities befähigt, passende Werkzeuge bereitzustellen – und damit Menschen einzuladen, den Bildschirm zu verlassen und gemeinsam vor Ort aktiv zu werden.
 
 ## 14. SECOND-STAGE-FÖRDERUNG
 
