@@ -65,13 +65,13 @@ jobs:
           
           pushd "prototype" >/dev/null
           npm ci
-          npm run build -- --base="/spec/$SAFE_BRANCH_NAME/"
+          npm run build -- --base="/real-life-stack/$SAFE_BRANCH_NAME/"
           popd >/dev/null
           
           # In branch-spezifisches Verzeichnis kopieren
           cp -R "prototype/dist/." "gh-pages/$SAFE_BRANCH_NAME/"
           
-          echo "✅ Deployed to /spec/$SAFE_BRANCH_NAME/"
+          echo "✅ Deployed to /real-life-stack/$SAFE_BRANCH_NAME/"
           
           # Automatische Index-Seite generieren
           echo "📝 Generating index.html with all branches..."
