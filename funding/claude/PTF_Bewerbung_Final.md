@@ -51,7 +51,7 @@ Gemeinsames Handeln kann Software nicht ersetzen, aber sie kann lokale Gruppen d
 
 ## 4. TECHNISCHE UMSETZUNG (max. 175 Wörter)
 
-Real-Life Stack wird als modularer Frontend-Baukasten in TypeScript mit React oder Vue entwickelt. Er besteht aus eigenständigen Komponenten wie Karte (OpenStreetMap über MapLibre), Kalender (iCal / CalDAV), Gruppen, Profilen und Feed, die sowohl in der Referenzanwendung als auch in eigenen Projekten verwendet werden können.
+Der Real-Life Stack wird als modularer Frontend-Baukasten in TypeScript mit React oder Vue entwickelt. Er umfasst eigenständige Komponenten wie Karte (OpenStreetMap via MapLibre), Kalender (iCal / CalDAV), Gruppen, Profile und Feed, die sowohl in der Referenzanwendung als auch als wiederverwendbare Library in eigenen Projekten eingesetzt werden können.
 
 Alle Module greifen auf eine gemeinsame Daten- und Identitätsschnittstelle im Frontend zu. Diese definiert einheitliche Funktionen zum Laden und Speichern von Gruppen, Terminen, Profilen und Vertrauensbeziehungen – unabhängig davon, welches Backend genutzt wird oder wie Identitäten verwaltet sind.
 
