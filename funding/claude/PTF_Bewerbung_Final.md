@@ -126,6 +126,8 @@ Wir erreichen sie über bestehende Netzwerke unserer Projekte, über Pilotgruppe
 
 ## 10. TEAM (max. 30 Wörter)
 
+Das Projekt wird von einem multidisziplinären Team entwickelt, das über langjährige Erfahrung mit Open-Source-Community-Tools verfügt:
+
 - **Anton Tranelis** — Projektkoordination, System-Architektur, Full Stack  
   <https://github.com/antontranelis>
 
