@@ -209,6 +209,7 @@ Wir bereiten unsere Ergebnisse in Tutorials, Blogbeiträgen, Videos und Intervie
 
 - 3 Pilot-Communities onboarden (Nachbarschaft, Bildung, Ressourcen-Sharing)
 - Stage-1-Prototypen deployen und im Real-World-Einsatz begleiten
+- Integration von Gamification-Elementen 
 - Metriken erfassen: Nutzungsverhalten, Vernetzungsdynamik, Real-Life-Begegnungen, Commitment-Gap
 
 ### M2: Iteration & Skalierung (Monat 9)
