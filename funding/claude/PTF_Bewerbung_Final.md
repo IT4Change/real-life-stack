@@ -148,6 +148,7 @@ Das Projekt wird von einem multidisziplinären Team entwickelt, das über langj�
 
 - [Utopia Map](https://github.com/utopia-os/utopia-map) - Initiator und Maintainer (Projektkoordination, Architektur, Entwicklung, UX)
 - geo-Engine (webbasierte Kartenplattform zum Erfassen und Teilen von Ortsbezogenen Informationen) - Projektkoordination, Entwicklung, UX
+- Charge&Fuel App (mobile App zum Laden und Tanken von Elektro- und Hybridfahrzeugen) - Anforderungsmanagement
 
 **Ulf Gebhardt:**
 - [Utopia Map](https://github.com/utopia-os/utopia-map) - Entwicklung, Github-Verwaltung, Github-Workflows, Typisierungen, Reviews, Hosting
