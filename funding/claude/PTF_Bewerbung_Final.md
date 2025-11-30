@@ -85,7 +85,7 @@ Real-Life Stack kombiniert diese Ansätze in einer wiederverwendbaren Infrastruk
 
 ## 8. ZIELGRUPPE (max. 100 Wörter)
 
-Unsere Zielgruppen sind lokale Gemeinschaften, die ihre Umgebung selbstorganisiert gestalten: Nachbarschaftsnetzwerke, Urban-Gardening-Gruppen, Repair-Cafés, Foodsharing-Initiativen, Solawis, Gemeinschaftsgärten, Jugendgruppen und freie Lernorte. Sie brauchen digitale Werkzeuge, die nicht auf Online-Interaktion, sondern auf reale Begegnungen, lokale Kooperation und echte soziale Netzwerke im direkten Kontakt ausgelegt sind. Auch Sharing- und Tausch-Communities benötigen digitale Infrastruktur, um Ressourcen und Fähigkeiten sichtbar zu machen und gegenseitige Unterstützung zu organisieren.
+Unsere Zielgruppen sind lokale Gemeinschaften, die ihre Umgebung selbstorganisiert gestalten: Nachbarschaftsnetzwerke, Urban-Gardening-Gruppen, Repair-Cafés, Foodsharing-Initiativen, Solawis, Jugendgruppen und freie Lernorte. Sie brauchen digitale Werkzeuge, die nicht auf Online-Interaktion, sondern auf reale Begegnungen, lokale Kooperation und echte soziale Netzwerke im direkten Kontakt ausgelegt sind. Auch Sharing- und Tausch-Communities benötigen digitale Infrastruktur, um Ressourcen und Fähigkeiten sichtbar zu machen und gegenseitige Unterstützung zu organisieren.
 
 Die Sekundärzielgruppe sind Organisationen, die lokale Gruppen stärken, sowie Entwickler*innen, die Community-Tools bauen.
 
