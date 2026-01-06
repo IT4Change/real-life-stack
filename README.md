@@ -1,8 +1,5 @@
 # Real Life Stack
 
-<img height="300" alt="real-life-stack" src="https://github.com/user-attachments/assets/4a938393-cf97-407d-ae3e-d5b243fdcc48" />
-
-
 **Modularer Baukasten für lokale Vernetzung und dezentrale Zusammenarbeit**
 
 Lokale Gemeinschaften brauchen digitale Werkzeuge, die echte Begegnungen fördern statt ersetzen. Real Life Stack ist ein modularer Baukasten, mit dem Communities eigene Apps für lokale Vernetzung bereitstellen und an ihre Bedürfnisse anpassen können.
