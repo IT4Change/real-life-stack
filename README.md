@@ -91,13 +91,13 @@ Experimentelle Spielwiese für technische Ansätze:
 
 ## Module
 
-| Modul        | Beschreibung                    | Status            |
-|--------------|---------------------------------|-------------------|
-| **Map**      | Lokale Orte & Ressourcen        | 🟡 Prototyp       |
-| **Calendar** | Events & Terminkoordination     | 🟡 Prototyp       |
-| **Feed**     | Aktivitäten-Stream              | 🟡 Prototyp       |
-| **Groups**   | Gruppen & Rollen                | 🟡 Konzept        |
-| **Profiles** | Nutzerprofile & Identität       | 🟡 Konzept        |
+| Modul                              | Beschreibung                                                        |
+|------------------------------------|---------------------------------------------------------------------|
+| [**Map**](modules/map.md)          | Lokale Orte, Ressourcen und Aktivitäten auf einer Karte visualisieren |
+| [**Calendar**](modules/calender.md)| Events planen, Termine koordinieren, Einladungen verwalten          |
+| [**Feed**](modules/feed.md)        | Aktivitäten-Stream aus allen Modulen – was passiert in der Community? |
+| **Groups**                         | Gruppen mit Rollen, Mitgliedschaften und gemeinsamen Ressourcen     |
+| **Profiles**                       | Nutzerprofile mit Fähigkeiten, Interessen und Vertrauensbeziehungen |
 
 ---
 
@@ -125,7 +125,7 @@ real-life-stack/
 
 ## Forschungsprojekt: Web-of-Trust
 
-[Web-of-Trust](https://web-of-trust.de) ist eine experimentelle Spielwiese, auf der wir Ideen und Ansätze für Real Life Stack erforschen und testen:
+[Web-of-Trust](https://github.com/IT4Change/web-of-trust) ist eine experimentelle Spielwiese, auf der wir Ideen und Ansätze für Real Life Stack erforschen und testen:
 
 - **Dezentrale Identitäten** – Experimente mit did:key und Ed25519
 - **Web of Trust** – QR-Code-basierte Verifizierung, JWS-Signaturen
@@ -161,12 +161,6 @@ Das Projekt wird von einem Team mit langjähriger Erfahrung in Open-Source-Commu
 - Jugendgruppen und freie Lernorte
 - Sharing- und Tausch-Communities
 - Organisationen, die lokale Gruppen stärken
-
----
-
-## Lizenz
-
-MIT License
 
 ---
 
