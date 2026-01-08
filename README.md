@@ -94,7 +94,7 @@ Experimentelle Spielwiese für technische Ansätze:
 | Modul                              | Beschreibung                                                        |
 |------------------------------------|---------------------------------------------------------------------|
 | [**Map**](modules/map.md)          | Lokale Orte, Ressourcen und Aktivitäten auf einer Karte visualisieren |
-| [**Calendar**](modules/calender.md)| Events planen, Termine koordinieren, Einladungen verwalten          |
+| [**Calendar**](modules/calendar.md)| Events planen, Termine koordinieren, Einladungen verwalten          |
 | [**Feed**](modules/feed.md)        | Aktivitäten-Stream aus allen Modulen – was passiert in der Community? |
 | **Groups**                         | Gruppen mit Rollen, Mitgliedschaften und gemeinsamen Ressourcen     |
 | **Profiles**                       | Nutzerprofile mit Fähigkeiten, Interessen und Vertrauensbeziehungen |
