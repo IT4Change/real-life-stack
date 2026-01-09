@@ -1,2 +1,0 @@
-## Pages
-- [Social App - Smart Post Widget](/): Eine intelligente Social App mit vielseitigem Post-Widget für verschiedene Inhaltstypen

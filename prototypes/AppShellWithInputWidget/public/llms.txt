@@ -1,2 +1,0 @@
-## Pages
-- [AppShell - Modern Dashboard](/): Modern responsive dashboard with navigation, sidebar and bottom menu

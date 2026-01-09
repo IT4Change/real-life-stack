@@ -1,13 +1,11 @@
-name: Deploy to GitHub Pages
+name: Deploy Prototype
 
 on:
   push:
     branches:
       - master
     paths:
-      - 'apps/**'
-      - 'packages/**'
-      - 'prototypes/**'
+      - 'prototype/**'
       - '.github/workflows/deploy-prototypes.yml'
   workflow_dispatch:
 
@@ -27,59 +25,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: pnpm
+          node-version: 18
+          cache: npm
+          cache-dependency-path: prototype/package-lock.json
 
-      - name: Install monorepo dependencies
-        run: pnpm install
-
-      - name: Build toolkit
-        run: pnpm --filter @real-life-stack/toolkit build
-
-      - name: Build reference app
-        run: pnpm --filter reference build
-        env:
-          VITE_BASE_PATH: /reference/
-
-      - name: Build legacy prototypes
+      - name: Build prototype
         run: |
-          set -euo pipefail
-          prototypes=(AppShell AppShellWithInputWidget InputWidget modules-hub Profiles)
-          REPO_NAME="${{ github.event.repository.name }}"
-          for dir in "${prototypes[@]}"; do
-            echo "📦 Building $dir"
-            pushd "prototypes/$dir" >/dev/null
-            npm ci
-            npm run build -- --base="/${REPO_NAME}/${dir}/"
-            popd >/dev/null
-          done
+          cd prototype
+          npm ci
+          npm run build -- --base="/real-life-stack/edge/"
 
-      - name: Combine all builds
+      - name: Prepare deployment
         run: |
-          mkdir -p combined
-          cp index.html combined/index.html
+          mkdir -p gh-pages/edge
+          cp -R prototype/dist/. gh-pages/edge/
 
-          # Reference app
-          mkdir -p combined/reference
-          cp -r apps/reference/dist/* combined/reference/
-
-          # Legacy prototypes
-          prototypes=(AppShell AppShellWithInputWidget InputWidget modules-hub Profiles)
-          for dir in "${prototypes[@]}"; do
-            mkdir -p "combined/$dir"
-            cp -r "prototypes/$dir/dist/." "combined/$dir/"
-          done
-
-      - name: Upload static artifacts
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: combined
+          path: gh-pages
 
   deploy:
     runs-on: ubuntu-latest
