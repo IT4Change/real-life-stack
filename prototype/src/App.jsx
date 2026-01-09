@@ -11,6 +11,9 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import SmartPostWidget, { POST_TYPES } from '@/components/SmartPostWidget';
 import { initializeMockData } from '@/data/mockData';
 import { DndProvider } from 'react-dnd';
+
+// Initialize mock data synchronously before first render
+initializeMockData();
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { Plus } from 'lucide-react';
 import {
@@ -69,10 +72,6 @@ function App() {
     createDirectConversation,
     createGroupConversation,
   } = useMessages();
-
-  useEffect(() => {
-    initializeMockData();
-  }, []);
 
   // Detect mobile screen size
   useEffect(() => {
