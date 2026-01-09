@@ -1,0 +1,15 @@
+{
+  "name": "real-life-stack",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "dev:reference": "pnpm --filter reference dev",
+    "build:toolkit": "pnpm --filter @real-life-stack/toolkit build"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "~5.7.2"
+  }
+}

@@ -1,21 +1,24 @@
-name: Deploy Prototypes
+name: Deploy to GitHub Pages
 
 on:
   push:
     branches:
       - master
     paths:
+      - 'apps/**'
+      - 'packages/**'
       - 'prototypes/**'
       - '.github/workflows/deploy-prototypes.yml'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
 concurrency:
-  group: deploy-prototypes
-  cancel-in-progress: false
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -24,40 +27,59 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: npm
-          cache-dependency-path: |
-            prototypes/AppShell/package-lock.json
-            prototypes/AppShellWithInputWidget/package-lock.json
-            prototypes/InputWidget/package-lock.json
-            prototypes/modules-hub/package-lock.json
-            prototypes/Profiles/package-lock.json
+          node-version: 20
+          cache: pnpm
 
-      - name: Build all prototypes
+      - name: Install monorepo dependencies
+        run: pnpm install
+
+      - name: Build toolkit
+        run: pnpm --filter @real-life-stack/toolkit build
+
+      - name: Build reference app
+        run: pnpm --filter reference build
+        env:
+          VITE_BASE_PATH: /reference/
+
+      - name: Build legacy prototypes
         run: |
           set -euo pipefail
           prototypes=(AppShell AppShellWithInputWidget InputWidget modules-hub Profiles)
-          rm -rf gh-pages
-          mkdir -p gh-pages
-          cp index.html gh-pages/index.html
           REPO_NAME="${{ github.event.repository.name }}"
           for dir in "${prototypes[@]}"; do
-            echo "\n📦 Building $dir"
+            echo "📦 Building $dir"
             pushd "prototypes/$dir" >/dev/null
             npm ci
             npm run build -- --base="/${REPO_NAME}/${dir}/"
             popd >/dev/null
-            mkdir -p "gh-pages/$dir"
-            cp -R "prototypes/$dir/dist/." "gh-pages/$dir/"
+          done
+
+      - name: Combine all builds
+        run: |
+          mkdir -p combined
+          cp index.html combined/index.html
+
+          # Reference app
+          mkdir -p combined/reference
+          cp -r apps/reference/dist/* combined/reference/
+
+          # Legacy prototypes
+          prototypes=(AppShell AppShellWithInputWidget InputWidget modules-hub Profiles)
+          for dir in "${prototypes[@]}"; do
+            mkdir -p "combined/$dir"
+            cp -r "prototypes/$dir/dist/." "combined/$dir/"
           done
 
       - name: Upload static artifacts
         uses: actions/upload-pages-artifact@v3
         with:
-          path: gh-pages
+          path: combined
 
   deploy:
     runs-on: ubuntu-latest
@@ -65,9 +87,6 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      pages: write
-      id-token: write
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

@@ -6,6 +6,42 @@ Lokale Gemeinschaften brauchen digitale Werkzeuge, die echte Begegnungen förder
 
 > **Meeting-Time statt Screen-Time** – Software, die Menschen zusammenbringt statt sie am Bildschirm zu halten.
 
+## Monorepo-Struktur
+
+```text
+real-life-stack/
+├── packages/
+│   └── toolkit/           # @real-life-stack/toolkit - UI-Komponenten
+├── apps/
+│   └── reference/         # Reference App (React 19)
+├── prototypes/            # UI-Prototypen (Legacy)
+└── docs/                  # Dokumentation
+    ├── modules/           # Modul-Spezifikationen
+    ├── concepts/          # Konzept-Dokumente
+    └── funding/           # Förderantrag
+```
+
+## Schnellstart
+
+```bash
+# Dependencies installieren
+pnpm install
+
+# Reference App starten
+pnpm dev:reference
+
+# Toolkit bauen
+pnpm build:toolkit
+```
+
+## @real-life-stack/toolkit
+
+Das Toolkit-Package exportiert wiederverwendbare UI-Komponenten:
+
+```typescript
+import { AppShell, MapView, FeedView } from '@real-life-stack/toolkit'
+```
+
 ---
 
 ## Das Problem
@@ -93,33 +129,11 @@ Experimentelle Spielwiese für technische Ansätze:
 
 | Modul                              | Beschreibung                                                        |
 |------------------------------------|---------------------------------------------------------------------|
-| [**Map**](modules/map.md)          | Lokale Orte, Ressourcen und Aktivitäten auf einer Karte visualisieren |
-| [**Calendar**](modules/calendar.md)| Events planen, Termine koordinieren, Einladungen verwalten          |
-| [**Feed**](modules/feed.md)        | Aktivitäten-Stream aus allen Modulen – was passiert in der Community? |
+| [**Map**](docs/modules/map.md)          | Lokale Orte, Ressourcen und Aktivitäten auf einer Karte visualisieren |
+| [**Calendar**](docs/modules/calendar.md)| Events planen, Termine koordinieren, Einladungen verwalten          |
+| [**Feed**](docs/modules/feed.md)        | Aktivitäten-Stream aus allen Modulen – was passiert in der Community? |
 | **Groups**                         | Gruppen mit Rollen, Mitgliedschaften und gemeinsamen Ressourcen     |
 | **Profiles**                       | Nutzerprofile mit Fähigkeiten, Interessen und Vertrauensbeziehungen |
-
----
-
-## Projektstruktur
-
-```
-real-life-stack/
-├── prototypes/    # React-Prototypen (UI-Demos)
-│   ├── modules-hub/
-│   ├── AppShell/
-│   └── InputWidget/
-├── modules/       # Modul-Spezifikationen
-│   ├── map.md
-│   ├── calendar.md
-│   ├── feed.md
-│   └── ...
-├── concepts/      # Konzept-Dokumente
-│   ├── access-control.md
-│   ├── gamification.md
-│   └── ...
-└── funding/       # Förderantrag
-```
 
 ---
 
