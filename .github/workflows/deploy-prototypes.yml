@@ -1,4 +1,4 @@
-name: Deploy Prototype
+name: Deploy
 
 on:
   push:
@@ -6,6 +6,8 @@ on:
       - master
     paths:
       - 'prototype/**'
+      - 'apps/**'
+      - 'packages/**'
       - '.github/workflows/deploy-prototypes.yml'
   workflow_dispatch:
 
@@ -25,12 +27,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: npm
-          cache-dependency-path: prototype/package-lock.json
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build reference app
+        run: pnpm --filter reference build
+        env:
+          VITE_BASE_PATH: /real-life-stack/
 
       - name: Build prototype
         run: |
@@ -41,6 +53,9 @@ jobs:
       - name: Prepare deployment
         run: |
           mkdir -p gh-pages/edge
+          # Reference app at root
+          cp -R apps/reference/dist/. gh-pages/
+          # Prototype at /edge/
           cp -R prototype/dist/. gh-pages/edge/
 
       - name: Upload Pages artifact

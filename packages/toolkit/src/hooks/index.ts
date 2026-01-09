@@ -1,1 +1,1 @@
-// Hooks will be exported here
+export { useIsMobile } from "./use-mobile"
