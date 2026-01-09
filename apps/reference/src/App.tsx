@@ -35,7 +35,6 @@ import {
   Button,
   Avatar,
   AvatarFallback,
-  AvatarImage,
   type Workspace,
   type UserData,
   type Module,
@@ -149,7 +148,7 @@ function FeedView() {
       {/* Post Widget */}
       <SimplePostWidget
         placeholder="Was gibt's Neues in der Nachbarschaft?"
-        onSubmit={(content) => console.log("Post:", content)}
+        onSubmit={(content: string) => console.log("Post:", content)}
       />
 
       {/* Posts Feed */}
@@ -158,9 +157,9 @@ function FeedView() {
           <PostCard
             key={post.id}
             post={post}
-            onLike={(id) => console.log("Like:", id)}
-            onComment={(id) => console.log("Comment:", id)}
-            onShare={(id) => console.log("Share:", id)}
+            onLike={(id: string) => console.log("Like:", id)}
+            onComment={(id: string) => console.log("Comment:", id)}
+            onShare={(id: string) => console.log("Share:", id)}
           />
         ))}
       </div>
