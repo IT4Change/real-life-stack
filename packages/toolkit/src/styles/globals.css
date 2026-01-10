@@ -65,7 +65,6 @@
   /* Semantic shadows */
   --shadow-card: var(--shadow-lg);
   --shadow-navbar: var(--shadow-md);
-  --shadow-button: none;
 }
 
 .dark {
@@ -128,7 +127,6 @@
   /* Semantic shadows */
   --shadow-card: var(--shadow-lg);
   --shadow-navbar: var(--shadow-md);
-  --shadow-button: none;
 }
 
 @theme inline {
@@ -183,7 +181,6 @@
   --shadow-2xl: var(--shadow-2xl);
   --shadow-card: var(--shadow-card);
   --shadow-navbar: var(--shadow-navbar);
-  --shadow-button: var(--shadow-button);
 }
 
 /* Glass effect for navbar */
@@ -215,3 +212,4 @@
     cursor: not-allowed;
   }
 }
+
