@@ -43,15 +43,16 @@ import {
 
 // Demo data
 const workspaces: Workspace[] = [
-  { id: "1", name: "Nachbarschaft Kreuzberg" },
-  { id: "2", name: "Klimagruppe Berlin" },
-  { id: "3", name: "Tech Community" },
+  { id: "1", name: "Dank", avatar: "/dank-logo.svg" },
+  { id: "2", name: "Maluhia", avatar: "/maluhia-logo.png" },
+  { id: "3", name: "Utopia", avatar: "/utopia-logo.svg" },
 ]
 
 const user: UserData = {
   id: "1",
   name: "Max Mustermann",
   email: "max@example.com",
+  avatar: "https://randomuser.me/api/portraits/men/32.jpg",
 }
 
 const modules: Module[] = [
@@ -63,7 +64,10 @@ const modules: Module[] = [
 const demoPosts: Post[] = [
   {
     id: "1",
-    author: { name: "Anna Schmidt" },
+    author: {
+      name: "Anna Schmidt",
+      avatar: "https://randomuser.me/api/portraits/women/44.jpg",
+    },
     content:
       "Wer hat Lust auf einen gemeinsamen Spaziergang im Park am Samstag? Treffpunkt wäre 14 Uhr am Eingang. Hunde sind natürlich willkommen!",
     timestamp: "vor 2 Stunden",
@@ -73,7 +77,10 @@ const demoPosts: Post[] = [
   },
   {
     id: "2",
-    author: { name: "Klimagruppe Berlin" },
+    author: {
+      name: "Dank Community",
+      avatar: "/dank-logo.svg",
+    },
     content:
       "Nächstes Treffen: Dienstag 19 Uhr im Gemeinschaftshaus. Thema: Planung der Frühjahrs-Pflanzaktion. Alle sind herzlich eingeladen!",
     timestamp: "vor 5 Stunden",
@@ -83,7 +90,10 @@ const demoPosts: Post[] = [
   },
   {
     id: "3",
-    author: { name: "Thomas Müller" },
+    author: {
+      name: "Thomas Müller",
+      avatar: "https://randomuser.me/api/portraits/men/67.jpg",
+    },
     content:
       "Suche jemanden der mir beim Umzug nächste Woche helfen kann. Biete Pizza und Getränke als Dankeschön!",
     timestamp: "gestern",
@@ -93,13 +103,29 @@ const demoPosts: Post[] = [
   },
   {
     id: "4",
-    author: { name: "Lisa Weber" },
+    author: {
+      name: "Lisa Weber",
+      avatar: "https://randomuser.me/api/portraits/women/28.jpg",
+    },
     content:
       "Hat jemand Erfahrung mit Urban Gardening? Ich möchte meinen Balkon begrünen und suche Tipps für Anfänger.",
     timestamp: "gestern",
     likes: 8,
     comments: 12,
     type: "text",
+  },
+  {
+    id: "5",
+    author: {
+      name: "Maluhia Hawaii",
+      avatar: "/maluhia-logo.png",
+    },
+    content:
+      "Aloha! Wir organisieren einen Strand-Cleanup am Wochenende. Wer möchte mitmachen und unsere Küste sauber halten?",
+    timestamp: "vor 3 Stunden",
+    likes: 18,
+    comments: 6,
+    type: "event",
   },
 ]
 

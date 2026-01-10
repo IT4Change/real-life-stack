@@ -39,6 +39,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Build toolkit
+        run: pnpm --filter @real-life-stack/toolkit build
+
       - name: Build reference app
         run: pnpm --filter reference build
         env:
