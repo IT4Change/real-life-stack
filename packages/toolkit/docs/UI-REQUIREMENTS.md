@@ -1,83 +1,113 @@
-# UI/UX Anforderungen
+# UI/UX Design-Entscheidungen
 
-Diese Liste dokumentiert alle Design-Entscheidungen und Anforderungen für das @real-life-stack/toolkit Design System.
-
----
-
-## Interaktive Elemente
-
-### Cursor
-
-- [ ] **Pointer auf klickbaren Elementen**: Alle interaktiven Elemente (Buttons, Links, Dropdown-Trigger, Menü-Items) zeigen `cursor: pointer`
-- [ ] **Not-allowed bei disabled**: Deaktivierte Elemente zeigen `cursor: not-allowed`
-
-### Fokus-Verhalten
-
-- [ ] **Kein Fokusrahmen bei Mausklick**: Focus-Ring nur bei Keyboard-Navigation (`focus-visible`), nicht bei Mausklick (`focus`)
-- [ ] **Konsistenter Focus-Ring**: Wenn sichtbar, dann mit `ring-2 ring-ring`
+Atomare Design-Entscheidungen für das @real-life-stack/toolkit.
+Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 
 ---
 
-## Layout
+## Schatten
 
-### Navbar
+- [x] **shadow-card-xl**: Cards verwenden `--shadow-xl` (`--shadow-card: var(--shadow-xl)`)
+- [ ] **shadow-card-lg**: Cards verwenden `--shadow-lg`
+- [ ] **shadow-card-md**: Cards verwenden `--shadow-md`
+- [ ] **shadow-card-sm**: Cards verwenden `--shadow-sm`
+- [ ] **shadow-card-none**: Cards ohne Schatten
 
-- [ ] **Stabile Mitte**: Tabs in der Navbar-Mitte verschieben sich nicht wenn sich der Inhalt links/rechts ändert (feste Breiten für NavbarStart/NavbarEnd)
-- [ ] **Glasmorphism**: Navbar hat `backdrop-blur` Effekt mit semi-transparentem Hintergrund
+- [x] **shadow-navbar-xl**: Navbar verwendet `--shadow-xl` (`--shadow-navbar: var(--shadow-xl)`)
+- [ ] **shadow-navbar-lg**: Navbar verwendet `--shadow-lg`
+- [ ] **shadow-navbar-md**: Navbar verwendet `--shadow-md`
+- [ ] **shadow-navbar-sm**: Navbar verwendet `--shadow-sm`
+- [ ] **shadow-navbar-none**: Navbar ohne Schatten
 
----
-
-## Komponenten
-
-### Cards
-
-- [ ] **Kein Hover-Lift**: Cards bewegen sich nicht beim Hover (kein `hover:-translate-y`)
-- [ ] **Subtile Schatten**: Cards haben dezente Schatten (`shadow-sm`)
-
-### Workspace-Switcher
-
-- [ ] **Eckige Logos**: Workspace-Avatare sind nicht rund (`rounded-none`)
-- [ ] **Pointer Cursor**: Trigger und alle Items im Dropdown zeigen Pointer
-
-### User-Menu
-
-- [ ] **Runder Avatar**: User-Avatar bleibt rund (Standard-Avatar-Styling)
-- [ ] **Pointer Cursor**: Trigger und alle Items zeigen Pointer
-
-### Dropdown-Menüs (generell)
-
-- [ ] **Pointer auf Items**: Alle `DropdownMenuItem` zeigen `cursor: pointer`
-- [ ] **Kein Fokusrahmen auf Trigger**: Nach Auswahl kein sichtbarer Ring
+- [x] **shadow-button-md**: Buttons verwenden `--shadow-md` (`--shadow-button: var(--shadow-md)`)
+- [ ] **shadow-button-sm**: Buttons verwenden `--shadow-sm`
+- [ ] **shadow-button-none**: Buttons ohne Schatten
 
 ---
 
-## Farben & Theming
+## Cursor
 
-### Farbharmonie
+- [x] **cursor-pointer-interactive**: Alle interaktiven Elemente zeigen `cursor: pointer`
+- [x] **cursor-not-allowed-disabled**: Deaktivierte Elemente zeigen `cursor: not-allowed`
 
-- [ ] **Keine Farbkonflikte**: Primär- und Akzentfarben dürfen sich nicht "beißen" (z.B. kein Orange-Hover auf blauen Flächen)
-- [ ] **Monochrom bevorzugt**: Akzentfarbe aus der gleichen Farbfamilie wie Primärfarbe (aktuell: Grün-basiertes Theme)
+---
 
-### Dark Mode
+## Fokus-Verhalten
 
-- [ ] **Vollständige Unterstützung**: Alle Komponenten funktionieren in Light und Dark Mode
-- [ ] **CSS-Variablen**: Theme-Wechsel über `.dark` Klasse auf `<html>`
+- [x] **focus-visible-only**: Focus-Ring nur bei Keyboard-Navigation, nicht bei Mausklick
+- [x] **focus-ring-consistent**: Einheitlicher Focus-Ring mit `ring-ring/50`
+
+---
+
+## Navbar
+
+- [x] **navbar-fixed-sections**: NavbarStart/NavbarEnd haben feste Breite (`w-56`) für stabile Mitte
+- [x] **navbar-glass**: Navbar mit Glasmorphism (`backdrop-blur-12`, `bg-background/80`)
+- [x] **navbar-sticky**: Navbar bleibt beim Scrollen oben (`sticky top-0`)
+
+---
+
+## Cards
+
+- [x] **card-no-hover-lift**: Cards bewegen sich nicht beim Hover
+- [x] **card-backdrop-blur**: Cards mit `backdrop-blur-sm` für Glaseffekt
+- [x] **card-rounded-xl**: Cards mit `rounded-xl`
+- [x] **card-border**: Cards mit Border
+
+---
+
+## Workspace-Switcher
+
+- [x] **workspace-logo-square**: Workspace-Avatare sind eckig (`rounded-md` im Trigger, `rounded-none` im Dropdown)
+- [x] **workspace-name-prominent**: Workspace-Name groß und prominent (`text-lg font-semibold`)
+- [ ] **workspace-name-with-label**: Zweizeilig mit "Workspace" Label
+- [x] **workspace-chevron-hidden-mobile**: Chevron-Icon nur auf Desktop sichtbar
+
+---
+
+## User-Menu
+
+- [x] **user-avatar-round**: User-Avatar ist rund (Standard)
+- [ ] **user-avatar-square**: User-Avatar ist eckig
+
+---
+
+## Dropdown-Menüs
+
+- [x] **dropdown-cursor-pointer**: Alle Items zeigen `cursor: pointer`
+- [x] **dropdown-trigger-no-outline**: Kein Fokusrahmen auf Trigger nach Auswahl
 
 ---
 
 ## Typografie
 
-### Schriften
-
-- [ ] **Sans-Serif**: Montserrat als Hauptschrift
-- [ ] **Serif**: Merriweather für besondere Texte
-- [ ] **Monospace**: Source Code Pro für Code
+- [x] **font-sans-montserrat**: Montserrat als Sans-Serif Hauptschrift
+- [x] **font-serif-merriweather**: Merriweather als Serif-Schrift
+- [x] **font-mono-source-code-pro**: Source Code Pro als Monospace-Schrift
 
 ---
 
-## Zukünftige Anforderungen
+## Farbschema
 
-_Hier werden neue Anforderungen dokumentiert..._
+- [x] **color-scheme-green**: Grün-basiertes Theme (Primary: Grün)
+- [ ] **color-scheme-blue**: Blau-basiertes Theme
+- [ ] **color-scheme-purple**: Lila-basiertes Theme
+
+- [x] **accent-monochrom**: Akzentfarbe aus gleicher Farbfamilie wie Primary
+- [ ] **accent-contrast**: Kontrastierende Akzentfarbe
+
+---
+
+## Dark Mode
+
+- [x] **dark-mode-supported**: Vollständige Dark Mode Unterstützung
+- [x] **dark-mode-class-based**: Theme-Wechsel über `.dark` Klasse auf `<html>`
+
+---
+
+## Assets
+
+- [x] **assets-base-path**: Logo-Pfade nutzen `import.meta.env.BASE_URL` für GitHub Pages Kompatibilität
 
 ---
 
@@ -91,4 +121,6 @@ _Hier werden neue Anforderungen dokumentiert..._
 | 2026-01-10 | Workspace-Logos eckig (nicht rund) |
 | 2026-01-10 | Feste Breiten für NavbarStart/NavbarEnd |
 | 2026-01-10 | Kein Hover-Lift auf Cards |
-| 2026-01-10 | Grün-basiertes Farbschema (kein Orange/Blau-Konflikt) |
+| 2026-01-10 | Grün-basiertes Farbschema |
+| 2026-01-10 | Semantische Schatten-Variablen (--shadow-card, --shadow-navbar, --shadow-button) |
+| 2026-01-10 | Dokumentation auf atomare Checkboxen umgestellt |

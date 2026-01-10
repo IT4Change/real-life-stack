@@ -14,7 +14,7 @@ export function Navbar({ children, className }: NavbarProps) {
       className={cn(
         "sticky top-0 z-40 w-full",
         "glass-navbar",
-        "shadow-sm",
+        "shadow-navbar",
         className
       )}
     >

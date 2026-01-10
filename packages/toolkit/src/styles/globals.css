@@ -45,7 +45,11 @@
   --shadow-lg: 0 1px 3px 0px oklch(0.00 0 0 / 0.10), 0 4px 6px -1px oklch(0.00 0 0 / 0.10);
   --shadow-xl: 0 1px 3px 0px oklch(0.00 0 0 / 0.10), 0 8px 10px -1px oklch(0.00 0 0 / 0.10);
   --shadow-2xl: 0 1px 3px 0px oklch(0.00 0 0 / 0.25);
-  
+
+  /* Semantic shadows */
+  --shadow-card: var(--shadow-xl);
+  --shadow-navbar: var(--shadow-xl);
+  --shadow-button: var(--shadow-md);
 }
 
 .dark {
@@ -89,6 +93,11 @@
   --shadow-lg: 0 1px 3px 0px oklch(0.00 0 0 / 0.10), 0 4px 6px -1px oklch(0.00 0 0 / 0.10);
   --shadow-xl: 0 1px 3px 0px oklch(0.00 0 0 / 0.10), 0 8px 10px -1px oklch(0.00 0 0 / 0.10);
   --shadow-2xl: 0 1px 3px 0px oklch(0.00 0 0 / 0.25);
+
+  /* Semantic shadows */
+  --shadow-card: var(--shadow-xl);
+  --shadow-navbar: var(--shadow-xl);
+  --shadow-button: var(--shadow-md);
 }
 
 @theme inline {
@@ -141,6 +150,9 @@
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
+  --shadow-card: var(--shadow-card);
+  --shadow-navbar: var(--shadow-navbar);
+  --shadow-button: var(--shadow-button);
 }
 
 /* Glass effect for navbar */
