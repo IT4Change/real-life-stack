@@ -30,7 +30,7 @@ interface NavbarSectionProps {
 
 export function NavbarStart({ children, className }: NavbarSectionProps) {
   return (
-    <div className={cn("flex items-center gap-2 w-48 shrink-0", className)}>{children}</div>
+    <div className={cn("flex items-center gap-2 w-56 shrink-0", className)}>{children}</div>
   )
 }
 
@@ -44,6 +44,6 @@ export function NavbarCenter({ children, className }: NavbarSectionProps) {
 
 export function NavbarEnd({ children, className }: NavbarSectionProps) {
   return (
-    <div className={cn("flex items-center gap-2 w-48 shrink-0 justify-end", className)}>{children}</div>
+    <div className={cn("flex items-center gap-2 w-56 shrink-0 justify-end", className)}>{children}</div>
   )
 }

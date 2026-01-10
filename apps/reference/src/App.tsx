@@ -41,11 +41,14 @@ import {
   type Post,
 } from "@real-life-stack/toolkit"
 
+// Base path for assets (configured via Vite)
+const basePath = import.meta.env.BASE_URL
+
 // Demo data
 const workspaces: Workspace[] = [
-  { id: "1", name: "Dank", avatar: "/dank-logo.svg" },
-  { id: "2", name: "Maluhia", avatar: "/maluhia-logo.png" },
-  { id: "3", name: "Utopia", avatar: "/utopia-logo.svg" },
+  { id: "1", name: "Dank", avatar: `${basePath}dank-logo.svg` },
+  { id: "2", name: "Maluhia", avatar: `${basePath}maluhia-logo.png` },
+  { id: "3", name: "Utopia", avatar: `${basePath}utopia-logo.svg` },
 ]
 
 const user: UserData = {
@@ -79,7 +82,7 @@ const demoPosts: Post[] = [
     id: "2",
     author: {
       name: "Dank Community",
-      avatar: "/dank-logo.svg",
+      avatar: `${basePath}dank-logo.svg`,
     },
     content:
       "Nächstes Treffen: Dienstag 19 Uhr im Gemeinschaftshaus. Thema: Planung der Frühjahrs-Pflanzaktion. Alle sind herzlich eingeladen!",
@@ -118,7 +121,7 @@ const demoPosts: Post[] = [
     id: "5",
     author: {
       name: "Maluhia Hawaii",
-      avatar: "/maluhia-logo.png",
+      avatar: `${basePath}maluhia-logo.png`,
     },
     content:
       "Aloha! Wir organisieren einen Strand-Cleanup am Wochenende. Wer möchte mitmachen und unsere Küste sauber halten?",

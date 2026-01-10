@@ -42,15 +42,15 @@ export function WorkspaceSwitcher({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium hover:bg-accent">
-        <Avatar className="h-6 w-6 rounded-none">
-          <AvatarImage src={activeWorkspace.avatar} alt={activeWorkspace.name} className="rounded-none" />
-          <AvatarFallback className="text-xs rounded-none">
+      <DropdownMenuTrigger className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-accent">
+        <Avatar className="h-8 w-8 rounded-md">
+          <AvatarImage src={activeWorkspace.avatar} alt={activeWorkspace.name} className="rounded-md" />
+          <AvatarFallback className="text-sm font-semibold rounded-md">
             {getInitials(activeWorkspace.name)}
           </AvatarFallback>
         </Avatar>
-        <span className="hidden sm:inline-block">{activeWorkspace.name}</span>
-        <ChevronsUpDown className="h-4 w-4 opacity-50" />
+        <span className="hidden sm:inline-block text-lg font-semibold">{activeWorkspace.name}</span>
+        <ChevronsUpDown className="h-4 w-4 opacity-50 hidden sm:block" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
         <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
