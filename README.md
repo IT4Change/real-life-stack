@@ -104,12 +104,14 @@ Adapter-Pattern für verschiedene Backend-Anbindungen. Referenzimplementierung m
 
 ## Forschungsprojekt: Web-of-Trust
 
-[Web-of-Trust](https://github.com/IT4Change/web-of-trust) ist eine experimentelle Spielwiese, auf der wir Ideen und Ansätze für Real Life Stack erforschen und testen:
+[Web-of-Trust](https://web-of-trust.de) ist eine experimentelle Spielwiese, auf der wir Ideen und Ansätze für Real Life Stack erforschen und testen:
 
 - **Dezentrale Identitäten** – Experimente mit did:key und Ed25519
 - **Web of Trust** – QR-Code-basierte Verifizierung, JWS-Signaturen
 - **Local-first** – Automerge CRDT für Offline-Fähigkeit
 - **Modulare Architektur** – AppShell-Pattern für verschiedene Apps
+
+**[Zur Landing Page →](https://web-of-trust.de)** | **[Zum Prototyp →](https://it4change.github.io/web-of-trust/)** | **[GitHub →](https://github.com/IT4Change/web-of-trust)**
 
 ---
 
