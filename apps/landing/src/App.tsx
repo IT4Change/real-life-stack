@@ -2,9 +2,6 @@ import { useState } from 'react'
 import {
   Button,
   Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
   CardContent,
 } from '@real-life-stack/toolkit'
 import {
@@ -33,7 +30,6 @@ const navItems = [
   { label: 'Module', href: '#module' },
   { label: 'Schnittstelle', href: '#schnittstelle' },
   { label: 'Connectoren', href: '#connectoren' },
-  { label: 'Demos', href: '#demos' },
 ]
 
 function Header() {
@@ -279,47 +275,6 @@ function App() {
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Demos Section */}
-      <section id="demos" className="py-16 px-4 scroll-mt-20">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-12">Demos</h2>
-          <div className="grid md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Reference App</CardTitle>
-                <CardDescription>
-                  React 19 Implementierung mit allen Modulen
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button asChild className="w-full">
-                  <a href="/app/">
-                    Zur App
-                    <ArrowRight className="size-4" />
-                  </a>
-                </Button>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>UI Prototype</CardTitle>
-                <CardDescription>
-                  Experimentelle UI-Konzepte und Komponenten
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button variant="outline" asChild className="w-full">
-                  <a href="/edge/">
-                    Zum Prototype
-                    <ArrowRight className="size-4" />
-                  </a>
-                </Button>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </section>
