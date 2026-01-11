@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Menu, Calendar, Map, Rss, User, Settings, LogOut } from 'lucide-react';
+import { Menu, Calendar, Map, Rss, User, Settings, LogOut, Sprout } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -60,14 +60,14 @@ const Navbar = ({
           </Button>
 
           {/* Logo */}
-          <motion.div 
+          <motion.div
             className="flex items-center space-x-2"
             whileHover={{ scale: 1.05 }}
           >
-            <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">A</span>
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <Sprout className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="text-white font-semibold text-lg hidden sm:block">AppShell</span>
+            <span className="text-white font-semibold text-lg hidden sm:block">Real Life Stack</span>
           </motion.div>
         </div>
 

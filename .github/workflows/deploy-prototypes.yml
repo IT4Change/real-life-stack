@@ -55,7 +55,7 @@ jobs:
 
       - name: Build prototype
         run: |
-          cd prototype
+          cd apps/prototype
           npm ci
           npm run build -- --base="/edge/"
 
@@ -70,7 +70,7 @@ jobs:
           # Reference app at /app/
           cp -R apps/reference/dist/. gh-pages/app/
           # Prototype at /edge/
-          cp -R prototype/dist/. gh-pages/edge/
+          cp -R apps/prototype/dist/. gh-pages/edge/
           # Storybook at /storybook/
           cp -R packages/toolkit/storybook-static/. gh-pages/storybook/
 

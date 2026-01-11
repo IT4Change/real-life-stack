@@ -139,8 +139,8 @@ real-life-stack/
 │   └── toolkit/           # @real-life-stack/toolkit - UI-Komponenten
 ├── apps/
 │   ├── landing/           # Landing Page
-│   └── reference/         # Reference App (React 19)
-├── prototype/             # UI-Prototyp (Legacy)
+│   ├── reference/         # Reference App (React 19)
+│   └── prototype/         # UI-Prototyp (experimentell)
 └── docs/                  # Dokumentation
     ├── modules/           # Modul-Spezifikationen
     ├── concepts/          # Konzept-Dokumente
