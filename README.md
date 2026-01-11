@@ -98,7 +98,7 @@ Adapter-Pattern für verschiedene Backend-Anbindungen. Referenzimplementierung m
 | **[Reference App →](https://real-life-stack.de/app/)** | React 19 Implementierung mit allen Modulen |
 | **[UI-Prototyp →](https://real-life-stack.de/edge/)** | Experimentelle UI-Konzepte und Komponenten |
 | **[Storybook →](https://real-life-stack.de/storybook/)** | Komponenten-Dokumentation |
-| **[Web-of-Trust →](https://web-of-trust.de)** | Forschungs-Prototyp für dezentrale Identität |
+| **[Web-of-Trust →](https://it4change.github.io/web-of-trust/)** | Forschungs-Prototyp für dezentrale Identität |
 
 ---
 
