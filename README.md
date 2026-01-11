@@ -94,10 +94,10 @@ Adapter-Pattern für verschiedene Backend-Anbindungen. Referenzimplementierung m
 
 | Demo | Beschreibung |
 |------|--------------|
-| **[Landing Page →](https://it4change.github.io/real-life-stack/)** | Projektübersicht und Einstieg |
-| **[Reference App →](https://it4change.github.io/real-life-stack/app/)** | React 19 Implementierung mit allen Modulen |
-| **[UI-Prototyp →](https://it4change.github.io/real-life-stack/edge/)** | Experimentelle UI-Konzepte und Komponenten |
-| **[Storybook →](https://it4change.github.io/real-life-stack/storybook/)** | Komponenten-Dokumentation |
+| **[Landing Page →](https://real-life-stack.de/)** | Projektübersicht und Einstieg |
+| **[Reference App →](https://real-life-stack.de/app/)** | React 19 Implementierung mit allen Modulen |
+| **[UI-Prototyp →](https://real-life-stack.de/edge/)** | Experimentelle UI-Konzepte und Komponenten |
+| **[Storybook →](https://real-life-stack.de/storybook/)** | Komponenten-Dokumentation |
 | **[Web-of-Trust →](https://web-of-trust.de)** | Forschungs-Prototyp für dezentrale Identität |
 
 ---
