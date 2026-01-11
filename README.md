@@ -6,49 +6,6 @@ Lokale Gemeinschaften brauchen digitale Werkzeuge, die echte Begegnungen förder
 
 > **Selbstorganisation leicht gemacht** – Werkzeuge für echte Zusammenarbeit, die Gruppen dabei helfen, gemeinsam vor Ort etwas zu bewegen.
 
-## Monorepo-Struktur
-
-```text
-real-life-stack/
-├── packages/
-│   └── toolkit/           # @real-life-stack/toolkit - UI-Komponenten
-├── apps/
-│   └── reference/         # Reference App (React 19)
-├── prototypes/            # UI-Prototypen (Legacy)
-└── docs/                  # Dokumentation
-    ├── modules/           # Modul-Spezifikationen
-    ├── concepts/          # Konzept-Dokumente
-    └── funding/           # Förderantrag
-```
-
-## Schnellstart
-
-```bash
-# Dependencies installieren
-pnpm install
-
-# Reference App starten
-pnpm dev:reference
-
-# Toolkit bauen
-pnpm build:toolkit
-```
-
-## @real-life-stack/toolkit
-
-Das Toolkit-Package exportiert wiederverwendbare UI-Komponenten:
-
-```typescript
-import { AppShell, MapView, FeedView } from '@real-life-stack/toolkit'
-```
-
-**[Storybook ansehen →](https://it4change.github.io/real-life-stack/storybook/)**
-
-```bash
-# Storybook lokal starten
-pnpm storybook
-```
-
 ---
 
 ## Das Problem
@@ -78,29 +35,6 @@ Real Life Stack unterstützt den gesamten Kreislauf: von der Idee über die Vera
 
 ---
 
-## Demos
-
-### UI-Prototyp
-
-**[Live Demo ansehen →](https://it4change.github.io/real-life-stack/edge/)**
-
-Testet UI-Konzepte und Komponenten-Design:
-- Karte, Kalender, Feed-Ansichten
-- Navigation und responsive Layout
-- Smart Post Input-Widget
-
-### Forschungs-Prototyp (Web-of-Trust)
-
-**[Live Demo ansehen →](https://web-of-trust.de)**
-
-Experimentelle Spielwiese für technische Ansätze:
-- Dezentrale Identitäten (did:key)
-- Web of Trust via QR-Code-Verifizierung
-- Local-first mit Automerge CRDT
-- Modulare AppShell-Architektur
-
----
-
 ## Architektur
 
 ```
@@ -124,31 +58,47 @@ Experimentelle Spielwiese für technische Ansätze:
 
 Die oberste Schicht enthält die **App-Shell** als Container und die austauschbaren **UI-Module** (Kalender, Karte, Feed, Gruppen, Profile). Jede Community wählt die Module, die sie braucht.
 
-- TypeScript + React
-- Erweiterbare Modulstruktur
-- Themebares Design-System (Tailwind CSS)
-
 ### Daten- & Identitätsschnittstelle
 
 Einheitliche API für Datenmodelle (Posts, Events, Orte, Profile) und Identität (Login, Vertrauensbeziehungen). Die Module kennen nur diese Schnittstelle, nicht das Backend.
 
 ### Connector-Schicht
 
-- Adapter-Pattern für verschiedene Backend-Anbindungen
-- Referenzimplementierung mitgeliefert
-- Weitere Connectoren durch Community erweiterbar
+Adapter-Pattern für verschiedene Backend-Anbindungen. Referenzimplementierung mitgeliefert, weitere Connectoren durch Community erweiterbar.
 
 ---
 
 ## Module
 
-| Modul                              | Beschreibung                                                        |
-|------------------------------------|---------------------------------------------------------------------|
-| [**Map**](docs/modules/map.md)          | Lokale Orte, Ressourcen und Aktivitäten auf einer Karte visualisieren |
-| [**Calendar**](docs/modules/calendar.md)| Events planen, Termine koordinieren, Einladungen verwalten          |
-| [**Feed**](docs/modules/feed.md)        | Aktivitäten-Stream aus allen Modulen – was passiert in der Community? |
-| **Groups**                         | Gruppen mit Rollen, Mitgliedschaften und gemeinsamen Ressourcen     |
-| **Profiles**                       | Nutzerprofile mit Fähigkeiten, Interessen und Vertrauensbeziehungen |
+| Modul | Beschreibung |
+|-------|--------------|
+| [**Map**](docs/modules/map.md) | Lokale Orte, Ressourcen und Aktivitäten auf einer Karte visualisieren |
+| [**Calendar**](docs/modules/calendar.md) | Events planen, Termine koordinieren, Einladungen verwalten |
+| [**Feed**](docs/modules/feed.md) | Aktivitäten-Stream aus allen Modulen – was passiert in der Community? |
+| **Groups** | Gruppen mit Rollen, Mitgliedschaften und gemeinsamen Ressourcen |
+| **Profiles** | Nutzerprofile mit Fähigkeiten, Interessen und Vertrauensbeziehungen |
+
+---
+
+## Zielgruppe
+
+- Nachbarschaftsnetzwerke und Urban-Gardening-Gruppen
+- Repair-Cafés, Foodsharing-Initiativen, Solawis
+- Jugendgruppen und freie Lernorte
+- Sharing- und Tausch-Communities
+- Organisationen, die lokale Gruppen stärken
+
+---
+
+## Demos
+
+| Demo | Beschreibung |
+|------|--------------|
+| **[Landing Page →](https://it4change.github.io/real-life-stack/)** | Projektübersicht und Einstieg |
+| **[Reference App →](https://it4change.github.io/real-life-stack/app/)** | React 19 Implementierung mit allen Modulen |
+| **[UI-Prototyp →](https://it4change.github.io/real-life-stack/edge/)** | Experimentelle UI-Konzepte und Komponenten |
+| **[Storybook →](https://it4change.github.io/real-life-stack/storybook/)** | Komponenten-Dokumentation |
+| **[Web-of-Trust →](https://web-of-trust.de)** | Forschungs-Prototyp für dezentrale Identität |
 
 ---
 
@@ -160,10 +110,6 @@ Einheitliche API für Datenmodelle (Posts, Events, Orte, Profile) und Identität
 - **Web of Trust** – QR-Code-basierte Verifizierung, JWS-Signaturen
 - **Local-first** – Automerge CRDT für Offline-Fähigkeit
 - **Modulare Architektur** – AppShell-Pattern für verschiedene Apps
-
-Das Projekt dient der Forschung und dem Prototyping – es ist kein fertiger Tech-Stack, sondern eine lebendige Experimentierumgebung, in der wir verschiedene technische Ansätze ausprobieren.
-
-**[Live Demo →](https://web-of-trust.de)**
 
 ---
 
@@ -183,13 +129,65 @@ Das Projekt wird von einem Team mit langjähriger Erfahrung in Open-Source-Commu
 
 ---
 
-## Zielgruppe
+# Entwickler-Dokumentation
 
-- Nachbarschaftsnetzwerke und Urban-Gardening-Gruppen
-- Repair-Cafés, Foodsharing-Initiativen, Solawis
-- Jugendgruppen und freie Lernorte
-- Sharing- und Tausch-Communities
-- Organisationen, die lokale Gruppen stärken
+## Monorepo-Struktur
+
+```text
+real-life-stack/
+├── packages/
+│   └── toolkit/           # @real-life-stack/toolkit - UI-Komponenten
+├── apps/
+│   ├── landing/           # Landing Page
+│   └── reference/         # Reference App (React 19)
+├── prototype/             # UI-Prototyp (Legacy)
+└── docs/                  # Dokumentation
+    ├── modules/           # Modul-Spezifikationen
+    ├── concepts/          # Konzept-Dokumente
+    └── funding/           # Förderantrag
+```
+
+## Schnellstart
+
+```bash
+# Dependencies installieren
+pnpm install
+
+# Reference App starten
+pnpm dev:reference
+
+# Landing Page starten
+pnpm dev:landing
+
+# Toolkit bauen
+pnpm build:toolkit
+```
+
+## @real-life-stack/toolkit
+
+Das Toolkit-Package exportiert wiederverwendbare UI-Komponenten:
+
+```typescript
+import { Button, Card, Avatar, Tabs } from '@real-life-stack/toolkit'
+```
+
+**[Storybook ansehen →](https://it4change.github.io/real-life-stack/storybook/)**
+
+```bash
+# Storybook lokal starten
+pnpm storybook
+
+# Storybook bauen
+pnpm build:storybook
+```
+
+### Tech Stack
+
+- TypeScript + React 19
+- Tailwind CSS v4
+- Radix UI Primitives
+- CVA (class-variance-authority)
+- Vite
 
 ---
 

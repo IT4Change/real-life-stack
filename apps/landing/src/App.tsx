@@ -31,6 +31,7 @@ function GitHubIcon({ className = "w-5 h-5" }: { className?: string }) {
 
 const navItems = [
   { label: 'Module', href: '#module' },
+  { label: 'Architektur', href: '#architektur' },
   { label: 'Features', href: '#features' },
   { label: 'Demos', href: '#demos' },
 ]
@@ -181,8 +182,108 @@ function App() {
         </div>
       </section>
 
+      {/* Architecture Section */}
+      <section id="architektur" className="py-16 px-4 scroll-mt-20">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-4">Architektur</h2>
+          <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
+            Ein modularer Aufbau in drei Schichten – flexibel anpassbar an die Bedürfnisse jeder Community.
+          </p>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {/* Layer 1: App-Shell + Module */}
+            <Card className="relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-primary" />
+              <CardHeader>
+                <div className="text-sm font-medium text-primary mb-1">Schicht 1</div>
+                <CardTitle>App-Shell & Module</CardTitle>
+                <CardDescription>
+                  Die sichtbare Oberfläche – anpassbar und erweiterbar
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {['Kalender', 'Karte', 'Feed', 'Gruppen', 'Profile'].map((module) => (
+                    <span
+                      key={module}
+                      className="px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded"
+                    >
+                      {module}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-sm text-muted-foreground mt-4">
+                  Jede Community wählt die Module, die sie braucht. Eigene Module können hinzugefügt werden.
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Layer 2: Data & Identity Interface */}
+            <Card className="relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-secondary" />
+              <CardHeader>
+                <div className="text-sm font-medium text-secondary mb-1">Schicht 2</div>
+                <CardTitle>Daten & Identität</CardTitle>
+                <CardDescription>
+                  Einheitliche Schnittstelle für alle Module
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="size-2 rounded-full bg-secondary" />
+                    <span>Posts, Events, Orte, Profile</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="size-2 rounded-full bg-secondary" />
+                    <span>Login & Authentifizierung</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="size-2 rounded-full bg-secondary" />
+                    <span>Vertrauensbeziehungen</span>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground mt-4">
+                  Module kennen nur diese Schnittstelle – nicht das Backend dahinter.
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Layer 3: Connector & Backends */}
+            <Card className="relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-accent" />
+              <CardHeader>
+                <div className="text-sm font-medium text-accent mb-1">Schicht 3</div>
+                <CardTitle>Connector & Backend</CardTitle>
+                <CardDescription>
+                  Flexibel wählbare Infrastruktur
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { name: 'REST', desc: 'Klassisch' },
+                    { name: 'Local-first', desc: 'Offline' },
+                    { name: 'P2P', desc: 'Dezentral' },
+                    { name: 'E2EE', desc: 'Verschlüsselt' },
+                  ].map((backend) => (
+                    <div key={backend.name} className="p-2 bg-muted rounded text-center">
+                      <div className="font-medium text-sm">{backend.name}</div>
+                      <div className="text-xs text-muted-foreground">{backend.desc}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-muted-foreground mt-4">
+                  Von einfachem Server bis vollständig dezentral – ihr entscheidet.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* Features Section */}
-      <section id="features" className="py-16 px-4 scroll-mt-20">
+      <section id="features" className="py-16 px-4 bg-muted/30 scroll-mt-20">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-12">Warum Real Life Stack?</h2>
           <div className="grid md:grid-cols-3 gap-8">
@@ -206,7 +307,7 @@ function App() {
       </section>
 
       {/* Demos Section */}
-      <section id="demos" className="py-16 px-4 bg-muted/30 scroll-mt-20">
+      <section id="demos" className="py-16 px-4 scroll-mt-20">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-12">Demos</h2>
           <div className="grid md:grid-cols-2 gap-6">
