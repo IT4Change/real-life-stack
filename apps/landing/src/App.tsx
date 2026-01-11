@@ -18,6 +18,7 @@ import {
   Menu,
   X,
   Sprout,
+  Store,
 } from 'lucide-react'
 
 function GitHubIcon({ className = "w-5 h-5" }: { className?: string }) {
@@ -172,7 +173,7 @@ function App() {
               <ModuleCard icon={Map} title="Karte" description="OpenStreetMap via MapLibre" color="primary" />
               <ModuleCard icon={Calendar} title="Kalender" description="iCal / CalDAV" color="blue" />
               <ModuleCard icon={MessageSquare} title="Feed" description="Aktivitäten-Stream" color="orange" />
-              <ModuleCard icon={Users} title="Gruppen" description="Profile & Rollen" color="purple" />
+              <ModuleCard icon={Store} title="Marktplatz" description="Teilen & Tauschen" color="purple" />
             </div>
           </div>
         </div>

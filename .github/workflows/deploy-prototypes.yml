@@ -46,18 +46,18 @@ jobs:
       - name: Build landing page
         run: pnpm --filter landing build
         env:
-          VITE_BASE_PATH: /real-life-stack/
+          VITE_BASE_PATH: /
 
       - name: Build reference app
         run: pnpm --filter reference build
         env:
-          VITE_BASE_PATH: /real-life-stack/app/
+          VITE_BASE_PATH: /app/
 
       - name: Build prototype
         run: |
           cd prototype
           npm ci
-          npm run build -- --base="/real-life-stack/edge/"
+          npm run build -- --base="/edge/"
 
       - name: Build Storybook
         run: pnpm build:storybook
