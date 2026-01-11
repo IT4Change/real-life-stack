@@ -6,9 +6,9 @@ on:
       - master
       - main
     paths:
-      - 'prototype/**'
       - 'apps/**'
       - 'packages/**'
+      - 'pnpm-workspace.yaml'
       - '.github/workflows/deploy-prototypes.yml'
   workflow_dispatch:
 
