@@ -31,7 +31,7 @@ Real Life Stack bietet eine gemeinsame technische Grundlage:
 Vorschlagen → Planen → Umsetzen → Vertrauen aufbauen → Erfolge teilen → ↩
 ```
 
-Real Life Stack unterstützt den gesamten Kreislauf: von der Idee über die Verabredung bis zur gemeinsamen Umsetzung vor Ort. Durch echte Zusammenarbeit entsteht ein Vertrauensnetzwerk (Web of Trust), das die Gemeinschaft nachhaltig stärkt.
+Real Life Stack unterstützt den gesamten Kreislauf: von der Idee über die Verabredung bis zur gemeinsamen Umsetzung vor Ort. Durch echte Zusammenarbeit entsteht ein Vertrauensnetzwerk ([Web of Trust](https://web-of-trust.de)), das die Gemeinschaft nachhaltig stärkt.
 
 ---
 
