@@ -4,7 +4,7 @@
 
 Lokale Gemeinschaften brauchen digitale Werkzeuge, die echte Begegnungen fördern statt ersetzen. Real Life Stack ist ein modularer Baukasten, mit dem Communities eigene Apps für lokale Vernetzung bereitstellen und an ihre Bedürfnisse anpassen können.
 
-> **Meeting-Time statt Screen-Time** – Software, die Menschen zusammenbringt statt sie am Bildschirm zu halten.
+> **Selbstorganisation leicht gemacht** – Werkzeuge für echte Zusammenarbeit, die Gruppen dabei helfen, gemeinsam vor Ort etwas zu bewegen.
 
 ## Monorepo-Struktur
 
@@ -104,29 +104,37 @@ Experimentelle Spielwiese für technische Ansätze:
 ## Architektur
 
 ```
-┌─────────────────────────────────────────┐
-│      UI-Module                          │
-│  (Karte, Kalender, Feed, Gruppen, ...)  │
-├─────────────────────────────────────────┤
-│      Daten- & Identitätsschnittstelle   │
-├─────────────────────────────────────────┤
-│      Connector-Schicht                  │
-├─────────────────────────────────────────┤
-│      Backend                            │
-│  (REST / Local-first / P2P / E2EE)      │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐  │
+│  │Kalender│ │ Karte  │ │  Feed  │ │Gruppen │ │Profile │  │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘  │
+│                                                          │
+│                       App-Shell                          │
+├──────────────────────────────────────────────────────────┤
+│              Daten- & Identitätsschnittstelle            │
+├──────────────────────────────────────────────────────────┤
+│                   Connector-Schicht                      │
+├──────────────────────────────────────────────────────────┤
+│                       Backend                            │
+│            (REST / Local-first / P2P / E2EE)             │
+└──────────────────────────────────────────────────────────┘
 ```
 
-### Frontend-Baukasten
+### App-Shell + UI-Module
 
-- TypeScript + React/Vue
-- Klare Daten- und Identitätsschnittstelle
+Die oberste Schicht enthält die **App-Shell** als Container und die austauschbaren **UI-Module** (Kalender, Karte, Feed, Gruppen, Profile). Jede Community wählt die Module, die sie braucht.
+
+- TypeScript + React
 - Erweiterbare Modulstruktur
 - Themebares Design-System (Tailwind CSS)
 
+### Daten- & Identitätsschnittstelle
+
+Einheitliche API für Datenmodelle (Posts, Events, Orte, Profile) und Identität (Login, Vertrauensbeziehungen). Die Module kennen nur diese Schnittstelle, nicht das Backend.
+
 ### Connector-Schicht
 
-- Definiert Muster zur Backend-Anbindung
+- Adapter-Pattern für verschiedene Backend-Anbindungen
 - Referenzimplementierung mitgeliefert
 - Weitere Connectoren durch Community erweiterbar
 
