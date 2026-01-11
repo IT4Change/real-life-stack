@@ -1,0 +1,13 @@
+[22:25:44.142] [INFO] Initializing Storybook
+[22:25:44.664] [DEBUG] Getting package.json info for /home/fritz/workspace/web-of-trust/real-life-stack/packages/toolkit/package.json...
+[22:25:44.665] [DEBUG] Getting CLI versions from NPM for storybook...
+[22:25:44.665] [DEBUG] Executing command: pnpm info storybook version
+[22:25:45.527] [INFO] Adding Storybook version 10.1.11 to your project
+[22:25:45.530] [ERROR] Unable to initialize Storybook in this directory.
+
+Storybook couldn't detect a supported framework or configuration for your project. Make sure you're inside a framework project (e.g., React, Vue, Svelte, Angular, Next.js) and that its dependencies are installed.
+
+Tips:
+- Run init in an empty directory or create a new framework app first.
+- If this directory contains unrelated files, try a new directory for Storybook.
+[22:25:45.532] [INFO] Storybook collects completely anonymous usage telemetry. We use it to shape Storybook's roadmap and prioritize features. You can learn more, including how to opt out, at https://storybook.js.org/telemetry

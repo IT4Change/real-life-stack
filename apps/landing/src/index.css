@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+/* Import theme from toolkit - single source of truth */
+@import "../../../packages/toolkit/src/styles/globals.css";
+
+/* Scan toolkit source files for Tailwind classes */
+@source "../../../packages/toolkit/src/**/*.tsx";
+
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

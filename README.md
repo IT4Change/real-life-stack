@@ -42,6 +42,13 @@ Das Toolkit-Package exportiert wiederverwendbare UI-Komponenten:
 import { AppShell, MapView, FeedView } from '@real-life-stack/toolkit'
 ```
 
+**[Storybook ansehen →](https://it4change.github.io/real-life-stack/storybook/)**
+
+```bash
+# Storybook lokal starten
+pnpm storybook
+```
+
 ---
 
 ## Das Problem

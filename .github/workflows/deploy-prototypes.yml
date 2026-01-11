@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - main
     paths:
       - 'prototype/**'
       - 'apps/**'
@@ -42,10 +43,15 @@ jobs:
       - name: Build toolkit
         run: pnpm --filter @real-life-stack/toolkit build
 
+      - name: Build landing page
+        run: pnpm --filter landing build
+        env:
+          VITE_BASE_PATH: /real-life-stack/
+
       - name: Build reference app
         run: pnpm --filter reference build
         env:
-          VITE_BASE_PATH: /real-life-stack/
+          VITE_BASE_PATH: /real-life-stack/app/
 
       - name: Build prototype
         run: |
@@ -53,13 +59,20 @@ jobs:
           npm ci
           npm run build -- --base="/real-life-stack/edge/"
 
+      - name: Build Storybook
+        run: pnpm build:storybook
+
       - name: Prepare deployment
         run: |
-          mkdir -p gh-pages/edge
-          # Reference app at root
-          cp -R apps/reference/dist/. gh-pages/
+          mkdir -p gh-pages/app gh-pages/edge gh-pages/storybook
+          # Landing page at root
+          cp -R apps/landing/dist/. gh-pages/
+          # Reference app at /app/
+          cp -R apps/reference/dist/. gh-pages/app/
           # Prototype at /edge/
           cp -R prototype/dist/. gh-pages/edge/
+          # Storybook at /storybook/
+          cp -R packages/toolkit/storybook-static/. gh-pages/storybook/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

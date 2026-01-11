@@ -6,7 +6,9 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "dev:reference": "pnpm --filter reference dev",
-    "build:toolkit": "pnpm --filter @real-life-stack/toolkit build"
+    "build:toolkit": "pnpm --filter @real-life-stack/toolkit build",
+    "storybook": "pnpm --filter @real-life-stack/toolkit storybook",
+    "build:storybook": "pnpm --filter @real-life-stack/toolkit build-storybook"
   },
   "devDependencies": {
     "turbo": "^2.3.3",

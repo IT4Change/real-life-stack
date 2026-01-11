@@ -11,12 +11,12 @@
   --primary: oklch(0.55 0.21 264);
   --primary-foreground: oklch(1.00 0 0);
 
-  /* Secondary - Green (Landing: secondary-500 #22c55e) */
-  --secondary: oklch(0.72 0.19 142);
+  /* Secondary - Green (Landing: secondary-600 darker) */
+  --secondary: oklch(0.55 0.17 142);
   --secondary-foreground: oklch(1.00 0 0);
 
   /* Muted - Slate light */
-  --muted: oklch(0.95 0.01 247);
+  --muted: oklch(0.98 0.00 247);
   --muted-foreground: oklch(0.45 0.02 265);
 
   /* Accent - Light blue (for hover states, from primary family) */
@@ -24,6 +24,15 @@
   --accent-foreground: oklch(0.55 0.21 264);
 
   --destructive: oklch(0.54 0.19 27);
+
+  /* Warning - Orange (for offline, attestations) */
+  --warning: oklch(0.70 0.17 55);
+  --warning-foreground: oklch(1.00 0 0);
+
+  /* Pink - Rose (for Familie Kowalski) */
+  --pink: oklch(0.65 0.20 0);
+  --pink-foreground: oklch(1.00 0 0);
+
   --border: oklch(0.90 0.01 247);
   --input: oklch(0.90 0.01 247);
   --ring: oklch(0.55 0.21 264);
@@ -93,6 +102,15 @@
   --accent-foreground: oklch(0.95 0.01 247);
 
   --destructive: oklch(0.54 0.19 27);
+
+  /* Warning - Orange (for offline, attestations) */
+  --warning: oklch(0.75 0.15 55);
+  --warning-foreground: oklch(0.15 0.02 265);
+
+  /* Pink - Rose (for Familie Kowalski) */
+  --pink: oklch(0.70 0.18 0);
+  --pink-foreground: oklch(0.15 0.02 265);
+
   --border: oklch(0.30 0.02 265);
   --input: oklch(0.30 0.02 265);
   --ring: oklch(0.65 0.19 264);
@@ -145,6 +163,10 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-pink: var(--pink);
+  --color-pink-foreground: var(--pink-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
