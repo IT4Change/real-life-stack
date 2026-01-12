@@ -42,7 +42,6 @@ Real Life Stack unterstützt den gesamten Kreislauf: von der Idee über die Vera
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐  │
 │  │Kalender│ │ Karte  │ │  Feed  │ │Gruppen │ │Profile │  │
 │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘  │
-│                                                          │
 │                       App-Shell                          │
 ├──────────────────────────────────────────────────────────┤
 │              Daten- & Identitätsschnittstelle            │
@@ -95,7 +94,7 @@ Adapter-Pattern für verschiedene Backend-Anbindungen. Referenzimplementierung m
 | Demo | Beschreibung |
 |------|--------------|
 | **[Landing Page](https://real-life-stack.de/)** | Projektübersicht und Einstieg |
-| **[Reference App](https://real-life-stack.de/app/)** | React 19 Implementierung mit allen Modulen |
+| **[Reference App](https://real-life-stack.de/app/)** | Implementierung mit allen Modulen |
 | **[UI-Prototyp](https://real-life-stack.de/edge/)** | Experimentelle UI-Konzepte und Komponenten |
 | **[Storybook](https://real-life-stack.de/storybook/)** | Komponenten-Dokumentation |
 | **[Web-of-Trust](https://it4change.github.io/web-of-trust/)** | Forschungs-Prototyp für dezentrale Identität |
