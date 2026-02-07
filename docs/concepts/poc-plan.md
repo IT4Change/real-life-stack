@@ -15,20 +15,22 @@
 |------|--------------|--------|-----------|
 | **Week 1** | WoT Core Identity | ✅ DONE | WotIdentity (nicht WotIdentity), 29 Tests |
 | **Week 1+** | Deutsche Wortliste + Bugfixes | ✅ DONE | Deutsche BIP39-Wörter, 3 Persistence-Bugs, Enter-Nav, +13 Tests |
-| **Week 2 (Plan)** | DID Infrastructure (did:web) | ⏳ AUSSTEHEND | Noch nicht angefangen |
+| **Week 2 (Plan)** | DID Infrastructure (did:web) | ↓ DEPRIORITIZED | did:key reicht für POC, kein Server nötig |
 | **Week 2 (real)** | In-Person Verification | ✅ DONE | Challenge-Response, QR-Codes, ContactStorage, +35 Tests |
+| **Forschung** | DID-Methoden + Social Recovery | ✅ DONE | 6 DID-Methoden evaluiert, Social Recovery Architektur |
 | **Week 3** | Evolu Integration | ⏳ AUSSTEHEND | |
 | **Week 4** | RLS Integration (UI) | ⏳ AUSSTEHEND | |
 | **Week 5** | Polish & Dogfooding | ⏳ AUSSTEHEND | |
-| **Week 6** | Verification & Key Rotation | ⏳ AUSSTEHEND | Verification teilweise in Week 2 vorgezogen |
+| **Week 6** | Social Recovery (Shamir) | ⏳ AUSSTEHEND | Ersetzt Key Rotation, Verification bereits in Week 2 |
 
 **Abweichungen vom Plan:**
-- Klasse heißt `WotIdentity` (nicht `WotIdentity` wie im Plan)
+- Klasse heißt `WotIdentity` (nicht `SecureWotIdentity` wie im Plan)
 - Deutsche BIP39-Wortliste statt englische
 - 12 Wörter konsistent (Plan erwähnt teils 24)
 - In-Person Verification (Plan Week 6) wurde in Week 2 vorgezogen
-- DID Server (Plan Week 2) steht noch aus
-- `did:key` statt `did:web` aktuell (DID Server noch nicht deployed)
+- DID Server (Plan Week 2) deprioritized: did:key reicht für POC
+- `did:key` statt `did:web` (bewusste Entscheidung nach DID-Methoden-Evaluation)
+- Social Recovery (Shamir) ersetzt Key Rotation in Week 6
 
 **Gesamt: 77 Tests passing** (siehe `web-of-trust/docs/CURRENT_IMPLEMENTATION.md` für Details)
 
