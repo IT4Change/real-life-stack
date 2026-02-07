@@ -2,10 +2,35 @@
 
 > Vollständiger Implementierungsplan mit Architektur-Stack
 
-**Stand:** 06. Februar 2026
+**Stand:** 07. Februar 2026
 **Team:** Anton, Sebastian, Mathias, Eli
 **Duration:** 5-6 Wochen
 **Goal:** Funktionierender POC mit Kanban + Kalender, den das Team selbst nutzt
+
+---
+
+### Aktueller Fortschritt (2026-02-07)
+
+| Week | Thema im Plan | Status | Anmerkung |
+|------|--------------|--------|-----------|
+| **Week 1** | WoT Core Identity | ✅ DONE | WotIdentity (nicht WotIdentity), 29 Tests |
+| **Week 1+** | Deutsche Wortliste + Bugfixes | ✅ DONE | Deutsche BIP39-Wörter, 3 Persistence-Bugs, Enter-Nav, +13 Tests |
+| **Week 2 (Plan)** | DID Infrastructure (did:web) | ⏳ AUSSTEHEND | Noch nicht angefangen |
+| **Week 2 (real)** | In-Person Verification | ✅ DONE | Challenge-Response, QR-Codes, ContactStorage, +35 Tests |
+| **Week 3** | Evolu Integration | ⏳ AUSSTEHEND | |
+| **Week 4** | RLS Integration (UI) | ⏳ AUSSTEHEND | |
+| **Week 5** | Polish & Dogfooding | ⏳ AUSSTEHEND | |
+| **Week 6** | Verification & Key Rotation | ⏳ AUSSTEHEND | Verification teilweise in Week 2 vorgezogen |
+
+**Abweichungen vom Plan:**
+- Klasse heißt `WotIdentity` (nicht `WotIdentity` wie im Plan)
+- Deutsche BIP39-Wortliste statt englische
+- 12 Wörter konsistent (Plan erwähnt teils 24)
+- In-Person Verification (Plan Week 6) wurde in Week 2 vorgezogen
+- DID Server (Plan Week 2) steht noch aus
+- `did:key` statt `did:web` aktuell (DID Server noch nicht deployed)
+
+**Gesamt: 77 Tests passing** (siehe `web-of-trust/docs/CURRENT_IMPLEMENTATION.md` für Details)
 
 ---
 
@@ -74,7 +99,7 @@
 │  │  │              WoT Connector (für POC)                        │ │ │
 │  │  │                                                             │ │ │
 │  │  │  class WotConnector implements DataInterface {             │ │ │
-│  │  │    private identity: SecureWotIdentity                     │ │ │
+│  │  │    private identity: WotIdentity                     │ │ │
 │  │  │    private wotStorage: EvoluAdapter  // WoT Data           │ │ │
 │  │  │    private evolu: Evolu              // RLS Items          │ │ │
 │  │  │                                                             │ │ │
@@ -129,7 +154,7 @@
 │  │                      IDENTITY LAYER                               │ │
 │  │                                                                   │ │
 │  │  ┌─────────────────────────────────────────────────────────────┐ │ │
-│  │  │           SecureWotIdentity (Neu!)                          │ │ │
+│  │  │           WotIdentity (Neu!)                          │ │ │
 │  │  │                                                             │ │ │
 │  │  │  • BIP39 Mnemonic (24 words)                               │ │ │
 │  │  │  • Master Seed (verschlüsselt at rest)                     │ │ │
@@ -345,7 +370,7 @@ Kein "God Interface"!
 - **DataInterface**: Nur Kontrakt definieren
 - **WotConnector**: Nur Mapping (Generic Items ↔ Evolu)
 - **EvoluAdapter**: Nur WoT Data Storage
-- **SecureWotIdentity**: Nur Identity Management
+- **WotIdentity**: Nur Identity Management
 
 ### 🔧 Backend-Agnostic Design
 
@@ -624,8 +649,10 @@ Die `web-of-trust/apps/demo/` dient als **Playground & Testumgebung** für WoT C
 **Flow:**
 
 ```text
-Week 1: SecureWotIdentity implementieren → In Demo testen
-Week 2: DID Server deployen → In Demo publishen/resolven
+Week 1: WotIdentity implementieren → In Demo testen ✅
+Week 1+: Deutsche Wortliste, Persistence-Bugfixes, Enter-Nav ✅
+Week 2 (real): In-Person Verification → QR-Codes + ContactStorage ✅
+Week 2 (Plan): DID Server deployen → In Demo publishen/resolven ⏳
 Week 3: EvoluAdapter bauen → In Demo syncen (2 Tabs)
 Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 ```
@@ -641,7 +668,7 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 │                                                                     │
 │  packages/wot-core/                 apps/demo/                      │
 │  ┌──────────────────┐              ┌──────────────────┐            │
-│  │ SecureWotIdentity│──────────────│OnboardingScreen  │            │
+│  │ WotIdentity│──────────────│OnboardingScreen  │            │
 │  │ (Implementation) │  Week 1 Test │(Identity Test)   │            │
 │  └──────────────────┘              └──────────────────┘            │
 │           │                                  │                      │
@@ -664,7 +691,7 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 │                     real-life-stack/apps/poc/                       │
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │  WotConnector (nutzt getestete wot-core Features)            │  │
-│  │  • SecureWotIdentity ✅                                        │  │
+│  │  • WotIdentity ✅                                        │  │
 │  │  • DidWebProvider ✅                                           │  │
 │  │  • EvoluAdapter ✅                                             │  │
 │  └───────────────────────────────────────────────────────────────┘  │
@@ -679,23 +706,25 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 
 ---
 
-### Week 1: WoT Core Identity (Foundation)
+### Week 1: WoT Core Identity (Foundation) ✅
 
-**Ziel:** SecureWotIdentity funktioniert, Tests grün, **Demo-App zeigt Identity Creation**
+**Ziel:** WotIdentity funktioniert, Tests grün, **Demo-App zeigt Identity Creation**
+
+> **Status:** DONE (2026-02-05). Klasse heißt `WotIdentity` (nicht `WotIdentity`). Deutsche BIP39-Wortliste statt englische. 29 Tests + 13 OnboardingFlow Tests.
 
 #### Tasks
 
 **Identity System (packages/wot-core/):**
 
-- [ ] BIP39 Integration (`@scure/bip39`) - **12 Wörter Default**
+- [x] BIP39 Integration (`@scure/bip39`) - **12 Wörter Default**
   ```typescript
   import { generateMnemonic, mnemonicToSeedSync } from '@scure/bip39'
-  import { wordlist } from '@scure/bip39/wordlists/english'
+  import { germanPositiveWordlist } from '../wordlists/german-positive'
 
   // 12 Wörter (128 Bit) - ausreichende Security + bessere UX
-  const mnemonic = generateMnemonic(wordlist, 128)  // nicht 256!
+  const mnemonic = generateMnemonic(germanPositiveWordlist, 128)
   ```
-- [ ] HKDF Implementation (✅ **Native WebCrypto!**)
+- [x] HKDF Implementation (✅ **Native WebCrypto!**)
   ```typescript
   // Keine Library nötig - WebCrypto macht alles!
   const masterKey = await crypto.subtle.importKey(
@@ -715,10 +744,10 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
     ['sign']
   )
   ```
-- [ ] SecureWotIdentity Klasse
+- [x] WotIdentity Klasse (im Plan: WotIdentity)
   ```typescript
-  // packages/wot-core/src/identity/SecureWotIdentity.ts
-  class SecureWotIdentity {
+  // packages/wot-core/src/identity/WotIdentity.ts
+  class WotIdentity {
     private masterKey: CryptoKey | null = null  // HKDF master key
     private identityKeyPair: CryptoKeyPair | null = null
 
@@ -781,20 +810,20 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
     }
   }
   ```
-- [ ] Ed25519 KeyPair Generation (✅ Native WebCrypto, Private Key non-extractable)
-- [ ] Master Seed Encryption (✅ Native PBKDF2 + AES-GCM)
-- [ ] IndexedDB Storage für encrypted seed
+- [x] Ed25519 KeyPair Generation (via @noble/ed25519, nicht native WebCrypto wegen Browser-Kompatibilität)
+- [x] Master Seed Encryption (✅ Native PBKDF2 + AES-GCM)
+- [x] IndexedDB Storage für encrypted seed
 
 **Crypto Utilities:**
-- [ ] `encryption.ts` - Native PBKDF2, AES-GCM wrappers
-- [ ] `keyDerivation.ts` - Native HKDF wrappers (kein @noble/hashes!)
-- [ ] `recovery.ts` - Mnemonic validation (via @scure/bip39)
+- [x] `encryption.ts` - Native PBKDF2, AES-GCM wrappers (in SeedStorage integriert)
+- [x] `keyDerivation.ts` - Native HKDF wrappers (in WotIdentity integriert)
+- [x] `recovery.ts` - Mnemonic validation (via @scure/bip39, in WotIdentity integriert)
 
 **Tests:**
-- [ ] Identity Creation Test
-- [ ] Recovery Test (Mnemonic → gleiche DID)
-- [ ] Encryption at Rest Test
-- [ ] Key Derivation Test
+- [x] Identity Creation Test
+- [x] Recovery Test (Mnemonic → gleiche DID)
+- [x] Encryption at Rest Test
+- [x] Key Derivation Test
 
 **Dependencies:**
 
@@ -825,57 +854,23 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 
 **Demo App (apps/demo/) - Week 1:**
 
-- [ ] Onboarding Screen (Identity Creation)
-
-  ```tsx
-  // apps/demo/src/screens/OnboardingScreen.tsx
-  import { SecureWotIdentity } from '@real-life/wot-core'
-
-  function OnboardingScreen() {
-    const [mnemonic, setMnemonic] = useState<string | null>(null)
-    const [did, setDid] = useState<string | null>(null)
-
-    async function createIdentity(passphrase: string) {
-      const identity = new SecureWotIdentity()
-      const result = await identity.create(passphrase)
-      setMnemonic(result.mnemonic)
-      setDid(result.did)
-    }
-
-    return (
-      <div>
-        <h1>Create Your Identity</h1>
-        <input type="password" placeholder="Passphrase" />
-        <button onClick={() => createIdentity(passphrase)}>
-          Generate Identity
-        </button>
-
-        {mnemonic && (
-          <div className="mnemonic-display">
-            <h2>⚠️ Write this down!</h2>
-            <code>{mnemonic}</code>
-          </div>
-        )}
-
-        {did && (
-          <div className="did-display">
-            <h2>Your DID</h2>
-            <code>{did}</code>
-          </div>
-        )}
-      </div>
-    )
-  }
-  ```
-- [ ] Recovery Screen (Mnemonic Input)
-- [ ] Identity Display (DID, Public Key)
-- [ ] Test: Create → Lock → Unlock → gleiche DID
+- [x] Onboarding Screen (Identity Creation) → `OnboardingFlow.tsx` (4-Step Flow mit Enter-Navigation)
+- [x] Recovery Screen (Mnemonic Input) → `RecoveryFlow.tsx`
+- [x] Identity Display (DID, Public Key) → `IdentityCard.tsx`
+- [x] Test: Create → Lock → Unlock → gleiche DID
+- [x] Unlock Screen → `UnlockFlow.tsx`
+- [x] Identity Persistence (hasStoredIdentity Check beim App-Start)
+- [x] Deutsche Wortliste ("Magische Wörter" in UI)
 
 ---
 
-### Week 2: DID Infrastructure (did:web)
+### Week 2: DID Infrastructure (did:web) ⏳
 
 **Ziel:** DID Server läuft, DIDs können published & resolved werden, **Demo-App kann DIDs publishen**
+
+> **Status:** AUSSTEHEND. Stattdessen wurde In-Person Verification (Plan Week 6) vorgezogen.
+> Was in Week 2 real implementiert wurde: ContactStorage, VerificationHelper, QR-Code Support (35 Tests).
+> Aktuell nutzen wir `did:key` (kein Server nötig). Migration zu `did:web` wenn DID Server deployed.
 
 #### Tasks
 
@@ -946,7 +941,7 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
   // apps/demo/src/screens/DIDPublishScreen.tsx
   import { DidWebProvider } from '@real-life/wot-core'
 
-  function DIDPublishScreen({ identity }: { identity: SecureWotIdentity }) {
+  function DIDPublishScreen({ identity }: { identity: WotIdentity }) {
     const [status, setStatus] = useState<'idle' | 'publishing' | 'success'>('idle')
 
     async function publishDID() {
@@ -1007,9 +1002,9 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 
   class EvoluAdapter implements StorageAdapter, SyncAdapter {
     public evolu: Evolu  // Public für RLS Access
-    private identity: SecureWotIdentity
+    private identity: WotIdentity
 
-    constructor(identity: SecureWotIdentity) {
+    constructor(identity: WotIdentity) {
       this.identity = identity
     }
 
@@ -1112,7 +1107,7 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
   // apps/demo/src/screens/ItemManagerScreen.tsx
   import { EvoluAdapter } from '@real-life/wot-core'
 
-  function ItemManagerScreen({ identity }: { identity: SecureWotIdentity }) {
+  function ItemManagerScreen({ identity }: { identity: WotIdentity }) {
     const [items, setItems] = useState<Item[]>([])
     const [adapter, setAdapter] = useState<EvoluAdapter | null>(null)
 
@@ -1522,13 +1517,13 @@ function App() {
   import type { DataInterface, Item, ItemFilter } from '@real-life-stack/toolkit'
 
   class WotConnector implements DataInterface {
-    private identity: SecureWotIdentity
+    private identity: WotIdentity
     private wotStorage: EvoluAdapter   // Für WoT Data
     private evolu: Evolu               // Für RLS Items
 
     async init(mnemonic: string, passphrase: string) {
       // 1. Identity
-      this.identity = new SecureWotIdentity()
+      this.identity = new WotIdentity()
       await this.identity.unlock(mnemonic, passphrase)
 
       // 2. WoT Storage mit Schema Extension für RLS
@@ -2130,22 +2125,18 @@ function App() {
 
 **Ziel:** Should-Have Features für Production-Readiness
 
+> **Status:** Verification wurde in Week 2 vorgezogen und ist DONE.
+> Key Rotation und Attestations stehen noch aus.
+
 #### Tasks
 
-**Verification Flow:**
-- [ ] QR-Code Generation (Contact Sharing)
-  ```json
-  {
-    "type": "wot-contact-v1",
-    "did": "did:web:poc.real-life-stack.de:users:anton",
-    "name": "Anton",
-    "publicKey": "z6Mk..."
-  }
-  ```
-- [ ] QR-Code Scanner
-- [ ] Verification Request erstellen
-- [ ] Verification bestätigen
-- [ ] Verifications anzeigen (Contact Profile)
+**Verification Flow:** ✅ (vorgezogen in Week 2)
+- [x] QR-Code Generation (Challenge/Response als Base64)
+- [x] QR-Code Scanner (html5-qrcode mit Kamera)
+- [x] Verification Request erstellen (Challenge-Response-Protokoll)
+- [x] Verification bestätigen (Ed25519 Signaturen)
+- [x] ContactStorage (Pending → Active nach Verification)
+- [ ] Verifications anzeigen (Contact Profile) - UI noch nicht fertig
 
 **Key Rotation:**
 - [ ] Settings UI für Key Rotation
@@ -2186,7 +2177,7 @@ web-of-trust/
 │   └── wot-core/                    # @real-life/wot-core v0.2.0
 │       ├── src/
 │       │   ├── identity/
-│       │   │   ├── SecureWotIdentity.ts    ← Week 1
+│       │   │   ├── WotIdentity.ts    ← Week 1
 │       │   │   ├── KeyDerivation.ts        ← Week 1
 │       │   │   └── Recovery.ts             ← Week 1
 │       │   ├── did/
@@ -2294,9 +2285,9 @@ real-life-stack/
 
 ### Must Have (Week 5)
 
-- [ ] User kann Identity erstellen (did:web)
-- [ ] User kann via Mnemonic recovern
-- [ ] User sieht seine DID
+- [x] User kann Identity erstellen (aktuell did:key, später did:web)
+- [x] User kann via Mnemonic recovern
+- [x] User sieht seine DID
 - [ ] User kann Kanban Tasks erstellen
 - [ ] User kann Tasks zwischen Spalten verschieben
 - [ ] User kann Tasks assignen (Gruppenmitglieder)
@@ -2309,8 +2300,8 @@ real-life-stack/
 ### Should Have (Week 6)
 
 - [ ] Key Rotation funktioniert (via Settings)
-- [ ] Verification Flow (QR-Code)
-- [ ] Verifications werden angezeigt
+- [x] Verification Flow (QR-Code) - ✅ in Week 2 implementiert
+- [ ] Verifications werden angezeigt (Contact Profile UI)
 - [ ] WebAuthn optional verfügbar
 
 ### Nice to Have (Post-POC)
@@ -2480,7 +2471,7 @@ real-life-stack/
 ### Diese Woche (Week 1)
 
 1. [ ] **Demo App Setup:** Vite + React Basic Setup
-2. [ ] **Week 1 starten:** SecureWotIdentity Implementation
+2. [ ] **Week 1 starten:** WotIdentity Implementation
 3. [ ] **Parallel in Demo testen:** Onboarding Screen bauen
 4. [ ] **Evolu Docs lesen:** Key Injection Pattern (Vorbereitung Week 3)
 
