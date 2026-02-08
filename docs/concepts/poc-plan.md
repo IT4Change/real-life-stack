@@ -2,7 +2,7 @@
 
 > Vollständiger Implementierungsplan mit Architektur-Stack
 
-**Stand:** 07. Februar 2026
+**Stand:** 08. Februar 2026
 **Team:** Anton, Sebastian, Mathias, Eli
 **Duration:** 5-6 Wochen
 **Goal:** Funktionierender POC mit Kanban + Kalender, den das Team selbst nutzt
@@ -13,24 +13,25 @@
 
 | Week | Thema im Plan | Status | Anmerkung |
 |------|--------------|--------|-----------|
-| **Week 1** | WoT Core Identity | ✅ DONE | WotIdentity (nicht WotIdentity), 29 Tests |
+| **Week 1** | WoT Core Identity | ✅ DONE | WotIdentity, 29 Tests |
 | **Week 1+** | Deutsche Wortliste + Bugfixes | ✅ DONE | Deutsche BIP39-Wörter, 3 Persistence-Bugs, Enter-Nav, +13 Tests |
-| **Week 2 (Plan)** | DID Infrastructure (did:web) | ↓ DEPRIORITIZED | did:key reicht für POC, kein Server nötig |
-| **Week 2 (real)** | In-Person Verification | ✅ DONE | Challenge-Response, QR-Codes, ContactStorage, +35 Tests |
+| **Week 2** | In-Person Verification | ✅ DONE | Challenge-Response, QR-Codes, ContactStorage, +35 Tests |
 | **Forschung** | DID-Methoden + Social Recovery | ✅ DONE | 6 DID-Methoden evaluiert, Social Recovery Architektur |
-| **Week 3** | Evolu Integration | ⏳ AUSSTEHEND | |
+| **Forschung** | Framework-Evaluation v2 | ✅ DONE | 16 Frameworks evaluiert, 6 eliminiert |
+| **Forschung** | Adapter-Architektur v2 | ✅ DONE | 6-Adapter-Spezifikation, Interaction-Flows |
+| **Week 3** | Evolu Integration | ⏳ TEILWEISE | EvoluStorageAdapter existiert in Demo |
 | **Week 4** | RLS Integration (UI) | ⏳ AUSSTEHEND | |
 | **Week 5** | Polish & Dogfooding | ⏳ AUSSTEHEND | |
 | **Week 6** | Social Recovery (Shamir) | ⏳ AUSSTEHEND | Ersetzt Key Rotation, Verification bereits in Week 2 |
 
-**Abweichungen vom Plan:**
+**Abweichungen vom ursprünglichen Plan:**
 - Klasse heißt `WotIdentity` (nicht `SecureWotIdentity` wie im Plan)
-- Deutsche BIP39-Wortliste statt englische
-- 12 Wörter konsistent (Plan erwähnt teils 24)
+- Deutsche BIP39-Wortliste statt englische, 12 Wörter konsistent
 - In-Person Verification (Plan Week 6) wurde in Week 2 vorgezogen
-- DID Server (Plan Week 2) deprioritized: did:key reicht für POC
-- `did:key` statt `did:web` (bewusste Entscheidung nach DID-Methoden-Evaluation)
+- `did:key` statt `did:web` (endgültige Entscheidung, kein Server nötig)
 - Social Recovery (Shamir) ersetzt Key Rotation in Week 6
+- 6-Adapter-Architektur v2 statt 3 Adapter (+ Messaging, Replication, Authorization)
+- Storage-Transition: Evolu (WoT Demo, lokal) → Automerge (RLS App, ersetzt Evolu)
 
 **Gesamt: 77 Tests passing** (siehe `web-of-trust/docs/CURRENT_IMPLEMENTATION.md` für Details)
 
@@ -158,7 +159,7 @@
 │  │  ┌─────────────────────────────────────────────────────────────┐ │ │
 │  │  │           WotIdentity (Neu!)                          │ │ │
 │  │  │                                                             │ │ │
-│  │  │  • BIP39 Mnemonic (24 words)                               │ │ │
+│  │  │  • BIP39 Mnemonic (12 words, Deutsche Wortliste)            │ │ │
 │  │  │  • Master Seed (verschlüsselt at rest)                     │ │ │
 │  │  │  • HKDF Key Derivation                                     │ │ │
 │  │  │  • Identity Private Key (non-extractable!)                 │ │ │
@@ -171,7 +172,7 @@
 │  │  │       ├─→ Identity Seed → Ed25519 KeyPair                 │ │ │
 │  │  │       │   (Private Key non-extractable)                    │ │ │
 │  │  │       │   ↓                                                │ │ │
-│  │  │       │   DID (did:web:real-life-stack.de:users:u-xyz)    │ │ │
+│  │  │       │   DID (did:key:z6Mk...)                          │ │ │
 │  │  │       │                                                     │ │ │
 │  │  │       ├─→ Evolu Seed (extractable für Evolu)              │ │ │
 │  │  │       └─→ Future Seeds (Jazz, Custom, etc.)               │ │ │
@@ -181,22 +182,12 @@
 │  ┌───────────────────────────────────────────────────────────────────┐ │
 │  │                       DID LAYER                                   │ │
 │  │                                                                   │ │
-│  │  ┌───────────────────────────────────────────────────────────┐   │ │
-│  │  │  DIDProvider Interface (framework-agnostic)              │   │ │
-│  │  │                                                           │   │ │
-│  │  │  interface DIDProvider {                                 │   │ │
-│  │  │    createDID(publicKey): Promise<string>                 │   │ │
-│  │  │    publishDID(did, document, proof): Promise<void>       │   │ │
-│  │  │    resolveDID(did): Promise<DIDDocument>                 │   │ │
-│  │  │    rotateDIDKey(did, newKey, proof): Promise<void>       │   │ │
-│  │  │  }                                                         │   │ │
-│  │  └───────────────────────────────────────────────────────────┘   │ │
-│  │         ↓                              ↓                          │ │
-│  │  ┌─────────────┐              ┌─────────────┐                     │ │
-│  │  │DidWeb       │              │DidPeer      │                     │ │
-│  │  │Provider     │              │Provider     │                     │ │
-│  │  │(POC)        │              │(später)     │                     │ │
-│  │  └─────────────┘              └─────────────┘                     │ │
+│  │  did:key — self-describing, kein Server nötig                    │ │
+│  │  Ed25519 Public Key → Multicodec → Multibase → did:key:z6Mk...  │ │
+│  │                                                                   │ │
+│  │  Entscheidung: did:key ist endgültig (nach Evaluation von 6      │ │
+│  │  DID-Methoden). Kein DID-Server, kein Resolver nötig.            │ │
+│  │  Siehe: web-of-trust/docs/konzepte/did-methoden-vergleich.md     │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐ │
@@ -216,38 +207,28 @@
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐ │
-│  │                    ADAPTER LAYER                                  │ │
+│  │                    ADAPTER LAYER (v2: 6 Adapter)                  │ │
 │  │                                                                   │ │
-│  │  ┌──────────────────┐  ┌──────────────────┐  ┌────────────────┐  │ │
-│  │  │ StorageAdapter   │  │  CryptoAdapter   │  │  SyncAdapter   │  │ │
-│  │  │                  │  │                  │  │                │  │ │
-│  │  │ • IndexedDB      │  │ • WebCrypto      │  │ • NoOp (POC)   │  │ │
-│  │  │ • LocalStorage   │  │ • Custom         │  │ • WebRTC       │  │ │
-│  │  │ • Evolu (Neu!)   │  │                  │  │ • Bluetooth    │  │ │
-│  │  └──────────────────┘  └──────────────────┘  └────────────────┘  │ │
+│  │  Phase 1 (implementiert):                                        │ │
+│  │  ┌──────────────────┐  ┌────────────────────┐  ┌──────────────┐  │ │
+│  │  │ StorageAdapter   │  │ReactiveStorage     │  │ CryptoAdapter│  │ │
+│  │  │ (Persistierung)  │  │Adapter (Subscribe) │  │ (Ed25519,    │  │ │
+│  │  │                  │  │                    │  │  X25519,     │  │ │
+│  │  │ • IndexedDB      │  │ • onChange()       │  │  AES-GCM)   │  │ │
+│  │  │ • Evolu (WoT     │  │ • subscribe()     │  │              │  │ │
+│  │  │   Demo)          │  │                    │  │              │  │ │
+│  │  └──────────────────┘  └────────────────────┘  └──────────────┘  │ │
 │  │                                                                   │ │
-│  │  ┌─────────────────────────────────────────────────────────────┐ │ │
-│  │  │          EvoluAdapter (Neu!)                                │ │ │
-│  │  │                                                             │ │ │
-│  │  │  class EvoluAdapter implements StorageAdapter {            │ │ │
-│  │  │    private evolu: Evolu                                    │ │ │
-│  │  │                                                             │ │ │
-│  │  │    async init(derivedKey: Uint8Array) {                    │ │ │
-│  │  │      this.evolu = createEvolu({                            │ │ │
-│  │  │        encryptionKey: derivedKey,  // Von HKDF           │ │ │
-│  │  │        syncUrl: 'https://evolu.world'                      │ │ │
-│  │  │      })                                                     │ │ │
-│  │  │    }                                                        │ │ │
-│  │  │                                                             │ │ │
-│  │  │    async saveItem(item: Item) {                            │ │ │
-│  │  │      await this.evolu.insert('items', item)                │ │ │
-│  │  │    }                                                        │ │ │
-│  │  │                                                             │ │ │
-│  │  │    async loadItems(filter: Filter): Promise<Item[]> {     │ │ │
-│  │  │      return this.evolu.query('items', filter)              │ │ │
-│  │  │    }                                                        │ │ │
-│  │  │  }                                                          │ │ │
-│  │  └─────────────────────────────────────────────────────────────┘ │ │
+│  │  Phase 2 (spezifiziert, noch nicht implementiert):               │ │
+│  │  ┌──────────────────┐  ┌────────────────────┐  ┌──────────────┐  │ │
+│  │  │ Messaging        │  │ Replication        │  │Authorization │  │ │
+│  │  │ Adapter          │  │ Adapter            │  │Adapter       │  │ │
+│  │  │                  │  │                    │  │              │  │ │
+│  │  │ • WS Relay (POC) │  │ • Automerge        │  │ • UCAN-like  │  │ │
+│  │  │ • Matrix (Prod)  │  │   (RLS App)       │  │ • Meadowcap  │  │ │
+│  │  └──────────────────┘  └────────────────────┘  └──────────────┘  │ │
+│  │                                                                   │ │
+│  │  Siehe: web-of-trust/docs/protokolle/adapter-architektur-v2.md   │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐ │
@@ -264,35 +245,48 @@
 │                           BACKEND / SERVICES                            │
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐ │
-│  │                    DID Server (Neu!)                              │ │
+│  │                    WebSocket Relay Server (POC)                    │ │
 │  │                                                                   │ │
-│  │  Hono Server auf Vercel (Serverless Functions)                   │ │
+│  │  Zweck: Cross-User Nachrichtenzustellung (Attestations,          │ │
+│  │         Verifications, Profile-Updates)                           │ │
 │  │                                                                   │ │
-│  │  Endpoints:                                                       │ │
-│  │  • POST   /api/did/publish       (DID Document hochladen)        │ │
-│  │  • GET    /.well-known/did.json  (DID Resolution)                │ │
-│  │  • POST   /api/did/rotate        (Key Rotation)                  │ │
-│  │  • GET    /api/did/:userId       (Resolve specific DID)          │ │
-│  │                                                                   │ │
-│  │  Storage:                                                         │ │
-│  │  • Vercel KV (Redis) für POC                                     │ │
-│  │  • Später: PostgreSQL (Vercel Postgres oder Supabase)            │ │
-│  │                                                                   │ │
-│  │  Authentication:                                                  │ │
-│  │  • JWS Signature Verification (proof of ownership)               │ │
-│  │                                                                   │ │
-│  │  Deployment: vercel.com/real-life-stack/did-server               │ │
+│  │  • Einfacher Relay: Empfänger-DID → WebSocket Connection         │ │
+│  │  • Kein Zugriff auf Inhalt (E2EE via Item-Keys)                  │ │
+│  │  • Offline-Queue: Nachrichten werden gepuffert                   │ │
+│  │  • Später: Matrix-Server (Federation)                             │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐ │
-│  │                    Evolu Sync Server                              │ │
+│  │                    Evolu Sync Server (WoT Demo)                   │ │
 │  │                                                                   │ │
-│  │  • Evolu Cloud (https://evolu.world) für POC                     │ │
-│  │  • Später: Self-hosted Option evaluieren                         │ │
+│  │  • Evolu Cloud (https://evolu.world) für WoT Demo                │ │
 │  │  • E2EE: Server sieht nur encrypted blobs                        │ │
+│  │  • Wird in RLS App durch Automerge ersetzt                       │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Adapter-Architektur v2
+
+> Vollständige Spezifikation: `web-of-trust/docs/protokolle/adapter-architektur-v2.md`
+
+| Adapter | Zweck | Status |
+|---------|-------|--------|
+| **StorageAdapter** | Lokale Persistierung (Identity, Contacts, Verifications, Attestations) | ✅ Interface + InMemory + Evolu |
+| **ReactiveStorageAdapter** | Subscribe/onChange für UI-Reactivity | ✅ Interface + InMemory |
+| **CryptoAdapter** | Ed25519 Signing, X25519 Encryption, BIP39, did:key | ✅ Interface + WebCrypto |
+| **MessagingAdapter** | Cross-User Nachrichtenzustellung (Attestations, Verifications) | ⏳ Spezifiziert |
+| **ReplicationAdapter** | CRDT Spaces für geteilte Daten (Automerge, wenn RLS App) | ⏳ Spezifiziert |
+| **AuthorizationAdapter** | UCAN-like Capabilities, Meadowcap-inspiriert | ⏳ Spezifiziert |
+
+**Phase-1-Done-Kriterium:** Alice.send(attestation) → Bob.onMessage → Bob.verify → Bob.save → Alice.onReceipt(ack)
+
+**Storage-Transition:**
+- WoT Demo: Evolu (lokal) + WebSocket Relay (messaging) — kein Automerge nötig
+- RLS App: Automerge ersetzt Evolu (lokal + cross-user CRDT Spaces)
+- E2EE: Item-Keys (POC) → Keyhive/BeeKEM (wenn production-ready)
 
 ---
 
@@ -359,8 +353,10 @@ class RESTConnector implements DataInterface { ... }
 
 - `DataInterface` - Nur CRUD Operations
 - `StorageAdapter` - Nur WoT Persistierung
-- `SyncAdapter` - Nur Synchronisation
 - `CryptoAdapter` - Nur Krypto-Operationen
+- `MessagingAdapter` - Nur Cross-User Delivery
+- `ReplicationAdapter` - Nur CRDT Spaces
+- `AuthorizationAdapter` - Nur Capabilities
 
 Kein "God Interface"!
 
@@ -560,7 +556,7 @@ export interface EvoluAdapterConfig {
   schemaExtensions?: Record<string, any>
 }
 
-export class EvoluAdapter implements StorageAdapter, SyncAdapter {
+export class EvoluAdapter implements StorageAdapter, ReactiveStorageAdapter {
   async init(config: EvoluAdapterConfig = {}) {
     const fullSchema = {
       ...this.getWotBaseSchema(),      // WoT Tabellen
@@ -628,7 +624,7 @@ class WotConnector implements DataInterface {
 | **ISP** | ✅ | Fokussierte Interfaces |
 | **DIP** | ✅ | Abhängigkeit von Abstraktion |
 
-**Pragmatismus:** EvoluAdapter implements beide Interfaces (Storage + Sync), weil Evolu inherent beides ist. Das ist ein bewusster Trade-off, klar dokumentiert.
+**Pragmatismus:** EvoluAdapter implements StorageAdapter + ReactiveStorageAdapter, weil Evolu inherent beides bietet. Sync ist orthogonal — MessagingAdapter und ReplicationAdapter sind separate Interfaces. Das ist ein bewusster Trade-off, klar dokumentiert.
 
 ---
 
@@ -643,7 +639,7 @@ Die `web-of-trust/apps/demo/` dient als **Playground & Testumgebung** für WoT C
 **Vorteile:**
 
 - ✅ **Schnelles Feedback**: Identity, DID, Sync können isoliert getestet werden
-- ✅ **Frühe Bugs finden**: Probleme mit Evolu, WebCrypto, DID Server vor RLS Integration entdecken
+- ✅ **Frühe Bugs finden**: Probleme mit Evolu, WebCrypto, Adapters vor RLS Integration entdecken
 - ✅ **Dokumentation by Example**: Demo zeigt wie WoT Core verwendet wird
 - ✅ **Weniger Risiko**: RLS Integration (Week 4) baut auf erprobter Basis auf
 - ✅ **Referenz-Implementation**: Andere Projekte können Demo als Startpunkt nutzen
@@ -653,9 +649,8 @@ Die `web-of-trust/apps/demo/` dient als **Playground & Testumgebung** für WoT C
 ```text
 Week 1: WotIdentity implementieren → In Demo testen ✅
 Week 1+: Deutsche Wortliste, Persistence-Bugfixes, Enter-Nav ✅
-Week 2 (real): In-Person Verification → QR-Codes + ContactStorage ✅
-Week 2 (Plan): DID Server deployen → In Demo publishen/resolven ⏳
-Week 3: EvoluAdapter bauen → In Demo syncen (2 Tabs)
+Week 2: In-Person Verification → QR-Codes + ContactStorage ✅
+Week 3: EvoluAdapter bauen → In Demo lokale Persistenz testen
 Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 ```
 
@@ -676,14 +671,14 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 │           │                                  │                      │
 │           ▼                                  ▼                      │
 │  ┌──────────────────┐              ┌──────────────────┐            │
-│  │ DIDProvider      │──────────────│DIDPublishScreen  │            │
-│  │ DidWebProvider   │  Week 2 Test │(Publish/Resolve) │            │
+│  │ Verification     │──────────────│VerificationScreen│            │
+│  │ ContactStorage   │  Week 2 Test │(QR-Code Test)    │            │
 │  └──────────────────┘              └──────────────────┘            │
 │           │                                  │                      │
 │           ▼                                  ▼                      │
 │  ┌──────────────────┐              ┌──────────────────┐            │
 │  │ EvoluAdapter     │──────────────│ItemManagerScreen │            │
-│  │ (Storage + Sync) │  Week 3 Test │(Sync Test 2 Tabs)│            │
+│  │ (Storage)        │  Week 3 Test │(Persistence Test)│            │
 │  └──────────────────┘              └──────────────────┘            │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -694,7 +689,7 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │  WotConnector (nutzt getestete wot-core Features)            │  │
 │  │  • WotIdentity ✅                                        │  │
-│  │  • DidWebProvider ✅                                           │  │
+│  │  • Verification + ContactStorage ✅                            │  │
 │  │  • EvoluAdapter ✅                                             │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                              │                                      │
@@ -866,143 +861,45 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 
 ---
 
-### Week 2: DID Infrastructure (did:web) ⏳
+### Week 2: In-Person Verification ✅
 
-**Ziel:** DID Server läuft, DIDs können published & resolved werden, **Demo-App kann DIDs publishen**
+**Ziel:** Zwei Nutzer können sich gegenseitig verifizieren via QR-Code Challenge-Response
 
-> **Status:** AUSSTEHEND. Stattdessen wurde In-Person Verification (Plan Week 6) vorgezogen.
-> Was in Week 2 real implementiert wurde: ContactStorage, VerificationHelper, QR-Code Support (35 Tests).
-> Aktuell nutzen wir `did:key` (kein Server nötig). Migration zu `did:web` wenn DID Server deployed.
+> **Status:** DONE (2026-02-06). ContactStorage, VerificationHelper, QR-Code Support, 35 Tests.
 
-#### Tasks
+#### Implementiert
 
-**DID Server (apps/did-server/) - auf Vercel:**
+- [x] `ContactStorage` - Kontakte speichern und verwalten (Pending → Active)
+- [x] `VerificationHelper` - Challenge-Response-Protokoll für In-Person Verification
+- [x] QR-Code Generation (Challenge als Base64)
+- [x] QR-Code Scanner (html5-qrcode mit Kamera)
+- [x] Verification bestätigen (Ed25519 Signaturen)
+- [x] Tests: 35 Tests für Verification + ContactStorage
 
-**DID Provider:**
-- [ ] `DIDProvider` Interface
-  ```typescript
-  interface DIDProvider {
-    createDID(publicKey: CryptoKey): Promise<string>
-    publishDID(did: string, document: DIDDocument, proof: string): Promise<void>
-    resolveDID(did: string): Promise<DIDDocument>
-    rotateDIDKey(did: string, newKey: CryptoKey, oldKeyProof: string): Promise<void>
-  }
-  ```
-- [ ] `DidWebProvider` Implementation
-- [ ] `DIDDocument.ts` - W3C compliant schema
-  ```typescript
-  interface DIDDocument {
-    id: string  // did:web:real-life-stack.de:users:u-xyz
-    verificationMethod: VerificationMethod[]
-    authentication: string[]
-    created: string
-    updated: string
-  }
-  ```
-
-**DID Server (Backend):**
-- [ ] Express/Hono Setup
-- [ ] POST `/api/did/publish` endpoint
-  ```typescript
-  app.post('/api/did/publish', async (req, res) => {
-    const { did, document, proof } = req.body
-
-    // 1. Verify proof (JWS signature)
-    const valid = await verifyProof(document, proof)
-    if (!valid) return res.status(401).json({ error: 'Invalid proof' })
-
-    // 2. Store DID Document
-    await storeDIDDocument(did, document)
-
-    res.json({ success: true })
-  })
-  ```
-- [ ] GET `/.well-known/did.json` endpoint (DID Resolution)
-- [ ] POST `/api/did/rotate` endpoint (Key Rotation)
-- [ ] Storage Layer (Vercel KV für POC)
-- [ ] Proof Verification (JWS)
-
-**Deployment:**
-- [ ] Vercel Projekt Setup (`did-server`)
-- [ ] Vercel KV (Redis) einrichten
-- [ ] Environment Variables (keine secrets nötig - public endpoint)
-- [ ] Domain Setup: `did:web:poc.real-life-stack.de:users:u-{id}`
-- [ ] CORS Config für POC App
-
-**Tests:**
-- [ ] DID Creation & Publishing
-- [ ] DID Resolution
-- [ ] Key Rotation Flow
-- [ ] Invalid Proof Rejection
-
-**Demo App (apps/demo/) - Week 2:**
-
-- [ ] DID Publishing Screen
-
-  ```tsx
-  // apps/demo/src/screens/DIDPublishScreen.tsx
-  import { DidWebProvider } from '@real-life/wot-core'
-
-  function DIDPublishScreen({ identity }: { identity: WotIdentity }) {
-    const [status, setStatus] = useState<'idle' | 'publishing' | 'success'>('idle')
-
-    async function publishDID() {
-      setStatus('publishing')
-
-      const provider = new DidWebProvider('https://poc.real-life-stack.de')
-      const did = identity.getDid()
-      const document = await provider.createDIDDocument(identity)
-      const proof = await identity.sign(JSON.stringify(document))
-
-      await provider.publishDID(did, document, proof)
-      setStatus('success')
-    }
-
-    return (
-      <div>
-        <h1>Publish Your DID</h1>
-        <p>DID: <code>{identity.getDid()}</code></p>
-
-        <button onClick={publishDID} disabled={status === 'publishing'}>
-          {status === 'publishing' ? 'Publishing...' : 'Publish to Server'}
-        </button>
-
-        {status === 'success' && (
-          <div className="success">
-            ✅ DID published successfully!
-            <a href={`https://poc.real-life-stack.de/.well-known/did.json`}>
-              View DID Document
-            </a>
-          </div>
-        )}
-      </div>
-    )
-  }
-  ```
-
-- [ ] DID Resolution Screen (lookup andere DIDs)
-- [ ] Key Rotation Screen
-- [ ] Test: Publish → Resolve → gleiche Keys
+**DID-Methode:** `did:key` ist endgültig. Kein DID-Server nötig.
+Siehe: `web-of-trust/docs/konzepte/did-methoden-vergleich.md`
 
 ---
 
 ### Week 3: Evolu Integration (Storage)
 
-**Ziel:** WoT kann Items in Evolu speichern und syncen, **Demo-App zeigt Sync zwischen 2 Tabs**
+**Ziel:** WoT kann Items in Evolu speichern, **Demo-App zeigt lokale Persistenz**
+
+> **Status:** TEILWEISE. EvoluStorageAdapter existiert in Demo. Evolu Sync Server nicht getestet.
 
 #### Tasks
 
 **EvoluAdapter (packages/wot-core/):**
 
 **EvoluAdapter:**
-- [ ] `EvoluAdapter.ts` - implements `StorageAdapter + SyncAdapter`
+- [ ] `EvoluAdapter.ts` - implements `StorageAdapter + ReactiveStorageAdapter`
   ```typescript
   export interface EvoluAdapterConfig {
     schemaExtensions?: Record<string, any>  // Für RLS Tables!
     syncUrl?: string
   }
 
-  class EvoluAdapter implements StorageAdapter, SyncAdapter {
+  class EvoluAdapter implements StorageAdapter, ReactiveStorageAdapter {
     public evolu: Evolu  // Public für RLS Access
     private identity: WotIdentity
 
@@ -1038,9 +935,9 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
       await this.evolu.insert('verifications', v)
     }
 
-    // SyncAdapter Methods
-    async sync(): Promise<void> {
-      await this.evolu.sync()
+    // ReactiveStorageAdapter Methods
+    subscribe(callback: () => void): () => void {
+      return this.evolu.subscribe(callback)
     }
   }
   ```
@@ -1087,9 +984,9 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 - [ ] Hardcoded Members:
   ```typescript
   const devTeamMembers = [
-    'did:web:poc.real-life-stack.de:users:anton',
-    'did:web:poc.real-life-stack.de:users:sebastian',
-    'did:web:poc.real-life-stack.de:users:mathias'
+    'did:key:z6Mk...anton',
+    'did:key:z6Mk...sebastian',
+    'did:key:z6Mk...mathias'
   ]
   ```
 
@@ -1107,7 +1004,7 @@ Week 4: Alles in RLS POC integrieren (confident, weil getestet!)
 
   ```tsx
   // apps/demo/src/screens/ItemManagerScreen.tsx
-  import { EvoluAdapter } from '@real-life/wot-core'
+  import { EvoluAdapter } from '@real-life/wot-core/adapters'
 
   function ItemManagerScreen({ identity }: { identity: WotIdentity }) {
     const [items, setItems] = useState<Item[]>([])
@@ -1857,9 +1754,9 @@ function App() {
         attributes: {
           title: 'Implement Login',
           status: 'doing',
-          assignedTo: 'did:web:...anton'
+          assignedTo: 'did:key:z6Mk...anton'
         },
-        creator: 'did:web:...anton',
+        creator: 'did:key:z6Mk...anton',
         created: Date.now(),
         updated: Date.now()
       }
@@ -1892,7 +1789,7 @@ function App() {
         id: Math.random().toString(),
         type,
         attributes: attrs,
-        creator: 'did:web:...storybook',
+        creator: 'did:key:z6Mk...storybook',
         created: Date.now(),
         updated: Date.now()
       }
@@ -1909,7 +1806,7 @@ function App() {
       mockTasks.splice(index, 1)
     },
     async getCurrentUser() {
-      return { did: 'did:web:...storybook', name: 'Storybook User' }
+      return { did: 'did:key:z6Mk...storybook', name: 'Storybook User' }
     },
     async getGroups() { return [] },
     async getGroupMembers() { return [] }
@@ -1920,15 +1817,15 @@ function App() {
       id: '1',
       type: 'task',
       attributes: { title: 'Design Onboarding', status: 'todo' },
-      creator: 'did:web:...sebastian',
+      creator: 'did:key:z6Mk...sebastian',
       created: Date.now(),
       updated: Date.now()
     },
     {
       id: '2',
       type: 'task',
-      attributes: { title: 'Implement DID Server', status: 'doing', assignedTo: 'did:web:...anton' },
-      creator: 'did:web:...anton',
+      attributes: { title: 'Implement MessagingAdapter', status: 'doing', assignedTo: 'did:key:z6Mk...anton' },
+      creator: 'did:key:z6Mk...anton',
       created: Date.now(),
       updated: Date.now()
     },
@@ -1936,7 +1833,7 @@ function App() {
       id: '3',
       type: 'task',
       attributes: { title: 'Setup Repo', status: 'done' },
-      creator: 'did:web:...anton',
+      creator: 'did:key:z6Mk...anton',
       created: Date.now() - 86400000,
       updated: Date.now()
     }
@@ -2123,12 +2020,12 @@ function App() {
 
 ---
 
-### Week 6 (Optional): Verification & Key Rotation
+### Week 6 (Optional): Social Recovery & Attestations
 
 **Ziel:** Should-Have Features für Production-Readiness
 
 > **Status:** Verification wurde in Week 2 vorgezogen und ist DONE.
-> Key Rotation und Attestations stehen noch aus.
+> Social Recovery und Attestations stehen noch aus.
 
 #### Tasks
 
@@ -2140,32 +2037,17 @@ function App() {
 - [x] ContactStorage (Pending → Active nach Verification)
 - [ ] Verifications anzeigen (Contact Profile) - UI noch nicht fertig
 
-**Key Rotation:**
-- [ ] Settings UI für Key Rotation
-  ```tsx
-  <KeyRotationDialog>
-    ⚠️ Warning: This will generate a new key
+**Social Recovery (ersetzt Key Rotation):**
+- [ ] Shamir Secret Sharing Implementation
+- [ ] Recovery Guardian Selection UI
+- [ ] Recovery Flow: Guardians sammeln Shares → Identity wiederherstellen
+- [ ] Siehe: `web-of-trust/docs/konzepte/social-recovery.md`
 
-    Reason: [dropdown]
-    - Security concern
-    - Device lost
-    - Routine rotation
-
-    [Rotate Key]
-  </KeyRotationDialog>
-  ```
-- [ ] Key Rotation Flow
-  1. Neuen Key generieren
-  2. DID Document Update (signiert mit altem Key)
-  3. Server Publishing
-  4. UI Feedback
-- [ ] Old Key Revocation
-- [ ] Alte Signaturen bleiben gültig (timestamp-based)
-
-**Attestations (Nice-to-Have):**
+**Attestations:**
 - [ ] Skill Attestation UI
-- [ ] Attestation Request Flow
+- [ ] Attestation Request Flow (via MessagingAdapter)
 - [ ] Attestations anzeigen (Profile)
+- [ ] Alice→Bob Attestation Flow (Phase-1-Done-Kriterium)
 
 ---
 
@@ -2176,32 +2058,33 @@ function App() {
 ```
 web-of-trust/
 ├── packages/
-│   └── wot-core/                    # @real-life/wot-core v0.2.0
+│   └── wot-core/                    # @real-life/wot-core
 │       ├── src/
 │       │   ├── identity/
-│       │   │   ├── WotIdentity.ts    ← Week 1
-│       │   │   ├── KeyDerivation.ts        ← Week 1
-│       │   │   └── Recovery.ts             ← Week 1
-│       │   ├── did/
-│       │   │   ├── DIDProvider.ts          ← Week 2
-│       │   │   ├── DidWebProvider.ts       ← Week 2
-│       │   │   ├── DidPeerProvider.ts      ← Später
-│       │   │   └── DIDDocument.ts          ← Week 2
+│       │   │   ├── WotIdentity.ts          ← Week 1 ✅
+│       │   │   ├── KeyDerivation.ts        ← Week 1 ✅
+│       │   │   └── Recovery.ts             ← Week 1 ✅
 │       │   ├── crypto/
-│       │   │   ├── encryption.ts           ← Week 1
-│       │   │   ├── webauthn.ts             ← Optional
-│       │   │   └── signing.ts
+│       │   │   ├── encryption.ts           ← Week 1 ✅
+│       │   │   └── signing.ts              ← Week 1 ✅
 │       │   ├── adapters/
+│       │   │   ├── interfaces/
+│       │   │   │   ├── StorageAdapter.ts         ← ✅
+│       │   │   │   ├── ReactiveStorageAdapter.ts ← ✅
+│       │   │   │   ├── CryptoAdapter.ts          ← ✅
+│       │   │   │   ├── MessagingAdapter.ts       ← ⏳ Spezifiziert
+│       │   │   │   ├── ReplicationAdapter.ts     ← ⏳ Spezifiziert
+│       │   │   │   └── AuthorizationAdapter.ts   ← ⏳ Spezifiziert
 │       │   │   ├── storage/
-│       │   │   │   ├── StorageAdapter.ts
-│       │   │   │   ├── IndexedDBAdapter.ts
-│       │   │   │   └── EvoluAdapter.ts     ← Week 3
+│       │   │   │   ├── InMemoryStorageAdapter.ts ← ✅
+│       │   │   │   └── EvoluAdapter.ts           ← Week 3
 │       │   │   ├── crypto/
-│       │   │   │   ├── CryptoAdapter.ts
-│       │   │   │   └── WebCryptoAdapter.ts
-│       │   │   └── sync/
-│       │   │       ├── SyncAdapter.ts
-│       │   │       └── NoOpSyncAdapter.ts
+│       │   │   │   └── WebCryptoAdapter.ts       ← ✅
+│       │   │   └── messaging/
+│       │   │       └── WebSocketMessagingAdapter.ts ← Phase 2
+│       │   ├── verification/
+│       │   │   ├── VerificationHelper.ts   ← Week 2 ✅
+│       │   │   └── ContactStorage.ts       ← Week 2 ✅
 │       │   └── types/
 │       │       ├── identity.ts
 │       │       ├── item.ts
@@ -2210,35 +2093,20 @@ web-of-trust/
 │       ├── package.json
 │       └── tsconfig.json
 └── apps/
-    ├── demo/                        ← Week 1-3 (Testing Ground!)
-    │   ├── src/
-    │   │   ├── screens/
-    │   │   │   ├── OnboardingScreen.tsx      ← Week 1
-    │   │   │   ├── RecoveryScreen.tsx        ← Week 1
-    │   │   │   ├── DIDPublishScreen.tsx      ← Week 2
-    │   │   │   ├── DIDResolveScreen.tsx      ← Week 2
-    │   │   │   ├── ItemManagerScreen.tsx     ← Week 3
-    │   │   │   └── SyncTestScreen.tsx        ← Week 3
-    │   │   ├── components/
-    │   │   │   ├── MnemonicDisplay.tsx
-    │   │   │   └── SyncStatus.tsx
-    │   │   ├── App.tsx
-    │   │   └── main.tsx
-    │   ├── package.json
-    │   └── vite.config.ts
-    │
-    └── did-server/                  ← Week 2
+    └── demo/                        ← Week 1-3 (Testing Ground!)
         ├── src/
-        │   ├── routes/
-        │   │   ├── publish.ts
-        │   │   ├── resolve.ts
-        │   │   └── rotate.ts
-        │   ├── storage/
-        │   │   └── did-documents/
-        │   └── auth/
-        │       └── verify.ts
+        │   ├── screens/
+        │   │   ├── OnboardingScreen.tsx      ← Week 1 ✅
+        │   │   ├── RecoveryScreen.tsx        ← Week 1 ✅
+        │   │   ├── VerificationScreen.tsx    ← Week 2 ✅
+        │   │   └── ItemManagerScreen.tsx     ← Week 3
+        │   ├── components/
+        │   │   ├── MnemonicDisplay.tsx
+        │   │   └── IdentityCard.tsx
+        │   ├── App.tsx
+        │   └── main.tsx
         ├── package.json
-        └── server.ts
+        └── vite.config.ts
 ```
 
 ### 2. real-life-stack (UI + Connector)
@@ -2287,9 +2155,9 @@ real-life-stack/
 
 ### Must Have (Week 5)
 
-- [x] User kann Identity erstellen (aktuell did:key, später did:web)
+- [x] User kann Identity erstellen (did:key)
 - [x] User kann via Mnemonic recovern
-- [x] User sieht seine DID
+- [x] User sieht seine DID (did:key:z6Mk...)
 - [ ] User kann Kanban Tasks erstellen
 - [ ] User kann Tasks zwischen Spalten verschieben
 - [ ] User kann Tasks assignen (Gruppenmitglieder)
@@ -2301,10 +2169,10 @@ real-life-stack/
 
 ### Should Have (Week 6)
 
-- [ ] Key Rotation funktioniert (via Settings)
+- [ ] Social Recovery funktioniert (Shamir Secret Sharing)
 - [x] Verification Flow (QR-Code) - ✅ in Week 2 implementiert
 - [ ] Verifications werden angezeigt (Contact Profile UI)
-- [ ] WebAuthn optional verfügbar
+- [ ] Attestation Flow (Alice → Bob via MessagingAdapter)
 
 ### Nice to Have (Post-POC)
 
@@ -2327,26 +2195,16 @@ real-life-stack/
 - Test Implementation vor Week 3
 - Falls nicht möglich: Evolu Fork oder Alternative (Automerge)
 
-### Risiko 2: DID Server Downtime
+### Risiko 2: WebSocket Relay Availability
 
-**Problem:** Wenn Server down, keine DID Resolution
-
-**Mitigation:**
-- DID Document Caching im Client (IndexedDB)
-- Fallback auf cached Document
-- Health Monitoring + Alerts
-- Uptime Target: 99%
-
-### Risiko 3: did:web Complexity
-
-**Problem:** +1 Woche Implementierungszeit
+**Problem:** Wenn Relay down, keine Cross-User Zustellung
 
 **Mitigation:**
-- Minimales Backend (nur essential endpoints)
-- Serverless Functions (Vercel) für einfaches Deployment
-- Notfalls: did:key als temporärer Fallback (mit Warnung!)
+- Offline-Queue: Nachrichten werden lokal gepuffert
+- Retry-Logik mit Backoff
+- Später: Matrix-Server (Federation, dezentral)
 
-### Risiko 4: Sync Conflicts
+### Risiko 3: Sync Conflicts
 
 **Problem:** Evolu CRDT verhält sich unerwartet
 
@@ -2385,9 +2243,9 @@ real-life-stack/
 
 ### Community Readiness
 
-- DID Architecture ist stabil (did:web funktioniert)
-- Key Rotation getestet und dokumentiert
-- Migration Path zu did:peer dokumentiert
+- DID Architecture ist stabil (did:key, endgültig)
+- Social Recovery getestet und dokumentiert
+- Migration Path dokumentiert (Evolu → Automerge, WS Relay → Matrix)
 - Bereit für externe Tester
 
 ---
@@ -2400,40 +2258,26 @@ real-life-stack/
 - **Start:** Evolu Cloud (einfach, schnell)
 - **Später:** Self-hosted Option evaluieren (falls mehr Kontrolle nötig)
 
-### 2. DID Username Format?
-
-**Optionen:**
-- `did:web:real-life-stack.de:users:u-{random-id}`
-- `did:web:poc.real-life-stack.de:u-{random-id}` ← Empfohlen (klare POC Subdomain)
-
-### 3. Invitation Flow?
+### 2. Invitation Flow?
 
 **Entscheidung:**
 - **POC:** Hardcoded Group Members (Anton, Sebastian, Mathias)
 - **Phase 2:** QR-Code Invitation + Group Join Request
 
-### 4. Multi-Group Support?
+### 3. Multi-Group Support?
 
 **Entscheidung:**
 - **POC:** Eine Gruppe "Dev Team"
 - **Phase 2:** Multi-Group mit Group Creation UI
 
-### 5. DID Server Deployment?
+### 4. WebSocket Relay Deployment?
 
-**Entscheidung: ✅ Vercel**
+**Entscheidung:** Noch offen
 
-**Warum Vercel:**
-- ✅ Serverless Functions (kein Server-Management)
-- ✅ Vercel KV (Redis) für DID Document Storage
-- ✅ Automatisches HTTPS + Domain Setup
-- ✅ Edge Functions für schnelle DID Resolution
-- ✅ Free Tier ausreichend für POC
-- ✅ Einfaches CI/CD (git push → deploy)
-
-**Deployment:**
-- `did-server` als Vercel Projekt
-- Domain: `poc.real-life-stack.de` → Vercel
-- Storage: Vercel KV (POC) → später PostgreSQL (Production)
+**Optionen:**
+- Self-hosted (eigener Server, volle Kontrolle)
+- Managed (z.B. Fly.io, Railway)
+- Eli's Server (82.165.138.182) für POC
 
 ---
 
@@ -2441,67 +2285,56 @@ real-life-stack/
 
 ### Sofort
 
-1. [ ] **Entscheidung bestätigen:** did:web für POC?  ✅
-2. [ ] **Repository Setup:**
-   - `web-of-trust/packages/wot-core/` erweitern
-   - `web-of-trust/apps/demo/` erstellen ← **NEU! Testing Ground**
-   - `web-of-trust/apps/did-server/` erstellen
-   - `real-life-stack/packages/modules/` erstellen
-   - `real-life-stack/apps/poc/` erstellen (Week 4)
-3. [ ] **Dependencies installieren:**
-   ```bash
-   # WoT Core (nur BIP39 nötig, HKDF ist native WebCrypto!)
-   cd web-of-trust/packages/wot-core
-   pnpm add @scure/bip39 idb
-
-   # Demo App (Testing Ground)
-   cd web-of-trust/apps/demo
-   pnpm add @real-life/wot-core react react-dom
-   pnpm add -D vite @vitejs/plugin-react typescript
-
-   # Module Library
-   cd real-life-stack/packages/modules
-   pnpm add @dnd-kit/core @dnd-kit/sortable date-fns
-
-   # POC App (Week 4)
-   cd real-life-stack/apps/poc
-   pnpm add evolu uuid react-router-dom
-   ```
-4. [ ] **Domain Setup:** `poc.real-life-stack.de`
+1. [x] **DID-Methode:** did:key (endgültig) ✅
+2. [x] **Repository Setup:** web-of-trust/packages/wot-core/ + apps/demo/ ✅
+3. [ ] **MessagingAdapter Interfaces** in wot-core definieren
+4. [ ] **WebSocket Relay Server** aufsetzen
 5. [ ] **Team Alignment:** Rollen klären (wer macht was?)
 
-### Diese Woche (Week 1)
+### Nächste Schritte
 
-1. [ ] **Demo App Setup:** Vite + React Basic Setup
-2. [ ] **Week 1 starten:** WotIdentity Implementation
-3. [ ] **Parallel in Demo testen:** Onboarding Screen bauen
-4. [ ] **Evolu Docs lesen:** Key Injection Pattern (Vorbereitung Week 3)
+1. [ ] **MessagingAdapter:** Interface + WebSocketMessagingAdapter
+2. [ ] **WebSocket Relay:** Server implementieren (Node.js/Bun)
+3. [ ] **Attestation Flow:** Alice → Bob via MessagingAdapter (Phase-1-Kriterium)
+4. [ ] **Identity Consolidation:** Alte IdentityService/useIdentity entfernen
 
 ---
 
 ## Migration Path: POC → Production
 
-### Phase 1: POC (6 Wochen)
+### Phase 1: WoT Demo (aktuell)
 
-- did:web für stabile DIDs
-- Evolu für Sync
+- did:key (endgültig, kein Server)
+- Evolu (lokale Persistenz)
+- WebSocket Relay (Cross-User Messaging)
 - Hardcoded Group
 - Team Dogfooding
 
-### Phase 2: Community Launch (3 Monate)
+### Phase 2: RLS App (Community Launch)
 
-- Invitation Flow
-- Multi-Group Support
-- Attestations
-- WebAuthn
+- Automerge ersetzt Evolu (lokal + cross-user CRDT Spaces)
+- Item-Keys für E2EE (symmetrische Dokumentverschlüsselung)
+- Invitation Flow + Multi-Group Support
+- Attestations via MessagingAdapter
+- Social Recovery (Shamir)
 
-### Phase 3: Production (6 Monate)
+### Phase 3: Production
 
-- Migration zu did:peer (Offline + P2P)
-- Custom Sync Framework (alle Keys non-extractable)
+- Matrix (Federation, dezentrales Messaging)
+- Keyhive/BeeKEM (CRDT-native E2EE, wenn production-ready)
 - Mobile App (React Native)
-- Federation
+- AuthorizationAdapter (UCAN-like Capabilities)
+
+### Storage-Transition: Evolu → Automerge
+
+**WoT Demo braucht kein Automerge:** Alle WoT-Datentypen (Identity, Contacts, Verifications, Attestations) sind Single-Owner oder signiert-und-zugestellt. Kein Multi-Writer CRDT nötig.
+
+**RLS App braucht Automerge:** Geteilte Listen, Gruppen-Spaces, kollaborative Daten erfordern Multi-Writer CRDT.
+
+**Automerge ersetzt Evolu:** Automerge kann alles was Evolu kann (lokal + sync + multi-writer). Evolu ist das Sprungbrett, nicht das Ziel.
+
+**E2EE-Strategie:** Automerge hat kein eingebautes E2EE. Lösung: Item-Keys (jedes Dokument hat einen symmetrischen Key, alle Space-Mitglieder kennen ihn). Clients mergen lokal, Server ist dummer Relay. Langfristig: Keyhive (CRDT-native Key Management von Ink & Switch).
 
 ---
 
-**Fazit:** Mit did:web von Anfang an schaffen wir eine stabile Grundlage für Community-Building. Der POC ist in 5-6 Wochen machbar, und wir können später zu did:peer migrieren ohne Verifications zu verlieren! 🎯
+**Fazit:** Mit did:key und der 6-Adapter-Architektur haben wir eine stabile, erweiterbare Grundlage. Der POC zeigt den Weg von der WoT Demo zur ersten RLS App — und jeder Adapter kann unabhängig ausgetauscht werden (SOLID/OCP).
