@@ -14,7 +14,8 @@ Real Life Stack ist ein modularer UI-Baukasten für lokale Vernetzung. Die Archi
 │           (Kanban, Kalender, Karte, Feed, ...)              │
 ├─────────────────────────────────────────────────────────────┤
 │                    Daten-Schnittstelle                      │
-│       getItems(), createItem(), getUser(), ...              │
+│  DataInterface: getItems(), createItem(), getUser(), ...    │
+│  FeatureInterface: getDocument(), getCollection(), ...      │
 ├─────────────────────────────────────────────────────────────┤
 │                      Connector(s)                           │
 │               (implementiert die Schnittstelle)             │
@@ -249,6 +250,173 @@ class WotConnector implements DataInterface {
 
 ---
 
+## Generisches Feature-Interface
+
+Das `DataInterface` (Abschnitt 2) deckt die Kern-Entitäten Items, Gruppen und Nutzer ab. Darüber hinaus gibt es Features, die nicht in dieses Schema passen – z.B. ein personalisierter Feed, Freundschaftsvorschläge oder Statistiken. Gleichzeitig muss nicht jedes Backend den vollen Funktionsumfang unterstützen.
+
+Das generische Feature-Interface löst beide Probleme: Es bietet eine einheitliche Schnittstelle für beliebige Features und ermöglicht es der UI, sich dynamisch an den Funktionsumfang des verbundenen Backends anzupassen.
+
+### Schnittstelle
+
+```typescript
+interface FeatureInterface {
+  // Lesen
+  getDocument(featureKey: string, request?: object): Promise<Document>
+  getCollection(featureKey: string, request?: object, options?: CollectionOptions): Promise<Collection>
+
+  // Schreiben
+  setDocument(featureKey: string, request: object): Promise<Document>
+  addDocument(featureKey: string, request: object): Promise<Document>
+  removeDocument(featureKey: string, request: object): Promise<void>
+
+  // Feature-Erkennung
+  isSupported(...featureKeys: string[]): Record<string, boolean>
+}
+
+interface CollectionOptions {
+  pagination?: {
+    cursor?: string
+    limit?: number
+  }
+  resolve?: {
+    relations?: boolean
+    depth?: number          // Wie tief Relationen aufgelöst werden
+  }
+}
+
+interface Collection {
+  items: Document[]
+  nextCursor?: string       // Für Pagination
+  total?: number            // Falls vom Backend bekannt
+}
+
+type Document = Record<string, unknown>
+```
+
+### Feature-Keys
+
+Feature-Keys sind hierarchisch durch Punkte gegliedert. Sie benennen das Feature, nicht die Datenstruktur.
+
+```
+user.feed                    // Persönlicher Feed
+user.friends                 // Freundesliste
+user.friends.suggestions     // Freundschaftsvorschläge
+group.stats                  // Gruppenstatistiken
+group.activity               // Aktivitäts-Log einer Gruppe
+moderation.reports           // Gemeldete Inhalte
+```
+
+Die Punkt-Hierarchie dient der Namensorganisation – übergeordnete Keys implizieren **nicht** automatisch die Unterstützung untergeordneter Keys. `isSupported("user.friends")` kann `true` sein, während `isSupported("user.friends.suggestions")` `false` ist.
+
+### Lese-Operationen
+
+**`getDocument`** gibt ein einzelnes Objekt zurück. Das `request`-Objekt enthält feature-spezifische Parameter.
+
+```typescript
+// Profil eines Nutzers abrufen
+const profile = await connector.getDocument("user.profile", { userId: "did:key:z6Mk..." })
+
+// Gruppenstatistiken
+const stats = await connector.getDocument("group.stats", { groupId: "garten" })
+```
+
+**`getCollection`** gibt eine Liste zurück, mit optionalem Paging und Relationsauflösung.
+
+```typescript
+// Feed mit Pagination
+const feed = await connector.getCollection("user.feed", {}, {
+  pagination: { limit: 20 }
+})
+
+// Nächste Seite
+const nextPage = await connector.getCollection("user.feed", {}, {
+  pagination: { cursor: feed.nextCursor, limit: 20 }
+})
+
+// Freundschaftsvorschläge mit aufgelösten Profil-Relationen
+const suggestions = await connector.getCollection("user.friends.suggestions", {}, {
+  resolve: { relations: true, depth: 1 }
+})
+```
+
+### Schreib-Operationen
+
+Analog zu den Lese-Operationen gibt es drei Schreib-Methoden:
+
+**`setDocument`** erstellt oder aktualisiert ein Dokument.
+
+```typescript
+// Profilbild aktualisieren
+await connector.setDocument("user.profile", {
+  userId: "did:key:z6Mk...",
+  avatarUrl: "https://..."
+})
+```
+
+**`addDocument`** fügt ein neues Dokument zu einer Collection hinzu.
+
+```typescript
+// Freundschaftsanfrage senden
+await connector.addDocument("user.friends.requests", {
+  targetUserId: "did:key:z6Mk..."
+})
+
+// Inhalt melden
+await connector.addDocument("moderation.reports", {
+  itemId: "abc123",
+  reason: "spam"
+})
+```
+
+**`removeDocument`** entfernt ein Dokument.
+
+```typescript
+// Freundschaft entfernen
+await connector.removeDocument("user.friends", {
+  friendId: "did:key:z6Mk..."
+})
+```
+
+### Feature-Erkennung und adaptive UI
+
+`isSupported` ermöglicht der UI, sich dynamisch an das Backend anzupassen. Mehrere Feature-Keys können in einem Aufruf geprüft werden.
+
+```typescript
+const support = connector.isSupported(
+  "user.feed",
+  "user.friends",
+  "user.friends.suggestions",
+  "moderation.reports"
+)
+// → { "user.feed": true, "user.friends": true,
+//     "user.friends.suggestions": false, "moderation.reports": false }
+```
+
+**UI-Konsequenz:** Für jedes Feature muss definiert werden, ob es **obligatorisch** oder **optional** ist. Die UI reagiert darauf:
+
+| Kategorie | Verhalten | Beispiel |
+|-----------|-----------|----------|
+| **Obligatorisch** | Feature muss vorhanden sein, Connector ist ohne es nicht nutzbar | Items, Gruppen, Nutzer-Identität |
+| **Optional** | UI blendet Bereich aus oder zeigt Fallback | Freundschaftsvorschläge, Statistiken |
+
+```typescript
+// Beispiel: Bedingte UI-Darstellung
+function FriendsSection() {
+  const support = useFeatureSupport("user.friends", "user.friends.suggestions")
+
+  if (!support["user.friends"]) return null  // Ganz ausblenden
+
+  return (
+    <div>
+      <FriendsList />
+      {support["user.friends.suggestions"] && <SuggestionsList />}
+    </div>
+  )
+}
+```
+
+---
+
 ## Multi-Source
 
 Die Architektur erlaubt das Kombinieren von Daten aus mehreren Quellen.
@@ -365,9 +533,11 @@ Je nach Connector unterschiedlich:
 Diese Aspekte werden in der Implementierung geklärt:
 
 1. **Auth-Abstraktion** – Wie abstrahieren wir Keypair-Auth (WoT) und Server-Auth (REST) so, dass Module davon nichts wissen müssen?
-2. **User-Profil als Item?** – Ist ein Nutzerprofil ein Item oder eine eigene Entität?
+2. **User-Profil als Item?** – Ist ein Nutzerprofil ein Item oder eine eigene Entität? (Hinweis: Über das FeatureInterface wäre ein Profil ein Document unter `"user.profile"` – unabhängig von der Item-Frage.)
 3. **Migration** – Kann man von einem Connector zu einem anderen wechseln?
 4. **Hybrid-Szenarien** – Können verschiedene Connector-Typen sinnvoll kombiniert werden?
+5. **Feature-Katalog** – Welche Feature-Keys sind obligatorisch, welche optional? Ein verbindlicher Katalog muss definiert werden, sobald die ersten Connectoren implementiert werden.
+6. **Typisierung** – Wie wird TypeScript-Typsicherheit für feature-spezifische Request/Response-Strukturen hergestellt? (z.B. über eine generische Registry `FeatureKey → RequestType, ResponseType`)
 
 ---
 
