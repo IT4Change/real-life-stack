@@ -1,4 +1,5 @@
 .vscode
+.mcp.json
 node_modules
 dist
 .turbo
