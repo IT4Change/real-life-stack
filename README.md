@@ -102,7 +102,7 @@ Adapter-Pattern für verschiedene Backend-Anbindungen. Referenzimplementierung m
 | **[Reference App](https://real-life-stack.de/app/)** | Implementierung mit allen Modulen |
 | **[UI-Prototyp](https://real-life-stack.de/edge/)** | Experimentelle UI-Konzepte und Komponenten |
 | **[Storybook](https://real-life-stack.de/storybook/)** | Komponenten-Dokumentation |
-| **[Web-of-Trust](https://it4change.github.io/web-of-trust/)** | Forschungs-Prototyp für dezentrale Identität |
+| **[Web-of-Trust](https://it4change.github.io/web-of-trust-prototype/)** | Forschungs-Prototyp für dezentrale Identität |
 
 ---
 
@@ -115,7 +115,7 @@ Adapter-Pattern für verschiedene Backend-Anbindungen. Referenzimplementierung m
 - **Local-first** – Automerge CRDT für Offline-Fähigkeit
 - **Modulare Architektur** – AppShell-Pattern für verschiedene Apps
 
-**[Zur Landing Page →](https://web-of-trust.de)** | **[Zum Prototyp →](https://it4change.github.io/web-of-trust/)** | **[GitHub →](https://github.com/IT4Change/web-of-trust)**
+**[Zur Landing Page →](https://web-of-trust.de)** | **[Zum Prototyp →](https://it4change.github.io/web-of-trust-prototype/)** | **[GitHub →](https://github.com/IT4Change/web-of-trust)**
 
 ---
 
