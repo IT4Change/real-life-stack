@@ -2,14 +2,14 @@
 
 > Vollständiger Implementierungsplan mit Architektur-Stack
 
-**Stand:** 08. Februar 2026
+**Stand:** 11. Februar 2026
 **Team:** Anton, Sebastian, Mathias, Eli
 **Duration:** 5-6 Wochen
 **Goal:** Funktionierender POC mit Kanban + Kalender, den das Team selbst nutzt
 
 ---
 
-### Aktueller Fortschritt (2026-02-07)
+### Aktueller Fortschritt (2026-02-11)
 
 | Week | Thema im Plan | Status | Anmerkung |
 |------|--------------|--------|-----------|
@@ -18,22 +18,38 @@
 | **Week 2** | In-Person Verification | ✅ DONE | Challenge-Response, QR-Codes, ContactStorage, +35 Tests |
 | **Forschung** | DID-Methoden + Social Recovery | ✅ DONE | 6 DID-Methoden evaluiert, Social Recovery Architektur |
 | **Forschung** | Framework-Evaluation v2 | ✅ DONE | 16 Frameworks evaluiert, 6 eliminiert |
-| **Forschung** | Adapter-Architektur v2 | ✅ DONE | 6-Adapter-Spezifikation, Interaction-Flows |
-| **Week 3** | Evolu Integration | ⏳ TEILWEISE | EvoluStorageAdapter existiert in Demo |
-| **Week 4** | RLS Integration (UI) | ⏳ AUSSTEHEND | |
-| **Week 5** | Polish & Dogfooding | ⏳ AUSSTEHEND | |
-| **Week 6** | Social Recovery (Shamir) | ⏳ AUSSTEHEND | Ersetzt Key Rotation, Verification bereits in Week 2 |
+| **Forschung** | Adapter-Architektur v2 | ✅ DONE | 7-Adapter-Spezifikation, Interaction-Flows |
+| **Week 3** | Evolu Integration | ✅ DONE | EvoluStorageAdapter, Custom Keys, Schema |
+| **Week 3+** | MessagingAdapter + WebSocket Relay | ✅ DONE | Interface, InMemory, WebSocket, Relay (SQLite), 43 neue Tests |
+| **Week 3++** | Demo App Relay-Integration | ✅ DONE | Attestation E2E über Relay, Profil-Verwaltung, Recovery Enter-Nav |
+| **Week 4** | Symmetric Crypto + Profile Sync | ✅ DONE | AES-256-GCM, JWS Profile, wot-profiles Service, +30 Tests |
+| **Week 5** | Encrypted Group Spaces (Foundations) | ✅ DONE | X25519 ECIES, EncryptedSyncService, GroupKeyService, +34 Tests |
+| **Week 5** | wot-profiles Deployment | ✅ DONE | Docker, live unter profiles.utopia-lab.org |
+| **Week 5+** | AutomergeReplicationAdapter | ✅ DONE | CRDT Spaces + verschlüsselter Transport, 16 Tests |
+| **Week 5+** | Relay Deployment | ✅ DONE | Live unter `wss://relay.utopia-lab.org` |
+| **Week 5++** | DiscoveryAdapter (7. Adapter) | ✅ DONE | Interface + HttpDiscoveryAdapter, Demo-App Refactoring |
+| **Week 6** | Spaces UI in Demo App | ⏳ NÄCHSTER SCHRITT | AutomergeReplicationAdapter testbar machen |
+| **Week 7** | RLS Integration (UI) | ⏳ AUSSTEHEND | |
+| **Week 8** | Polish & Dogfooding | ⏳ AUSSTEHEND | |
 
 **Abweichungen vom ursprünglichen Plan:**
 - Klasse heißt `WotIdentity` (nicht `SecureWotIdentity` wie im Plan)
 - Deutsche BIP39-Wortliste statt englische, 12 Wörter konsistent
 - In-Person Verification (Plan Week 6) wurde in Week 2 vorgezogen
 - `did:key` statt `did:web` (endgültige Entscheidung, kein Server nötig)
-- Social Recovery (Shamir) ersetzt Key Rotation in Week 6
-- 6-Adapter-Architektur v2 statt 3 Adapter (+ Messaging, Replication, Authorization)
+- Social Recovery (Shamir) ersetzt Key Rotation — zurückgestellt, kommt nach Encrypted Spaces
+- 7-Adapter-Architektur v2 statt 3 Adapter (+ Discovery, Messaging, Replication, Authorization)
 - Storage-Transition: Evolu (WoT Demo, lokal) → Automerge (RLS App, ersetzt Evolu)
+- MessagingAdapter + Relay vorgezogen (ursprünglich nicht explizit geplant)
+- Symmetric Crypto + Profile Sync als eigene Week 4 (nicht im ursprünglichen Plan)
+- wot-profiles als separates Package (HTTP REST, kein Teil des Relays)
+- SyncAdapter entfernt, ersetzt durch ReplicationAdapter (Automerge, Phase 3)
+- X25519 über separaten HKDF-Pfad statt Ed25519→X25519 Konvertierung (kein @noble/curves nötig)
+- Phase 3 aufgeteilt: Foundations (Week 5) + AutomergeReplicationAdapter (Week 5+, ✅ DONE)
+- Relay Deployment vorgezogen — live unter `wss://relay.utopia-lab.org` + `https://profiles.utopia-lab.org`
+- DiscoveryAdapter als 7. Adapter formalisiert (Interface + HttpDiscoveryAdapter, Demo-App refactored)
 
-**Gesamt: 77 Tests passing** (siehe `web-of-trust/docs/CURRENT_IMPLEMENTATION.md` für Details)
+**Gesamt: 190 Tests passing** (156 wot-core + 19 wot-profiles + 15 wot-relay, siehe `web-of-trust/docs/CURRENT_IMPLEMENTATION.md` für Details)
 
 ---
 
@@ -169,12 +185,15 @@
 │  │  │       ↓                                                     │ │ │
 │  │  │  Master Seed (32 bytes)                                    │ │ │
 │  │  │       ↓ HKDF                                               │ │ │
-│  │  │       ├─→ Identity Seed → Ed25519 KeyPair                 │ │ │
+│  │  │       ├─→ 'wot-identity-v1' → Ed25519 KeyPair (Signing)   │ │ │
 │  │  │       │   (Private Key non-extractable)                    │ │ │
 │  │  │       │   ↓                                                │ │ │
 │  │  │       │   DID (did:key:z6Mk...)                          │ │ │
 │  │  │       │                                                     │ │ │
-│  │  │       ├─→ Evolu Seed (extractable für Evolu)              │ │ │
+│  │  │       ├─→ 'wot-encryption-v1' → X25519 KeyPair (ECDH)    │ │ │
+│  │  │       │   (für asymm. Encryption, Group Key Delivery)      │ │ │
+│  │  │       │                                                     │ │ │
+│  │  │       ├─→ 'evolu-storage-v1' → Evolu OwnerSecret          │ │ │
 │  │  │       └─→ Future Seeds (Jazz, Custom, etc.)               │ │ │
 │  │  └─────────────────────────────────────────────────────────────┘ │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
@@ -207,7 +226,7 @@
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐ │
-│  │                    ADAPTER LAYER (v2: 6 Adapter)                  │ │
+│  │                    ADAPTER LAYER (v2: 7 Adapter)                  │ │
 │  │                                                                   │ │
 │  │  Phase 1 (implementiert):                                        │ │
 │  │  ┌──────────────────┐  ┌────────────────────┐  ┌──────────────┐  │ │
@@ -219,10 +238,10 @@
 │  │  │   Demo)          │  │                    │  │              │  │ │
 │  │  └──────────────────┘  └────────────────────┘  └──────────────┘  │ │
 │  │                                                                   │ │
-│  │  Phase 2 (spezifiziert, noch nicht implementiert):               │ │
+│  │  Phase 2 (MessagingAdapter ✅, ReplicationAdapter ✅):            │ │
 │  │  ┌──────────────────┐  ┌────────────────────┐  ┌──────────────┐  │ │
 │  │  │ Messaging        │  │ Replication        │  │Authorization │  │ │
-│  │  │ Adapter          │  │ Adapter            │  │Adapter       │  │ │
+│  │  │ Adapter ✅       │  │ Adapter ✅         │  │Adapter       │  │ │
 │  │  │                  │  │                    │  │              │  │ │
 │  │  │ • WS Relay (POC) │  │ • Automerge        │  │ • UCAN-like  │  │ │
 │  │  │ • Matrix (Prod)  │  │   (RLS App)       │  │ • Meadowcap  │  │ │
@@ -246,14 +265,27 @@
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐ │
 │  │                    WebSocket Relay Server (POC)                    │ │
+│  │                    @real-life/wot-relay (Port 8787)                │ │
 │  │                                                                   │ │
 │  │  Zweck: Cross-User Nachrichtenzustellung (Attestations,          │ │
 │  │         Verifications, Profile-Updates)                           │ │
 │  │                                                                   │ │
 │  │  • Einfacher Relay: Empfänger-DID → WebSocket Connection         │ │
 │  │  • Kein Zugriff auf Inhalt (E2EE via Item-Keys)                  │ │
-│  │  • Offline-Queue: Nachrichten werden gepuffert                   │ │
+│  │  • Offline-Queue: Nachrichten werden gepuffert (SQLite)          │ │
 │  │  • Später: Matrix-Server (Federation)                             │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │                    Profile Service (NEU)                           │ │
+│  │                    @real-life/wot-profiles (Port 8788)             │ │
+│  │                                                                   │ │
+│  │  Zweck: Öffentliche Profile per DID discoverable machen          │ │
+│  │                                                                   │ │
+│  │  • REST API: GET/PUT /p/{did}                                     │ │
+│  │  • JWS-signierte Profile (self-certifying, Ed25519/EdDSA)        │ │
+│  │  • Standalone JWS Verify (keine wot-core Dependency)              │ │
+│  │  • SQLite Store (better-sqlite3, WAL Mode)                        │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐ │
@@ -276,12 +308,13 @@
 |---------|-------|--------|
 | **StorageAdapter** | Lokale Persistierung (Identity, Contacts, Verifications, Attestations) | ✅ Interface + InMemory + Evolu |
 | **ReactiveStorageAdapter** | Subscribe/onChange für UI-Reactivity | ✅ Interface + InMemory |
-| **CryptoAdapter** | Ed25519 Signing, X25519 Encryption, BIP39, did:key | ✅ Interface + WebCrypto |
-| **MessagingAdapter** | Cross-User Nachrichtenzustellung (Attestations, Verifications) | ⏳ Spezifiziert |
-| **ReplicationAdapter** | CRDT Spaces für geteilte Daten (Automerge, wenn RLS App) | ⏳ Spezifiziert |
+| **CryptoAdapter** | Ed25519 Signing, AES-256-GCM Symmetric, BIP39, did:key | ✅ Interface + WebCrypto (+Symmetric) |
+| **DiscoveryAdapter** | Öffentliche Profile discoverable machen (JWS-signiert, pre-contact) | ✅ Interface + HttpDiscoveryAdapter |
+| **MessagingAdapter** | Cross-User Nachrichtenzustellung (Attestations, Verifications, Profile-Updates) | ✅ Interface + InMemory + WebSocket + Relay |
+| **ReplicationAdapter** | CRDT Spaces für geteilte Daten (Automerge + Encrypt-then-sync) | ✅ Interface + AutomergeReplicationAdapter |
 | **AuthorizationAdapter** | UCAN-like Capabilities, Meadowcap-inspiriert | ⏳ Spezifiziert |
 
-**Phase-1-Done-Kriterium:** Alice.send(attestation) → Bob.onMessage → Bob.verify → Bob.save → Alice.onReceipt(ack)
+**Phase-1-Done-Kriterium:** Alice.send(attestation) → Bob.onMessage → Bob.verify → Bob.save → Alice.onReceipt(ack) **✅ ERREICHT**
 
 **Storage-Transition:**
 - WoT Demo: Evolu (lokal) + WebSocket Relay (messaging) — kein Automerge nötig
@@ -354,6 +387,7 @@ class RESTConnector implements DataInterface { ... }
 - `DataInterface` - Nur CRUD Operations
 - `StorageAdapter` - Nur WoT Persistierung
 - `CryptoAdapter` - Nur Krypto-Operationen
+- `DiscoveryAdapter` - Nur Public Profile Discovery
 - `MessagingAdapter` - Nur Cross-User Delivery
 - `ReplicationAdapter` - Nur CRDT Spaces
 - `AuthorizationAdapter` - Nur Capabilities
