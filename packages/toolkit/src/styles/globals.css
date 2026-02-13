@@ -7,8 +7,8 @@
   --popover: oklch(1.00 0 0);
   --popover-foreground: oklch(0.28 0.02 265);
 
-  /* Primary - Green (nature, growth, community) */
-  --primary: oklch(0.55 0.17 142);
+  /* Primary - Orange (craft, warmth, building together) */
+  --primary: oklch(0.63 0.16 55);
   --primary-foreground: oklch(1.00 0 0);
 
   /* Secondary - Blue */
@@ -19,9 +19,9 @@
   --muted: oklch(0.98 0.00 247);
   --muted-foreground: oklch(0.45 0.02 265);
 
-  /* Accent - Light green (for hover states, from primary family) */
-  --accent: oklch(0.95 0.03 142);
-  --accent-foreground: oklch(0.55 0.17 142);
+  /* Accent - Light orange (for hover states, from primary family) */
+  --accent: oklch(0.95 0.03 55);
+  --accent-foreground: oklch(0.63 0.16 55);
 
   --destructive: oklch(0.54 0.19 27);
 
@@ -35,24 +35,24 @@
 
   --border: oklch(0.90 0.01 247);
   --input: oklch(0.90 0.01 247);
-  --ring: oklch(0.55 0.17 142);
+  --ring: oklch(0.63 0.16 55);
 
-  /* Chart colors - Green shades */
-  --chart-1: oklch(0.70 0.12 142);
-  --chart-2: oklch(0.62 0.14 142);
-  --chart-3: oklch(0.55 0.17 142);
-  --chart-4: oklch(0.48 0.14 142);
-  --chart-5: oklch(0.40 0.12 142);
+  /* Chart colors - Orange shades */
+  --chart-1: oklch(0.75 0.11 55);
+  --chart-2: oklch(0.70 0.13 55);
+  --chart-3: oklch(0.63 0.16 55);
+  --chart-4: oklch(0.55 0.14 55);
+  --chart-5: oklch(0.48 0.12 55);
 
   /* Sidebar */
   --sidebar: oklch(0.98 0.01 247);
   --sidebar-foreground: oklch(0.28 0.02 265);
-  --sidebar-primary: oklch(0.55 0.17 142);
+  --sidebar-primary: oklch(0.63 0.16 55);
   --sidebar-primary-foreground: oklch(1.00 0 0);
-  --sidebar-accent: oklch(0.95 0.03 142);
-  --sidebar-accent-foreground: oklch(0.55 0.17 142);
+  --sidebar-accent: oklch(0.95 0.03 55);
+  --sidebar-accent-foreground: oklch(0.63 0.16 55);
   --sidebar-border: oklch(0.90 0.01 247);
-  --sidebar-ring: oklch(0.55 0.17 142);
+  --sidebar-ring: oklch(0.63 0.16 55);
 
   /* Typography - Inter (like Landing) */
   --font-sans: Inter, system-ui, sans-serif;
@@ -85,8 +85,8 @@
   --popover: oklch(0.20 0.02 265);
   --popover-foreground: oklch(0.95 0.01 247);
 
-  /* Primary - Lighter green for dark mode */
-  --primary: oklch(0.65 0.17 142);
+  /* Primary - Lighter orange for dark mode */
+  --primary: oklch(0.72 0.15 55);
   --primary-foreground: oklch(0.15 0.02 265);
 
   /* Secondary - Lighter blue for dark mode */
@@ -97,8 +97,8 @@
   --muted: oklch(0.25 0.02 265);
   --muted-foreground: oklch(0.70 0.01 247);
 
-  /* Accent - Dark green (for hover states, from primary family) */
-  --accent: oklch(0.30 0.08 142);
+  /* Accent - Dark orange (for hover states, from primary family) */
+  --accent: oklch(0.30 0.08 55);
   --accent-foreground: oklch(0.95 0.01 247);
 
   --destructive: oklch(0.54 0.19 27);
@@ -113,24 +113,24 @@
 
   --border: oklch(0.30 0.02 265);
   --input: oklch(0.30 0.02 265);
-  --ring: oklch(0.65 0.17 142);
+  --ring: oklch(0.72 0.15 55);
 
-  /* Chart colors - Green shades (lighter for dark mode) */
-  --chart-1: oklch(0.75 0.11 142);
-  --chart-2: oklch(0.70 0.13 142);
-  --chart-3: oklch(0.65 0.15 142);
-  --chart-4: oklch(0.60 0.17 142);
-  --chart-5: oklch(0.55 0.17 142);
+  /* Chart colors - Orange shades (lighter for dark mode) */
+  --chart-1: oklch(0.80 0.10 55);
+  --chart-2: oklch(0.76 0.12 55);
+  --chart-3: oklch(0.72 0.14 55);
+  --chart-4: oklch(0.68 0.15 55);
+  --chart-5: oklch(0.63 0.16 55);
 
   /* Sidebar */
   --sidebar: oklch(0.15 0.02 265);
   --sidebar-foreground: oklch(0.95 0.01 247);
-  --sidebar-primary: oklch(0.65 0.17 142);
+  --sidebar-primary: oklch(0.72 0.15 55);
   --sidebar-primary-foreground: oklch(0.15 0.02 265);
-  --sidebar-accent: oklch(0.25 0.03 142);
+  --sidebar-accent: oklch(0.25 0.03 55);
   --sidebar-accent-foreground: oklch(0.95 0.01 247);
   --sidebar-border: oklch(0.30 0.02 265);
-  --sidebar-ring: oklch(0.65 0.17 142);
+  --sidebar-ring: oklch(0.72 0.15 55);
 
   /* Shadows - slightly more visible for dark mode */
   --shadow-2xs: 0 1px 3px 0px oklch(0.00 0 0 / 0.10);

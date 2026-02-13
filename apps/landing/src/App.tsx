@@ -14,9 +14,27 @@ import {
   ArrowRight,
   Menu,
   X,
-  Sprout,
+  Puzzle,
   Store,
+  Globe,
+  HardDrive,
+  Lock,
+  Fingerprint,
+  Waypoints,
 } from 'lucide-react'
+
+function WotIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="18.72" cy="8.82" r="3" />
+      <circle cx="5.28" cy="5.28" r="3" />
+      <circle cx="8.82" cy="18.72" r="3" />
+      <line x1="6.04" x2="8.06" y1="8.18" y2="15.82" />
+      <line x1="15.81" x2="8.18" y1="8.05" y2="6.04" />
+      <line x1="16.59" x2="10.94" y1="10.94" y2="16.59" />
+    </svg>
+  )
+}
 
 function GitHubIcon({ className = "w-5 h-5" }: { className?: string }) {
   return (
@@ -42,7 +60,7 @@ function Header() {
           {/* Logo */}
           <a href="#" className="flex items-center gap-3">
             <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
-              <Sprout className="w-6 h-6 text-primary-foreground" />
+              <Puzzle className="w-6 h-6 text-primary-foreground" />
             </div>
             <span className="font-bold text-lg text-foreground">Real Life Stack</span>
           </a>
@@ -117,7 +135,7 @@ function App() {
       <Header />
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 px-4">
+      <section className="pt-40 pb-24 px-4">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-6">
             Modularer Baukasten für{' '}
@@ -166,10 +184,10 @@ function App() {
               </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <ModuleCard icon={Map} title="Karte" description="OpenStreetMap via MapLibre" color="primary" />
+              <ModuleCard icon={Map} title="Karte" description="OpenStreetMap via MapLibre" color="green" />
               <ModuleCard icon={Calendar} title="Kalender" description="iCal / CalDAV" color="blue" />
-              <ModuleCard icon={MessageSquare} title="Feed" description="Aktivitäten-Stream" color="orange" />
               <ModuleCard icon={Store} title="Marktplatz" description="Teilen & Tauschen" color="purple" />
+              <ModuleCard icon={MessageSquare} title="Feed" description="Aktivitäten-Stream" color="orange" />
             </div>
           </div>
         </div>
@@ -240,8 +258,8 @@ function App() {
         <div className="max-w-5xl mx-auto">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
-              <div className="inline-flex items-center gap-2 text-orange-600 text-sm font-medium mb-4">
-                <div className="size-2 rounded-full bg-orange-500" />
+              <div className="inline-flex items-center gap-2 text-green-600 text-sm font-medium mb-4">
+                <div className="size-2 rounded-full bg-green-500" />
                 Connector-Schicht
               </div>
               <h2 className="text-3xl font-bold mb-4">Flexibel wählbare Backends</h2>
@@ -256,23 +274,24 @@ function App() {
                 Ende-zu-Ende-verschlüsselten Systemen.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-4">
               {[
-                { name: 'REST', desc: 'Klassischer Server', icon: '🌐' },
-                { name: 'GraphQL', desc: 'Flexible Queries', icon: '📊' },
-                { name: 'Local-first', desc: 'Offline-fähig', icon: '💾' },
-                { name: 'P2P', desc: 'Dezentral', icon: '🔗' },
-                { name: 'E2EE', desc: 'Verschlüsselt', icon: '🔒' },
-                { name: 'DIDs', desc: 'Selbstbestimmte Identität', icon: '🪪' },
+                { name: 'REST', desc: 'Klassischer Server', icon: Globe, color: 'text-blue-600' },
+                { name: 'GraphQL', desc: 'Flexible Queries', icon: Waypoints, color: 'text-purple-600' },
+                { name: 'Local-first', desc: 'Offline-fähig', icon: HardDrive, color: 'text-green-600' },
+                { name: 'P2P', desc: 'Dezentral', icon: WotIcon, color: 'text-orange-600' },
+                { name: 'E2EE', desc: 'Verschlüsselt', icon: Lock, color: 'text-red-600' },
+                { name: 'DIDs', desc: 'Dezentrale IDs', icon: Fingerprint, color: 'text-teal-600' },
               ].map((backend) => (
-                <div
-                  key={backend.name}
-                  className="p-4 bg-background border border-orange-200 rounded-lg hover:border-orange-400 transition-colors"
-                >
-                  <div className="text-2xl mb-2">{backend.icon}</div>
-                  <div className="font-medium text-sm">{backend.name}</div>
-                  <div className="text-xs text-muted-foreground">{backend.desc}</div>
-                </div>
+                <Card key={backend.name} className="py-0">
+                  <CardContent className="px-3 py-2.5 flex items-center gap-2">
+                    <backend.icon className={`size-5 shrink-0 ${backend.color}`} />
+                    <div>
+                      <div className="font-medium text-sm">{backend.name}</div>
+                      <div className="text-xs text-muted-foreground">{backend.desc}</div>
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           </div>
@@ -324,10 +343,11 @@ function ModuleCard({
   icon: typeof Map
   title: string
   description: string
-  color?: 'primary' | 'blue' | 'orange' | 'purple'
+  color?: 'primary' | 'blue' | 'orange' | 'purple' | 'green'
 }) {
   const colorClasses = {
     primary: 'bg-primary/10 text-primary',
+    green: 'bg-green-100 text-green-600',
     blue: 'bg-blue-100 text-blue-600',
     orange: 'bg-orange-100 text-orange-600',
     purple: 'bg-purple-100 text-purple-600',
@@ -335,11 +355,11 @@ function ModuleCard({
 
   return (
     <Card className="text-center">
-      <CardContent className="pt-6">
-        <div className={`inline-flex items-center justify-center size-12 rounded-lg mb-4 ${colorClasses[color]}`}>
-          <Icon className="size-6" />
+      <CardContent className="pt-4">
+        <div className={`inline-flex items-center justify-center size-10 rounded-lg mb-3 ${colorClasses[color]}`}>
+          <Icon className="size-5" />
         </div>
-        <h3 className="font-semibold mb-2">{title}</h3>
+        <h3 className="font-semibold mb-1">{title}</h3>
         <p className="text-sm text-muted-foreground">{description}</p>
       </CardContent>
     </Card>
