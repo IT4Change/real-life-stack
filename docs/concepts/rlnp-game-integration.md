@@ -129,13 +129,16 @@ type Relation = {
 | Ort | `type: "place"` |
 | Veranstaltung | `type: "event"` |
 | Ressource | `type: "resource"` |
-| Angebot | `type: "offer"` oder Resource mit Angebotsstatus |
-| Bedürfnis | `type: "need"` |
-| Projekt | `type: "project"` |
-| Commons | `type: "commons"` |
+| Projekt | `type: "project"` oder eigener Space; bei Bedarf beides |
 | Dokumentation | `type: "documentation"` oder `type: "post"` mit Relation |
 | Quest | `type: "quest"` |
 | QuestRun | `type: "quest-run"` |
+
+Angebote und Bedürfnisse sind in v0 keine eigenen Item-Typen. Sie erscheinen zunächst als Profilfelder oder Tags, z.B. `data.offers[]` und `data.needs[]`. Eigene Offer- oder Need-Items werden erst sinnvoll, wenn sie einen eigenen Lifecycle brauchen: Verfügbarkeit, Ablaufdatum, Ort, Reservierung, Matching, Status oder mehrere Beteiligte.
+
+Commons ist in v0 ebenfalls kein eigener Item-Typ. Commons beschreibt eher einen sozialen Zustand oder Verantwortungsrahmen einer Ressource, eines Ortes oder eines Projekts. Eine Ressource kann z.B. als gemeinsam gepflegt markiert werden; ein Ort kann Commons-Charakter haben; ein Projekt kann Commons aufbauen oder verwalten.
+
+Ein Projekt kann als Item, als Space oder als Kombination aus beidem erscheinen. Als Item beschreibt es das Vorhaben und kann auf Map, Feed, Questlog oder Campaign View sichtbar sein. Als Space bildet es den Arbeits-, Mitgliedschafts- und Sichtbarkeitskontext. Ein kleines Projekt kann also ein `project`-Item in einem bestehenden Space sein; ein größeres Projekt kann zusätzlich einen eigenen Space bekommen.
 
 Die genaue Typisierung darf sich entwickeln. Wichtig ist: Das RLS-Item bleibt generisch; die Semantik wird über `type`, `schema`, `data` und `relations` projiziert.
 
@@ -230,28 +233,32 @@ Das ist kein neuer verbindlicher API-Vorschlag, sondern eine semantische Zielfor
 
 Backend-Agnostik bedeutet nicht, dass jeder Connector alles können muss.
 
-Stattdessen sollte die UI Capabilities erkennen.
+RLS besitzt dafür bereits Capability-Interfaces und Type Guards. Für RLNP/Game geht es nicht darum, ein neues Capability-System einzuführen, sondern die bestehenden Capabilities semantisch auf Quests, Evidence, Recognitions und World-State-Views zu mappen.
 
-Mögliche Capabilities:
+Bestehende RLS-Capabilities:
 
-| Capability | Bedeutung |
+| RLS-Capability | Bedeutung für RLNP/Game |
 |---|---|
-| `items.read` | Items lesen und beobachten |
-| `items.write` | Items erstellen, aktualisieren, löschen |
-| `relations.read` | Related Items abfragen |
-| `relations.write` | Relations erstellen oder ändern |
-| `groups` | Spaces/Gruppen lesen und verwalten |
-| `profile` | Profile lesen und schreiben |
-| `claims.read` | Claims/Anerkennungen lesen |
-| `claims.write` | Claims/Anerkennungen ausstellen |
-| `claims.signed` | kryptografisch signierte Claims |
-| `questRuns` | QuestRuns erstellen und aktualisieren |
-| `evidence` | Evidence speichern oder verlinken |
-| `worldState.compute` | World-State-Metriken backendseitig berechnen |
+| `DataInterface` | Items lesen und beobachten |
+| `ItemWriter` / `isWritable()` | Items erstellen, aktualisieren und löschen |
+| `RelationCapable` / `hasRelations()` | Related Items und Kontextbezüge abfragen |
+| `GroupManager` / `hasGroups()` | Spaces/Gruppen lesen und verwalten |
+| `ProfileCapable` / `hasProfile()` | Profile lesen, schreiben und synchronisieren |
+| `SignedClaimCapable` / `hasSignedClaims()` | Anerkennungen, Verifikationen und Attestations lesen oder ausstellen |
+| `ContactManager` / `hasContacts()` | Kontakte und Beziehungsstatus abbilden |
+| `MessagingCapable` / `hasMessaging()` | Relay-/Outbox-Status anzeigen |
+| `EventListenerCapable` / `hasEventListener()` | eingehende Verifikationen, Claims oder Space-Einladungen anzeigen |
 
-Ein Supabase-Connector könnte z.B. `items.write`, `relations.read`, `groups`, `profile`, `claims.read` und `claims.write` können, aber nicht `claims.signed`.
+Offen ist nicht die Grundmechanik, sondern die RLNP/Game-Semantik darüber:
 
-Ein WoT-Connector könnte `claims.signed` können, aber World-State-Metriken lokal oder clientseitig berechnen.
+- QuestRuns können als normale Items abgebildet werden, brauchen aber noch etablierte Views und Mutationsmuster.
+- Evidence kann als Feld im QuestRun, als Relation zu bestehenden Items oder später als eigenes Item erscheinen.
+- World-State-Metriken können clientseitig aus Items, Relations und Claims berechnet oder connectorseitig geliefert werden.
+- Trust-Stufen wie `demo`, `local`, `server-confirmed` und `signed-attested` sollten in Views sichtbar werden, ohne das bestehende Interface unnötig an WoT zu binden.
+
+Ein Supabase-Connector könnte z.B. dieselben RLS-Capabilities für Items, Relations, Groups, Profile und Claims anbieten, aber nur `server-confirmed` statt `signed-attested` liefern.
+
+Ein WoT-Connector kann signierte Claims und Attestations liefern, aber World-State-Metriken lokal oder clientseitig berechnen.
 
 ## Supabase-/GraphQL-Beispiel
 
