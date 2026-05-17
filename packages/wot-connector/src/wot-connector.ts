@@ -35,17 +35,18 @@ import {
   OfflineFirstDiscoveryAdapter,
   InMemoryPublishStateStore,
   InMemoryGraphCacheStore,
-  VerificationHelper,
+  VerificationWorkflow,
+  AttestationWorkflow,
+  WebCryptoProtocolCryptoAdapter,
   CompactStorageManager,
   TracedCompactStorageManager,
   TracedOutboxMessagingAdapter,
   getMetrics,
   getDefaultDisplayName,
-  encodeBase64Url,
-  decodeBase64Url,
   signEnvelope,
   verifyEnvelope,
 } from "@real-life/wot-core"
+import { x25519MultibaseToPublicKeyBytes } from "@real-life/wot-core/protocol"
 import type {
   SpaceInfo,
   SpaceHandle,
@@ -93,6 +94,8 @@ export class WotConnector extends BaseConnector {
   private discovery: OfflineFirstDiscoveryAdapter
   private publishStateStore: InMemoryPublishStateStore
   private graphCacheStore: InMemoryGraphCacheStore
+  private verificationWorkflow = new VerificationWorkflow({ crypto: new WebCryptoProtocolCryptoAdapter() })
+  private attestationWorkflow = new AttestationWorkflow({ crypto: new WebCryptoProtocolCryptoAdapter() })
 
   // Adapters (initialized after auth)
   private wsAdapter: WebSocketMessagingAdapter | null = null
@@ -593,17 +596,23 @@ export class WotConnector extends BaseConnector {
     }
   }
 
+  private getEncryptionPublicKeyMultibase(result: {
+    didDocument?: { keyAgreement?: Array<{ publicKeyMultibase?: string }> } | null
+  }): string | undefined {
+    return result.didDocument?.keyAgreement?.find((entry) => entry.publicKeyMultibase)?.publicKeyMultibase
+  }
+
   override async inviteMember(groupId: string, userId: string): Promise<void> {
     if (!this.replication) throw new Error("Not authenticated")
 
     // Resolve member's encryption public key via discovery
     const result = await this.discovery.resolveProfile(userId)
-    if (!result.profile?.encryptionPublicKey) {
+    const encryptionPublicKey = this.getEncryptionPublicKeyMultibase(result)
+    if (!encryptionPublicKey) {
       throw new Error(`Cannot invite ${userId}: encryption key not found`)
     }
 
-    // Decode the base64url encryption key
-    const keyBytes = decodeBase64Url(result.profile.encryptionPublicKey)
+    const keyBytes = x25519MultibaseToPublicKeyBytes(encryptionPublicKey)
     await this.replication.addMember(groupId, userId, keyBytes)
     void this.notifyMemberObservers(groupId)
   }
@@ -1052,13 +1061,11 @@ export class WotConnector extends BaseConnector {
   private async publishProfile(): Promise<void> {
     const did = this.identity.getDid()
     const doc = getYjsPersonalDoc()
-    const encPubKeyBytes = await this.identity.getEncryptionPublicKeyBytes()
     const profile: PublicProfile = {
       did,
       name: doc.profile?.name ?? getDefaultDisplayName(did),
       ...(doc.profile?.bio ? { bio: doc.profile.bio } : {}),
       ...(doc.profile?.avatar ? { avatar: doc.profile.avatar } : {}),
-      encryptionPublicKey: encodeBase64Url(encPubKeyBytes),
       updatedAt: new Date().toISOString(),
     }
     await this.discovery.publishProfile(profile, this.identity)
@@ -1122,13 +1129,11 @@ export class WotConnector extends BaseConnector {
     const did = this.identity.getDid()
     await this.discovery.syncPending(did, this.identity, async () => {
       const doc = getYjsPersonalDoc()
-      const encPubKeyBytes = await this.identity.getEncryptionPublicKeyBytes()
-      const profile = {
+      const profile: PublicProfile = {
         did,
         name: doc.profile?.name ?? getDefaultDisplayName(did),
         ...(doc.profile?.bio ? { bio: doc.profile.bio } : {}),
         ...(doc.profile?.avatar ? { avatar: doc.profile.avatar } : {}),
-        encryptionPublicKey: encodeBase64Url(encPubKeyBytes),
         updatedAt: new Date().toISOString(),
       }
       return { profile }
@@ -1314,7 +1319,7 @@ export class WotConnector extends BaseConnector {
         resolvedName = resolvedName ?? result.profile.name ?? undefined
         avatar = result.profile.avatar ?? undefined
         bio = result.profile.bio ?? undefined
-        publicKey = result.profile.encryptionPublicKey ?? undefined
+        publicKey = this.getEncryptionPublicKeyMultibase(result)
       }
     } catch {
       // Discovery unavailable — add with what we have
@@ -1388,13 +1393,15 @@ export class WotConnector extends BaseConnector {
   // ==================== Signed Claims ====================
 
   override async createClaim(toId: string, claim: string, tags?: string[]): Promise<SignedClaim> {
-    const did = this.identity.getDid()
-    const id = `urn:uuid:claim-${crypto.randomUUID()}`
-    const now = new Date().toISOString()
-
-    // Sign the claim
-    const claimData = JSON.stringify({ from: did, to: toId, claim, timestamp: now })
-    const signature = await this.identity.sign(claimData)
+    const attestation = await this.attestationWorkflow.createAttestation({
+      issuer: this.identity,
+      subjectDid: toId,
+      claim,
+      tags,
+    })
+    const did = attestation.from
+    const id = attestation.id
+    const now = attestation.createdAt
 
     // Store as attestation in PersonalDoc
     changeYjsPersonalDoc((doc: any) => {
@@ -1408,7 +1415,7 @@ export class WotConnector extends BaseConnector {
         tagsJson: tags ? JSON.stringify(tags) : null,
         context: null,
         createdAt: now,
-        proofJson: JSON.stringify({ type: "Ed25519Signature2020", proofValue: signature }),
+        vcJws: attestation.vcJws,
       } as any
       if (!doc.attestationMetadata) doc.attestationMetadata = {} as any
       doc.attestationMetadata[id] = {
@@ -1421,7 +1428,6 @@ export class WotConnector extends BaseConnector {
 
     // Send attestation via relay
     if (this.outboxAdapter) {
-      const proof = { type: "Ed25519Signature2020", proofValue: signature }
       const envelope: MessageEnvelope = {
         v: 1,
         id,
@@ -1430,8 +1436,8 @@ export class WotConnector extends BaseConnector {
         toDid: toId,
         createdAt: now,
         encoding: "json",
-        payload: JSON.stringify({ id, from: did, to: toId, claim, tags, createdAt: now, proof }),
-        signature,
+        payload: JSON.stringify(attestation),
+        signature: attestation.vcJws,
       }
       this.outboxAdapter.send(envelope).then((receipt) => {
         const status = receipt.reason === "queued-in-outbox" ? "queued" : "delivered"
@@ -1456,10 +1462,8 @@ export class WotConnector extends BaseConnector {
 
   override async createChallenge(): Promise<{ code: string; nonce: string }> {
     const displayName = getYjsPersonalDoc()?.profile?.name ?? getDefaultDisplayName(this.identity.getDid())
-    const code = await VerificationHelper.createChallenge(this.identity, displayName)
-    // Parse the nonce from the challenge
-    const parsed = JSON.parse(atob(code))
-    const nonce = parsed.nonce
+    const { code, challenge } = await this.verificationWorkflow.createChallenge(this.identity, displayName)
+    const nonce = challenge.nonce
     this.pendingChallenge = { code, nonce }
     return { code, nonce }
   }
@@ -1498,7 +1502,7 @@ export class WotConnector extends BaseConnector {
     const nonce = parsed.nonce
 
     // Create our verification of the peer (from=us, to=peer)
-    const verification = await VerificationHelper.createVerificationFor(this.identity, peerDid, nonce)
+    const verification = await this.verificationWorkflow.createVerificationFor(this.identity, peerDid, nonce)
 
     // Add contact if not exists, activate if pending
     const now = new Date().toISOString()
@@ -1512,7 +1516,7 @@ export class WotConnector extends BaseConnector {
         resolvedName = resolvedName ?? result.profile.name ?? undefined
         avatar = result.profile.avatar ?? undefined
         bio = result.profile.bio ?? undefined
-        publicKey = publicKey ?? result.profile.encryptionPublicKey ?? undefined
+        publicKey = publicKey ?? this.getEncryptionPublicKeyMultibase(result)
       }
     } catch { /* Discovery unavailable */ }
 
@@ -1573,7 +1577,7 @@ export class WotConnector extends BaseConnector {
   override async counterVerify(targetId: string): Promise<void> {
     const did = this.identity.getDid()
     const nonce = crypto.randomUUID()
-    const verification = await VerificationHelper.createVerificationFor(this.identity, targetId, nonce)
+    const verification = await this.verificationWorkflow.createVerificationFor(this.identity, targetId, nonce)
     const now = new Date().toISOString()
 
     // Resolve peer profile + add/activate contact
@@ -1587,7 +1591,7 @@ export class WotConnector extends BaseConnector {
         resolvedName = result.profile.name ?? undefined
         avatar = result.profile.avatar ?? undefined
         bio = result.profile.bio ?? undefined
-        publicKey = result.profile.encryptionPublicKey ?? undefined
+        publicKey = this.getEncryptionPublicKeyMultibase(result)
       }
     } catch { /* Discovery unavailable */ }
 
@@ -1687,10 +1691,18 @@ export class WotConnector extends BaseConnector {
     const att = doc.attestations?.[id]
     if (!att) return
 
-    const proof = att.proofJson ? JSON.parse(att.proofJson) : null
-    if (!proof?.proofValue) return
-
+    if (!att.vcJws) return
     const tags = att.tagsJson ? JSON.parse(att.tagsJson) : undefined
+    const attestation = {
+      id: att.attestationId ?? att.id,
+      from: att.fromDid,
+      to: att.toDid,
+      claim: att.claim,
+      ...(tags ? { tags } : {}),
+      ...(att.context ? { context: att.context } : {}),
+      createdAt: att.createdAt,
+      vcJws: att.vcJws,
+    }
     const envelope: MessageEnvelope = {
       v: 1,
       id: att.id,
@@ -1699,11 +1711,8 @@ export class WotConnector extends BaseConnector {
       toDid: att.toDid,
       createdAt: att.createdAt,
       encoding: "json",
-      payload: JSON.stringify({
-        id: att.id, from: att.fromDid, to: att.toDid,
-        claim: att.claim, tags, createdAt: att.createdAt, proof,
-      }),
-      signature: proof.proofValue,
+      payload: JSON.stringify(attestation),
+      signature: att.vcJws,
     }
 
     try {
@@ -1747,7 +1756,7 @@ export class WotConnector extends BaseConnector {
         const verification = JSON.parse(envelope.payload)
         if (!verification.id || !verification.from || !verification.to || !verification.proof) return
 
-        const isValid = await VerificationHelper.verifySignature(verification)
+        const isValid = await this.verificationWorkflow.verifySignature(verification)
         if (!isValid) return
 
         // Save to PersonalDoc
@@ -1821,27 +1830,8 @@ export class WotConnector extends BaseConnector {
     if (envelope.type === "attestation" && envelope.toDid === did) {
       try {
         const attestation = JSON.parse(envelope.payload)
-        if (!attestation.id || !attestation.from || !attestation.to || !attestation.proof) return
-
-        // Verify signature using same pattern as VerificationHelper.verifySignature
-        try {
-          const dataToVerify = JSON.stringify({
-            from: attestation.from,
-            to: attestation.to,
-            claim: attestation.claim,
-            tags: attestation.tags,
-            createdAt: attestation.createdAt,
-          })
-          const publicKeyMultibase = VerificationHelper.publicKeyFromDid(attestation.from)
-          const publicKeyBytes = VerificationHelper.multibaseToBytes(publicKeyMultibase)
-          const publicKey = await crypto.subtle.importKey('raw', publicKeyBytes, 'Ed25519', false, ['verify'])
-          const signatureBytes = VerificationHelper.base64UrlToBytes(attestation.proof.proofValue)
-          const encoder = new TextEncoder()
-          const isValid = await crypto.subtle.verify('Ed25519', publicKey, signatureBytes, encoder.encode(dataToVerify))
-          if (!isValid) return
-        } catch {
-          return // Invalid signature or crypto error
-        }
+        if (!attestation.id || !attestation.from || !attestation.to || !attestation.vcJws) return
+        if (!(await this.attestationWorkflow.verifyAttestation(attestation))) return
 
         // Store in PersonalDoc
         changeYjsPersonalDoc((doc: any) => {
@@ -1853,9 +1843,9 @@ export class WotConnector extends BaseConnector {
             toDid: attestation.to,
             claim: attestation.claim,
             tagsJson: attestation.tags ? JSON.stringify(attestation.tags) : null,
-            context: null,
+            context: attestation.context ?? null,
             createdAt: attestation.createdAt,
-            proofJson: JSON.stringify(attestation.proof),
+            vcJws: attestation.vcJws,
           } as any
           if (!doc.attestationMetadata) doc.attestationMetadata = {} as any
           doc.attestationMetadata[attestation.id] = {
@@ -2087,4 +2077,3 @@ export class WotConnector extends BaseConnector {
 function safeLocalStorage(key: string): string | null {
   try { return localStorage.getItem(key) } catch { return null }
 }
-
