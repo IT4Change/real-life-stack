@@ -6,6 +6,8 @@
 
 Real Life Stack ist ein modularer Frontend-Baukasten für lokale Vernetzung. Communities können damit eigene Apps bereitstellen, ohne von zentralen Plattformen abhängig zu sein.
 
+Die aktuelle Abgrenzung zu Real Life Network Protocol und Real Life Game ist im [RLNP- und Game-Integrationskonzept](rlnp-game-integration.md) beschrieben.
+
 ---
 
 ## Architektur

@@ -70,6 +70,10 @@ Die Hooks sind eine dünne Schicht zwischen UI und Connector — sie übersetzen
 
 Jeder Connector implementiert das DataInterface und nur die Capabilities, die seine Datenquelle unterstützt. Der **MockConnector** (in-memory) dient zur Entwicklung, der **LocalConnector** für lokale IndexedDB-Persistenz, ein **GraphQL-Connector** für klassische Server, der **WoT-Connector** (Yjs/CRDT + E2EE) für dezentrale, verschlüsselte Zusammenarbeit.
 
+### RLNP und Real Life Game
+
+Real Life Stack implementiert soziale und spielerische Semantik als backend-agnostische UI- und Connector-Schicht. Die soziale Bedeutung kommt aus dem [Real Life Network Protocol](https://github.com/real-life-org/real-life-network-protocol), die optionale Spielsemantik aus dem [Real Life Game](https://github.com/real-life-org/real-life-game). Details: [docs/concepts/rlnp-game-integration.md](docs/concepts/rlnp-game-integration.md).
+
 ---
 
 ## Module

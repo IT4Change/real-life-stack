@@ -6,3 +6,5 @@ dist
 .turbo
 /prototype/
 apps/reference/ota-bundles/
+apps/reference/test-results/
+packages/toolkit/storybook-static/
