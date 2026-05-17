@@ -922,9 +922,23 @@ export class WotConnector extends BaseConnector {
     // 9. Storage adapter for reactive contacts/claims
     this.storage = new YjsStorageAdapter(did)
 
-    // PersonalDoc changes -> restore spaces
+    // PersonalDoc changes -> discover new spaces (not full state broadcast,
+    // which would mutate PersonalDoc and create an infinite loop).
+    let restoring = false
+    let pending = false
     this.personalDocUnsub = onYjsPersonalDocChange(() => {
-      this.replication?.requestSync?.("__all__").catch(() => {})
+      if (restoring) { pending = true; return }
+      restoring = true
+      const run = () => {
+        const p = this.replication?.restoreSpacesFromMetadata?.()
+        if (!p) { restoring = false; pending = false; return }
+        p.catch(() => {})
+          .finally(() => {
+            if (pending) { pending = false; run() }
+            else { restoring = false }
+          })
+      }
+      run()
     })
 
     // Reactive contacts via StorageAdapter
