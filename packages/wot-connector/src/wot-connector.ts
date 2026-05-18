@@ -1928,7 +1928,6 @@ export class WotConnector extends BaseConnector {
     )
     const outgoing = verifications.some((c) => c.issuerId === did && c.subjectId === peerId)
     const incoming = verifications.some((c) => c.issuerId === peerId && c.subjectId === did)
-    console.log("[WotConnector.checkMutual]", { peerId: peerId.slice(-8), outgoing, incoming, totalConfirmations: verifications.length })
 
     if (outgoing && incoming) {
       const contact = this.contactsObs.current.find((c) => c.id === peerId)
