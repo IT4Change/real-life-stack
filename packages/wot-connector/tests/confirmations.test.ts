@@ -261,7 +261,7 @@ describe("projectConfirmations — attestation mapping", () => {
     expect(view.tags).toBeUndefined()
   })
 
-  it("uses the shared safe tag parser for malformed legacy claim tags", () => {
+  it("uses the safe tag parser for malformed confirmation tags", () => {
     expect(parseConfirmationTags("{not valid json")).toBeUndefined()
     expect(parseConfirmationTags(JSON.stringify(["skill", "garden"]))).toEqual(["skill", "garden"])
   })
@@ -435,7 +435,7 @@ describe("connector-flow regression — malformed tags must not block the projec
     expect(broken!.isAccepted).toBe(true)
   })
 
-  it("parseConfirmationTags is safe on the legacy path (returns undefined for malformed JSON)", () => {
+  it("parseConfirmationTags is safe for the confirmation projection (returns undefined for malformed JSON)", () => {
     expect(parseConfirmationTags("{not valid json")).toBeUndefined()
     expect(parseConfirmationTags(null)).toBeUndefined()
     expect(parseConfirmationTags(undefined)).toBeUndefined()
