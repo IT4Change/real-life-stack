@@ -15,6 +15,7 @@ import type {
   SignedClaim,
   ClaimDeliveryStatus,
   VerificationDirection,
+  ConfirmationView,
   PublicProfileData,
   IncomingEvent,
 } from "./index.js"
@@ -381,6 +382,16 @@ export abstract class BaseConnector implements FullConnector {
 
   async retryClaim(_id: string): Promise<void> {
     throw new Error("retryClaim not supported")
+  }
+
+  // --- Confirmations (Default: empty; hasConfirmations() stays false until overridden) ---
+
+  async getConfirmations(): Promise<ConfirmationView[]> {
+    return []
+  }
+
+  observeConfirmations(): Observable<ConfirmationView[]> {
+    return createObservable<ConfirmationView[]>([])
   }
 
   // --- Profile (Default: not supported) ---
