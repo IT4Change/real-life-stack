@@ -18,7 +18,9 @@ The DataInterface and connector boundaries are the most important contracts in t
 
 ## Source Of Truth
 
-- Architecture: [docs/spec/architektur2.md](./docs/spec/architektur2.md)
+- Spec index: [docs/spec/README.md](./docs/spec/README.md)
+- Architecture: [docs/spec/00-architecture.md](./docs/spec/00-architecture.md)
+- Historical architecture reference: [docs/spec/architektur2.md](./docs/spec/architektur2.md)
 - Reactivity and relations: [docs/spec/reaktivitaet.md](./docs/spec/reaktivitaet.md)
 - Module docs: [docs/modules/](./docs/modules/)
 - Concept docs: [docs/concepts/](./docs/concepts/)

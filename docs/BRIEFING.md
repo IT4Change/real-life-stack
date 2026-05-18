@@ -37,7 +37,9 @@ real-life-stack/
 │   ├── landing/             # Landing Page (real-life-stack.de)
 │   └── prototype/           # Experimentelle UI-Konzepte
 └── docs/
-    ├── spec/architektur2.md # Kanonische Architektur-Spezifikation
+    ├── spec/README.md       # Normativer Spec-Einstieg
+    ├── spec/00-architecture.md # Architekturanker
+    ├── spec/architektur2.md # Historische Architektur-Referenz
     └── concepts/poc-plan.md # Implementierungsplan
 ```
 
@@ -442,7 +444,9 @@ Die UI zeigt nur die Module an, die in `data.modules` der aktuellen Gruppe stehe
 
 | Datei | Beschreibung |
 |-------|-------------|
-| `docs/spec/architektur2.md` | Kanonische Architektur-Spezifikation (alle Entscheidungen) |
+| `docs/spec/README.md` | Normativer Spec-Einstieg |
+| `docs/spec/00-architecture.md` | Architekturanker |
+| `docs/spec/architektur2.md` | Historische Architektur-Referenz |
 | `docs/concepts/poc-plan.md` | POC-Plan mit Fortschritt |
 | `packages/data-interface/src/index.ts` | Alle TypeScript-Typen |
 | `packages/mock-connector/src/demo-data.ts` | Demo-Daten |

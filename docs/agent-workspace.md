@@ -96,16 +96,18 @@ Jeder Connector haengt NUR von `data-interface` + eigenen Libraries ab. Connecto
 - Jede App uebergibt ihren Connector via `<ConnectorProvider connector={...}>`.
 - Hooks sind duenn: Observable → React State, Mutations → Promise. Kein Caching oder Business-Logik in Hooks.
 
-### Feature-Erkennung (Capabilities als Items)
+### Feature-Erkennung
 
-Die UI erfaehrt ueber ein **Feature-Item** (`type: "feature"`), welche Funktionen der Connector unterstuetzt. Feature-Items sind normale Items — kein separates Interface noetig.
+RLS erkennt technische Connector-Faehigkeiten primaer ueber Capability-Interfaces und Type Guards aus `packages/data-interface`.
+
+Feature-Items (`type: "feature"`) koennen weiterhin als Demo-, Konfigurations- oder UI-Sicht auf verfuegbare Funktionen auftauchen. Sie ersetzen aber nicht den TypeScript-Vertrag.
 
 - Connector liefert ein Item mit `id: "capabilities"`, `type: "feature"`, `createdBy: "system"`
 - `data` enthaelt einen verschachtelten Objektbaum: truthy = unterstuetzt, falsy = nicht unterstuetzt
 - Hooks: `useFeatures()` gibt den ganzen Baum, `useFeature("kanban.dragDrop")` prueft einen Pfad
 - UI blendet Features dynamisch ein/aus basierend auf dem Feature-Baum
 - **Feature-Items gehoeren in die Demo-Daten** (`data/items.json`), nicht hardcoded in Connectors
-- Siehe `docs/spec/architektur2.md` Abschnitt "Feature-Erkennung" fuer Details
+- Normativer Einstieg: `docs/spec/README.md` und `docs/spec/00-architecture.md`
 
 ### Relations: Scope-Prefix-System
 
@@ -212,7 +214,7 @@ if (hasGroups(connector)) {
 
 ## Architektur-Spec
 
-Die vollstaendige Architektur ist dokumentiert in `docs/spec/architektur2.md`. Dort stehen alle Entscheidungen mit Begruendung. Bei Unklarheiten: zuerst die Spec lesen.
+Der normative Einstieg liegt in `docs/spec/README.md`. Der Architekturanker ist `docs/spec/00-architecture.md`. `docs/spec/architektur2.md` bleibt als historische Referenz erhalten und wird schrittweise in kleinere Spec-Slices ueberfuehrt.
 
 ## Reaktivitaet & Relations (WICHTIG — vor jedem reaktiven Feature lesen!)
 
@@ -228,7 +230,9 @@ Ausfuehrliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Rege
 
 ## Wichtige Dateien
 
-- `docs/spec/architektur2.md` — Architektur-Spezifikation (kanonisch)
+- `docs/spec/README.md` — Spec-Einstieg und Dokumentklassen
+- `docs/spec/00-architecture.md` — Architekturanker
+- `docs/spec/architektur2.md` — historische Architektur-Referenz
 - `docs/spec/reaktivitaet.md` — Reaktivitaet, Relations, Anti-Patterns (PFLICHTLEKTUERE vor reaktiven Features)
 - `packages/data-interface/src/index.ts` — Alle Typdefinitionen + Capability-Interfaces
 - `packages/data-interface/src/base-connector.ts` — BaseConnector + createObservable + matchesFilter + findRelatedItems

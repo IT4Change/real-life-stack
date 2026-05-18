@@ -210,7 +210,7 @@ const obs = connector.observe({ type: "task" })
 obs.subscribe((tasks) => { /* Live-Updates */ })
 ```
 
-Architektur-Details: [docs/spec/architektur2.md](docs/spec/architektur2.md)
+Spec-Einstieg: [docs/spec/README.md](docs/spec/README.md). Architektur-Details: [docs/spec/00-architecture.md](docs/spec/00-architecture.md)
 
 ## @real-life-stack/toolkit
 

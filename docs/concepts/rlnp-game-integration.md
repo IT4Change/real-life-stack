@@ -64,8 +64,8 @@ Diese Attestation kommt aus WoT.
 Es muss stattdessen fragen:
 
 ```text
-Welche Claims, Completion-Informationen oder Attestations stellt dieser Connector bereit?
-Welche Trust-Stufe hat diese Anerkennung?
+Welche Confirmations, Completion-Informationen oder Attestations stellt dieser Connector bereit?
+Welche Trust-Stufe hat diese Confirmation?
 ```
 
 ### 3. Gleiche Oberfläche, unterschiedliche Trust-Stufen
@@ -91,7 +91,7 @@ RLS-Module sind Views und Interaktionsflächen.
 | Calendar | Events, Quest-Zeiträume, Adventure-Phasen, Campaign-Zeiträume |
 | Feed | sichtbare Aktivität, Dokumentation, neue Items, Attestations |
 | Marketplace | Angebote, Bedürfnisse, Ressourcen und mögliche Matches |
-| Profile | Person, Profilfelder, Kontakte, Claims, Badges, Beiträge |
+| Profile | Person, Profilfelder, Kontakte, Confirmations, Badges, Beiträge |
 | Questlog | Quests, QuestRuns, Evidence, Completion-Status |
 | Campaign View | Ziel, World State, Adventures, sichtbare Ergebnisse |
 | Entwicklungskarte | aus attestierten Handlungen abgeleitete Entwicklungsfelder |
@@ -188,18 +188,18 @@ Beispiele:
 
 RLS braucht dafür keine Quest-, Adventure- oder Campaign-Spezialdatenbank. Es braucht gute Relation-Queries, stabile Relation-Konventionen und UI-Komponenten, die diese Relationen lesen können.
 
-## Claims, Attestations und Trust
+## Claims, Confirmations, Attestations und Trust
 
 RLS hat bereits `SignedClaimCapable`. Das passt grundsätzlich zu WoT-Verifikationen und Attestations, ist aber für backend-agnostische RLNP/Game-Flows noch zu eng benannt.
 
 Für das Integrationskonzept ist wichtig:
 
 ```text
-Game- und Quest-Views sollten gegen "Anerkennungen/Claims" arbeiten,
+Game- und Quest-Views sollten gegen "Confirmations" arbeiten,
 nicht direkt gegen eine bestimmte WoT-Speicherform.
 ```
 
-Ein Connector kann Claims unterschiedlich bereitstellen:
+Ein Connector kann Confirmations unterschiedlich bereitstellen:
 
 - als signierte WoT-Attestation,
 - als serverseitig bestätigte Row,
@@ -209,31 +209,34 @@ Ein Connector kann Claims unterschiedlich bereitstellen:
 Die UI braucht dafür mindestens:
 
 ```ts
-type RecognitionTrustLevel =
+type ConfirmationTrustLevel =
   | "demo"
   | "local"
   | "server-confirmed"
   | "signed-attested"
 
-type RecognitionView = {
+type ConfirmationView = {
   id: string
   subjectId: string
   issuerId?: string
   claim: string
+  schema?: string
   tags?: string[]
+  relations?: Relation[]
   createdAt: string
-  trustLevel: RecognitionTrustLevel
+  trustLevel: ConfirmationTrustLevel
+  source?: string
   isAccepted?: boolean
 }
 ```
 
-Das ist kein neuer verbindlicher API-Vorschlag, sondern eine semantische Zielform: RLS-Views brauchen eine normalisierte Sicht auf Anerkennungen, egal aus welchem Backend sie kommen.
+Das ist kein neuer verbindlicher API-Vorschlag in diesem Konzept, sondern verweist auf die Spezifikationsrichtung in [../spec/04-confirmations-and-trust.md](../spec/04-confirmations-and-trust.md): RLS-Views brauchen eine normalisierte Sicht auf Confirmations, egal aus welchem Backend sie kommen. RLS sollte dabei keine geschlossene Liste von Attestation-Faellen definieren. Die fachliche Bedeutung kommt ueber `claim`, `schema`, `tags` und `relations`; `trustLevel` beschreibt die Beweiskraft.
 
 ## Connector-Capabilities
 
 Backend-Agnostik bedeutet nicht, dass jeder Connector alles können muss.
 
-RLS besitzt dafür bereits Capability-Interfaces und Type Guards. Für RLNP/Game geht es nicht darum, ein neues Capability-System einzuführen, sondern die bestehenden Capabilities semantisch auf Quests, Evidence, Recognitions und World-State-Views zu mappen.
+RLS besitzt dafür bereits Capability-Interfaces und Type Guards. Für RLNP/Game geht es nicht darum, ein neues Capability-System einzuführen, sondern die bestehenden Capabilities semantisch auf Quests, Evidence, Confirmations und World-State-Views zu mappen.
 
 Bestehende RLS-Capabilities:
 
@@ -244,21 +247,21 @@ Bestehende RLS-Capabilities:
 | `RelationCapable` / `hasRelations()` | Related Items und Kontextbezüge abfragen |
 | `GroupManager` / `hasGroups()` | Spaces/Gruppen lesen und verwalten |
 | `ProfileCapable` / `hasProfile()` | Profile lesen, schreiben und synchronisieren |
-| `SignedClaimCapable` / `hasSignedClaims()` | Anerkennungen, Verifikationen und Attestations lesen oder ausstellen |
+| `SignedClaimCapable` / `hasSignedClaims()` | bestehender enger Claim-/Attestation-Vertrag; soll durch Confirmation-Semantik ersetzt werden |
 | `ContactManager` / `hasContacts()` | Kontakte und Beziehungsstatus abbilden |
-| `MessagingCapable` / `hasMessaging()` | Relay-/Outbox-Status anzeigen |
-| `EventListenerCapable` / `hasEventListener()` | eingehende Verifikationen, Claims oder Space-Einladungen anzeigen |
+| `MessagingCapable` / `hasMessaging()` | Relay-Status und bestehenden Messaging-Outbox-Pending-Count anzeigen |
+| `EventListenerCapable` / `hasEventListener()` | eingehende Verifikationen, Confirmations oder Space-Einladungen anzeigen |
 
 Offen ist nicht die Grundmechanik, sondern die RLNP/Game-Semantik darüber:
 
 - QuestRuns können als normale Items abgebildet werden, brauchen aber noch etablierte Views und Mutationsmuster.
 - Evidence kann als Feld im QuestRun, als Relation zu bestehenden Items oder später als eigenes Item erscheinen.
-- World-State-Metriken können clientseitig aus Items, Relations und Claims berechnet oder connectorseitig geliefert werden.
+- World-State-Metriken können clientseitig aus Items, Relations und Confirmations berechnet oder connectorseitig geliefert werden.
 - Trust-Stufen wie `demo`, `local`, `server-confirmed` und `signed-attested` sollten in Views sichtbar werden, ohne das bestehende Interface unnötig an WoT zu binden.
 
-Ein Supabase-Connector könnte z.B. dieselben RLS-Capabilities für Items, Relations, Groups, Profile und Claims anbieten, aber nur `server-confirmed` statt `signed-attested` liefern.
+Ein Supabase-Connector könnte z.B. dieselben RLS-Capabilities für Items, Relations, Groups, Profile und Confirmations anbieten, aber nur `server-confirmed` statt `signed-attested` liefern.
 
-Ein WoT-Connector kann signierte Claims und Attestations liefern, aber World-State-Metriken lokal oder clientseitig berechnen.
+Ein WoT-Connector kann signierte Verifikationen und Attestations als Confirmations liefern, aber World-State-Metriken lokal oder clientseitig berechnen.
 
 ## Supabase-/GraphQL-Beispiel
 
@@ -274,7 +277,7 @@ Mögliche Abbildung:
 | Quest | `items.type = 'quest'` |
 | QuestRun | `items.type = 'quest-run'` |
 | Evidence | JSONB in QuestRun oder eigene `items.type = 'evidence'` |
-| Attestation / Recognition | `claims` oder `attestations` Tabelle |
+| Confirmation / Attestation | `confirmations`, `claims` oder `attestations` Tabelle |
 | Campaign | `items.type = 'campaign'` |
 | World State | SQL View, Materialized View oder GraphQL Resolver |
 
@@ -284,7 +287,7 @@ Die UX kann dieselbe bleiben wie bei einem WoT-Connector. Die Trust-Anzeige muss
 server-confirmed != signed-attested
 ```
 
-Wenn später WoT-Signaturen ergänzt werden, kann dasselbe RLS-Modul stärkere Anerkennungen anzeigen, ohne dass die Campaign- oder Quest-UI neu erfunden werden muss.
+Wenn später WoT-Signaturen ergänzt werden, kann dasselbe RLS-Modul stärkere Confirmations anzeigen, ohne dass die Campaign- oder Quest-UI neu erfunden werden muss.
 
 ## Game-Integration
 
@@ -299,7 +302,7 @@ RLS braucht dafür keine neue Grundarchitektur. Es braucht Views:
 - Entwicklungskarte,
 - Badge-/Avatar-Item-Darstellung.
 
-Diese Views lesen normale Items, Relations und Recognitions.
+Diese Views lesen normale Items, Relations und Confirmations.
 
 Beispiel:
 
@@ -349,7 +352,7 @@ Dieses Dokument ist der Maßstab für diese spätere Aufräumrunde.
 ### Phase 2: Daten- und Capability-Lücken schließen
 
 - Prüfen, ob `RelationCapable` Schreiboperationen braucht.
-- Prüfen, ob `SignedClaimCapable` semantisch zu eng ist oder eine allgemeinere Recognition-View braucht.
+- `SignedClaimCapable` nicht als dauerhafte Legacy-Projektion behandeln, sondern durch `ConfirmationCapable` ersetzen; QR-Verifikation getrennt modellieren und Delivery/Outbox im Connector lassen.
 - Feature-Items um RLNP/Game-Capabilities erweitern.
 
 ### Phase 3: Erste UI-Slices
@@ -361,12 +364,12 @@ Dieses Dokument ist der Maßstab für diese spätere Aufräumrunde.
 ### Phase 4: Backend-Profile
 
 - MockConnector: Demo-Daten für Quests, Adventures, Campaigns.
-- GraphQL/Supabase: server-confirmed Recognitions und World-State-Views.
-- WoTConnector: signed-attested Claims und lokale/verschlüsselte Daten.
+- GraphQL/Supabase: server-confirmed Confirmations und World-State-Views.
+- WoTConnector: signed-attested Confirmations und lokale/verschlüsselte Daten.
 
 ## Offene Fragen
 
-- Braucht RLS ein eigenes `RecognitionView`-Interface oder reicht `SignedClaim` plus `trustLevel`?
+- Wie schneiden wir die Code-Migration von `SignedClaim`/`SignedClaimCapable` zu `ConfirmationView`/`ConfirmationCapable`, ohne QR-Verifikation wieder in den generischen Confirmation-Vertrag zu mischen?
 - Soll Evidence als eigenes Item modelliert werden oder zunächst im QuestRun liegen?
 - Braucht `RelationCapable` eine Schreib-Capability?
 - Wie werden World-State-Metriken bei lokalen und serverseitigen Connectors konsistent berechnet?
