@@ -6,22 +6,17 @@ import { useConnector } from "./connector-context"
 export function useConfirmations() {
   const connector = useConnector()
   const supported = hasConfirmations(connector)
-  const observable = useMemo(
-    () => (supported ? connector.observeConfirmations() : null),
-    [connector, supported]
-  )
-  const [confirmations, setConfirmations] = useState<ConfirmationView[]>(
-    observable?.current ?? []
-  )
+  const [confirmations, setConfirmations] = useState<ConfirmationView[]>([])
 
   useEffect(() => {
-    if (!observable) {
+    if (!supported) {
       setConfirmations([])
       return
     }
+    const observable = connector.observeConfirmations()
     setConfirmations(observable.current)
     return observable.subscribe(setConfirmations)
-  }, [observable])
+  }, [connector, supported])
 
   const signedAttested = useMemo(
     () => confirmations.filter((c) => c.trustLevel === "signed-attested"),
