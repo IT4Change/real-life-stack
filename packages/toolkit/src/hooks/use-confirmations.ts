@@ -6,13 +6,20 @@ import { useConnector } from "./connector-context"
 export function useConfirmations() {
   const connector = useConnector()
   const supported = hasConfirmations(connector)
-  const observable = supported ? connector.observeConfirmations() : null
+  const observable = useMemo(
+    () => (supported ? connector.observeConfirmations() : null),
+    [connector, supported]
+  )
   const [confirmations, setConfirmations] = useState<ConfirmationView[]>(
     observable?.current ?? []
   )
 
   useEffect(() => {
-    if (!observable) return
+    if (!observable) {
+      setConfirmations([])
+      return
+    }
+    setConfirmations(observable.current)
     return observable.subscribe(setConfirmations)
   }, [observable])
 
