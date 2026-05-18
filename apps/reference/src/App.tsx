@@ -86,7 +86,7 @@ import {
   type GroupDialogMode,
 } from "@real-life-stack/toolkit"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
-import { hasGroups, isAuthenticatable, hasMessaging, hasSignedClaims, hasProfile, hasItemGroups } from "@real-life-stack/data-interface"
+import { hasGroups, isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile, hasItemGroups } from "@real-life-stack/data-interface"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers, demoGroupItems } from "@real-life-stack/data-interface/demo-data"
 import { MockConnector } from "@real-life-stack/mock-connector"
 import { LocalConnector } from "@real-life-stack/local-connector"
@@ -820,7 +820,7 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
   const { incomingVerification, spaceInvite, mutualVerification, dismiss } = useIncomingEvents()
 
   const handleCounterVerify = async () => {
-    if (!incomingVerification || !hasSignedClaims(connector)) return
+    if (!incomingVerification || !hasEncounterVerification(connector)) return
     await connector.counterVerify(incomingVerification.fromId)
     dismiss()
   }

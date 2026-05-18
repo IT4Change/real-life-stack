@@ -4,10 +4,10 @@ import type { MessageEnvelope, MessageType, DeliveryReceipt } from "@real-life/w
 /**
  * Tests for attestation features the WoT Connector must implement:
  *
- * 1. createClaim → send attestation via relay (not just store locally)
+ * 1. issueConfirmation → send attestation via relay (not just store locally)
  * 2. Incoming attestation → verify signature → store → send ACK
  * 3. Incoming attestation-ack → update delivery status to 'acknowledged'
- * 4. retryClaim → reconstruct envelope from stored attestation → resend
+ * 4. resendAttestation → reconstruct envelope from stored attestation → resend
  *
  * Tests validate the logic in isolation using the same patterns as
  * AttestationService.ts in the Demo App.
@@ -60,7 +60,7 @@ function createFakePersonalDoc(
 
 /**
  * Send attestation via relay after creating it.
- * This is what createClaim should do AFTER storing locally.
+ * This is what issueConfirmation should do AFTER storing locally.
  */
 async function sendAttestation(
   attestation: StoredAttestation,
@@ -158,9 +158,9 @@ async function handleIncomingAttestation(
 }
 
 /**
- * Retry a claim: reconstruct envelope from stored attestation and resend.
+ * Retry an attestation delivery: reconstruct envelope from stored attestation and resend.
  */
-async function retryClaim(
+async function resendAttestation(
   attestationId: string,
   doc: ReturnType<typeof createFakePersonalDoc>,
   messaging: ReturnType<typeof createFakeMessaging>,
@@ -426,7 +426,7 @@ describe("Retry Claim", () => {
       },
     )
 
-    const status = await retryClaim("att-1", doc, messaging)
+    const status = await resendAttestation("att-1", doc, messaging)
 
     expect(status).toBe("delivered")
     expect(messaging.send).toHaveBeenCalledTimes(1)
@@ -453,7 +453,7 @@ describe("Retry Claim", () => {
       },
     )
 
-    await retryClaim("att-1", doc, messaging)
+    await resendAttestation("att-1", doc, messaging)
 
     expect(doc.attestationMetadata["att-1"].deliveryStatus).toBe("delivered")
   })
@@ -462,7 +462,7 @@ describe("Retry Claim", () => {
     const messaging = createFakeMessaging()
     const doc = createFakePersonalDoc()
 
-    await expect(retryClaim("att-nope", doc, messaging)).rejects.toThrow("not found")
+    await expect(resendAttestation("att-nope", doc, messaging)).rejects.toThrow("not found")
   })
 
   it("sets status to queued when offline", async () => {
@@ -488,7 +488,7 @@ describe("Retry Claim", () => {
       },
     )
 
-    const status = await retryClaim("att-1", doc, messaging)
+    const status = await resendAttestation("att-1", doc, messaging)
 
     expect(status).toBe("queued")
     expect(doc.attestationMetadata["att-1"].deliveryStatus).toBe("queued")

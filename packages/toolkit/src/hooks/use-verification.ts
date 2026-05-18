@@ -1,63 +1,6 @@
-import { useEffect, useState, useCallback, useMemo } from "react"
-import type { SignedClaim, VerificationDirection } from "@real-life-stack/data-interface"
-import { hasSignedClaims } from "@real-life-stack/data-interface"
+import { useCallback, useState } from "react"
+import { hasEncounterVerification } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
-
-export function useClaims() {
-  const connector = useConnector()
-  const supported = hasSignedClaims(connector)
-  const observable = supported ? connector.observeClaims() : null
-  const [claims, setClaims] = useState<SignedClaim[]>(observable?.current ?? [])
-
-  useEffect(() => {
-    if (!observable) return
-    return observable.subscribe(setClaims)
-  }, [observable])
-
-  const verifications = useMemo(
-    () => claims.filter((c) => c.tags?.includes("verification")),
-    [claims]
-  )
-
-  const attestations = useMemo(
-    () => claims.filter((c) => !c.tags?.includes("verification")),
-    [claims]
-  )
-
-  const createClaim = useCallback(
-    (toId: string, claim: string, tags?: string[]) => {
-      if (!supported) throw new Error("Connector does not support signed claims")
-      return connector.createClaim(toId, claim, tags)
-    },
-    [connector, supported]
-  )
-
-  const setAccepted = useCallback(
-    (id: string, accepted: boolean) => {
-      if (!supported) throw new Error("Connector does not support signed claims")
-      return connector.setAccepted(id, accepted)
-    },
-    [connector, supported]
-  )
-
-  const getVerificationStatus = useCallback(
-    (contactId: string): VerificationDirection => {
-      if (!supported) return "none"
-      return connector.getVerificationStatus(contactId)
-    },
-    [connector, supported]
-  )
-
-  return {
-    supported,
-    claims,
-    verifications,
-    attestations,
-    createClaim,
-    setAccepted,
-    getVerificationStatus,
-  }
-}
 
 const NOOP_VERIFICATION = {
   supported: false as const,
@@ -73,7 +16,7 @@ const NOOP_VERIFICATION = {
 
 export function useVerification() {
   const connector = useConnector()
-  const supported = hasSignedClaims(connector)
+  const supported = hasEncounterVerification(connector)
   const [challenge, setChallenge] = useState<{ code: string; nonce: string } | null>(null)
   const [peerInfo, setPeerInfo] = useState<{ peerId: string; peerName?: string; peerAvatar?: string } | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -84,7 +27,7 @@ export function useVerification() {
     setError(null)
     setIsProcessing(true)
     try {
-      const result = await connector.createChallenge()
+      const result = await connector.createVerificationChallenge()
       setChallenge(result)
       return result
     } catch (e) {
@@ -100,7 +43,7 @@ export function useVerification() {
     setError(null)
     setIsProcessing(true)
     try {
-      const info = await connector.prepareResponse(code)
+      const info = await connector.prepareVerificationResponse(code)
       setPeerInfo(info)
       return info
     } catch (e) {
@@ -116,7 +59,7 @@ export function useVerification() {
     setError(null)
     setIsProcessing(true)
     try {
-      await connector.confirmAndRespond(code)
+      await connector.confirmVerificationResponse(code)
       setChallenge(null)
       setPeerInfo(null)
     } catch (e) {

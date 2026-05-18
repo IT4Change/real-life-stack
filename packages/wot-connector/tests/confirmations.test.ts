@@ -6,7 +6,7 @@ import type { ConfirmationView } from "@real-life-stack/data-interface"
  *
  * The projection is intentionally backend-agnostic and must NOT carry any
  * delivery, outbox, QR, or challenge concerns into ConfirmationView. Those
- * stay on the existing SignedClaim path.
+ * stay in connector transport and encounter-verification code.
  *
  * These tests exercise the pure mapper that the WoTConnector's
  * getConfirmations() / observeConfirmations() implementation will use.
@@ -345,7 +345,7 @@ describe("projectConfirmations — must not leak delivery/outbox/QR concerns", (
     }
   })
 
-  it("does not surface ClaimDeliveryStatus values inside tags", () => {
+  it("does not surface delivery status values inside tags", () => {
     const doc: PersonalDocLike = {
       attestations: {
         "att-1": {

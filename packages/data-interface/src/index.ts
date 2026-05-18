@@ -188,44 +188,7 @@ export interface MessagingCapable {
   getOutboxPendingCount(): Observable<number>
 }
 
-// --- Signed Claims (Verifications + Attestations) ---
-
-export interface SignedClaim {
-  id: string
-  from: string            // Signer ID (DID bei WoT)
-  to: string              // Subject ID (Empfänger-Prinzip)
-  claim: string           // "physical-meeting" oder frei formuliert
-  tags?: string[]         // ["verification"], ["skill", "kochen"], ["quest"]
-  createdAt: string
-  isAccepted: boolean     // Empfänger-Sichtbarkeit
-}
-
-export type ClaimDeliveryStatus = "sending" | "queued" | "delivered" | "acknowledged" | "failed"
 export type VerificationDirection = "mutual" | "incoming" | "outgoing" | "none"
-
-export interface SignedClaimCapable {
-  // Erstellen (allgemein)
-  createClaim(toId: string, claim: string, tags?: string[]): Promise<SignedClaim>
-
-  // Erstellen (Verification via Challenge-Response)
-  createChallenge(): Promise<{ code: string; nonce: string }>
-  prepareResponse(challengeCode: string): Promise<{ peerId: string; peerName?: string; peerAvatar?: string }>
-  confirmAndRespond(challengeCode: string): Promise<void>
-  counterVerify(targetId: string): Promise<void>
-
-  // Lesen
-  getClaimsByMe(): Promise<SignedClaim[]>
-  getClaimsAboutMe(): Promise<SignedClaim[]>
-  observeClaims(): Observable<SignedClaim[]>
-
-  // Verification-Status (Convenience)
-  getVerificationStatus(contactId: string): VerificationDirection
-
-  // Akzeptanz + Delivery
-  setAccepted(id: string, accepted: boolean): Promise<void>
-  observeDeliveryStatuses(): Observable<Map<string, ClaimDeliveryStatus>>
-  retryClaim(id: string): Promise<void>
-}
 
 // --- Confirmations (backend-agnostische Trust-Projektion) ---
 
@@ -252,6 +215,38 @@ export interface ConfirmationView {
 export interface ConfirmationCapable {
   getConfirmations(): Promise<ConfirmationView[]>
   observeConfirmations(): Observable<ConfirmationView[]>
+}
+
+export interface ConfirmationIssueInput {
+  subjectId: string
+  claim: string
+  tags?: string[]
+  schema?: string
+  relations?: Relation[]
+}
+
+export interface ConfirmationWriterCapable {
+  issueConfirmation(input: ConfirmationIssueInput): Promise<ConfirmationView>
+  setConfirmationAccepted(id: string, accepted: boolean): Promise<void>
+}
+
+export interface VerificationChallenge {
+  code: string
+  nonce: string
+}
+
+export interface EncounterPeerInfo {
+  peerId: string
+  peerName?: string
+  peerAvatar?: string
+}
+
+export interface EncounterVerificationCapable {
+  createVerificationChallenge(): Promise<VerificationChallenge>
+  prepareVerificationResponse(challengeCode: string): Promise<EncounterPeerInfo>
+  confirmVerificationResponse(challengeCode: string): Promise<void>
+  counterVerify(contactId: string): Promise<void>
+  getVerificationStatus(contactId: string): VerificationDirection
 }
 
 // --- Profile ---
@@ -356,10 +351,6 @@ export function hasMessaging(c: DataInterface): c is DataInterface & MessagingCa
   return "getRelayState" in c && "getOutboxPendingCount" in c
 }
 
-export function hasSignedClaims(c: DataInterface): c is DataInterface & SignedClaimCapable {
-  return "createClaim" in c && "observeClaims" in c && "createChallenge" in c
-}
-
 export function hasConfirmations(c: DataInterface): c is DataInterface & ConfirmationCapable {
   if (!("getConfirmations" in c) || !("observeConfirmations" in c)) return false
   const get = (c as { getConfirmations: unknown }).getConfirmations
@@ -369,6 +360,56 @@ export function hasConfirmations(c: DataInterface): c is DataInterface & Confirm
   if (
     get === BaseConnector.prototype.getConfirmations ||
     obs === BaseConnector.prototype.observeConfirmations
+  ) {
+    return false
+  }
+  return true
+}
+
+export function hasConfirmationWriter(c: DataInterface): c is DataInterface & ConfirmationWriterCapable {
+  if (!("issueConfirmation" in c) || !("setConfirmationAccepted" in c)) return false
+  const issue = (c as { issueConfirmation: unknown }).issueConfirmation
+  const setConfirmationAccepted = (c as { setConfirmationAccepted: unknown }).setConfirmationAccepted
+  if (typeof issue !== "function" || typeof setConfirmationAccepted !== "function") return false
+  if (
+    issue === BaseConnector.prototype.issueConfirmation ||
+    setConfirmationAccepted === BaseConnector.prototype.setConfirmationAccepted
+  ) {
+    return false
+  }
+  return true
+}
+
+export function hasEncounterVerification(c: DataInterface): c is DataInterface & EncounterVerificationCapable {
+  if (
+    !("createVerificationChallenge" in c) ||
+    !("prepareVerificationResponse" in c) ||
+    !("confirmVerificationResponse" in c) ||
+    !("counterVerify" in c) ||
+    !("getVerificationStatus" in c)
+  ) {
+    return false
+  }
+  const create = (c as { createVerificationChallenge: unknown }).createVerificationChallenge
+  const prepare = (c as { prepareVerificationResponse: unknown }).prepareVerificationResponse
+  const confirm = (c as { confirmVerificationResponse: unknown }).confirmVerificationResponse
+  const counter = (c as { counterVerify: unknown }).counterVerify
+  const status = (c as { getVerificationStatus: unknown }).getVerificationStatus
+  if (
+    typeof create !== "function" ||
+    typeof prepare !== "function" ||
+    typeof confirm !== "function" ||
+    typeof counter !== "function" ||
+    typeof status !== "function"
+  ) {
+    return false
+  }
+  if (
+    create === BaseConnector.prototype.createVerificationChallenge ||
+    prepare === BaseConnector.prototype.prepareVerificationResponse ||
+    confirm === BaseConnector.prototype.confirmVerificationResponse ||
+    counter === BaseConnector.prototype.counterVerify ||
+    status === BaseConnector.prototype.getVerificationStatus
   ) {
     return false
   }
