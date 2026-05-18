@@ -15,8 +15,6 @@ import {
 
 import { WotConnector } from "../src/wot-connector.js"
 
-type AttestationDeliveryStatus = "sending" | "queued" | "delivered" | "acknowledged" | "failed"
-
 const yjsMockState = vi.hoisted(() => ({
   personalDoc: {} as any,
 }))
@@ -98,7 +96,6 @@ describe("WotConnector.logout() - auth-scoped observable reset", () => {
 
   it("resets confirmation and connector-status observables", () => {
     expect(logout).toMatch(/confirmationsObs\.set\(\[\]\)/)
-    expect(logout).toMatch(/deliveryStatusObs\.set\(new Map/)
     expect(logout).toMatch(/contactsObs\.set\(\[\]\)/)
     expect(logout).toMatch(/outboxCountObs\.set\(0\)/)
     expect(logout).toMatch(/relayStateObs\.set\("disconnected"\)/)
@@ -143,7 +140,6 @@ function createConnectorObservables() {
   const authStateObs = createObservable<AuthState>({ status: "loading" })
   const contactsObs = createObservable<ContactInfo[]>([])
   const confirmationsObs = createObservable<ConfirmationView[]>([])
-  const deliveryStatusObs = createObservable<Map<string, AttestationDeliveryStatus>>(new Map())
   const relayStateObs = createObservable<RelayState>("disconnected")
   const outboxCountObs = createObservable<number>(0)
   const currentGroupObs = createObservable<Group | null>(null)
@@ -154,7 +150,6 @@ function createConnectorObservables() {
     authStateObs,
     contactsObs,
     confirmationsObs,
-    deliveryStatusObs,
     relayStateObs,
     outboxCountObs,
     currentGroupObs,
@@ -190,7 +185,6 @@ function createFakeConnectorForLogout() {
       isAccepted: true,
     },
   ])
-  obs.deliveryStatusObs.set(new Map([["att-1", "queued" as AttestationDeliveryStatus]]))
   obs.relayStateObs.set("connected")
   obs.outboxCountObs.set(2)
   obs.currentGroupObs.set({ id: "g1", name: "Crew" })
@@ -238,7 +232,6 @@ describe("WotConnector.logout() - real method regression", () => {
     await WotConnector.prototype.logout.call(fake as any)
 
     expect(fake.confirmationsObs.current).toEqual([])
-    expect(fake.deliveryStatusObs.current.size).toBe(0)
     expect(fake.contactsObs.current).toEqual([])
     expect(fake.outboxCountObs.current).toBe(0)
     expect(fake.relayStateObs.current).toBe("disconnected")

@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react"
 import { hasEncounterVerification } from "@real-life-stack/data-interface"
+import type { EncounterPeerInfo, VerificationChallenge } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 
 const NOOP_VERIFICATION = {
@@ -17,8 +18,8 @@ const NOOP_VERIFICATION = {
 export function useVerification() {
   const connector = useConnector()
   const supported = hasEncounterVerification(connector)
-  const [challenge, setChallenge] = useState<{ code: string; nonce: string } | null>(null)
-  const [peerInfo, setPeerInfo] = useState<{ peerId: string; peerName?: string; peerAvatar?: string } | null>(null)
+  const [challenge, setChallenge] = useState<VerificationChallenge | null>(null)
+  const [peerInfo, setPeerInfo] = useState<EncounterPeerInfo | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

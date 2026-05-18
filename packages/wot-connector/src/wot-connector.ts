@@ -82,17 +82,6 @@ import { mapPersonalDocConfirmations } from "./confirmations.js"
 const RLS_SPACE_TYPE = "rls"
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
 // Overview mode: setCurrentGroup(null) = show all items from all spaces
-type AttestationDeliveryStatus = "sending" | "queued" | "delivered" | "acknowledged" | "failed"
-
-function isAttestationDeliveryStatus(value: unknown): value is AttestationDeliveryStatus {
-  return (
-    value === "sending" ||
-    value === "queued" ||
-    value === "delivered" ||
-    value === "acknowledged" ||
-    value === "failed"
-  )
-}
 
 // --- WotConnector ---
 
@@ -133,7 +122,6 @@ export class WotConnector extends BaseConnector {
   private authStateObs: ReactiveObservable<AuthState>
   private contactsObs: ReactiveObservable<ContactInfo[]>
   private confirmationsObs: ReactiveObservable<ConfirmationView[]>
-  private deliveryStatusObs: ReactiveObservable<Map<string, AttestationDeliveryStatus>>
   private relayStateObs: ReactiveObservable<RelayState>
   private outboxCountObs: ReactiveObservable<number>
   private profileObs: ReactiveObservable<Item | null>
@@ -165,7 +153,6 @@ export class WotConnector extends BaseConnector {
     this.authStateObs = createObservable<AuthState>({ status: "loading" })
     this.contactsObs = createObservable<ContactInfo[]>([])
     this.confirmationsObs = createObservable<ConfirmationView[]>([])
-    this.deliveryStatusObs = createObservable<Map<string, AttestationDeliveryStatus>>(new Map())
     this.relayStateObs = createObservable<RelayState>("disconnected")
     this.outboxCountObs = createObservable<number>(0)
     this.profileObs = createObservable<Item | null>(null)
@@ -221,7 +208,6 @@ export class WotConnector extends BaseConnector {
     this.authStateObs.destroy()
     this.contactsObs.destroy()
     this.confirmationsObs.destroy()
-    this.deliveryStatusObs.destroy()
     this.relayStateObs.destroy()
     this.outboxCountObs.destroy()
     this.profileObs.destroy()
@@ -335,10 +321,9 @@ export class WotConnector extends BaseConnector {
     this.groupsObservable.set([])
 
     // Reset auth-scoped WoT observables so the logged-out or identity-switched
-    // UI cannot keep rendering stale confirmations, contacts, delivery statuses,
-    // relay state, or pending-outbox counts from the previous session.
+    // UI cannot keep rendering stale confirmations, contacts, relay state, or
+    // pending-outbox counts from the previous session.
     this.confirmationsObs.set([])
-    this.deliveryStatusObs.set(new Map())
     this.contactsObs.set([])
     this.outboxCountObs.set(0)
     this.relayStateObs.set("disconnected")
@@ -1973,14 +1958,6 @@ export class WotConnector extends BaseConnector {
       }),
     )
 
-    const statuses = new Map<string, AttestationDeliveryStatus>()
-    for (const [id, m] of Object.entries(metadata)) {
-      const deliveryStatus = (m as { deliveryStatus?: string }).deliveryStatus
-      if (isAttestationDeliveryStatus(deliveryStatus)) {
-        statuses.set(id, deliveryStatus)
-      }
-    }
-    this.deliveryStatusObs.set(statuses)
   }
 
   // (syncContactsFromPersonalDoc removed — contacts are now reactive via YjsStorageAdapter.watchContacts())
