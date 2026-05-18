@@ -311,6 +311,16 @@ export class WotConnector extends BaseConnector {
     await this.outboxAdapter?.disconnect()
     await this.wsAdapter?.disconnect()
 
+    this.contactsUnsub?.()
+    this.contactsUnsub = null
+    this.verificationsUnsub?.()
+    this.verificationsUnsub = null
+    this.attestationsUnsub?.()
+    this.attestationsUnsub = null
+    this.profileUnsub?.()
+    this.profileUnsub = null
+    this.storage = null
+
     this.wsAdapter = null
     this.outboxAdapter = null
     this.replication = null
@@ -319,6 +329,18 @@ export class WotConnector extends BaseConnector {
     this.currentGroupObservable.set(null)
     this.groupsCache = []
     this.groupsObservable.set([])
+
+    // Reset auth-scoped WoT observables so the logged-out (or identity-switched)
+    // UI cannot keep rendering stale claims, confirmations, contacts, delivery
+    // statuses, relay state, or pending-outbox counts from the previous session.
+    this.confirmationsObs.set([])
+    this.claimsObs.set([])
+    this.deliveryStatusObs.set(new Map())
+    this.contactsObs.set([])
+    this.outboxCountObs.set(0)
+    this.relayStateObs.set("disconnected")
+    this.profileObs.set(null)
+    this.syncPendingObs.set(false)
 
     await deleteYjsPersonalDocDB()
     await this.identity.deleteStoredIdentity()
@@ -1684,6 +1706,12 @@ export class WotConnector extends BaseConnector {
         doc.attestationMetadata[id].acceptedAt = accepted ? new Date().toISOString() : null
       }
     })
+    // Metadata-only changes do not trigger the verifications/attestations
+    // watchers, so refresh both the legacy SignedClaim and ConfirmationView
+    // projections explicitly. Other metadata-only update paths (delivery
+    // status, ack) already call syncClaimsFromPersonalDoc() at their own
+    // mutation sites.
+    this.syncClaimsFromPersonalDoc()
   }
 
   override observeDeliveryStatuses(): Observable<Map<string, ClaimDeliveryStatus>> {
