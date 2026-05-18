@@ -10,8 +10,11 @@ import {
   hasSignedClaims,
   hasProfile,
   hasEventListener,
+  hasConfirmations,
+  BaseConnector,
+  createObservable,
 } from "../src/index.js"
-import type { DataInterface } from "../src/index.js"
+import type { ConfirmationView, DataInterface, Item, ItemFilter, Observable } from "../src/index.js"
 
 // Minimal DataInterface stub
 function createStub(extra: Record<string, unknown> = {}): DataInterface {
@@ -175,6 +178,172 @@ describe("Type Guards", () => {
         onIncomingEvent: () => () => {},
       })
       expect(hasEventListener(connector)).toBe(true)
+    })
+  })
+
+  describe("hasConfirmations", () => {
+    it("returns false for plain DataInterface", () => {
+      expect(hasConfirmations(createStub())).toBe(false)
+    })
+
+    it("returns false when only some confirmation methods are present", () => {
+      expect(
+        hasConfirmations(
+          createStub({
+            getConfirmations: async () => [] as ConfirmationView[],
+          })
+        )
+      ).toBe(false)
+    })
+
+    it("returns true when confirmation read/observe methods are present", () => {
+      const connector = createStub({
+        getConfirmations: async () => [] as ConfirmationView[],
+        observeConfirmations: () => ({
+          current: [] as ConfirmationView[],
+          subscribe: () => () => {},
+        }),
+      })
+      expect(hasConfirmations(connector)).toBe(true)
+    })
+
+    it("is independent from hasSignedClaims (signed-claim connectors do not auto-imply confirmations)", () => {
+      const signedClaimConnector = createStub({
+        createClaim: async () => ({}),
+        observeClaims: () => ({ current: [], subscribe: () => () => {} }),
+        createChallenge: async () => ({}),
+      })
+      expect(hasSignedClaims(signedClaimConnector)).toBe(true)
+      expect(hasConfirmations(signedClaimConnector)).toBe(false)
+    })
+
+    it("is independent from hasSignedClaims (confirmation connectors do not auto-imply signed claims)", () => {
+      const confirmationConnector = createStub({
+        getConfirmations: async () => [] as ConfirmationView[],
+        observeConfirmations: () => ({
+          current: [] as ConfirmationView[],
+          subscribe: () => () => {},
+        }),
+      })
+      expect(hasConfirmations(confirmationConnector)).toBe(true)
+      expect(hasSignedClaims(confirmationConnector)).toBe(false)
+    })
+
+    it("returns false for a plain BaseConnector subclass that inherits both defaults", () => {
+      class PlainConnector extends BaseConnector {
+        async getItems(_filter?: ItemFilter): Promise<Item[]> {
+          return []
+        }
+        async getItem(_id: string): Promise<Item | null> {
+          return null
+        }
+        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async deleteItem(_id: string): Promise<void> {}
+      }
+      expect(hasConfirmations(new PlainConnector())).toBe(false)
+    })
+
+    it("returns false when only getConfirmations is overridden (observe still inherited)", () => {
+      class GetOnlyConnector extends BaseConnector {
+        async getItems(_filter?: ItemFilter): Promise<Item[]> {
+          return []
+        }
+        async getItem(_id: string): Promise<Item | null> {
+          return null
+        }
+        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async deleteItem(_id: string): Promise<void> {}
+        override async getConfirmations(): Promise<ConfirmationView[]> {
+          return []
+        }
+      }
+      expect(hasConfirmations(new GetOnlyConnector())).toBe(false)
+    })
+
+    it("returns false when only observeConfirmations is overridden (get still inherited)", () => {
+      class ObserveOnlyConnector extends BaseConnector {
+        async getItems(_filter?: ItemFilter): Promise<Item[]> {
+          return []
+        }
+        async getItem(_id: string): Promise<Item | null> {
+          return null
+        }
+        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async deleteItem(_id: string): Promise<void> {}
+        override observeConfirmations(): Observable<ConfirmationView[]> {
+          return createObservable<ConfirmationView[]>([])
+        }
+      }
+      expect(hasConfirmations(new ObserveOnlyConnector())).toBe(false)
+    })
+
+    it("returns true when a BaseConnector subclass overrides both methods", () => {
+      class FullConfirmationConnector extends BaseConnector {
+        async getItems(_filter?: ItemFilter): Promise<Item[]> {
+          return []
+        }
+        async getItem(_id: string): Promise<Item | null> {
+          return null
+        }
+        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async deleteItem(_id: string): Promise<void> {}
+        override async getConfirmations(): Promise<ConfirmationView[]> {
+          return []
+        }
+        override observeConfirmations(): Observable<ConfirmationView[]> {
+          return createObservable<ConfirmationView[]>([])
+        }
+      }
+      expect(hasConfirmations(new FullConfirmationConnector())).toBe(true)
+    })
+  })
+
+  describe("ConfirmationView shape", () => {
+    it("accepts the spec fields and tolerates optional ones", () => {
+      const minimal: ConfirmationView = {
+        id: "c-1",
+        subjectId: "subject-did",
+        claim: "physical-meeting",
+        createdAt: "2026-05-18T00:00:00.000Z",
+        trustLevel: "signed-attested",
+      }
+      expect(minimal.trustLevel).toBe("signed-attested")
+
+      const full: ConfirmationView = {
+        id: "c-2",
+        subjectId: "subject-did",
+        issuerId: "issuer-did",
+        claim: "skill:cooking",
+        schema: "rln://schemas/attestation@1",
+        tags: ["skill"],
+        relations: [{ predicate: "evidence", target: "item:proof-1" }],
+        createdAt: "2026-05-18T00:00:00.000Z",
+        trustLevel: "server-confirmed",
+        source: "wot",
+        isAccepted: true,
+      }
+      expect(full.trustLevel).toBe("server-confirmed")
+      expect(full.source).toBe("wot")
     })
   })
 })

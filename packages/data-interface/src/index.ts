@@ -1,6 +1,7 @@
 // @real-life-stack/data-interface
 // Zentrale Typdefinitionen für das DataInterface (Connector-Schnittstelle)
 
+import { BaseConnector } from "./base-connector.js"
 export { BaseConnector, createObservable, shallowEqual, matchesFilter, findRelatedItems, applyPagination, type ReactiveObservable } from "./base-connector.js"
 export * from "./item-types.js"
 
@@ -226,6 +227,33 @@ export interface SignedClaimCapable {
   retryClaim(id: string): Promise<void>
 }
 
+// --- Confirmations (backend-agnostische Trust-Projektion) ---
+
+export type ConfirmationTrustLevel =
+  | "demo"
+  | "local"
+  | "server-confirmed"
+  | "signed-attested"
+
+export interface ConfirmationView {
+  id: string
+  subjectId: string
+  issuerId?: string
+  claim: string
+  schema?: string
+  tags?: string[]
+  relations?: Relation[]
+  createdAt: string
+  trustLevel: ConfirmationTrustLevel
+  source?: string
+  isAccepted?: boolean
+}
+
+export interface ConfirmationCapable {
+  getConfirmations(): Promise<ConfirmationView[]>
+  observeConfirmations(): Observable<ConfirmationView[]>
+}
+
 // --- Profile ---
 
 export interface PublicProfileData {
@@ -330,6 +358,21 @@ export function hasMessaging(c: DataInterface): c is DataInterface & MessagingCa
 
 export function hasSignedClaims(c: DataInterface): c is DataInterface & SignedClaimCapable {
   return "createClaim" in c && "observeClaims" in c && "createChallenge" in c
+}
+
+export function hasConfirmations(c: DataInterface): c is DataInterface & ConfirmationCapable {
+  if (!("getConfirmations" in c) || !("observeConfirmations" in c)) return false
+  const get = (c as { getConfirmations: unknown }).getConfirmations
+  const obs = (c as { observeConfirmations: unknown }).observeConfirmations
+  if (typeof get !== "function" || typeof obs !== "function") return false
+  // BaseConnector defaults must not imply support — both methods must be overridden.
+  if (
+    get === BaseConnector.prototype.getConfirmations ||
+    obs === BaseConnector.prototype.observeConfirmations
+  ) {
+    return false
+  }
+  return true
 }
 
 export function hasProfile(c: DataInterface): c is DataInterface & ProfileCapable {
