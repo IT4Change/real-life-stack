@@ -310,7 +310,7 @@ Beispiel:
 Campaign View
   liest campaign Item
   liest usesGamePack Relation
-  liest includesAdventure Relations
+  liest includesQuest und includesAdventure Relations
   berechnet oder lädt World State
   zeigt Trust-Level der zugrunde liegenden Werte
 ```
