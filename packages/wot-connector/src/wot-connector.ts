@@ -13,6 +13,7 @@ import type {
   SignedClaim,
   ClaimDeliveryStatus,
   VerificationDirection,
+  ConfirmationView,
   IncomingEvent,
 } from "@real-life-stack/data-interface"
 import {
@@ -78,6 +79,7 @@ import type {
 import type { WotConnectorConfig, RlsSpaceDoc, SerializedItem } from "./types.js"
 import { serializeItem, deserializeItem } from "./serialization.js"
 import { CrossGroupIndex } from "./CrossGroupIndex.js"
+import { mapPersonalDocConfirmations } from "./confirmations.js"
 
 // --- Constants ---
 
@@ -124,6 +126,7 @@ export class WotConnector extends BaseConnector {
   private authStateObs: ReactiveObservable<AuthState>
   private contactsObs: ReactiveObservable<ContactInfo[]>
   private claimsObs: ReactiveObservable<SignedClaim[]>
+  private confirmationsObs: ReactiveObservable<ConfirmationView[]>
   private deliveryStatusObs: ReactiveObservable<Map<string, ClaimDeliveryStatus>>
   private relayStateObs: ReactiveObservable<RelayState>
   private outboxCountObs: ReactiveObservable<number>
@@ -156,6 +159,7 @@ export class WotConnector extends BaseConnector {
     this.authStateObs = createObservable<AuthState>({ status: "loading" })
     this.contactsObs = createObservable<ContactInfo[]>([])
     this.claimsObs = createObservable<SignedClaim[]>([])
+    this.confirmationsObs = createObservable<ConfirmationView[]>([])
     this.deliveryStatusObs = createObservable<Map<string, ClaimDeliveryStatus>>(new Map())
     this.relayStateObs = createObservable<RelayState>("disconnected")
     this.outboxCountObs = createObservable<number>(0)
@@ -212,6 +216,7 @@ export class WotConnector extends BaseConnector {
     this.authStateObs.destroy()
     this.contactsObs.destroy()
     this.claimsObs.destroy()
+    this.confirmationsObs.destroy()
     this.deliveryStatusObs.destroy()
     this.relayStateObs.destroy()
     this.outboxCountObs.destroy()
@@ -1734,6 +1739,16 @@ export class WotConnector extends BaseConnector {
     }
   }
 
+  // ==================== Confirmations (generic projection) ====================
+
+  override async getConfirmations(): Promise<ConfirmationView[]> {
+    return this.confirmationsObs.current
+  }
+
+  override observeConfirmations(): Observable<ConfirmationView[]> {
+    return this.confirmationsObs
+  }
+
   // ==================== Incoming Events ====================
 
   onIncomingEvent(callback: (event: IncomingEvent) => void): () => void {
@@ -1958,12 +1973,33 @@ export class WotConnector extends BaseConnector {
   // ==================== Internal: Claims sync ====================
 
   private syncClaimsFromPersonalDoc(): void {
+    let doc: ReturnType<typeof getYjsPersonalDoc>
     try {
-      const doc = getYjsPersonalDoc()
+      doc = getYjsPersonalDoc()
+    } catch {
+      // PersonalDoc not ready yet
+      return
+    }
+
+    const verifications = doc.verifications ?? {}
+    const attestations = doc.attestations ?? {}
+    const metadata = doc.attestationMetadata ?? {}
+
+    // Project confirmations first via the safe pure projection so malformed
+    // entries on the legacy claim path can never prevent the confirmation
+    // observable from being updated.
+    this.confirmationsObs.set(
+      mapPersonalDocConfirmations({
+        verifications: verifications as Record<string, { id: string; fromDid: string; toDid: string; timestamp: string }>,
+        attestations: attestations as Record<string, { id: string; fromDid: string; toDid: string; claim: string; tagsJson: string | null; createdAt: string }>,
+        attestationMetadata: metadata as Record<string, { attestationId: string; accepted: boolean }>,
+      }),
+    )
+
+    try {
       const claims: SignedClaim[] = []
 
       // Map verifications → SignedClaim with tag "verification"
-      const verifications = doc.verifications ?? {}
       for (const [, v] of Object.entries(verifications)) {
         const vDoc = v as unknown as VerificationDoc
         if (!vDoc.id) continue
@@ -1979,8 +2015,6 @@ export class WotConnector extends BaseConnector {
       }
 
       // Map attestations → SignedClaim
-      const attestations = doc.attestations ?? {}
-      const metadata = doc.attestationMetadata ?? {}
       for (const [, a] of Object.entries(attestations)) {
         const aDoc = a as unknown as AttestationDoc
         if (!aDoc.id) continue
@@ -2009,7 +2043,9 @@ export class WotConnector extends BaseConnector {
       }
       this.deliveryStatusObs.set(statuses)
     } catch {
-      // PersonalDoc not ready yet
+      // Preserve the legacy SignedClaim sync behavior: malformed legacy data
+      // aborts the claim/status refresh, while confirmations were already
+      // published by the backend-agnostic projection above.
     }
   }
 
