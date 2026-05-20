@@ -1,7 +1,6 @@
 // mapPersonalDocConfirmations: pure projection of PersonalDoc verifications and
 // attestations into generic ConfirmationView[]. This module must stay free of
-// any transport, delivery, outbox, QR, or challenge concerns — those live on
-// the existing SignedClaim path.
+// any transport, delivery, outbox, QR, or challenge concerns.
 
 import type { ConfirmationView } from "@real-life-stack/data-interface"
 

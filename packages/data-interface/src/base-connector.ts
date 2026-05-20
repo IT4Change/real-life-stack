@@ -12,10 +12,11 @@ import type {
   Source,
   ContactInfo,
   RelayState,
-  SignedClaim,
-  ClaimDeliveryStatus,
   VerificationDirection,
+  ConfirmationIssueInput,
   ConfirmationView,
+  EncounterPeerInfo,
+  VerificationChallenge,
   PublicProfileData,
   IncomingEvent,
 } from "./index.js"
@@ -334,54 +335,26 @@ export abstract class BaseConnector implements FullConnector {
     return createObservable<number>(0)
   }
 
-  // --- Signed Claims (Default: not supported) ---
+  // --- Encounter Verification (Default: not supported) ---
 
-  async createClaim(_toId: string, _claim: string, _tags?: string[]): Promise<SignedClaim> {
-    throw new Error("createClaim not supported")
+  async createVerificationChallenge(): Promise<VerificationChallenge> {
+    throw new Error("createVerificationChallenge not supported")
   }
 
-  async createChallenge(): Promise<{ code: string; nonce: string }> {
-    throw new Error("createChallenge not supported")
+  async prepareVerificationResponse(_challengeCode: string): Promise<EncounterPeerInfo> {
+    throw new Error("prepareVerificationResponse not supported")
   }
 
-  async prepareResponse(_challengeCode: string): Promise<{ peerId: string; peerName?: string; peerAvatar?: string }> {
-    throw new Error("prepareResponse not supported")
-  }
-
-  async confirmAndRespond(_challengeCode: string): Promise<void> {
-    throw new Error("confirmAndRespond not supported")
+  async confirmVerificationResponse(_challengeCode: string): Promise<void> {
+    throw new Error("confirmVerificationResponse not supported")
   }
 
   async counterVerify(_targetId: string): Promise<void> {
     throw new Error("counterVerify not supported")
   }
 
-  async getClaimsByMe(): Promise<SignedClaim[]> {
-    return []
-  }
-
-  async getClaimsAboutMe(): Promise<SignedClaim[]> {
-    return []
-  }
-
-  observeClaims(): Observable<SignedClaim[]> {
-    return createObservable<SignedClaim[]>([])
-  }
-
   getVerificationStatus(_contactId: string): VerificationDirection {
     return "none"
-  }
-
-  async setAccepted(_id: string, _accepted: boolean): Promise<void> {
-    throw new Error("setAccepted not supported")
-  }
-
-  observeDeliveryStatuses(): Observable<Map<string, ClaimDeliveryStatus>> {
-    return createObservable<Map<string, ClaimDeliveryStatus>>(new Map())
-  }
-
-  async retryClaim(_id: string): Promise<void> {
-    throw new Error("retryClaim not supported")
   }
 
   // --- Confirmations (Default: empty; hasConfirmations() stays false until overridden) ---
@@ -392,6 +365,14 @@ export abstract class BaseConnector implements FullConnector {
 
   observeConfirmations(): Observable<ConfirmationView[]> {
     return createObservable<ConfirmationView[]>([])
+  }
+
+  async issueConfirmation(_input: ConfirmationIssueInput): Promise<ConfirmationView> {
+    throw new Error("issueConfirmation not supported")
+  }
+
+  async setConfirmationAccepted(_id: string, _accepted: boolean): Promise<void> {
+    throw new Error("setConfirmationAccepted not supported")
   }
 
   // --- Profile (Default: not supported) ---

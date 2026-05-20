@@ -12,7 +12,7 @@ export { useGroups, useCurrentGroup, useCreateGroup, useUpdateGroup, useDeleteGr
 export { useAuthState, useCurrentUser } from "./use-auth"
 export { useFeatures, useFeature } from "./use-features"
 export { useContacts } from "./use-contacts"
-export { useClaims, useVerification } from "./use-claims"
+export { useVerification } from "./use-verification"
 export { useConfirmations } from "./use-confirmations"
 export { useRelayStatus } from "./use-relay-status"
 export { useReactions, useReactionUsers, type AggregatedReaction, type UseReactionsResult, type ReactionUser, type UseReactionUsersResult } from "./use-reactions"

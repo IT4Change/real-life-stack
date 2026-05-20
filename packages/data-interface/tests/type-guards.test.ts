@@ -7,10 +7,11 @@ import {
   hasMultiSource,
   hasContacts,
   hasMessaging,
-  hasSignedClaims,
   hasProfile,
   hasEventListener,
   hasConfirmations,
+  hasConfirmationWriter,
+  hasEncounterVerification,
   BaseConnector,
   createObservable,
 } from "../src/index.js"
@@ -138,21 +139,6 @@ describe("Type Guards", () => {
     })
   })
 
-  describe("hasSignedClaims", () => {
-    it("returns false for plain DataInterface", () => {
-      expect(hasSignedClaims(createStub())).toBe(false)
-    })
-
-    it("returns true when claim methods present", () => {
-      const connector = createStub({
-        createClaim: async () => ({}),
-        observeClaims: () => ({ current: [], subscribe: () => () => {} }),
-        createChallenge: async () => ({}),
-      })
-      expect(hasSignedClaims(connector)).toBe(true)
-    })
-  })
-
   describe("hasProfile", () => {
     it("returns false for plain DataInterface", () => {
       expect(hasProfile(createStub())).toBe(false)
@@ -207,17 +193,7 @@ describe("Type Guards", () => {
       expect(hasConfirmations(connector)).toBe(true)
     })
 
-    it("is independent from hasSignedClaims (signed-claim connectors do not auto-imply confirmations)", () => {
-      const signedClaimConnector = createStub({
-        createClaim: async () => ({}),
-        observeClaims: () => ({ current: [], subscribe: () => () => {} }),
-        createChallenge: async () => ({}),
-      })
-      expect(hasSignedClaims(signedClaimConnector)).toBe(true)
-      expect(hasConfirmations(signedClaimConnector)).toBe(false)
-    })
-
-    it("is independent from hasSignedClaims (confirmation connectors do not auto-imply signed claims)", () => {
+    it("is independent from writing and encounter verification capabilities", () => {
       const confirmationConnector = createStub({
         getConfirmations: async () => [] as ConfirmationView[],
         observeConfirmations: () => ({
@@ -226,7 +202,8 @@ describe("Type Guards", () => {
         }),
       })
       expect(hasConfirmations(confirmationConnector)).toBe(true)
-      expect(hasSignedClaims(confirmationConnector)).toBe(false)
+      expect(hasConfirmationWriter(confirmationConnector)).toBe(false)
+      expect(hasEncounterVerification(confirmationConnector)).toBe(false)
     })
 
     it("returns false for a plain BaseConnector subclass that inherits both defaults", () => {
@@ -315,6 +292,97 @@ describe("Type Guards", () => {
         }
       }
       expect(hasConfirmations(new FullConfirmationConnector())).toBe(true)
+    })
+  })
+
+  describe("hasConfirmationWriter", () => {
+    it("returns false for plain DataInterface", () => {
+      expect(hasConfirmationWriter(createStub())).toBe(false)
+    })
+
+    it("returns false when only one write method is present", () => {
+      expect(hasConfirmationWriter(createStub({
+        issueConfirmation: async () => ({}),
+      }))).toBe(false)
+    })
+
+    it("returns true when confirmation write methods are present", () => {
+      const connector = createStub({
+        issueConfirmation: async () => ({
+          id: "c-1",
+          subjectId: "did:example:bob",
+          issuerId: "did:example:alice",
+          claim: "helped build a garden bed",
+          createdAt: "2026-05-18T00:00:00.000Z",
+          trustLevel: "signed-attested",
+        } satisfies ConfirmationView),
+        setConfirmationAccepted: async () => {},
+      })
+      expect(hasConfirmationWriter(connector)).toBe(true)
+      expect(hasConfirmations(connector)).toBe(false)
+    })
+
+    it("returns false for a BaseConnector subclass that inherits writer defaults", () => {
+      class PlainConnector extends BaseConnector {
+        async getItems(_filter?: ItemFilter): Promise<Item[]> {
+          return []
+        }
+        async getItem(_id: string): Promise<Item | null> {
+          return null
+        }
+        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async deleteItem(_id: string): Promise<void> {}
+      }
+      expect(hasConfirmationWriter(new PlainConnector())).toBe(false)
+    })
+  })
+
+  describe("hasEncounterVerification", () => {
+    it("returns false for plain DataInterface", () => {
+      expect(hasEncounterVerification(createStub())).toBe(false)
+    })
+
+    it("returns false when only challenge creation is present", () => {
+      expect(hasEncounterVerification(createStub({
+        createVerificationChallenge: async () => ({ code: "code", nonce: "nonce" }),
+      }))).toBe(false)
+    })
+
+    it("returns true when encounter-verification methods are present", () => {
+      const connector = createStub({
+        createVerificationChallenge: async () => ({ code: "code", nonce: "nonce" }),
+        prepareVerificationResponse: async () => ({ peerId: "did:example:peer" }),
+        confirmVerificationResponse: async () => {},
+        counterVerify: async () => {},
+        getVerificationStatus: () => "mutual",
+      })
+      expect(hasEncounterVerification(connector)).toBe(true)
+      expect(hasConfirmations(connector)).toBe(false)
+      expect(hasConfirmationWriter(connector)).toBe(false)
+    })
+
+    it("returns false for a BaseConnector subclass that inherits encounter defaults", () => {
+      class PlainConnector extends BaseConnector {
+        async getItems(_filter?: ItemFilter): Promise<Item[]> {
+          return []
+        }
+        async getItem(_id: string): Promise<Item | null> {
+          return null
+        }
+        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {
+          throw new Error("not supported")
+        }
+        async deleteItem(_id: string): Promise<void> {}
+      }
+      expect(hasEncounterVerification(new PlainConnector())).toBe(false)
     })
   })
 

@@ -7,11 +7,9 @@ import {
   createObservable,
   type AuthState,
   type ContactInfo,
-  type ClaimDeliveryStatus,
   type ConfirmationView,
   type Group,
   type RelayState,
-  type SignedClaim,
   type User,
 } from "@real-life-stack/data-interface"
 
@@ -75,38 +73,6 @@ vi.mock("@real-life/wot-core/protocol", () => ({
   x25519MultibaseToPublicKeyBytes: vi.fn(() => new Uint8Array()),
 }))
 
-/**
- * Connector-level regression tests for the auth-scoped observable cleanup
- * slice. They cover two contracts that the WotConnector must satisfy on top
- * of the (already passing) confirmation projection:
- *
- *   1. WotConnector.logout() must reset every auth-scoped observable so a
- *      logged-out (or identity-switched) UI cannot keep rendering stale WoT
- *      state. PR #11 introduced `confirmationsObs`, which logout still
- *      ignores — and `claimsObs` / `deliveryStatusObs` are not cleared
- *      either, even though they are auth-scoped.
- *
- *   2. WotConnector.setAccepted() must refresh both the legacy
- *      `SignedClaim` projection and the new `ConfirmationView` projection
- *      immediately, so `isAccepted` changes are reflected without waiting
- *      for an attestation-map change event.
- *
- * Because WotConnector itself is intentionally hard to instantiate in unit
- * tests (it depends on WotIdentity, WebSocket, Yjs, IndexedDB, …) we follow
- * the established package convention and combine two layers of checks:
- *
- *   - A regression guard that inspects the connector source directly. The
- *     red phase requires logout to reset the new auth-scoped observables
- *     and setAccepted to call syncClaimsFromPersonalDoc; both are missing
- *     today and must be added before this slice can go green.
- *
- *   - Behavioural simulations using the same primitives (`createObservable`
- *     and `mapPersonalDocConfirmations`) that the connector uses, so the
- *     intent of the contract is documented and exercised end-to-end.
- */
-
-// --- Source resolution ----------------------------------------------------
-
 const here = dirname(fileURLToPath(import.meta.url))
 const CONNECTOR_SRC = resolve(here, "../src/wot-connector.ts")
 const CONFIRMATIONS_SRC = resolve(here, "../src/confirmations.ts")
@@ -119,34 +85,23 @@ function sliceMethod(source: string, startMarker: string, endMarker: string): st
   const start = source.indexOf(startMarker)
   const end = source.indexOf(endMarker, start === -1 ? 0 : start)
   if (start === -1 || end === -1 || end <= start) {
-    throw new Error(
-      `Failed to slice method body between "${startMarker}" and "${endMarker}"`,
-    )
+    throw new Error(`Failed to slice method body between "${startMarker}" and "${endMarker}"`)
   }
   return source.slice(start, end)
 }
 
-// --- Layer 1: Source-level regression guards -----------------------------
-
-describe("WotConnector.logout() — auth-scoped observable reset (source guard)", () => {
+describe("WotConnector.logout() - auth-scoped observable reset", () => {
   const source = readConnectorSource()
   const logout = sliceMethod(source, "override async logout", "override async getCurrentUser")
 
-  it("resets the new ConfirmationView observable", () => {
+  it("resets confirmation and connector-status observables", () => {
     expect(logout).toMatch(/confirmationsObs\.set\(\[\]\)/)
-  })
-
-  it("resets the legacy SignedClaim observable", () => {
-    expect(logout).toMatch(/claimsObs\.set\(\[\]\)/)
-  })
-
-  it("resets the delivery-status observable", () => {
-    expect(logout).toMatch(/deliveryStatusObs\.set\(new Map/)
+    expect(logout).toMatch(/contactsObs\.set\(\[\]\)/)
+    expect(logout).toMatch(/outboxCountObs\.set\(0\)/)
+    expect(logout).toMatch(/relayStateObs\.set\("disconnected"\)/)
   })
 
   it("still resets the previously cleaned-up group/user observables", () => {
-    // These resets predate this slice — guard against accidental regression
-    // while we add the new confirmation/claim/delivery resets above.
     expect(logout).toMatch(/currentGroupObservable\.set\(null\)/)
     expect(logout).toMatch(/groupsObservable\.set\(\[\]\)/)
     expect(logout).toMatch(/currentUserObs\.set\(null\)/)
@@ -154,65 +109,71 @@ describe("WotConnector.logout() — auth-scoped observable reset (source guard)"
   })
 })
 
-describe("WotConnector.setAccepted() — metadata-only refresh (source guard)", () => {
+describe("WotConnector.setConfirmationAccepted() - metadata-only refresh", () => {
   const source = readConnectorSource()
-  const setAccepted = sliceMethod(
+  const setConfirmationAccepted = sliceMethod(
     source,
-    "override async setAccepted",
-    "override observeDeliveryStatuses",
+    "override async setConfirmationAccepted",
+    "// ==================== Encounter verification",
   )
 
-  it("refreshes the claim/confirmation projections after mutating metadata", () => {
-    expect(setAccepted).toMatch(/syncClaimsFromPersonalDoc\(\)/)
+  it("refreshes the confirmation projection after mutating metadata", () => {
+    expect(setConfirmationAccepted).toMatch(/syncConfirmationsFromPersonalDoc\(\)/)
   })
 
-  it("still mutates attestationMetadata.accepted (regression for existing behaviour)", () => {
-    expect(setAccepted).toMatch(/attestationMetadata\[id\]\.accepted\s*=\s*accepted/)
+  it("still mutates attestationMetadata.accepted", () => {
+    expect(setConfirmationAccepted).toMatch(/attestationMetadata\[id\]\.accepted\s*=\s*accepted/)
   })
 })
 
-describe("Confirmation projection — must not absorb delivery/outbox/QR concerns (source guard)", () => {
-  it("mapPersonalDocConfirmations stays generic and free of transport fields", () => {
+describe("Confirmation projection - transport and QR boundary", () => {
+  it("mapPersonalDocConfirmations stays generic", () => {
     const projection = readFileSync(CONFIRMATIONS_SRC, "utf8")
-    const forbidden = [
-      "deliveryStatus",
-      "observeDeliveryStatuses",
-      "retryClaim",
-      "getOutboxPendingCount",
-      "createChallenge",
-    ]
+    const forbidden = ["deliveryStatus", "getOutboxPendingCount", "createChallenge"]
     for (const term of forbidden) {
       expect(projection).not.toMatch(new RegExp(term))
     }
   })
 })
 
-// --- Layer 2: Behavioural simulation -------------------------------------
+describe("WotConnector verification boundary - source guards", () => {
+  const source = readConnectorSource()
+  const statusMethod = sliceMethod(
+    source,
+    "override getVerificationStatus",
+    "// ==================== Confirmations",
+  )
+  const mutualMethod = sliceMethod(
+    source,
+    "private async checkMutualVerification",
+    "// ==================== Internal: Confirmation sync",
+  )
+  const receiveVerificationBranch = sliceMethod(
+    source,
+    'if (envelope.type === "verification"',
+    'if (envelope.type === "space-invite"',
+  )
 
-interface ConnectorObservableSnapshot {
-  authState: AuthState
-  contacts: ContactInfo[]
-  claims: SignedClaim[]
-  confirmations: ConfirmationView[]
-  deliveryStatuses: Map<string, ClaimDeliveryStatus>
-  relayState: RelayState
-  outboxCount: number
-  currentGroup: Group | null
-  groups: Group[]
-  currentUser: User | null
-}
+  it("uses schema-only verification predicates", () => {
+    expect(statusMethod).toMatch(/filter\(isVerificationConfirmation\)/)
+    expect(mutualMethod).toMatch(/filter\(isVerificationConfirmation\)/)
+    expect(statusMethod).not.toMatch(/tags\?\.includes\("verification"\)/)
+    expect(mutualMethod).not.toMatch(/tags\?\.includes\("verification"\)/)
+  })
 
-/**
- * Minimal stand-in for the auth-scoped observable bundle that
- * WotConnector keeps. Mirrors the fields touched by logout() and by the
- * setAccepted → syncClaimsFromPersonalDoc refresh path.
- */
+  it("refreshes confirmations before the receive path checks for mutual verification", () => {
+    const syncIndex = receiveVerificationBranch.indexOf("this.syncConfirmationsFromPersonalDoc()")
+    const mutualIndex = receiveVerificationBranch.indexOf("this.checkMutualVerification(verification.from)")
+    expect(syncIndex).toBeGreaterThan(-1)
+    expect(mutualIndex).toBeGreaterThan(-1)
+    expect(syncIndex).toBeLessThan(mutualIndex)
+  })
+})
+
 function createConnectorObservables() {
   const authStateObs = createObservable<AuthState>({ status: "loading" })
   const contactsObs = createObservable<ContactInfo[]>([])
-  const claimsObs = createObservable<SignedClaim[]>([])
   const confirmationsObs = createObservable<ConfirmationView[]>([])
-  const deliveryStatusObs = createObservable<Map<string, ClaimDeliveryStatus>>(new Map())
   const relayStateObs = createObservable<RelayState>("disconnected")
   const outboxCountObs = createObservable<number>(0)
   const currentGroupObs = createObservable<Group | null>(null)
@@ -222,28 +183,12 @@ function createConnectorObservables() {
   return {
     authStateObs,
     contactsObs,
-    claimsObs,
     confirmationsObs,
-    deliveryStatusObs,
     relayStateObs,
     outboxCountObs,
     currentGroupObs,
     groupsObs,
     currentUserObs,
-    snapshot(): ConnectorObservableSnapshot {
-      return {
-        authState: authStateObs.current,
-        contacts: contactsObs.current,
-        claims: claimsObs.current,
-        confirmations: confirmationsObs.current,
-        deliveryStatuses: deliveryStatusObs.current,
-        relayState: relayStateObs.current,
-        outboxCount: outboxCountObs.current,
-        currentGroup: currentGroupObs.current,
-        groups: groupsObs.current,
-        currentUser: currentUserObs.current,
-      }
-    },
   }
 }
 
@@ -261,16 +206,6 @@ function createFakeConnectorForLogout() {
       updatedAt: "2026-04-12T08:00:00Z",
     },
   ])
-  obs.claimsObs.set([
-    {
-      id: "att-1",
-      from: "did:key:alice",
-      to: "did:key:bob",
-      claim: "is trustworthy",
-      createdAt: "2026-04-14T10:30:00Z",
-      isAccepted: true,
-    },
-  ])
   obs.confirmationsObs.set([
     {
       id: "att-1",
@@ -284,7 +219,6 @@ function createFakeConnectorForLogout() {
       isAccepted: true,
     },
   ])
-  obs.deliveryStatusObs.set(new Map([["att-1", "queued" as ClaimDeliveryStatus]]))
   obs.relayStateObs.set("connected")
   obs.outboxCountObs.set(2)
   obs.currentGroupObs.set({ id: "g1", name: "Crew" })
@@ -310,22 +244,14 @@ function createFakeConnectorForLogout() {
     currentGroupObservable: obs.currentGroupObs,
     groupsCache: [{ id: "g1", name: "Crew" }],
     groupsObservable: obs.groupsObs,
-    confirmationsObs: obs.confirmationsObs,
-    claimsObs: obs.claimsObs,
-    deliveryStatusObs: obs.deliveryStatusObs,
-    contactsObs: obs.contactsObs,
-    outboxCountObs: obs.outboxCountObs,
-    relayStateObs: obs.relayStateObs,
     profileObs: createObservable<User | null>(user),
     syncPendingObs: createObservable<boolean>(true),
-    currentUserObs: obs.currentUserObs,
-    authStateObs: obs.authStateObs,
     identity: { deleteStoredIdentity: vi.fn(async () => {}) },
     notifyAllObservers: vi.fn(),
   }
 }
 
-describe("WotConnector.logout() — real method regression", () => {
+describe("WotConnector.logout() - real method regression", () => {
   beforeEach(() => {
     yjsMockState.personalDoc = {}
   })
@@ -340,8 +266,6 @@ describe("WotConnector.logout() — real method regression", () => {
     await WotConnector.prototype.logout.call(fake as any)
 
     expect(fake.confirmationsObs.current).toEqual([])
-    expect(fake.claimsObs.current).toEqual([])
-    expect(fake.deliveryStatusObs.current.size).toBe(0)
     expect(fake.contactsObs.current).toEqual([])
     expect(fake.outboxCountObs.current).toBe(0)
     expect(fake.relayStateObs.current).toBe("disconnected")
@@ -359,7 +283,7 @@ describe("WotConnector.logout() — real method regression", () => {
   })
 })
 
-describe("WotConnector.setAccepted() — real method regression", () => {
+describe("WotConnector.setConfirmationAccepted() - real method regression", () => {
   beforeEach(() => {
     yjsMockState.personalDoc = {
       attestationMetadata: {
@@ -374,13 +298,13 @@ describe("WotConnector.setAccepted() — real method regression", () => {
 
   it("refreshes projections after mutating attestation metadata", async () => {
     const fake = {
-      syncClaimsFromPersonalDoc: vi.fn(),
+      syncConfirmationsFromPersonalDoc: vi.fn(),
     }
 
-    await WotConnector.prototype.setAccepted.call(fake as any, "att-1", true)
+    await WotConnector.prototype.setConfirmationAccepted.call(fake as any, "att-1", true)
 
     expect(yjsMockState.personalDoc.attestationMetadata["att-1"].accepted).toBe(true)
     expect(yjsMockState.personalDoc.attestationMetadata["att-1"].acceptedAt).toEqual(expect.any(String))
-    expect(fake.syncClaimsFromPersonalDoc).toHaveBeenCalledTimes(1)
+    expect(fake.syncConfirmationsFromPersonalDoc).toHaveBeenCalledTimes(1)
   })
 })

@@ -10,10 +10,11 @@ import type {
   Source,
   ContactInfo,
   RelayState,
-  SignedClaim,
-  ClaimDeliveryStatus,
   VerificationDirection,
+  ConfirmationIssueInput,
   ConfirmationView,
+  EncounterPeerInfo,
+  VerificationChallenge,
   IncomingEvent,
 } from "@real-life-stack/data-interface"
 import {
@@ -69,12 +70,7 @@ import {
   flushYjsPersonalDoc,
   refreshYjsPersonalDocFromVault,
 } from "@real-life/adapter-yjs"
-import type {
-  PersonalDoc,
-  VerificationDoc,
-  AttestationDoc,
-  AttestationMetadataDoc,
-} from "@real-life/adapter-yjs"
+import type { PersonalDoc } from "@real-life/adapter-yjs"
 
 import type { WotConnectorConfig, RlsSpaceDoc, SerializedItem } from "./types.js"
 import { serializeItem, deserializeItem } from "./serialization.js"
@@ -86,6 +82,10 @@ import { mapPersonalDocConfirmations } from "./confirmations.js"
 const RLS_SPACE_TYPE = "rls"
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
 // Overview mode: setCurrentGroup(null) = show all items from all spaces
+
+function isVerificationConfirmation(c: ConfirmationView): boolean {
+  return c.schema === "wot:verification"
+}
 
 // --- WotConnector ---
 
@@ -125,9 +125,7 @@ export class WotConnector extends BaseConnector {
   // Observables (stable references — backing changes on group switch)
   private authStateObs: ReactiveObservable<AuthState>
   private contactsObs: ReactiveObservable<ContactInfo[]>
-  private claimsObs: ReactiveObservable<SignedClaim[]>
   private confirmationsObs: ReactiveObservable<ConfirmationView[]>
-  private deliveryStatusObs: ReactiveObservable<Map<string, ClaimDeliveryStatus>>
   private relayStateObs: ReactiveObservable<RelayState>
   private outboxCountObs: ReactiveObservable<number>
   private profileObs: ReactiveObservable<Item | null>
@@ -158,9 +156,7 @@ export class WotConnector extends BaseConnector {
     this.discovery = new OfflineFirstDiscoveryAdapter(this.httpDiscovery, this.publishStateStore, this.graphCacheStore)
     this.authStateObs = createObservable<AuthState>({ status: "loading" })
     this.contactsObs = createObservable<ContactInfo[]>([])
-    this.claimsObs = createObservable<SignedClaim[]>([])
     this.confirmationsObs = createObservable<ConfirmationView[]>([])
-    this.deliveryStatusObs = createObservable<Map<string, ClaimDeliveryStatus>>(new Map())
     this.relayStateObs = createObservable<RelayState>("disconnected")
     this.outboxCountObs = createObservable<number>(0)
     this.profileObs = createObservable<Item | null>(null)
@@ -215,9 +211,7 @@ export class WotConnector extends BaseConnector {
     this.relatedObservables.clear()
     this.authStateObs.destroy()
     this.contactsObs.destroy()
-    this.claimsObs.destroy()
     this.confirmationsObs.destroy()
-    this.deliveryStatusObs.destroy()
     this.relayStateObs.destroy()
     this.outboxCountObs.destroy()
     this.profileObs.destroy()
@@ -330,12 +324,10 @@ export class WotConnector extends BaseConnector {
     this.groupsCache = []
     this.groupsObservable.set([])
 
-    // Reset auth-scoped WoT observables so the logged-out (or identity-switched)
-    // UI cannot keep rendering stale claims, confirmations, contacts, delivery
-    // statuses, relay state, or pending-outbox counts from the previous session.
+    // Reset auth-scoped WoT observables so the logged-out or identity-switched
+    // UI cannot keep rendering stale confirmations, contacts, relay state, or
+    // pending-outbox counts from the previous session.
     this.confirmationsObs.set([])
-    this.claimsObs.set([])
-    this.deliveryStatusObs.set(new Map())
     this.contactsObs.set([])
     this.outboxCountObs.set(0)
     this.relayStateObs.set("disconnected")
@@ -955,7 +947,7 @@ export class WotConnector extends BaseConnector {
       await this.handleIncomingMessage(envelope)
     })
 
-    // 9. Storage adapter for reactive contacts/claims
+    // 9. Storage adapter for reactive contacts and confirmations
     this.storage = new YjsStorageAdapter(did)
 
     // PersonalDoc changes -> discover new spaces (not full state broadcast,
@@ -1011,10 +1003,10 @@ export class WotConnector extends BaseConnector {
       }))
     )
 
-    // Reactive claims via StorageAdapter (verifications + attestations → SignedClaim)
-    this.verificationsUnsub = this.storage.watchAllVerifications().subscribe(() => this.syncClaimsFromPersonalDoc())
-    this.attestationsUnsub = this.storage.watchAllAttestations().subscribe(() => this.syncClaimsFromPersonalDoc())
-    this.syncClaimsFromPersonalDoc()
+    // Reactive confirmations via StorageAdapter (verifications + attestations)
+    this.verificationsUnsub = this.storage.watchAllVerifications().subscribe(() => this.syncConfirmationsFromPersonalDoc())
+    this.attestationsUnsub = this.storage.watchAllAttestations().subscribe(() => this.syncConfirmationsFromPersonalDoc())
+    this.syncConfirmationsFromPersonalDoc()
 
     // Reactive profile via PersonalDoc changes
     let lastProfileKey = ""
@@ -1417,12 +1409,13 @@ export class WotConnector extends BaseConnector {
     return this.outboxCountObs
   }
 
-  // ==================== Signed Claims ====================
+  // ==================== Confirmation writing ====================
 
-  override async createClaim(toId: string, claim: string, tags?: string[]): Promise<SignedClaim> {
+  override async issueConfirmation(input: ConfirmationIssueInput): Promise<ConfirmationView> {
+    const { subjectId, claim, tags } = input
     const attestation = await this.attestationWorkflow.createAttestation({
       issuer: this.identity,
-      subjectDid: toId,
+      subjectDid: subjectId,
       claim,
       tags,
     })
@@ -1437,7 +1430,7 @@ export class WotConnector extends BaseConnector {
         id,
         attestationId: id,
         fromDid: did,
-        toDid: toId,
+        toDid: subjectId,
         claim,
         tagsJson: tags ? JSON.stringify(tags) : null,
         context: null,
@@ -1452,6 +1445,7 @@ export class WotConnector extends BaseConnector {
         deliveryStatus: "queued",
       } as any
     })
+    this.syncConfirmationsFromPersonalDoc()
 
     // Send attestation via relay
     if (this.outboxAdapter) {
@@ -1460,7 +1454,7 @@ export class WotConnector extends BaseConnector {
         id,
         type: "attestation" as MessageType,
         fromDid: did,
-        toDid: toId,
+        toDid: subjectId,
         createdAt: now,
         encoding: "json",
         payload: JSON.stringify(attestation),
@@ -1473,21 +1467,47 @@ export class WotConnector extends BaseConnector {
             doc.attestationMetadata[id].deliveryStatus = status
           }
         })
-        this.syncClaimsFromPersonalDoc()
+        this.syncConfirmationsFromPersonalDoc()
       }).catch(() => {
         changeYjsPersonalDoc((doc: any) => {
           if (doc.attestationMetadata?.[id]) {
             doc.attestationMetadata[id].deliveryStatus = "failed"
           }
         })
-        this.syncClaimsFromPersonalDoc()
+        this.syncConfirmationsFromPersonalDoc()
       })
     }
 
-    return { id, from: did, to: toId, claim, tags, createdAt: now, isAccepted: true }
+    return {
+      id,
+      issuerId: did,
+      subjectId,
+      claim,
+      ...(tags ? { tags } : {}),
+      schema: "wot:attestation",
+      createdAt: now,
+      trustLevel: "signed-attested",
+      source: "wot",
+      isAccepted: true,
+    }
   }
 
-  override async createChallenge(): Promise<{ code: string; nonce: string }> {
+  override async setConfirmationAccepted(id: string, accepted: boolean): Promise<void> {
+    changeYjsPersonalDoc((doc: any) => {
+      if (doc.attestationMetadata?.[id]) {
+        doc.attestationMetadata[id].accepted = accepted
+        doc.attestationMetadata[id].acceptedAt = accepted ? new Date().toISOString() : null
+      }
+    })
+    // Metadata-only changes do not trigger the verifications/attestations
+    // watchers, so refresh the confirmation projection explicitly. Other
+    // metadata-only update paths call this at their own mutation sites.
+    this.syncConfirmationsFromPersonalDoc()
+  }
+
+  // ==================== Encounter verification ====================
+
+  override async createVerificationChallenge(): Promise<VerificationChallenge> {
     const displayName = getYjsPersonalDoc()?.profile?.name ?? getDefaultDisplayName(this.identity.getDid())
     const { code, challenge } = await this.verificationWorkflow.createChallenge(this.identity, displayName)
     const nonce = challenge.nonce
@@ -1495,7 +1515,7 @@ export class WotConnector extends BaseConnector {
     return { code, nonce }
   }
 
-  override async prepareResponse(challengeCode: string): Promise<{ peerId: string; peerName?: string; peerAvatar?: string }> {
+  override async prepareVerificationResponse(challengeCode: string): Promise<EncounterPeerInfo> {
     const parsed = JSON.parse(atob(challengeCode))
     const peerId = parsed.fromDid as string
     let peerName = parsed.fromName as string | undefined
@@ -1518,7 +1538,7 @@ export class WotConnector extends BaseConnector {
     return { peerId, peerName, peerAvatar }
   }
 
-  override async confirmAndRespond(challengeCode: string): Promise<void> {
+  override async confirmVerificationResponse(challengeCode: string): Promise<void> {
     const did = this.identity.getDid()
 
     // Parse to get the peer's info
@@ -1595,8 +1615,8 @@ export class WotConnector extends BaseConnector {
       this.outboxAdapter.send(envelope).catch(() => {}) // Non-blocking — outbox handles retry
     }
 
-    // Sync claims so the verification we just wrote is in claimsObs
-    this.syncClaimsFromPersonalDoc()
+    // Sync confirmations so the verification we just wrote is in confirmation projection
+    this.syncConfirmationsFromPersonalDoc()
     // Check if mutual (we just sent ours, peer's may already exist)
     this.checkMutualVerification(peerDid)
   }
@@ -1668,103 +1688,21 @@ export class WotConnector extends BaseConnector {
       this.outboxAdapter.send(envelope).catch(() => {})
     }
 
-    // Sync claims so the counter-verification we just wrote is in claimsObs
-    this.syncClaimsFromPersonalDoc()
+    // Sync confirmations so the counter-verification we just wrote is in confirmation projection
+    this.syncConfirmationsFromPersonalDoc()
     // Check if mutual (we just counter-verified, so both sides exist now)
     this.checkMutualVerification(targetId)
   }
 
-  override async getClaimsByMe(): Promise<SignedClaim[]> {
-    return this.claimsObs.current.filter((c) => c.from === this.identity.getDid())
-  }
-
-  override async getClaimsAboutMe(): Promise<SignedClaim[]> {
-    return this.claimsObs.current.filter((c) => c.to === this.identity.getDid())
-  }
-
-  override observeClaims(): Observable<SignedClaim[]> {
-    return this.claimsObs
-  }
-
   override getVerificationStatus(contactId: string): VerificationDirection {
     const did = this.identity.getDid()
-    const claims = this.claimsObs.current.filter(
-      (c) => c.tags?.includes("verification")
-    )
-    const outgoing = claims.some((c) => c.from === did && c.to === contactId)
-    const incoming = claims.some((c) => c.from === contactId && c.to === did)
+    const verifications = this.confirmationsObs.current.filter(isVerificationConfirmation)
+    const outgoing = verifications.some((c) => c.issuerId === did && c.subjectId === contactId)
+    const incoming = verifications.some((c) => c.issuerId === contactId && c.subjectId === did)
     if (outgoing && incoming) return "mutual"
     if (outgoing) return "outgoing"
     if (incoming) return "incoming"
     return "none"
-  }
-
-  override async setAccepted(id: string, accepted: boolean): Promise<void> {
-    changeYjsPersonalDoc((doc: any) => {
-      if (doc.attestationMetadata?.[id]) {
-        doc.attestationMetadata[id].accepted = accepted
-        doc.attestationMetadata[id].acceptedAt = accepted ? new Date().toISOString() : null
-      }
-    })
-    // Metadata-only changes do not trigger the verifications/attestations
-    // watchers, so refresh both the legacy SignedClaim and ConfirmationView
-    // projections explicitly. Other metadata-only update paths (delivery
-    // status, ack) already call syncClaimsFromPersonalDoc() at their own
-    // mutation sites.
-    this.syncClaimsFromPersonalDoc()
-  }
-
-  override observeDeliveryStatuses(): Observable<Map<string, ClaimDeliveryStatus>> {
-    return this.deliveryStatusObs
-  }
-
-  override async retryClaim(id: string): Promise<void> {
-    if (!this.outboxAdapter) return
-    const doc = getYjsPersonalDoc()
-    const att = doc.attestations?.[id]
-    if (!att) return
-
-    if (!att.vcJws) return
-    const tags = att.tagsJson ? JSON.parse(att.tagsJson) : undefined
-    const attestation = {
-      id: att.attestationId ?? att.id,
-      from: att.fromDid,
-      to: att.toDid,
-      claim: att.claim,
-      ...(tags ? { tags } : {}),
-      ...(att.context ? { context: att.context } : {}),
-      createdAt: att.createdAt,
-      vcJws: att.vcJws,
-    }
-    const envelope: MessageEnvelope = {
-      v: 1,
-      id: att.id,
-      type: "attestation" as MessageType,
-      fromDid: att.fromDid,
-      toDid: att.toDid,
-      createdAt: att.createdAt,
-      encoding: "json",
-      payload: JSON.stringify(attestation),
-      signature: att.vcJws,
-    }
-
-    try {
-      const receipt = await this.outboxAdapter.send(envelope)
-      const status = receipt.reason === "queued-in-outbox" ? "queued" : "delivered"
-      changeYjsPersonalDoc((doc: any) => {
-        if (doc.attestationMetadata?.[id]) {
-          doc.attestationMetadata[id].deliveryStatus = status
-        }
-      })
-      this.syncClaimsFromPersonalDoc()
-    } catch {
-      changeYjsPersonalDoc((doc: any) => {
-        if (doc.attestationMetadata?.[id]) {
-          doc.attestationMetadata[id].deliveryStatus = "failed"
-        }
-      })
-      this.syncClaimsFromPersonalDoc()
-    }
   }
 
   // ==================== Confirmations (generic projection) ====================
@@ -1814,6 +1752,7 @@ export class WotConnector extends BaseConnector {
             locationJson: null,
           } as any
         })
+        this.syncConfirmationsFromPersonalDoc()
 
         // Check if this matches our pending challenge nonce (= they scanned our QR)
         const nonce = this.pendingChallenge?.nonce
@@ -1939,7 +1878,7 @@ export class WotConnector extends BaseConnector {
             doc.attestationMetadata[attestationId].deliveryStatus = "acknowledged"
           }
         })
-        this.syncClaimsFromPersonalDoc()
+        this.syncConfirmationsFromPersonalDoc()
       } catch { /* ignore malformed */ }
     }
 
@@ -1972,10 +1911,9 @@ export class WotConnector extends BaseConnector {
 
   private async checkMutualVerification(peerId: string): Promise<void> {
     const did = this.identity.getDid()
-    const claims = this.claimsObs.current.filter((c) => c.tags?.includes("verification"))
-    const outgoing = claims.some((c) => c.from === did && c.to === peerId)
-    const incoming = claims.some((c) => c.from === peerId && c.to === did)
-    console.log("[WotConnector.checkMutual]", { peerId: peerId.slice(-8), outgoing, incoming, totalClaims: claims.length })
+    const verifications = this.confirmationsObs.current.filter(isVerificationConfirmation)
+    const outgoing = verifications.some((c) => c.issuerId === did && c.subjectId === peerId)
+    const incoming = verifications.some((c) => c.issuerId === peerId && c.subjectId === did)
 
     if (outgoing && incoming) {
       const contact = this.contactsObs.current.find((c) => c.id === peerId)
@@ -1998,9 +1936,9 @@ export class WotConnector extends BaseConnector {
     }
   }
 
-  // ==================== Internal: Claims sync ====================
+  // ==================== Internal: Confirmation sync ====================
 
-  private syncClaimsFromPersonalDoc(): void {
+  private syncConfirmationsFromPersonalDoc(): void {
     let doc: ReturnType<typeof getYjsPersonalDoc>
     try {
       doc = getYjsPersonalDoc()
@@ -2013,9 +1951,6 @@ export class WotConnector extends BaseConnector {
     const attestations = doc.attestations ?? {}
     const metadata = doc.attestationMetadata ?? {}
 
-    // Project confirmations first via the safe pure projection so malformed
-    // entries on the legacy claim path can never prevent the confirmation
-    // observable from being updated.
     this.confirmationsObs.set(
       mapPersonalDocConfirmations({
         verifications: verifications as Record<string, { id: string; fromDid: string; toDid: string; timestamp: string }>,
@@ -2024,57 +1959,6 @@ export class WotConnector extends BaseConnector {
       }),
     )
 
-    try {
-      const claims: SignedClaim[] = []
-
-      // Map verifications → SignedClaim with tag "verification"
-      for (const [, v] of Object.entries(verifications)) {
-        const vDoc = v as unknown as VerificationDoc
-        if (!vDoc.id) continue
-        claims.push({
-          id: vDoc.id,
-          from: vDoc.fromDid,
-          to: vDoc.toDid,
-          claim: "physical-meeting",
-          tags: ["verification"],
-          createdAt: vDoc.timestamp,
-          isAccepted: true,
-        })
-      }
-
-      // Map attestations → SignedClaim
-      for (const [, a] of Object.entries(attestations)) {
-        const aDoc = a as unknown as AttestationDoc
-        if (!aDoc.id) continue
-        const meta = metadata[aDoc.id] as unknown as AttestationMetadataDoc | undefined
-        const tags = aDoc.tagsJson ? JSON.parse(aDoc.tagsJson) : undefined
-        claims.push({
-          id: aDoc.id,
-          from: aDoc.fromDid,
-          to: aDoc.toDid,
-          claim: aDoc.claim,
-          tags,
-          createdAt: aDoc.createdAt,
-          isAccepted: meta?.accepted ?? false,
-        })
-      }
-
-      this.claimsObs.set(claims)
-
-      // Sync delivery statuses
-      const statuses = new Map<string, ClaimDeliveryStatus>()
-      for (const [id, m] of Object.entries(metadata)) {
-        const mDoc = m as unknown as AttestationMetadataDoc
-        if (mDoc.deliveryStatus) {
-          statuses.set(id, mDoc.deliveryStatus as ClaimDeliveryStatus)
-        }
-      }
-      this.deliveryStatusObs.set(statuses)
-    } catch {
-      // Preserve the legacy SignedClaim sync behavior: malformed legacy data
-      // aborts the claim/status refresh, while confirmations were already
-      // published by the backend-agnostic projection above.
-    }
   }
 
   // (syncContactsFromPersonalDoc removed — contacts are now reactive via YjsStorageAdapter.watchContacts())
