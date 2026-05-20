@@ -83,6 +83,10 @@ const RLS_SPACE_TYPE = "rls"
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
 // Overview mode: setCurrentGroup(null) = show all items from all spaces
 
+function isVerificationConfirmation(c: ConfirmationView): boolean {
+  return c.schema === "wot:verification"
+}
+
 // --- WotConnector ---
 
 export class WotConnector extends BaseConnector {
@@ -1692,9 +1696,7 @@ export class WotConnector extends BaseConnector {
 
   override getVerificationStatus(contactId: string): VerificationDirection {
     const did = this.identity.getDid()
-    const verifications = this.confirmationsObs.current.filter(
-      (c) => c.schema === "wot:verification" || c.tags?.includes("verification")
-    )
+    const verifications = this.confirmationsObs.current.filter(isVerificationConfirmation)
     const outgoing = verifications.some((c) => c.issuerId === did && c.subjectId === contactId)
     const incoming = verifications.some((c) => c.issuerId === contactId && c.subjectId === did)
     if (outgoing && incoming) return "mutual"
@@ -1750,6 +1752,7 @@ export class WotConnector extends BaseConnector {
             locationJson: null,
           } as any
         })
+        this.syncConfirmationsFromPersonalDoc()
 
         // Check if this matches our pending challenge nonce (= they scanned our QR)
         const nonce = this.pendingChallenge?.nonce
@@ -1908,9 +1911,7 @@ export class WotConnector extends BaseConnector {
 
   private async checkMutualVerification(peerId: string): Promise<void> {
     const did = this.identity.getDid()
-    const verifications = this.confirmationsObs.current.filter(
-      (c) => c.schema === "wot:verification" || c.tags?.includes("verification")
-    )
+    const verifications = this.confirmationsObs.current.filter(isVerificationConfirmation)
     const outgoing = verifications.some((c) => c.issuerId === did && c.subjectId === peerId)
     const incoming = verifications.some((c) => c.issuerId === peerId && c.subjectId === did)
 

@@ -136,6 +136,40 @@ describe("Confirmation projection - transport and QR boundary", () => {
   })
 })
 
+describe("WotConnector verification boundary - source guards", () => {
+  const source = readConnectorSource()
+  const statusMethod = sliceMethod(
+    source,
+    "override getVerificationStatus",
+    "// ==================== Confirmations",
+  )
+  const mutualMethod = sliceMethod(
+    source,
+    "private async checkMutualVerification",
+    "// ==================== Internal: Confirmation sync",
+  )
+  const receiveVerificationBranch = sliceMethod(
+    source,
+    'if (envelope.type === "verification"',
+    'if (envelope.type === "space-invite"',
+  )
+
+  it("uses schema-only verification predicates", () => {
+    expect(statusMethod).toMatch(/filter\(isVerificationConfirmation\)/)
+    expect(mutualMethod).toMatch(/filter\(isVerificationConfirmation\)/)
+    expect(statusMethod).not.toMatch(/tags\?\.includes\("verification"\)/)
+    expect(mutualMethod).not.toMatch(/tags\?\.includes\("verification"\)/)
+  })
+
+  it("refreshes confirmations before the receive path checks for mutual verification", () => {
+    const syncIndex = receiveVerificationBranch.indexOf("this.syncConfirmationsFromPersonalDoc()")
+    const mutualIndex = receiveVerificationBranch.indexOf("this.checkMutualVerification(verification.from)")
+    expect(syncIndex).toBeGreaterThan(-1)
+    expect(mutualIndex).toBeGreaterThan(-1)
+    expect(syncIndex).toBeLessThan(mutualIndex)
+  })
+})
+
 function createConnectorObservables() {
   const authStateObs = createObservable<AuthState>({ status: "loading" })
   const contactsObs = createObservable<ContactInfo[]>([])

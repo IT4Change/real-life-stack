@@ -26,6 +26,8 @@ export function useVerification() {
   const createChallenge = useCallback(async () => {
     if (!supported) return null
     setError(null)
+    setChallenge(null)
+    setPeerInfo(null)
     setIsProcessing(true)
     try {
       const result = await connector.createVerificationChallenge()
@@ -42,6 +44,8 @@ export function useVerification() {
   const scanChallenge = useCallback(async (code: string) => {
     if (!supported) return null
     setError(null)
+    setChallenge(null)
+    setPeerInfo(null)
     setIsProcessing(true)
     try {
       const info = await connector.prepareVerificationResponse(code)
