@@ -7,7 +7,7 @@
 
 ---
 
-## Missing (must fix)
+## Closed parity gaps
 
 | # | Feature | Demo App | Connector | Priority | Status |
 |---|---------|----------|-----------|----------|--------|
@@ -26,8 +26,8 @@
 
 | # | Feature | Demo App | Connector | Notes |
 |---|---------|----------|-----------|-------|
-| 1 | Attestation model | Full `Attestation` with metadata, export/import | `SignedClaim` (simplified) | Different abstraction, same crypto |
-| 2 | Attestation delivery tracking | Full ACK-based receipt tracking | `deliveryStatusObs` maps ID → status | ✅ Now confirms via ACK |
+| 1 | Attestation model | Full `Attestation` with metadata, export/import | `ConfirmationView` projection over WoT attestations | Different abstraction, same crypto |
+| 2 | Attestation delivery tracking | Full ACK-based receipt tracking | Connector-owned outbox + ACK handling | ✅ Now confirms via ACK |
 | 3 | Member update handling | Explicit `member-update` message handler | Automatic via `watchSpaces()` | Both work, different approach |
 | 4 | Personal sync | Cross-device `personal-sync` message handler | Handled by `YjsPersonalDocManager` internally | Both work |
 | 5 | Profile caching | `graphCacheStore` + `LocalCacheStore` for offline | Relies on PersonalDoc contacts | Connector has contacts cached in Yjs, no separate graph cache |
@@ -45,11 +45,11 @@
 - Offline behavior (outbox queueing, CompactStore persistence, reconnect flush)
 - Crypto (Ed25519 sign/verify, X25519 ECIES, AES-256-GCM, HKDF)
 - Reactive patterns (watchContacts, watchVerifications, watchAttestations, watchSpaces)
-- All observable state (auth, relay, items, claims, groups, outbox count)
+- All observable state (auth, relay, items, confirmations, groups, outbox count)
 
 ---
 
-## Action Plan
+## Resolved work
 
 ### Phase 1: Contact Name Reactivity (HIGH)
 1. Add `profile-update` message handler in `handleIncomingMessage()`
@@ -59,7 +59,7 @@
 
 ### Phase 2: Attestation Completeness (MEDIUM)
 5. Handle `attestation-ack` messages → update delivery status
-6. Implement `retryClaim()` (reconstruct envelope + resend)
+6. Keep attestation retry logic connector-owned
 7. Verify incoming attestation signatures
 
 ### Phase 3: Offline Resilience (LOW)

@@ -56,7 +56,9 @@ Optionale Faehigkeiten werden ueber Interfaces und Type Guards erkannt:
 | `ProfileCapable` | Profile lesen, schreiben, synchronisieren |
 | `ContactManager` | Kontakte und Beziehungsstatus verwalten |
 | `MessagingCapable` | Relay-Status und bestehenden Messaging-Outbox-Pending-Count sichtbar machen |
-| `SignedClaimCapable` | bestehender enger Claim-/Attestation-Vertrag; soll durch Confirmation-Semantik ersetzt werden |
+| `ConfirmationCapable` | bestaetigte Aussagen backend-agnostisch lesen und beobachten |
+| `ConfirmationWriterCapable` | Confirmations erstellen und Annahmestatus setzen |
+| `EncounterVerificationCapable` | QR-/Begegnungsverifikation als eigenen Ablauf bereitstellen |
 | `EventListenerCapable` | eingehende Ereignisse anzeigen |
 
 Neue Capabilities duerfen nur eingefuehrt werden, wenn ein UI- oder Connector-Vertrag nicht sinnvoll ueber bestehende Capabilities ausdrueckbar ist.
@@ -75,7 +77,7 @@ Ein Projekt kann als Item existieren, als eigener Space organisiert sein oder be
 
 ## Confirmations und Trust
 
-RLS braucht eine backend-agnostische Projektion fuer bestaetigte Aussagen. Der bisherige Typ `SignedClaim` ist zu eng fuer diese Rolle und soll nicht als Legacy-Kompatibilitaet konserviert werden. Da RLS frisch ausgerichtet wird, soll der Vertrag konsequent durch Confirmation-Semantik ersetzt werden.
+RLS braucht eine backend-agnostische Projektion fuer bestaetigte Aussagen. Der fruehere Typ `SignedClaim` war zu eng fuer diese Rolle und wurde durch Confirmation-Semantik ersetzt. `ConfirmationView` ist die neutrale UI- und Connector-Projektion; portable signierte WoT-Attestations bleiben darunter eine moegliche Quelle.
 
 Der neutrale Begriff fuer RLS-Views ist `Confirmation`. Details stehen in [04-confirmations-and-trust.md](04-confirmations-and-trust.md).
 

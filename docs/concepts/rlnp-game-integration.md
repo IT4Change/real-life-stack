@@ -190,7 +190,7 @@ RLS braucht dafür keine Quest-, Adventure- oder Campaign-Spezialdatenbank. Es b
 
 ## Claims, Confirmations, Attestations und Trust
 
-RLS hat bereits `SignedClaimCapable`. Das passt grundsätzlich zu WoT-Verifikationen und Attestations, ist aber für backend-agnostische RLNP/Game-Flows noch zu eng benannt.
+RLS hat `ConfirmationCapable` und `ConfirmationWriterCapable`. Diese Schnittstellen ersetzen den frueheren engen Signed-Claim-Vertrag und geben RLNP/Game-Views eine backend-agnostische Sicht auf bestaetigte Ereignisse.
 
 Für das Integrationskonzept ist wichtig:
 
@@ -247,7 +247,9 @@ Bestehende RLS-Capabilities:
 | `RelationCapable` / `hasRelations()` | Related Items und Kontextbezüge abfragen |
 | `GroupManager` / `hasGroups()` | Spaces/Gruppen lesen und verwalten |
 | `ProfileCapable` / `hasProfile()` | Profile lesen, schreiben und synchronisieren |
-| `SignedClaimCapable` / `hasSignedClaims()` | bestehender enger Claim-/Attestation-Vertrag; soll durch Confirmation-Semantik ersetzt werden |
+| `ConfirmationCapable` / `hasConfirmations()` | Confirmations lesen und beobachten |
+| `ConfirmationWriterCapable` / `hasConfirmationWriter()` | Confirmations erstellen und Annahmestatus setzen |
+| `EncounterVerificationCapable` / `hasEncounterVerification()` | QR-/Begegnungsverifikation bereitstellen |
 | `ContactManager` / `hasContacts()` | Kontakte und Beziehungsstatus abbilden |
 | `MessagingCapable` / `hasMessaging()` | Relay-Status und bestehenden Messaging-Outbox-Pending-Count anzeigen |
 | `EventListenerCapable` / `hasEventListener()` | eingehende Verifikationen, Confirmations oder Space-Einladungen anzeigen |
@@ -352,7 +354,7 @@ Dieses Dokument ist der Maßstab für diese spätere Aufräumrunde.
 ### Phase 2: Daten- und Capability-Lücken schließen
 
 - Prüfen, ob `RelationCapable` Schreiboperationen braucht.
-- `SignedClaimCapable` nicht als dauerhafte Legacy-Projektion behandeln, sondern durch `ConfirmationCapable` ersetzen; QR-Verifikation getrennt modellieren und Delivery/Outbox im Connector lassen.
+- Schreib- und Mutationsmuster fuer QuestRuns, Evidence und Relations klaeren.
 - Feature-Items um RLNP/Game-Capabilities erweitern.
 
 ### Phase 3: Erste UI-Slices
@@ -369,7 +371,6 @@ Dieses Dokument ist der Maßstab für diese spätere Aufräumrunde.
 
 ## Offene Fragen
 
-- Wie schneiden wir die Code-Migration von `SignedClaim`/`SignedClaimCapable` zu `ConfirmationView`/`ConfirmationCapable`, ohne QR-Verifikation wieder in den generischen Confirmation-Vertrag zu mischen?
 - Soll Evidence als eigenes Item modelliert werden oder zunächst im QuestRun liegen?
 - Braucht `RelationCapable` eine Schreib-Capability?
 - Wie werden World-State-Metriken bei lokalen und serverseitigen Connectors konsistent berechnet?

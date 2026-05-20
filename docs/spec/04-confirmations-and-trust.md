@@ -1,19 +1,21 @@
 # Confirmations and Trust
 
-**Status:** Normativer Entwurf v0.1
+**Status:** Normativer Entwurf v0.2
 
-Diese Spec beschreibt, wie Real Life Stack bestaetigte Aussagen backend-agnostisch darstellen soll. Sie ersetzt nicht Web-of-Trust-Attestations und definiert kein neues kryptografisches Format. Sie definiert eine UI- und Connector-Projektion.
+Diese Spec beschreibt, wie Real Life Stack bestaetigte Aussagen backend-agnostisch darstellt. Sie ersetzt nicht Web-of-Trust-Attestations und definiert kein neues kryptografisches Format. Sie definiert eine UI- und Connector-Projektion.
 
-## Problem
+## Kontext
 
-RLS hat aktuell `SignedClaim` und `SignedClaimCapable`. Das funktioniert fuer den WoT-Connector, weil dort Verifikationen und Attestations tatsaechlich signiert sind.
+RLS hatte urspruenglich `SignedClaim` und `SignedClaimCapable`. Das passte fuer den WoT-Connector, weil dort Verifikationen und Attestations tatsaechlich signiert sind.
 
-Der Name ist fuer RLS aber zu eng:
+Der Name war fuer RLS aber zu eng:
 
 - Ein GraphQL- oder Supabase-Backend kann eine Aktion serverseitig bestaetigen, ohne eine portable Signatur zu erzeugen.
 - Ein LocalConnector kann lokale Evidence oder Demo-Daten anzeigen.
 - Eine Quest- oder Game-View braucht eine einheitliche Sicht auf bestaetigte Ereignisse, ohne direkt WoT-Speicherformen zu kennen.
-- Die aktuelle `SignedClaim`-Projektion verliert Trust-Informationen wie `demo`, `local`, `server-confirmed` oder `signed-attested`.
+- Eine reine Signatur-Projektion verliert Trust-Informationen wie `demo`, `local`, `server-confirmed` oder `signed-attested`.
+
+Deshalb nutzt RLS jetzt `ConfirmationView`, `ConfirmationCapable`, `ConfirmationWriterCapable` und `EncounterVerificationCapable`.
 
 ## Begriffe
 
@@ -33,7 +35,7 @@ Claim -> Confirmation -> optional Attestation -> optional Recognition/Badge
 
 ## ConfirmationView
 
-RLS-Views SOLLTEN mittelfristig gegen eine neutrale `ConfirmationView` arbeiten.
+RLS-Views arbeiten gegen eine neutrale `ConfirmationView`.
 
 ```ts
 type ConfirmationTrustLevel =
@@ -80,20 +82,21 @@ Die fachliche Bedeutung wird offen transportiert ueber:
 
 UI-Komponenten MUESSEN diese Level ehrlich behandeln. Eine serverseitige Bestaetigung darf nicht wie eine portable signierte Attestation dargestellt werden.
 
-## Relation zum bestehenden SignedClaim-Vertrag
+## Abgrenzung zum frueheren SignedClaim-Vertrag
 
-`SignedClaim` und `SignedClaimCapable` beschreiben den aktuellen engen Claim-/Attestation-Vertrag in RLS. Die neue Spec muss keine Legacy-Datenkompatibilitaet erhalten. RLS soll den Vertrag daher konsequent durch Confirmation-Semantik ersetzen.
+`SignedClaim` und `SignedClaimCapable` beschrieben den frueheren engen Claim-/Attestation-Vertrag in RLS. Sie werden nicht als dauerhafte Legacy-Projektion konserviert. RLS hat den Vertrag durch Confirmation-Semantik ersetzt.
 
-Neue RLNP/Game-Views SOLLTEN nicht direkt voraussetzen, dass jede Confirmation ein `SignedClaim` ist.
+RLNP/Game-Views duerfen nicht direkt voraussetzen, dass jede Confirmation eine portable signierte WoT-Attestation ist.
 
-Die Code-Migration SOLLTE nicht `SignedClaim` erweitern, sondern die derzeit vermischten Verantwortlichkeiten schneiden:
+Die Migration hat die zuvor vermischten Verantwortlichkeiten getrennt:
 
-1. `SignedClaim` durch `ConfirmationView` ersetzen.
-2. `SignedClaimCapable` durch `ConfirmationCapable` ersetzen.
-3. QR-/Begegnungsverifikation als eigene Verification-Capability ausdruecken.
-4. Delivery-/Outbox-Status aus der Confirmation-Schnittstelle entfernen.
+1. `ConfirmationView` ersetzt die alte Claim-Projektion.
+2. `ConfirmationCapable` liest und beobachtet Confirmations.
+3. `ConfirmationWriterCapable` erstellt Confirmations und setzt Annahmestatus.
+4. `EncounterVerificationCapable` kapselt QR-/Begegnungsverifikation.
+5. Delivery-/Outbox-Status bleibt ausserhalb der Confirmation-Schnittstelle.
 
-Eine dauerhafte Kompatibilitaetsprojektion von `SignedClaim` nach `ConfirmationView` ist nicht Ziel der Spec.
+Eine dauerhafte Kompatibilitaetsprojektion von der frueheren Signed-Claim-Form nach `ConfirmationView` ist nicht Ziel der Spec.
 
 Moegliches Mapping fuer bestehende WoT-Daten:
 
@@ -144,7 +147,7 @@ Deshalb gilt:
 
 - Delivery-/Outbox-Status gehoert nicht in `ConfirmationView`.
 - Delivery-/Outbox-Status gehoert nicht in `ConfirmationCapable`.
-- Das bestehende `observeDeliveryStatuses()` auf `SignedClaimCapable` SOLLTE bei der Ersetzung durch `ConfirmationCapable` nicht uebernommen werden.
+- Der fruehere Delivery-Status-Observer wurde nicht in `ConfirmationCapable` uebernommen.
 - Ein Connector darf intern Outbox, Retry, ACKs, Relay-Status oder Sync-Queues verwalten.
 - RLS soll diese Details nur sehen, wenn eine UI sie backend-agnostisch anzeigen muss.
 
@@ -152,15 +155,15 @@ Fuer v0 definiert diese Spec keine eigene Outbox-Capability.
 
 Wenn mehrere Connectoren spaeter eine gemeinsame UI fuer ausstehende Operationen brauchen, kann RLS eine separate Sync- oder Pending-Operation-Capability definieren. Diese waere dann allgemein fuer Items, Relations, Profile, Confirmations, Space-Invites oder andere Operationen und nicht an Confirmations gekoppelt.
 
-## Implementierungsrichtung
+## Implementierte RLS-Schnittstellen
 
-Diese Spec legt den neutralen Begriff und die Zielprojektion fest. Die naechste Code-Arbeit SOLLTE:
+Diese Spec ist in der RLS-Codeoberflaeche durch folgende Typen und Guards verankert:
 
-- `ConfirmationView` und `ConfirmationTrustLevel` in `data-interface` einfuehren,
-- `ConfirmationCapable` als generische Capability definieren,
-- QR-Verifikation aus dem generischen Confirmation-Vertrag herausloesen,
-- `useClaims()` in Richtung `useConfirmations()` ersetzen,
-- den WoTConnector so anpassen, dass WoT-Verifikationen und WoT-Attestations als Confirmations erscheinen,
-- Delivery-/Outbox-Status im WoTConnector halten und nicht in `ConfirmationView` uebernehmen.
+- `ConfirmationView` und `ConfirmationTrustLevel`,
+- `ConfirmationCapable` mit `getConfirmations()` und `observeConfirmations()`,
+- `ConfirmationWriterCapable` mit `issueConfirmation()` und `setConfirmationAccepted()`,
+- `EncounterVerificationCapable` mit `createVerificationChallenge()`, `prepareVerificationResponse()` und `confirmVerificationResponse()`,
+- Type Guards `hasConfirmations()`, `hasConfirmationWriter()` und `hasEncounterVerification()`,
+- Toolkit-Hook `useConfirmations()`.
 
-Diese Arbeit sollte in einem separaten Code-Slice mit Conformance-Tests erfolgen.
+Der WoTConnector projiziert WoT-Verifikationen und WoT-Attestations als `signed-attested` Confirmations. Andere Connectoren duerfen dieselbe View mit `demo`, `local` oder `server-confirmed` liefern, wenn die darunterliegende Quelle keine portable Signatur ist.
