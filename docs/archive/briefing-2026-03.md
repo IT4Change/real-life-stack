@@ -1,5 +1,7 @@
 # Briefing: Real Life Stack Entwicklung
 
+> **Archiviert:** Dieses Dokument ist ein historisches Entwicklungsbriefing aus März 2026. Es ist nicht mehr normativ. Aktuelle Einstiegspunkte sind [../spec/README.md](../spec/README.md), [../spec/00-architecture.md](../spec/00-architecture.md) und [../agent-workspace.md](../agent-workspace.md).
+
 > Dieses Dokument ist ein ausfuehrlicher Einstieg fuer Entwickler (und ihre AI-Assistenten),
 > die am Real Life Stack mitarbeiten. Es erklaert das Gesamtbild, die bestehende Codebasis,
 > die Architektur, und die konkreten naechsten Schritte.

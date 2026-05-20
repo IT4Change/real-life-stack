@@ -53,7 +53,7 @@ Real Life Stack unterstützt den gesamten Kreislauf: von der Idee über die Vera
 ├──────────────────────────────────────────────────────────┤
 │                    Connectoren                           │
 │    ┌────────┐ ┌───────────┐ ┌────────────────────────┐   │
-│    │  Mock  │ │   REST    │ │  WoT (Automerge+E2EE)  │   │
+│    │  Mock  │ │ GraphQL   │ │   WoT (CRDT+E2EE)      │   │
 │    └────────┘ └───────────┘ └────────────────────────┘   │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -72,11 +72,13 @@ Jeder Connector implementiert das DataInterface und nur die Capabilities, die se
 
 ### RLNP und Real Life Game
 
-Real Life Stack implementiert soziale und spielerische Semantik als backend-agnostische UI- und Connector-Schicht. Die soziale Bedeutung kommt aus dem [Real Life Network Protocol](https://github.com/real-life-org/real-life-network-protocol), die optionale Spielsemantik aus dem [Real Life Game](https://github.com/real-life-org/real-life-game). Details: [docs/concepts/rlnp-game-integration.md](docs/concepts/rlnp-game-integration.md).
+Real Life Stack besitzt nicht die soziale oder spielerische Semantik. Er macht sie als backend-agnostische UI- und Connector-Schicht darstellbar und bedienbar. Die soziale Bedeutung kommt aus dem [Real Life Network Protocol](https://github.com/real-life-org/real-life-network-protocol), die optionale Spielsemantik aus dem [Real Life Game](https://github.com/real-life-org/real-life-game). Details: [docs/concepts/rlnp-game-integration.md](docs/concepts/rlnp-game-integration.md).
 
 ---
 
 ## Module
+
+RLS-Module werden künftig frisch und spec-driven definiert. Der bestehende Ordner [docs/modules/](docs/modules/) enthält frühes Brainstorming aus der Zeit vor der heutigen RLS/RLNP/Game-Abgrenzung und gilt vorerst nur als Inspirationsmaterial.
 
 | Modul | Beschreibung |
 |-------|--------------|
@@ -106,20 +108,20 @@ Real Life Stack implementiert soziale und spielerische Semantik als backend-agno
 | **[Reference App](https://real-life-stack.de/app/)** | Implementierung mit allen Modulen |
 | **[UI-Prototyp](https://real-life-stack.de/edge/)** | Experimentelle UI-Konzepte und Komponenten |
 | **[Storybook](https://real-life-stack.de/storybook/)** | Komponenten-Dokumentation |
-| **[Web-of-Trust](https://it4change.github.io/web-of-trust-prototype/)** | Forschungs-Prototyp für dezentrale Identität |
+| **[Web-of-Trust](https://web-of-trust.de/demo)** | Demo für dezentrale Identität, Verifikation, Attestations und Sync |
 
 ---
 
-## Forschungsprojekt: Web-of-Trust
+## Web-of-Trust
 
-[Web-of-Trust](https://web-of-trust.de) ist eine experimentelle Spielwiese, auf der wir Ideen und Ansätze für Real Life Stack erforschen und testen:
+[Web-of-Trust](https://web-of-trust.de) ist die Protokoll- und Referenzschicht für dezentrale Identität, Kontakte, Verifikationen, Attestations und verschlüsselten Sync. Real Life Stack kann diese Fähigkeiten über den WoT-Connector nutzen, bleibt aber backend-agnostisch.
 
 - **Dezentrale Identitäten** – Experimente mit did:key und Ed25519
 - **Web of Trust** – QR-Code-basierte Verifizierung, JWS-Signaturen
-- **Local-first** – Automerge CRDT für Offline-Fähigkeit
+- **Local-first** – Yjs als Standard-CRDT, Automerge als alternative CRDT-Option
 - **Modulare Architektur** – AppShell-Pattern für verschiedene Apps
 
-**[Zur Landing Page →](https://web-of-trust.de)** | **[Zum Prototyp →](https://it4change.github.io/web-of-trust-prototype/)** | **[GitHub →](https://github.com/IT4Change/web-of-trust)**
+**[Zur Landing Page →](https://web-of-trust.de)** | **[Zur Demo →](https://web-of-trust.de/demo)** | **[GitHub →](https://github.com/real-life-org/web-of-trust)**
 
 ---
 
@@ -159,8 +161,9 @@ real-life-stack/
 │   └── prototype/         # UI-Prototyp (experimentell)
 └── docs/                  # Dokumentation
     ├── spec/              # Architektur-Spezifikation
-    ├── modules/           # Modul-Spezifikationen
+    ├── modules/           # Frühes Modul-Brainstorming, Inspirationsmaterial
     ├── concepts/          # Konzept-Dokumente
+    ├── archive/           # Historische, nicht mehr normative Dokumente
     └── funding/           # Förderantrag
 ```
 
@@ -220,7 +223,7 @@ Das Toolkit-Package exportiert wiederverwendbare UI-Komponenten:
 import { Button, Card, Avatar, Tabs } from '@real-life-stack/toolkit'
 ```
 
-**[Storybook ansehen →](https://it4change.github.io/real-life-stack/storybook/)**
+**[Storybook ansehen →](https://real-life-stack.de/storybook/)**
 
 ```bash
 # Storybook lokal starten

@@ -336,10 +336,10 @@ Gezielt zu prüfen:
 
 | Datei | Einordnung |
 |---|---|
-| `docs/modules/quests.md` | Enthält noch XP, Level-Anforderung, Fähigkeitenbaum und QR-Belohnungslogik; sollte an RLNP/Game angepasst oder als Legacy markiert werden. |
+| `docs/modules/quests.md` | Enthält noch XP, Level-Anforderung, Fähigkeitenbaum und QR-Belohnungslogik; durch `docs/modules/README.md` als historisches Brainstorming markiert. |
 | `docs/concepts/gamification.md` | Sehr roher Vorläufer; sollte durch Verweis auf Real Life Game ersetzt oder archiviert werden. |
 | `docs/concepts/overview.md` | Kann als RLS-Übersicht bleiben, braucht aber klarere Abgrenzung zu RLNP/Game. |
-| README | Sollte langfristig stärker sagen: RLS ist App-/UI-Baukasten, nicht soziales Protokoll. |
+| README | Sagt jetzt klarer: RLS ist App-/UI-Baukasten und besitzt die Semantik von RLNP/Game nicht selbst. |
 
 Dieses Dokument ist der Maßstab für diese spätere Aufräumrunde.
 
@@ -348,7 +348,7 @@ Dieses Dokument ist der Maßstab für diese spätere Aufräumrunde.
 ### Phase 1: Konzept und Cleanup
 
 - Dieses Integrationskonzept schärfen.
-- Legacy-Quest- und Gamification-Dokumente markieren oder aktualisieren.
+- Legacy-Quest- und Modul-Dokumente als historisches Brainstorming markieren.
 - RLS-README/Overview mit der neuen Abgrenzung aktualisieren.
 
 ### Phase 2: Daten- und Capability-Lücken schließen

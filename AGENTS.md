@@ -20,10 +20,11 @@ The DataInterface and connector boundaries are the most important contracts in t
 
 - Spec index: [docs/spec/README.md](./docs/spec/README.md)
 - Architecture: [docs/spec/00-architecture.md](./docs/spec/00-architecture.md)
-- Historical architecture reference: [docs/spec/architektur2.md](./docs/spec/architektur2.md)
+- Historical architecture reference, not directly normative: [docs/spec/architektur2.md](./docs/spec/architektur2.md)
 - Reactivity and relations: [docs/spec/reaktivitaet.md](./docs/spec/reaktivitaet.md)
-- Module docs: [docs/modules/](./docs/modules/)
+- Module brainstorm, inspiration only until refreshed: [docs/modules/](./docs/modules/)
 - Concept docs: [docs/concepts/](./docs/concepts/)
+- Historical archive: [docs/archive/](./docs/archive/)
 - AI workflow: [docs/ki-workflow.md](./docs/ki-workflow.md)
 
 When code and docs disagree, do not silently invent a new rule. Prefer a small fix, a clear PR note, or an issue.

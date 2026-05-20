@@ -1,5 +1,7 @@
 # POC Plan: Real Life Stack + Web of Trust
 
+> **Archiviert:** Dieses Dokument ist ein historischer POC-Plan. Es enthält überholte Paketnamen, Roadmap-Annahmen und Architekturstände und ist nicht mehr normativ. Aktuelle Orientierung liegt in [../spec/README.md](../spec/README.md), [../spec/00-architecture.md](../spec/00-architecture.md) und [../agent-workspace.md](../agent-workspace.md).
+
 > Vollständiger Implementierungsplan mit Architektur-Stack
 
 **Stand:** 14. Februar 2026

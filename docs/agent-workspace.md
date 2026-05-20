@@ -216,6 +216,8 @@ if (hasGroups(connector)) {
 
 Der normative Einstieg liegt in `docs/spec/README.md`. Der Architekturanker ist `docs/spec/00-architecture.md`. `docs/spec/architektur2.md` bleibt als historische Referenz erhalten und wird schrittweise in kleinere Spec-Slices ueberfuehrt.
 
+`docs/modules/` ist aktuell fruehes Brainstorming und Inspirationsmaterial, keine verbindliche Modul-Spec. Historische Plaene und ueberholte Architekturstaende liegen in `docs/archive/`.
+
 ## Reaktivitaet & Relations (WICHTIG — vor jedem reaktiven Feature lesen!)
 
 Ausfuehrliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Regeln:
@@ -232,8 +234,10 @@ Ausfuehrliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Rege
 
 - `docs/spec/README.md` — Spec-Einstieg und Dokumentklassen
 - `docs/spec/00-architecture.md` — Architekturanker
-- `docs/spec/architektur2.md` — historische Architektur-Referenz
+- `docs/spec/architektur2.md` — historische Architektur-Referenz, nicht direkt normativ
 - `docs/spec/reaktivitaet.md` — Reaktivitaet, Relations, Anti-Patterns (PFLICHTLEKTUERE vor reaktiven Features)
+- `docs/modules/README.md` — Einordnung des alten Modul-Brainstormings
+- `docs/archive/README.md` — Archivierte, nicht mehr normative Dokumente
 - `packages/data-interface/src/index.ts` — Alle Typdefinitionen + Capability-Interfaces
 - `packages/data-interface/src/base-connector.ts` — BaseConnector + createObservable + matchesFilter + findRelatedItems
 - `packages/data-interface/src/demo-data.ts` — Demo-Daten Wrapper

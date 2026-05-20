@@ -32,7 +32,7 @@ Diese Bereiche bleiben in ihren eigenen Repositories oder Konzeptdokumenten. RLS
 | Dokument | Status | Zweck |
 |---|---|---|
 | [00-architecture.md](00-architecture.md) | Normativer Startpunkt | Schichtenmodell, Verantwortlichkeiten und Architekturregeln |
-| [architektur2.md](architektur2.md) | Historischer Ursprung / Referenz | bisher beste Gesamtbeschreibung; wird schrittweise in die neue Spec-Struktur ueberfuehrt |
+| [architektur2.md](architektur2.md) | Historische Referenz, nicht direkt normativ | bisher beste Gesamtbeschreibung; wird schrittweise in die neue Spec-Struktur ueberfuehrt |
 | [reaktivitaet.md](reaktivitaet.md) | Bestehende Spezifikation | Reaktivitaets- und Relation-Verhalten |
 | [04-confirmations-and-trust.md](04-confirmations-and-trust.md) | Normativer Entwurf | Claims, Confirmations, Attestations und Trust-Level |
 
@@ -50,8 +50,9 @@ Aktuell:
 |---|---:|---|
 | `docs/spec/` | ja | Stabiler Vertrag fuer Implementierungen |
 | `docs/spec/decisions/` | ja | Architekturentscheidungen und Begriffsentscheidungen |
-| `docs/modules/` | teilweise | Modulnahe Anforderungen; muessen langfristig gegen `docs/spec/` geprueft werden |
+| `docs/modules/` | nein | Fruehes Modul-Brainstorming; Inspirationsmaterial fuer kuenftige Modul-Specs |
 | `docs/concepts/` | nein | Explorative Konzepte, Produktideen, Integrationsnotizen |
+| `docs/archive/` | nein | Historische Dokumente, alte Plaene und ueberholte Architekturstaende |
 | `docs/funding/` | nein | Antragstexte und Kommunikation |
 
 Wenn Code und Spec widersprechen, ist das ein Spec- oder Implementierungsproblem. Neue Regeln sollen nicht stillschweigend in Code, Hooks oder Konzeptdokumenten entstehen.

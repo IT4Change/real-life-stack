@@ -2,6 +2,8 @@
 
 > Dezentrales Vertrauensnetzwerk für lokale Gemeinschaften
 
+**Status:** Historisches RLS-Konzeptdokument. Die normative Protokollquelle ist [wot-spec](https://github.com/real-life-org/wot-spec); die aktuelle Referenzimplementierung liegt in [web-of-trust](https://github.com/real-life-org/web-of-trust).
+
 ---
 
 ## Vision
@@ -347,7 +349,7 @@ Diese Fragen erforschen wir aktiv:
 
 ## Nächste Schritte
 
-Der Forschungsprototyp ist verfügbar: [github.com/IT4Change/web-of-trust](https://github.com/IT4Change/web-of-trust)
+Die aktuelle Referenzimplementierung ist verfügbar: [github.com/real-life-org/web-of-trust](https://github.com/real-life-org/web-of-trust)
 
 Wir suchen:
 - Gemeinschaften die es ausprobieren wollen

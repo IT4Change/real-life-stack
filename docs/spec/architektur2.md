@@ -4,6 +4,8 @@
 >
 > *Zusammenführung aus: architektur.md (Workshop 5. März) + architektur2.md (Sebastian)*
 
+> **Historische Referenz:** Dieses Dokument ist nicht mehr der direkte normative Einstieg. Es bleibt als bisher beste Gesamtbeschreibung erhalten und wird schrittweise in kleinere Spec-Slices überführt. Aktuelle normative Einstiegspunkte sind [README.md](README.md) und [00-architecture.md](00-architecture.md).
+
 ---
 
 ## Übersicht

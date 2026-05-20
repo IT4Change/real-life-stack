@@ -1,5 +1,7 @@
 # Real Life Stack – Konzept-Übersicht
 
+**Status:** Nicht-normatives Produkt- und Konzeptdokument. Aktuelle technische Verträge stehen in [../spec/README.md](../spec/README.md). Die Abgrenzung zu RLNP und Real Life Game steht im [RLNP- und Game-Integrationskonzept](rlnp-game-integration.md).
+
 ## Vision
 
 **Selbstorganisation leicht gemacht** – Werkzeuge für echte Zusammenarbeit, die Gruppen dabei helfen, gemeinsam vor Ort etwas zu bewegen.
@@ -42,7 +44,7 @@ Adapter-Pattern für verschiedene Backend-Anbindungen. Referenz-Implementierunge
 
 **Backend-Optionen**
 - **REST API** – Klassischer Server, einfacher Einstieg
-- **Local-first** – Automerge CRDT, Offline-fähig
+- **Local-first** – CRDT-basierte Offline-Fähigkeit, im WoT-Kontext aktuell Yjs als Standard und Automerge als Alternative
 - **P2P** – Vollständig dezentral
 - **E2EE** – Ende-zu-Ende-verschlüsselt
 
@@ -156,8 +158,8 @@ Real Life Stack unterstützt den gesamten Kreislauf:
 ### Connector-API definieren
 Einheitliche Schnittstelle zwischen UI-Modulen und Backend. Dokumentation der Datenmodelle und Methoden.
 
-### Modul-Spezifikationen
-Detaillierte Specs für jedes MVP-Modul:
+### Modul-Konzepte frisch definieren
+Detaillierte Specs für RLS-Module auf Basis der aktuellen Spec-Struktur:
 - Datenmodell
 - UI-Komponenten
 - Benutzerinteraktionen
@@ -216,7 +218,7 @@ So entsteht ein Netzwerk gegenseitiger Bestätigungen – ohne zentrale Instanz,
 | Option | Beschreibung | Geeignet für |
 |--------|--------------|--------------|
 | **REST API** | Klassischer Server | Einfacher Einstieg, bekannte Technologie |
-| **Local-first** | Automerge CRDT | Offline-Fähigkeit, schnelle Synchronisation |
+| **Local-first** | CRDT-basierter Connector | Offline-Fähigkeit, schnelle Synchronisation |
 | **P2P** | Peer-to-Peer | Maximale Dezentralität, keine Server nötig |
 | **E2EE** | Ende-zu-Ende-Verschlüsselung | Sensible Daten, hohe Privatsphäre |
 
@@ -226,7 +228,7 @@ Ja! Die modulare Architektur ist genau dafür gedacht. Module kommunizieren übe
 
 ### Wie kann ich mitmachen?
 
-- **Code beitragen** – [GitHub Repository](https://github.com/IT4Change/real-life-stack)
+- **Code beitragen** – [GitHub Repository](https://github.com/real-life-org/real-life-stack)
 - **Feedback geben** – Issues erstellen oder Discussions nutzen
 - **Testen** – Die Demo ausprobieren und berichten
 - **Verbreiten** – Anderen Communities davon erzählen
@@ -238,7 +240,7 @@ Ja! Die modulare Architektur ist genau dafür gedacht. Module kommunizieren übe
 - [Module: Karte](../modules/map.md)
 - [Module: Kalender](../modules/calendar.md)
 - [Module: Feed](../modules/feed.md)
-- [Forschungsprojekt: Web of Trust](https://github.com/IT4Change/web-of-trust)
+- [Web of Trust](https://github.com/real-life-org/web-of-trust)
 
 ---
 

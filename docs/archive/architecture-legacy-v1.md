@@ -1,5 +1,7 @@
 # Real Life Stack – Architektur-Spezifikation
 
+> **Archiviert:** Dieses Dokument ist die erste Architektur-Spezifikation vor dem heutigen Capability- und Spec-Zuschnitt. Es ist nicht mehr normativ. Aktuelle Einstiegspunkte sind [../spec/README.md](../spec/README.md) und [../spec/00-architecture.md](../spec/00-architecture.md).
+
 > Modularer Frontend-Baukasten mit backend-agnostischer Connector-Architektur
 
 ---
