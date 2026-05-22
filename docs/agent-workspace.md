@@ -10,7 +10,7 @@ Der `wot-agent-runner` und RLAP sind ein möglicher, besonders auditierbarer Aus
 
 Real Life Stack (RLS) — ein Monorepo für Community-Apps mit austauschbarem Daten-Backend.
 
-Kernidee: UI-Module (Kanban, Kalender, Karte, Feed) arbeiten gegen ein einheitliches `DataInterface`. Verschiedene Connectoren (Mock, Local, GraphQL, WoT/Automerge) implementieren dieses Interface. Die UI weiß nicht, woher die Daten kommen.
+Kernidee: App Shell und Space Modules (Kanban, Kalender, Karte, Feed) arbeiten gegen ein einheitliches `DataInterface`. Verschiedene Connectoren (Mock, Local, GraphQL, WoT/Automerge) implementieren dieses Interface. Die UI weiß nicht, woher die Daten kommen.
 
 ## Architektur
 
@@ -28,13 +28,13 @@ packages/graphql-server/   → GraphQL-Server (Fastify + Mercurius + Pothos)
 ### Datenfluss
 
 ```text
-UI-Modul → Hooks → DataInterface (Connector) → Datenquelle
+App Shell / Space Module → Hooks → DataInterface (Connector) → Datenquelle
 ```
 
 - **DataInterface** (`packages/data-interface/`) — das zentrale Interface. Read-only Core + Capability-Interfaces.
 - **Connector** — implementiert DataInterface + die Capabilities die er braucht.
 - **Hooks** — dünne Schicht, übersetzen Observable → React State und Mutations → Promise. Hooks prüfen Capabilities via Type Guards.
-- **UI-Module** — reine Darstellung, bekommen Daten via Hooks. Wissen NICHT woher die Daten kommen.
+- **UI-Flächen** — reine Darstellung, bekommen Daten via Hooks. Wissen NICHT woher die Daten kommen.
 
 ### Item-Modell
 
@@ -225,6 +225,16 @@ Der normative Einstieg liegt in `docs/spec/README.md`. Der Architekturanker ist 
 
 `docs/modules/` ist aktuell frühes Brainstorming und Inspirationsmaterial, keine verbindliche Modul-Spec. Historische Pläne und überholte Architekturstände liegen in `docs/archive/`.
 
+### App Shell und Space Modules
+
+RLS unterscheidet:
+
+- **App Shell** — globaler, space-übergreifender Rahmen: Navigation, Space Switcher, User/Profile, Contacts, Verification, Notifications, Debug/Admin.
+- **Space Module** — pro Space aktivierbare Oberfläche: Feed, Map, Calendar, Kanban, Marketplace, Questlog, Campaign View.
+- **Module Component** — wiederverwendbarer Baustein innerhalb von Modulen: ItemPreview, ItemDetail, Composer, Filter, Comments, Reactions.
+
+Profile, Contacts, Verification und Auth sind App-Shell-Flächen, keine Space Modules. Sie können in Space Modules sichtbar werden, werden aber nicht pro Space als Modul aktiviert.
+
 ## Reaktivität & Relations (WICHTIG — vor jedem reaktiven Feature lesen!)
 
 Ausführliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Regeln:
@@ -241,9 +251,11 @@ Ausführliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Rege
 
 - `docs/spec/README.md` — Spec-Einstieg und Dokumentklassen
 - `docs/spec/00-architecture.md` — Architekturanker
-- `docs/spec/01-data-interface.md` — read-only Core-Vertrag
-- `docs/spec/02-capabilities.md` — optionale Connector-Capabilities und Type Guards
-- `docs/spec/03-items-relations-groups-spaces.md` — Items, Relations, Groups/Spaces und RLNP/Game-Projektionen
+- `docs/spec/01-app-composition.md` — App Shell, Current Space, Space Modules und Module Components
+- `docs/spec/02-data-interface.md` — read-only Core-Vertrag
+- `docs/spec/03-capabilities.md` — optionale Connector-Capabilities und Type Guards
+- `docs/spec/04-items-relations-groups-spaces.md` — Items, Relations, Groups/Spaces und RLNP/Game-Projektionen
+- `docs/spec/05-confirmations-and-trust.md` — Claims, Confirmations, Attestations und Trust-Level
 - `docs/spec/architektur2.md` — historische Architektur-Referenz, nicht direkt normativ
 - `docs/spec/reaktivitaet.md` — Reaktivität, Relations, Anti-Patterns (PFLICHTLEKTÜRE vor reaktiven Features)
 - `docs/modules/README.md` — Einordnung des alten Modul-Brainstormings

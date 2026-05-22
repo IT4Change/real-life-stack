@@ -32,7 +32,7 @@ Diese Liste ist offen. RLS reserviert nur den technischen Vertrag, nicht die fac
 
 ## Item-Typen
 
-`type` steuert, wie Module ein Item interpretieren können. Bekannte Typen im Code sind aktuell:
+`type` steuert, wie UI-Flächen ein Item interpretieren können. Bekannte Typen im Code sind aktuell:
 
 ```text
 task, event, post, place, feature, profile, reaction, comment
@@ -41,13 +41,13 @@ task, event, post, place, feature, profile, reaction, comment
 Regeln:
 
 1. Connectoren dürfen weitere `type`-Werte liefern.
-2. UI-Module dürfen bekannte Typen spezialbehandeln, müssen aber unbekannte Typen robust ignorieren oder generisch anzeigen.
+2. UI-Flächen dürfen bekannte Typen spezialbehandeln, müssen aber unbekannte Typen robust ignorieren oder generisch anzeigen.
 3. Fachliche Semantik darf nicht allein aus `type` abgeleitet werden, wenn `schema`, `data` oder `relations` genauer sind.
 4. RLNP- und Game-Typen dürfen als Items erscheinen, werden aber in ihren eigenen Repositories definiert.
 
 ## Data-Felder
 
-`data` ist ein offenes Objekt. Module können Felder interpretieren:
+`data` ist ein offenes Objekt. UI-Flächen können Felder interpretieren:
 
 | Feld | Typische View |
 |---|---|
@@ -60,9 +60,9 @@ Regeln:
 Regeln:
 
 1. Gemeinsame UI-Felder liegen in `data`, nicht top-level.
-2. Modul-spezifische Felder dürfen existieren, müssen aber andere Module nicht brechen.
-3. Ein Item kann in mehreren Modulen erscheinen, wenn seine Felder dazu passen.
-4. RLS-Module dürfen keine Backend-Annahmen in `data` kodieren.
+2. Flächen- oder schema-spezifische Felder dürfen existieren, müssen aber andere UI-Flächen nicht brechen.
+3. Ein Item kann in mehreren Space Modules erscheinen, wenn seine Felder dazu passen.
+4. UI-Flächen dürfen keine Backend-Annahmen in `data` kodieren.
 
 ## Relations
 
@@ -180,4 +180,3 @@ Diese Spec definiert nicht:
 - ein geschlossenes soziales Datenmodell.
 
 RLS bleibt die technische Projektions- und Bedienoberfläche.
-

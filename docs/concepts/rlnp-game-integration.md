@@ -18,7 +18,7 @@ RLS ist ein modularer Frontend- und App-Baukasten für Community-Apps.
 RLS stellt bereit:
 
 - App-Shell,
-- UI-Module,
+- UI-Flächen,
 - Hooks,
 - generisches `Item`-/`Relation`-Modell,
 - `DataInterface`,
@@ -83,7 +83,7 @@ Die UI darf diese Stufen nicht vermischen. Ein Badge auf Basis einer signierten 
 
 ### 4. Views statt Protokollbesitz
 
-RLS-Module sind Views und Interaktionsflächen.
+RLS-Space-Modules sind Views und Interaktionsflächen innerhalb eines Space.
 
 | RLS-Modul | Zeigt typischerweise |
 |---|---|
@@ -156,7 +156,7 @@ Für v0 reicht es vermutlich, World-State-Metriken als `data.worldState[]` in Ca
 
 ## Relations
 
-RLS-Relations verbinden Items, ohne die Semantik hart in UI-Module einzubauen.
+RLS-Relations verbinden Items, ohne die Semantik hart in UI-Flächen einzubauen.
 
 Beispiele:
 
@@ -190,7 +190,7 @@ RLS braucht dafür keine Quest-, Adventure- oder Campaign-Spezialdatenbank. Es b
 
 ## Claims, Confirmations, Attestations und Trust
 
-RLS hat `ConfirmationCapable` und `ConfirmationWriterCapable`. Diese Schnittstellen ersetzen den frueheren engen Signed-Claim-Vertrag und geben RLNP/Game-Views eine backend-agnostische Sicht auf bestaetigte Ereignisse.
+RLS hat `ConfirmationCapable` und `ConfirmationWriterCapable`. Diese Schnittstellen ersetzen den früheren engen Signed-Claim-Vertrag und geben RLNP/Game-Views eine backend-agnostische Sicht auf bestätigte Ereignisse.
 
 Für das Integrationskonzept ist wichtig:
 
@@ -230,7 +230,7 @@ type ConfirmationView = {
 }
 ```
 
-Das ist kein neuer verbindlicher API-Vorschlag in diesem Konzept, sondern verweist auf die Spezifikationsrichtung in [../spec/04-confirmations-and-trust.md](../spec/04-confirmations-and-trust.md): RLS-Views brauchen eine normalisierte Sicht auf Confirmations, egal aus welchem Backend sie kommen. RLS sollte dabei keine geschlossene Liste von Attestation-Faellen definieren. Die fachliche Bedeutung kommt ueber `claim`, `schema`, `tags` und `relations`; `trustLevel` beschreibt die Beweiskraft.
+Das ist kein neuer verbindlicher API-Vorschlag in diesem Konzept, sondern verweist auf die Spezifikationsrichtung in [../spec/05-confirmations-and-trust.md](../spec/05-confirmations-and-trust.md): RLS-Views brauchen eine normalisierte Sicht auf Confirmations, egal aus welchem Backend sie kommen. RLS sollte dabei keine geschlossene Liste von Attestation-Fällen definieren. Die fachliche Bedeutung kommt über `claim`, `schema`, `tags` und `relations`; `trustLevel` beschreibt die Beweiskraft.
 
 ## Connector-Capabilities
 
@@ -354,7 +354,7 @@ Dieses Dokument ist der Maßstab für diese spätere Aufräumrunde.
 ### Phase 2: Daten- und Capability-Lücken schließen
 
 - Prüfen, ob `RelationCapable` Schreiboperationen braucht.
-- Schreib- und Mutationsmuster fuer QuestRuns, Evidence und Relations klaeren.
+- Schreib- und Mutationsmuster für QuestRuns, Evidence und Relations klären.
 - Feature-Items um RLNP/Game-Capabilities erweitern.
 
 ### Phase 3: Erste UI-Slices

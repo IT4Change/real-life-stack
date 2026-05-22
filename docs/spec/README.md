@@ -2,7 +2,7 @@
 
 **Status:** Spezifikationskern im Aufbau
 
-Diese Spec beschreibt den stabilen technischen Vertrag des Real Life Stack. Sie ist der normative Bereich des Repositories. Konzeptdokumente dürfen weiterdenken, Beispiele sammeln oder offene Richtungen erkunden; die Dateien in `docs/spec/` definieren, worauf Code, Connectoren, Hooks und Module sich verlassen dürfen.
+Diese Spec beschreibt den stabilen technischen Vertrag des Real Life Stack. Sie ist der normative Bereich des Repositories. Konzeptdokumente dürfen weiterdenken, Beispiele sammeln oder offene Richtungen erkunden; die Dateien in `docs/spec/` definieren, worauf Code, Connectoren, Hooks und UI-Flächen sich verlassen dürfen.
 
 ## Geltungsbereich
 
@@ -27,17 +27,25 @@ Die Spec beschreibt nicht:
 
 Diese Bereiche bleiben in ihren eigenen Repositories oder Konzeptdokumenten. RLS darf sie darstellen und nutzbar machen, besitzt ihre Semantik aber nicht.
 
-## Spec-Dokumente und Referenzen
+## Normative Kern-Spec
+
+Die sechs Kern-Dokumente bauen in dieser Reihenfolge aufeinander auf:
 
 | Dokument | Status | Zweck |
 |---|---|---|
 | [00-architecture.md](00-architecture.md) | Normativer Startpunkt | Schichtenmodell, Verantwortlichkeiten und Architekturregeln |
-| [01-data-interface.md](01-data-interface.md) | Normativer Entwurf | Read-only Core-Vertrag, Items, Observables und Filter |
-| [02-capabilities.md](02-capabilities.md) | Normativer Entwurf | Optionale Connector-Fähigkeiten, Type Guards und FullConnector-Abgrenzung |
-| [03-items-relations-groups-spaces.md](03-items-relations-groups-spaces.md) | Normativer Entwurf | Items, Relations, Groups/Spaces und Projektionen für RLNP/Game |
+| [01-app-composition.md](01-app-composition.md) | Normativer Entwurf | App Shell, Current Space, Space Modules und Module Components |
+| [02-data-interface.md](02-data-interface.md) | Normativer Entwurf | Read-only Core-Vertrag, Items, Observables und Filter |
+| [03-capabilities.md](03-capabilities.md) | Normativer Entwurf | Optionale Connector-Fähigkeiten, Type Guards und FullConnector-Abgrenzung |
+| [04-items-relations-groups-spaces.md](04-items-relations-groups-spaces.md) | Normativer Entwurf | Items, Relations, Groups/Spaces und Projektionen für RLNP/Game |
+| [05-confirmations-and-trust.md](05-confirmations-and-trust.md) | Normativer Entwurf | Claims, Confirmations, Attestations und Trust-Level |
+
+## Weitere Referenzen
+
+| Dokument | Status | Zweck |
+|---|---|---|
 | [architektur2.md](architektur2.md) | Historische Referenz, nicht direkt normativ | bisher beste Gesamtbeschreibung; wird schrittweise in die neue Spec-Struktur überführt |
-| [reaktivitaet.md](reaktivitaet.md) | Bestehende Spezifikation | Reaktivitäts- und Relation-Verhalten |
-| [04-confirmations-and-trust.md](04-confirmations-and-trust.md) | Normativer Entwurf | Claims, Confirmations, Attestations und Trust-Level |
+| [reaktivitaet.md](reaktivitaet.md) | Ergänzende Referenz | Bestehendes Detailverhalten für Reaktivität und Relations; wird später in passende Kern-Slices überführt |
 
 ## Decisions
 
@@ -64,6 +72,7 @@ Wenn Code und Spec widersprechen, ist das ein Spec- oder Implementierungsproblem
 
 Langfristig soll jeder Connector gegen dieselben Conformance-Slices prüfbar sein:
 
+- App Composition,
 - Core DataInterface,
 - Item Writing,
 - Relations,

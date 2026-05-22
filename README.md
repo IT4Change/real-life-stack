@@ -58,13 +58,13 @@ Real Life Stack unterstützt den gesamten Kreislauf: von der Idee über die Vera
 └──────────────────────────────────────────────────────────┘
 ```
 
-### App-Shell + UI-Module
+### App Shell + Space Modules
 
-Die **App-Shell** ist der Container, die **UI-Module** (Kanban, Kalender, Karte, Feed, ...) sind austauschbar. Jede Gruppe wählt, welche Module sie nutzt. Module prüfen nicht den Item-Typ, sondern welche Daten-Felder vorhanden sind (`status` → Kanban, `start`/`end` → Kalender, `location` → Karte).
+Die **App Shell** ist der globale Rahmen. **Space Modules** (Kanban, Kalender, Karte, Feed, ...) sind pro Space aktivierbare Oberflächen. Jede Gruppe wählt, welche Space Modules sie nutzt. Space Modules prüfen nicht nur den Item-Typ, sondern auch welche Daten-Felder vorhanden sind (`status` → Kanban, `start`/`end` → Kalender, `location` → Karte).
 
 ### Hooks + DataInterface
 
-Die Hooks sind eine dünne Schicht zwischen UI und Connector — sie übersetzen Observables in React State und Mutations in Promises. Das **DataInterface** definiert den read-only Kernvertrag: Items lesen und reaktiv beobachten. Zusätzliche Fähigkeiten wie Schreiben, Gruppen, Identität oder Relations werden über Capability-Interfaces (`ItemWriter`, `GroupManager`, `Authenticatable`, ...) erkannt. Module kennen nur diese Interfaces, nicht das Backend.
+Die Hooks sind eine dünne Schicht zwischen UI und Connector — sie übersetzen Observables in React State und Mutations in Promises. Das **DataInterface** definiert den read-only Kernvertrag: Items lesen und reaktiv beobachten. Zusätzliche Fähigkeiten wie Schreiben, Gruppen, Identität oder Relations werden über Capability-Interfaces (`ItemWriter`, `GroupManager`, `Authenticatable`, ...) erkannt. UI-Flächen kennen nur diese Interfaces, nicht das Backend.
 
 ### Connectoren
 
@@ -78,15 +78,17 @@ Real Life Stack besitzt nicht die soziale oder spielerische Semantik. Er macht s
 
 ## Module
 
-RLS-Module werden künftig frisch und spec-driven definiert. Der bestehende Ordner [docs/modules/](docs/modules/) enthält frühes Brainstorming aus der Zeit vor der heutigen RLS/RLNP/Game-Abgrenzung und gilt vorerst nur als Inspirationsmaterial.
+RLS-Space-Modules werden künftig frisch und spec-driven definiert. Der bestehende Ordner [docs/modules/](docs/modules/) enthält frühes Brainstorming aus der Zeit vor der heutigen RLS/RLNP/Game-Abgrenzung und gilt vorerst nur als Inspirationsmaterial.
 
-| Modul | Beschreibung |
+| Space Module | Beschreibung |
 |-------|--------------|
 | [**Map**](docs/modules/map.md) | Lokale Orte, Ressourcen und Aktivitäten auf einer Karte visualisieren |
 | [**Calendar**](docs/modules/calendar.md) | Events planen, Termine koordinieren, Einladungen verwalten |
-| [**Feed**](docs/modules/feed.md) | Aktivitäten-Stream aus allen Modulen – was passiert in der Community? |
-| **Groups** | Gruppen mit Rollen, Mitgliedschaften und gemeinsamen Ressourcen |
-| **Profiles** | Nutzerprofile mit Fähigkeiten, Interessen und Vertrauensbeziehungen |
+| [**Feed**](docs/modules/feed.md) | Aktivitäten-Stream aus allen Space Modules: Was passiert in der Community? |
+| **Kanban / Tasks** | Aufgaben und Workflows innerhalb eines Space organisieren |
+| **Marketplace** | Angebote, Bedürfnisse, Ressourcen und mögliche Matches sichtbar machen |
+| **Questlog** | Quests, QuestRuns, Evidence und Completion-Status anzeigen |
+| **Campaign View** | Adventures, Campaigns und World State als Spielansicht darstellen |
 
 ---
 
@@ -185,7 +187,7 @@ pnpm build:toolkit
 
 ## DataInterface & Connectoren
 
-UI-Module arbeiten gegen das **DataInterface** und optionale Capability-Interfaces — TypeScript-Verträge, die Daten, Reaktivität, Schreibzugriff, Gruppen und Identität abstrahieren. Connectoren implementieren diese Interfaces für verschiedene Backends.
+UI-Flächen arbeiten gegen das **DataInterface** und optionale Capability-Interfaces — TypeScript-Verträge, die Daten, Reaktivität, Schreibzugriff, Gruppen und Identität abstrahieren. Connectoren implementieren diese Interfaces für verschiedene Backends.
 
 ### @real-life-stack/data-interface
 

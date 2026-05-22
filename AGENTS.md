@@ -11,18 +11,20 @@ Real Life Stack is a modular app and UI toolkit for local communities, commons, 
 The core architecture is:
 
 ```text
-UI modules -> hooks -> DataInterface -> connector -> data source
+App Shell / Space Modules -> hooks -> DataInterface -> connector -> data source
 ```
 
 The DataInterface and connector boundaries are the most important contracts in this repository.
 
-## Source Of Truth
+## Source of Truth
 
 - Spec index: [docs/spec/README.md](./docs/spec/README.md)
 - Architecture: [docs/spec/00-architecture.md](./docs/spec/00-architecture.md)
-- DataInterface core: [docs/spec/01-data-interface.md](./docs/spec/01-data-interface.md)
-- Connector capabilities: [docs/spec/02-capabilities.md](./docs/spec/02-capabilities.md)
-- Items, relations and groups/spaces: [docs/spec/03-items-relations-groups-spaces.md](./docs/spec/03-items-relations-groups-spaces.md)
+- App composition: [docs/spec/01-app-composition.md](./docs/spec/01-app-composition.md)
+- DataInterface core: [docs/spec/02-data-interface.md](./docs/spec/02-data-interface.md)
+- Connector capabilities: [docs/spec/03-capabilities.md](./docs/spec/03-capabilities.md)
+- Items, relations and groups/spaces: [docs/spec/04-items-relations-groups-spaces.md](./docs/spec/04-items-relations-groups-spaces.md)
+- Confirmations and trust: [docs/spec/05-confirmations-and-trust.md](./docs/spec/05-confirmations-and-trust.md)
 - Historical architecture reference, not directly normative: [docs/spec/architektur2.md](./docs/spec/architektur2.md)
 - Reactivity and relations: [docs/spec/reaktivitaet.md](./docs/spec/reaktivitaet.md)
 - Module brainstorm, inspiration only until refreshed: [docs/modules/](./docs/modules/)

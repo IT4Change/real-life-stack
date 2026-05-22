@@ -11,10 +11,10 @@ Code-Referenz: `packages/data-interface/src/index.ts`
 `DataInterface` macht RLS backend-agnostisch:
 
 ```text
-UI modules -> hooks -> DataInterface -> connector -> data source
+App Shell / Space Modules -> hooks -> DataInterface -> connector -> data source
 ```
 
-Ein UI-Modul darf gegen diesen Vertrag arbeiten, ohne zu wissen, ob die Daten aus Mock-Daten, IndexedDB, GraphQL, Supabase, WoT/Yjs oder einer anderen Quelle kommen.
+Eine UI-Fläche darf gegen diesen Vertrag arbeiten, ohne zu wissen, ob die Daten aus Mock-Daten, IndexedDB, GraphQL, Supabase, WoT/Yjs oder einer anderen Quelle kommen.
 
 ## Core Types
 
@@ -54,7 +54,7 @@ interface Relation {
 }
 ```
 
-Relations verbinden Items mit anderen Items, Personen, Spaces oder externen Zielen. Details stehen in [03-items-relations-groups-spaces.md](03-items-relations-groups-spaces.md).
+Relations verbinden Items mit anderen Items, Personen, Spaces oder externen Zielen. Details stehen in [04-items-relations-groups-spaces.md](04-items-relations-groups-spaces.md).
 
 ### Group und User
 
@@ -73,7 +73,7 @@ interface User {
 }
 ```
 
-`Group` ist der technische RLS-Begriff. In WoT- und RLNP-Kontexten entspricht das häufig einem Space. Details stehen in [03-items-relations-groups-spaces.md](03-items-relations-groups-spaces.md).
+`Group` ist der technische RLS-Begriff. In WoT- und RLNP-Kontexten entspricht das häufig einem Space. Details stehen in [04-items-relations-groups-spaces.md](04-items-relations-groups-spaces.md).
 
 ## Observable
 
@@ -89,7 +89,7 @@ Regeln:
 1. `current` liefert synchron den letzten bekannten Wert.
 2. `subscribe()` registriert Änderungen und gibt eine Unsubscribe-Funktion zurück.
 3. Hooks übersetzen Observables in React State.
-4. UI-Module sprechen den Connector nicht direkt an, wenn ein Hook existiert.
+4. UI-Flächen sprechen den Connector nicht direkt an, wenn ein Hook existiert.
 5. Reaktive Detailregeln stehen in [reaktivitaet.md](reaktivitaet.md).
 
 ## Core Methods
@@ -150,4 +150,3 @@ Mindestbedeutung:
 - Schreib-, Sync-, Delivery- oder Retry-Status.
 
 Diese Fähigkeiten werden über Capabilities, Connectoren oder andere Repositories beschrieben.
-
