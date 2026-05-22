@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite"
 import { RelativeTime } from "./relative-time"
 
 const meta: Meta<typeof RelativeTime> = {
-  title: "Primitives/RelativeTime",
+  title: "RLS/Primitives/RelativeTime",
   component: RelativeTime,
   tags: ["autodocs"],
   parameters: {

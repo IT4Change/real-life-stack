@@ -4,7 +4,7 @@ import { AdaptivePanel, type PanelMode } from "./adaptive-panel"
 import { Button } from "../primitives/button"
 
 const meta: Meta<typeof AdaptivePanel> = {
-  title: "Layout/AdaptivePanel",
+  title: "RLS/App Shell/Layout/AdaptivePanel",
   component: AdaptivePanel,
   tags: ["autodocs"],
   parameters: {

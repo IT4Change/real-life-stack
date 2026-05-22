@@ -145,7 +145,7 @@ function StandaloneCommentSection() {
 // ---- Stories ----
 
 const meta: Meta = {
-  title: "Content/Comments",
+  title: "RLS/Module Components/Comments/CommentSection",
   tags: ["autodocs"],
   parameters: {
     layout: "fullscreen",

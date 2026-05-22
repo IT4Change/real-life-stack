@@ -12,7 +12,7 @@ import { Button } from './button'
 import { MoreHorizontal } from 'lucide-react'
 
 const meta: Meta<typeof Card> = {
-  title: 'UI/Card',
+  title: 'RLS/Primitives/Card',
   component: Card,
   tags: ['autodocs'],
 }

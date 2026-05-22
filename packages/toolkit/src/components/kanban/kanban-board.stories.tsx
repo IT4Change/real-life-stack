@@ -52,7 +52,7 @@ const tasks: Item[] = [
 ]
 
 const meta: Meta<typeof KanbanBoard> = {
-  title: "Content/KanbanBoard",
+  title: "RLS/Space Modules/Kanban/Board",
   component: KanbanBoard,
   tags: ["autodocs"],
   parameters: {

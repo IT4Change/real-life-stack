@@ -256,6 +256,7 @@ Ausführliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Rege
 - `docs/spec/03-capabilities.md` — optionale Connector-Capabilities und Type Guards
 - `docs/spec/04-items-relations-groups-spaces.md` — Items, Relations, Groups/Spaces und RLNP/Game-Projektionen
 - `docs/spec/05-confirmations-and-trust.md` — Claims, Confirmations, Attestations und Trust-Level
+- `docs/spec/code-and-storybook-mapping.md` — Zuordnung von RLS-Taxonomie zu Toolkit-Code und Storybook
 - `docs/spec/modules/README.md` — verbindliche Space-Module-Detail-Specs
 - `docs/spec/modules/template.md` — Vorlage für neue Space-Module-Specs
 - `docs/spec/architektur2.md` — historische Architektur-Referenz, nicht direkt normativ

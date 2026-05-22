@@ -16,6 +16,14 @@ const preview: Preview = {
         dark: { name: 'dark', value: 'oklch(0.21 0.034 264.665)' }
       }
     },
+    options: {
+      storySort: {
+        order: [
+          'RLS',
+          ['App Shell', 'Space Modules', 'Module Components', 'Primitives'],
+        ],
+      },
+    },
   },
 
   decorators: [

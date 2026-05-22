@@ -211,7 +211,7 @@ function StandaloneReactionBar({ initialReactions, maxVisible = 6, className }: 
 // ---- Stories ----
 
 const meta: Meta<typeof StandaloneReactionBar> = {
-  title: "Content/ReactionBar",
+  title: "RLS/Module Components/Reactions/ReactionBar",
   component: StandaloneReactionBar,
   tags: ["autodocs"],
   parameters: {

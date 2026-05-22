@@ -45,6 +45,7 @@ Die sechs Kern-Dokumente bauen in dieser Reihenfolge aufeinander auf:
 | Dokument | Status | Zweck |
 |---|---|---|
 | [modules/](modules/) | Normative Detail-Specs im Aufbau | Verbindliche Space-Module-Spezifikationen auf Basis der Kern-Spec |
+| [code-and-storybook-mapping.md](code-and-storybook-mapping.md) | Normativer Entwurf | Abbildung von App Shell, Space Modules, Module Components und Primitives in Code und Storybook |
 | [architektur2.md](architektur2.md) | Historische Referenz, nicht direkt normativ | bisher beste Gesamtbeschreibung; wird schrittweise in die neue Spec-Struktur überführt |
 | [reaktivitaet.md](reaktivitaet.md) | Ergänzende Referenz | Bestehendes Detailverhalten für Reaktivität und Relations; wird später in passende Kern-Slices überführt |
 

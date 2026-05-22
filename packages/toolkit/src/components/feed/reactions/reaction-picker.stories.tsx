@@ -45,7 +45,7 @@ function PickerDemo({ style, label = "Add Reaction" }: PickerDemoProps) {
 }
 
 const meta: Meta = {
-  title: "Content/ReactionPicker",
+  title: "RLS/Module Components/Reactions/ReactionPicker",
   tags: ["autodocs"],
   parameters: {
     layout: "fullscreen",

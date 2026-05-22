@@ -4,7 +4,7 @@ import { BottomNav, type NavItem } from './bottom-nav'
 import { Home, Map, Calendar, User } from 'lucide-react'
 
 const meta: Meta<typeof BottomNav> = {
-  title: 'Layout/BottomNav',
+  title: 'RLS/App Shell/Layout/BottomNav',
   component: BottomNav,
   tags: ['autodocs'],
   parameters: {

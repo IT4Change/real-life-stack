@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite"
 import { TextWidget } from "./text-widget"
 
 const meta: Meta<typeof TextWidget> = {
-  title: "Content/TextWidget",
+  title: "RLS/Module Components/Widgets/TextWidget",
   component: TextWidget,
   tags: ["autodocs"],
   decorators: [

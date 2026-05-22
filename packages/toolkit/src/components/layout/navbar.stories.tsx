@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback } from '../primitives/avatar'
 import { ChevronDown, Menu } from 'lucide-react'
 
 const meta: Meta<typeof Navbar> = {
-  title: 'Layout/Navbar',
+  title: 'RLS/App Shell/Navigation/Navbar',
   component: Navbar,
   tags: ['autodocs'],
   parameters: {

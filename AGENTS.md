@@ -25,6 +25,7 @@ The DataInterface and connector boundaries are the most important contracts in t
 - Connector capabilities: [docs/spec/03-capabilities.md](./docs/spec/03-capabilities.md)
 - Items, relations and groups/spaces: [docs/spec/04-items-relations-groups-spaces.md](./docs/spec/04-items-relations-groups-spaces.md)
 - Confirmations and trust: [docs/spec/05-confirmations-and-trust.md](./docs/spec/05-confirmations-and-trust.md)
+- Code and Storybook mapping: [docs/spec/code-and-storybook-mapping.md](./docs/spec/code-and-storybook-mapping.md)
 - Space module specs: [docs/spec/modules/](./docs/spec/modules/)
 - Historical architecture reference, not directly normative: [docs/spec/architektur2.md](./docs/spec/architektur2.md)
 - Reactivity and relations: [docs/spec/reaktivitaet.md](./docs/spec/reaktivitaet.md)
