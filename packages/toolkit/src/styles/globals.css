@@ -218,6 +218,12 @@
 
 /* Cursor pointer for interactive elements */
 @layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+
   button,
   [role="button"],
   [type="button"],
@@ -313,4 +319,3 @@
   pointer-events: none;
   height: 0;
 }
-

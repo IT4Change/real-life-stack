@@ -338,7 +338,7 @@ export function KanbanBoard({
   )
 
   return (
-    <>
+    <div className="@container">
       {/* Hidden Columns Bar — Desktop only */}
       {hiddenColumns.length > 0 && (
         <div className="hidden @3xl:flex flex-wrap gap-2 mb-3">
@@ -502,6 +502,6 @@ export function KanbanBoard({
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
