@@ -185,11 +185,11 @@ pnpm build:toolkit
 
 ## DataInterface & Connectoren
 
-UI-Module arbeiten gegen das **DataInterface** und optionale Capability-Interfaces — TypeScript-Vertraege, die Daten, Reaktivitaet, Schreibzugriff, Gruppen und Identitaet abstrahieren. Connectoren implementieren diese Interfaces fuer verschiedene Backends.
+UI-Module arbeiten gegen das **DataInterface** und optionale Capability-Interfaces — TypeScript-Verträge, die Daten, Reaktivität, Schreibzugriff, Gruppen und Identität abstrahieren. Connectoren implementieren diese Interfaces für verschiedene Backends.
 
 ### @real-life-stack/data-interface
 
-Reine TypeScript-Typen und Shared Helper (keine externen Runtime-Abhaengigkeiten):
+Reine TypeScript-Typen und Shared Helper (keine externen Runtime-Abhängigkeiten):
 
 ```typescript
 import type { DataInterface, Item, Group, User, Observable } from "@real-life-stack/data-interface"
@@ -197,7 +197,7 @@ import type { DataInterface, Item, Group, User, Observable } from "@real-life-st
 
 ### @real-life-stack/mock-connector
 
-In-Memory-Implementierung mit Demo-Daten fuer Entwicklung ohne Backend:
+In-Memory-Implementierung mit Demo-Daten für Entwicklung ohne Backend:
 
 ```typescript
 import { MockConnector } from "@real-life-stack/mock-connector"

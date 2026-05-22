@@ -2,7 +2,7 @@
 
 **Status:** Spezifikationskern im Aufbau
 
-Diese Spec beschreibt den stabilen technischen Vertrag des Real Life Stack. Sie ist der normative Bereich des Repositories. Konzeptdokumente duerfen weiterdenken, Beispiele sammeln oder offene Richtungen erkunden; die Dateien in `docs/spec/` definieren, worauf Code, Connectoren, Hooks und Module sich verlassen duerfen.
+Diese Spec beschreibt den stabilen technischen Vertrag des Real Life Stack. Sie ist der normative Bereich des Repositories. Konzeptdokumente dürfen weiterdenken, Beispiele sammeln oder offene Richtungen erkunden; die Dateien in `docs/spec/` definieren, worauf Code, Connectoren, Hooks und Module sich verlassen dürfen.
 
 ## Geltungsbereich
 
@@ -14,7 +14,7 @@ Die Spec beschreibt:
 - `DataInterface`,
 - generische Items und Relations,
 - Connector-Capabilities,
-- Reaktivitaet,
+- Reaktivität,
 - Groups/Spaces als technische Arbeits- und Sichtbarkeitskontexte,
 - backend-agnostische Projektionen auf Claims, Confirmations und Trust.
 
@@ -32,8 +32,11 @@ Diese Bereiche bleiben in ihren eigenen Repositories oder Konzeptdokumenten. RLS
 | Dokument | Status | Zweck |
 |---|---|---|
 | [00-architecture.md](00-architecture.md) | Normativer Startpunkt | Schichtenmodell, Verantwortlichkeiten und Architekturregeln |
-| [architektur2.md](architektur2.md) | Historische Referenz, nicht direkt normativ | bisher beste Gesamtbeschreibung; wird schrittweise in die neue Spec-Struktur ueberfuehrt |
-| [reaktivitaet.md](reaktivitaet.md) | Bestehende Spezifikation | Reaktivitaets- und Relation-Verhalten |
+| [01-data-interface.md](01-data-interface.md) | Normativer Entwurf | Read-only Core-Vertrag, Items, Observables und Filter |
+| [02-capabilities.md](02-capabilities.md) | Normativer Entwurf | Optionale Connector-Fähigkeiten, Type Guards und FullConnector-Abgrenzung |
+| [03-items-relations-groups-spaces.md](03-items-relations-groups-spaces.md) | Normativer Entwurf | Items, Relations, Groups/Spaces und Projektionen für RLNP/Game |
+| [architektur2.md](architektur2.md) | Historische Referenz, nicht direkt normativ | bisher beste Gesamtbeschreibung; wird schrittweise in die neue Spec-Struktur überführt |
+| [reaktivitaet.md](reaktivitaet.md) | Bestehende Spezifikation | Reaktivitäts- und Relation-Verhalten |
 | [04-confirmations-and-trust.md](04-confirmations-and-trust.md) | Normativer Entwurf | Claims, Confirmations, Attestations und Trust-Level |
 
 ## Decisions
@@ -48,18 +51,18 @@ Aktuell:
 
 | Bereich | Normativ? | Bedeutung |
 |---|---:|---|
-| `docs/spec/` | ja | Stabiler Vertrag fuer Implementierungen |
+| `docs/spec/` | ja | Stabiler Vertrag für Implementierungen |
 | `docs/spec/decisions/` | ja | Architekturentscheidungen und Begriffsentscheidungen |
-| `docs/modules/` | nein | Fruehes Modul-Brainstorming; Inspirationsmaterial fuer kuenftige Modul-Specs |
+| `docs/modules/` | nein | Frühes Modul-Brainstorming; Inspirationsmaterial für künftige Modul-Specs |
 | `docs/concepts/` | nein | Explorative Konzepte, Produktideen, Integrationsnotizen |
-| `docs/archive/` | nein | Historische Dokumente, alte Plaene und ueberholte Architekturstaende |
+| `docs/archive/` | nein | Historische Dokumente, alte Pläne und überholte Architekturstände |
 | `docs/funding/` | nein | Antragstexte und Kommunikation |
 
 Wenn Code und Spec widersprechen, ist das ein Spec- oder Implementierungsproblem. Neue Regeln sollen nicht stillschweigend in Code, Hooks oder Konzeptdokumenten entstehen.
 
 ## Conformance-Ziel
 
-Langfristig soll jeder Connector gegen dieselben Conformance-Slices pruefbar sein:
+Langfristig soll jeder Connector gegen dieselben Conformance-Slices prüfbar sein:
 
 - Core DataInterface,
 - Item Writing,
@@ -67,6 +70,6 @@ Langfristig soll jeder Connector gegen dieselben Conformance-Slices pruefbar sei
 - Groups/Spaces,
 - Profile,
 - Confirmations und Trust,
-- Reaktivitaet.
+- Reaktivität.
 
 Diese Tests sollen nicht jedes Backend gleich machen. Sie sollen sichtbar machen, welche Capabilities ein Connector korrekt implementiert und welche Trust-Aussage seine Daten haben.

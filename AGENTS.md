@@ -20,6 +20,9 @@ The DataInterface and connector boundaries are the most important contracts in t
 
 - Spec index: [docs/spec/README.md](./docs/spec/README.md)
 - Architecture: [docs/spec/00-architecture.md](./docs/spec/00-architecture.md)
+- DataInterface core: [docs/spec/01-data-interface.md](./docs/spec/01-data-interface.md)
+- Connector capabilities: [docs/spec/02-capabilities.md](./docs/spec/02-capabilities.md)
+- Items, relations and groups/spaces: [docs/spec/03-items-relations-groups-spaces.md](./docs/spec/03-items-relations-groups-spaces.md)
 - Historical architecture reference, not directly normative: [docs/spec/architektur2.md](./docs/spec/architektur2.md)
 - Reactivity and relations: [docs/spec/reaktivitaet.md](./docs/spec/reaktivitaet.md)
 - Module brainstorm, inspiration only until refreshed: [docs/modules/](./docs/modules/)

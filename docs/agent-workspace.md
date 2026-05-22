@@ -8,9 +8,9 @@ Der `wot-agent-runner` und RLAP sind ein möglicher, besonders auditierbarer Aus
 
 ## Projekt
 
-Real Life Stack (RLS) — ein Monorepo fuer Community-Apps mit austauschbarem Daten-Backend.
+Real Life Stack (RLS) — ein Monorepo für Community-Apps mit austauschbarem Daten-Backend.
 
-Kernidee: UI-Module (Kanban, Kalender, Karte, Feed) arbeiten gegen ein einheitliches `DataInterface`. Verschiedene Connectoren (Mock, Local, GraphQL, WoT/Automerge) implementieren dieses Interface. Die UI weiss nicht, woher die Daten kommen.
+Kernidee: UI-Module (Kanban, Kalender, Karte, Feed) arbeiten gegen ein einheitliches `DataInterface`. Verschiedene Connectoren (Mock, Local, GraphQL, WoT/Automerge) implementieren dieses Interface. Die UI weiß nicht, woher die Daten kommen.
 
 ## Architektur
 
@@ -33,7 +33,7 @@ UI-Modul → Hooks → DataInterface (Connector) → Datenquelle
 
 - **DataInterface** (`packages/data-interface/`) — das zentrale Interface. Read-only Core + Capability-Interfaces.
 - **Connector** — implementiert DataInterface + die Capabilities die er braucht.
-- **Hooks** — duenne Schicht, uebersetzen Observable → React State und Mutations → Promise. Hooks pruefen Capabilities via Type Guards.
+- **Hooks** — dünne Schicht, übersetzen Observable → React State und Mutations → Promise. Hooks prüfen Capabilities via Type Guards.
 - **UI-Module** — reine Darstellung, bekommen Daten via Hooks. Wissen NICHT woher die Daten kommen.
 
 ### Item-Modell
@@ -51,62 +51,69 @@ Ein Item kann in mehreren Modulen gleichzeitig erscheinen. `title` lebt in `data
 
 ### Interface Segregation (ISP)
 
-`DataInterface` ist **read-only** (6 Methoden: init, dispose, getItems, getItem, observe, observeItem). Zusaetzliche Faehigkeiten ueber separate Capability-Interfaces:
+`DataInterface` ist **read-only** (6 Methoden: init, dispose, getItems, getItem, observe, observeItem). Zusätzliche Fähigkeiten über separate Capability-Interfaces:
 
 - **`ItemWriter`** — createItem, updateItem, deleteItem
-- **`RelationCapable`** — getRelatedItems
+- **`RelationCapable`** — getRelatedItems, observeRelatedItems
 - **`GroupManager`** — alle Gruppen- und Mitglieder-Methoden
 - **`Authenticatable`** — Auth, User-Methoden
 - **`MultiSource`** — Quellen-Verwaltung
-- **`FullConnector`** — Convenience-Typ = alle Interfaces zusammen
+- **`ContactManager`** — Kontakte und Kontaktstatus
+- **`MessagingCapable`** — Relay-Status und Outbox-Pending-Count
+- **`ConfirmationCapable` / `ConfirmationWriterCapable`** — Confirmations lesen, beobachten und ausstellen
+- **`EncounterVerificationCapable`** — QR-/Begegnungsverifikation
+- **`ProfileCapable`** — Profil lesen, schreiben und synchronisieren
+- **`EventListenerCapable`** — eingehende Connector-Ereignisse
+- **`ItemGroupCapable`** — Item-zu-Group-Zuordnung
+- **`FullConnector`** — Convenience-Typ für den frühen Kern, nicht "alle heutigen Capabilities"
 
 **Regeln:**
 - Ein Connector implementiert NUR die Interfaces die er braucht. Ein CalDAV-Import-Connector implementiert nur `DataInterface` ohne Stub-Methoden.
-- Hooks pruefen Capabilities via Type Guards (`isWritable()`, `hasGroups()`, `isAuthenticatable()`, etc.) und werfen einen beschreibenden Fehler wenn die Capability fehlt.
+- Hooks prüfen Capabilities via Type Guards (`isWritable()`, `hasGroups()`, `hasConfirmations()`, `hasProfile()`, etc.) und werfen einen beschreibenden Fehler wenn die Capability fehlt.
 - `BaseConnector` implementiert `FullConnector` mit sinnvollen Defaults — ist ein Convenience, keine Pflicht.
 
 ### DRY — Keine Duplikation
 
 - **`createObservable()` und `matchesFilter()`** leben in `data-interface/base-connector.ts`. NIEMALS in einzelnen Connectors duplizieren — immer aus `@real-life-stack/data-interface` importieren.
-- Wenn ein Helper in mehr als einem Connector gebraucht wird, gehoert er in `data-interface`.
+- Wenn ein Helper in mehr als einem Connector gebraucht wird, gehört er in `data-interface`.
 
 ### Keine Cross-Dependencies zwischen Connectors
 
-Jeder Connector haengt NUR von `data-interface` + eigenen Libraries ab. Connectors importieren NIEMALS voneinander.
+Jeder Connector hängt NUR von `data-interface` + eigenen Libraries ab. Connectors importieren NIEMALS voneinander.
 
 ### Demo-Daten
 
 - JSON-Dateien leben in `packages/data-interface/data/`, typisierter Wrapper in `demo-data.ts`
-- Import: `import { demoItems, ... } from "@real-life-stack/data-interface/demo-data"` — NICHT ueber mock-connector re-exportieren.
+- Import: `import { demoItems, ... } from "@real-life-stack/data-interface/demo-data"` — NICHT über mock-connector re-exportieren.
 
 ### Observable Pattern
 
 - `ReactiveObservable<T>` mit `current`, `subscribe(cb)`, `set(value)`, `destroy()`
 - Keine externe RxJS-Dependency. Eigenes Pattern via `createObservable<T>(initial)`.
-- Filter-Keys nutzen `JSON.stringify(filter)` als Map-Key fuer Caching.
+- Filter-Keys nutzen `JSON.stringify(filter)` als Map-Key für Caching.
 
 ### UI-Komponenten und Storybook
 
-- **Alle UI-Komponenten gehoeren ins `toolkit` Package** — NICHT in einzelne Apps. Apps kombinieren nur Toolkit-Komponenten.
-- **Storybook pflegen:** Fuer jede UI-Komponente im Toolkit eine Story anlegen/aktualisieren. Stories dienen als Dokumentation und visuelle Tests.
+- **Alle UI-Komponenten gehören ins `toolkit` Package** — NICHT in einzelne Apps. Apps kombinieren nur Toolkit-Komponenten.
+- **Storybook pflegen:** Für jede UI-Komponente im Toolkit eine Story anlegen/aktualisieren. Stories dienen als Dokumentation und visuelle Tests.
 
 ### Hooks und ConnectorProvider
 
 - Hooks und `ConnectorProvider` leben im `toolkit` Package, NICHT in einzelnen Apps.
-- Jede App uebergibt ihren Connector via `<ConnectorProvider connector={...}>`.
-- Hooks sind duenn: Observable → React State, Mutations → Promise. Kein Caching oder Business-Logik in Hooks.
+- Jede App übergibt ihren Connector via `<ConnectorProvider connector={...}>`.
+- Hooks sind dünn: Observable → React State, Mutations → Promise. Kein Caching oder Business-Logik in Hooks.
 
 ### Feature-Erkennung
 
-RLS erkennt technische Connector-Faehigkeiten primaer ueber Capability-Interfaces und Type Guards aus `packages/data-interface`.
+RLS erkennt technische Connector-Fähigkeiten primär über Capability-Interfaces und Type Guards aus `packages/data-interface`.
 
-Feature-Items (`type: "feature"`) koennen weiterhin als Demo-, Konfigurations- oder UI-Sicht auf verfuegbare Funktionen auftauchen. Sie ersetzen aber nicht den TypeScript-Vertrag.
+Feature-Items (`type: "feature"`) können weiterhin als Demo-, Konfigurations- oder UI-Sicht auf verfügbare Funktionen auftauchen. Sie ersetzen aber nicht den TypeScript-Vertrag.
 
 - Connector liefert ein Item mit `id: "capabilities"`, `type: "feature"`, `createdBy: "system"`
-- `data` enthaelt einen verschachtelten Objektbaum: truthy = unterstuetzt, falsy = nicht unterstuetzt
-- Hooks: `useFeatures()` gibt den ganzen Baum, `useFeature("kanban.dragDrop")` prueft einen Pfad
+- `data` enthält einen verschachtelten Objektbaum: truthy = unterstützt, falsy = nicht unterstützt
+- Hooks: `useFeatures()` gibt den ganzen Baum, `useFeature("kanban.dragDrop")` prüft einen Pfad
 - UI blendet Features dynamisch ein/aus basierend auf dem Feature-Baum
-- **Feature-Items gehoeren in die Demo-Daten** (`data/items.json`), nicht hardcoded in Connectors
+- **Feature-Items gehören in die Demo-Daten** (`data/items.json`), nicht hardcoded in Connectors
 - Normativer Einstieg: `docs/spec/README.md` und `docs/spec/00-architecture.md`
 
 ### Relations: Scope-Prefix-System
@@ -130,28 +137,28 @@ WebSocket via `graphql-ws` (npm-Paket), NICHT `graphql-sse`. Mercurius nutzt das
 ### `@real-life-stack/data-interface`
 
 - TypeScript-Typen + Shared Helpers (`createObservable`, `matchesFilter`)
-- Exportiert: `DataInterface`, `ItemWriter`, `RelationCapable`, `GroupManager`, `Authenticatable`, `MultiSource`, `FullConnector`
-- Type Guards: `isWritable()`, `hasRelations()`, `hasGroups()`, `isAuthenticatable()`, `hasMultiSource()`
-- `BaseConnector` — abstrakte Basisklasse mit Defaults fuer alle Capabilities
+- Exportiert: `DataInterface`, `ItemWriter`, `RelationCapable`, `GroupManager`, `Authenticatable`, `MultiSource`, `ContactManager`, `MessagingCapable`, `ConfirmationCapable`, `ConfirmationWriterCapable`, `EncounterVerificationCapable`, `ProfileCapable`, `EventListenerCapable`, `ItemGroupCapable`, `FullConnector`
+- Type Guards: `isWritable()`, `hasRelations()`, `hasGroups()`, `isAuthenticatable()`, `hasMultiSource()`, `hasContacts()`, `hasMessaging()`, `hasConfirmations()`, `hasConfirmationWriter()`, `hasEncounterVerification()`, `hasProfile()`, `hasEventListener()`, `hasItemGroups()`
+- `BaseConnector` — abstrakte Basisklasse mit Defaults für alle Capabilities
 - Demo-Daten: `@real-life-stack/data-interface/demo-data`
-- Aendern nur nach Absprache — das ist der Vertrag zwischen UI und Backend
+- Ändern nur nach Absprache — das ist der Vertrag zwischen UI und Backend
 
 ### `@real-life-stack/mock-connector`
 
 - `MockConnector` implementiert `FullConnector`
-- In-Memory, fuer Entwicklung und Tests
+- In-Memory, für Entwicklung und Tests
 
 ### `@real-life-stack/local-connector`
 
 - `LocalConnector` implementiert `FullConnector`
 - IndexedDB-Persistenz via `idb-keyval`
-- BroadcastChannel fuer Cross-Tab-Sync
-- Seed-Daten ueber Constructor
+- BroadcastChannel für Cross-Tab-Sync
+- Seed-Daten über Constructor
 
 ### `@real-life-stack/graphql-connector`
 
 - `GraphQLConnector` implementiert `FullConnector`
-- `graphql-request` fuer Queries/Mutations, `graphql-ws` fuer Subscriptions
+- `graphql-request` für Queries/Mutations, `graphql-ws` für Subscriptions
 - HTTP-URL wird automatisch zu WS-URL konvertiert
 
 ### `@real-life-stack/graphql-server`
@@ -165,26 +172,26 @@ WebSocket via `graphql-ws` (npm-Paket), NICHT `graphql-sse`. Mercurius nutzt das
 - Layout: AppShell, Navbar, WorkspaceSwitcher, ModuleTabs, BottomNav, UserMenu
 - Content: PostCard, StatCard, ActionCard, SimplePostWidget, KanbanBoard
 - Hooks: useItems, useItem, useCreateItem, useUpdateItem, useDeleteItem, useGroups, useMembers, useAuthState, useCurrentUser, useFeatures, useFeature
-- ConnectorProvider fuer React Context
-- Storybook fuer Komponentenentwicklung (`pnpm storybook`)
+- ConnectorProvider für React Context
+- Storybook für Komponentenentwicklung (`pnpm storybook`)
 
 ## Konventionen
 
 - **shadcn/ui Pattern:** Komponenten liegen im Repo, nicht als npm-Dependency
 - **Tailwind CSS v4** mit OKLCH-Farben
-- **CVA** (class-variance-authority) fuer Varianten, `cn()` fuer bedingte Klassen
+- **CVA** (class-variance-authority) für Varianten, `cn()` für bedingte Klassen
 - **Deutsche Demo-Texte** in der Reference App
-- **pnpm** als Package Manager, **Turbo** fuer Build-Orchestrierung
+- **pnpm** als Package Manager, **Turbo** für Build-Orchestrierung
 - **TypeScript strict mode** in allen Packages
 - **Type-only Imports** nutzen: `import type { Item } from ...`
-- **UI-Aenderungen dokumentieren:** `packages/toolkit/docs/UI-REQUIREMENTS.md` aktualisieren
+- **UI-Änderungen dokumentieren:** `packages/toolkit/docs/UI-REQUIREMENTS.md` aktualisieren
 
 ## Entwicklung
 
 ```bash
-pnpm install              # Abhaengigkeiten installieren
+pnpm install              # Abhängigkeiten installieren
 pnpm dev:reference        # Reference App starten (Vite)
-pnpm storybook            # Storybook fuer Toolkit-Komponenten
+pnpm storybook            # Storybook für Toolkit-Komponenten
 pnpm build                # Alles bauen (Turbo)
 ```
 
@@ -214,15 +221,15 @@ if (hasGroups(connector)) {
 
 ## Architektur-Spec
 
-Der normative Einstieg liegt in `docs/spec/README.md`. Der Architekturanker ist `docs/spec/00-architecture.md`. `docs/spec/architektur2.md` bleibt als historische Referenz erhalten und wird schrittweise in kleinere Spec-Slices ueberfuehrt.
+Der normative Einstieg liegt in `docs/spec/README.md`. Der Architekturanker ist `docs/spec/00-architecture.md`. `docs/spec/architektur2.md` bleibt als historische Referenz erhalten und wird schrittweise in kleinere Spec-Slices überführt.
 
-`docs/modules/` ist aktuell fruehes Brainstorming und Inspirationsmaterial, keine verbindliche Modul-Spec. Historische Plaene und ueberholte Architekturstaende liegen in `docs/archive/`.
+`docs/modules/` ist aktuell frühes Brainstorming und Inspirationsmaterial, keine verbindliche Modul-Spec. Historische Pläne und überholte Architekturstände liegen in `docs/archive/`.
 
-## Reaktivitaet & Relations (WICHTIG — vor jedem reaktiven Feature lesen!)
+## Reaktivität & Relations (WICHTIG — vor jedem reaktiven Feature lesen!)
 
-Ausfuehrliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Regeln:
+Ausführliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Regeln:
 
-- **Datenfluss:** wot-core (Subscribable) → Connector (Observable) → Hooks (React State) → UI. Keine Schicht ueberspringen.
+- **Datenfluss:** wot-core (Subscribable) → Connector (Observable) → Hooks (React State) → UI. Keine Schicht überspringen.
 - **createdAt ist ein ISO-String** (`"2026-03-17T14:30:00.000Z"`), KEIN Date-Objekt. Bei Bedarf: `new Date(item.createdAt)`.
 - **Kommentare/Reaktionen** sind eigene Items mit `commentOn`-Relation, NICHT eingebettet in `data`.
 - **Related Items:** `useRelatedItems(postId, "commentOn", { direction: "to" })` in der Kind-Komponente. KEIN manueller Reverse-Lookup, KEIN `_included`.
@@ -234,8 +241,11 @@ Ausfuehrliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Rege
 
 - `docs/spec/README.md` — Spec-Einstieg und Dokumentklassen
 - `docs/spec/00-architecture.md` — Architekturanker
+- `docs/spec/01-data-interface.md` — read-only Core-Vertrag
+- `docs/spec/02-capabilities.md` — optionale Connector-Capabilities und Type Guards
+- `docs/spec/03-items-relations-groups-spaces.md` — Items, Relations, Groups/Spaces und RLNP/Game-Projektionen
 - `docs/spec/architektur2.md` — historische Architektur-Referenz, nicht direkt normativ
-- `docs/spec/reaktivitaet.md` — Reaktivitaet, Relations, Anti-Patterns (PFLICHTLEKTUERE vor reaktiven Features)
+- `docs/spec/reaktivitaet.md` — Reaktivität, Relations, Anti-Patterns (PFLICHTLEKTÜRE vor reaktiven Features)
 - `docs/modules/README.md` — Einordnung des alten Modul-Brainstormings
 - `docs/archive/README.md` — Archivierte, nicht mehr normative Dokumente
 - `packages/data-interface/src/index.ts` — Alle Typdefinitionen + Capability-Interfaces
