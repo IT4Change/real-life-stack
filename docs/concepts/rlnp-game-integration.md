@@ -92,7 +92,7 @@ RLS-Space-Modules sind Views und Interaktionsflächen innerhalb eines Space.
 | Feed | sichtbare Aktivität, Dokumentation, neue Items, Attestations |
 | Marketplace | Angebote, Bedürfnisse, Ressourcen und mögliche Matches |
 | Profile | Person, Profilfelder, Kontakte, Confirmations, Badges, Beiträge |
-| Questlog | Quests, QuestRuns, Evidence, Completion-Status |
+| Quests | Quest-Übersicht, Questlog, QuestRuns, Evidence, Completion-Status |
 | Campaign View | Ziel, World State, Adventures, sichtbare Ergebnisse |
 | Entwicklungskarte | aus attestierten Handlungen abgeleitete Entwicklungsfelder |
 
@@ -138,7 +138,7 @@ Angebote und Bedürfnisse sind in v0 keine eigenen Item-Typen. Sie erscheinen zu
 
 Commons ist in v0 ebenfalls kein eigener Item-Typ. Commons beschreibt eher einen sozialen Zustand oder Verantwortungsrahmen einer Ressource, eines Ortes oder eines Projekts. Eine Ressource kann z.B. als gemeinsam gepflegt markiert werden; ein Ort kann Commons-Charakter haben; ein Projekt kann Commons aufbauen oder verwalten.
 
-Ein Projekt kann als Item, als Space oder als Kombination aus beidem erscheinen. Als Item beschreibt es das Vorhaben und kann auf Map, Feed, Questlog oder Campaign View sichtbar sein. Als Space bildet es den Arbeits-, Mitgliedschafts- und Sichtbarkeitskontext. Ein kleines Projekt kann also ein `project`-Item in einem bestehenden Space sein; ein größeres Projekt kann zusätzlich einen eigenen Space bekommen.
+Ein Projekt kann als Item, als Space oder als Kombination aus beidem erscheinen. Als Item beschreibt es das Vorhaben und kann auf Map, Feed, Quests-Modul oder Campaign View sichtbar sein. Als Space bildet es den Arbeits-, Mitgliedschafts- und Sichtbarkeitskontext. Ein kleines Projekt kann also ein `project`-Item in einem bestehenden Space sein; ein größeres Projekt kann zusätzlich einen eigenen Space bekommen.
 
 Die genaue Typisierung darf sich entwickeln. Wichtig ist: Das RLS-Item bleibt generisch; die Semantik wird über `type`, `schema`, `data` und `relations` projiziert.
 
@@ -359,7 +359,7 @@ Dieses Dokument ist der Maßstab für diese spätere Aufräumrunde.
 
 ### Phase 3: Erste UI-Slices
 
-- Questlog auf RLNP-Quest/QuestRun ausrichten.
+- Quests-Modul auf RLNP-Quest/QuestRun ausrichten.
 - Campaign View mit World State Panel bauen.
 - Entwicklungskarte als reine View über attestierte Handlungen bauen.
 

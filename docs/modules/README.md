@@ -6,7 +6,7 @@ Dieser Ordner enthält frühe Modulideen aus der Zeit vor der heutigen Abgrenzun
 
 Die Dokumente in diesem Ordner sind aktuell keine Modul-Spezifikation. Sie können hilfreiche Produktideen, User Stories oder UI-Impulse enthalten, aber sie definieren keine verbindlichen Space Modules und keine fachliche Semantik.
 
-Aktuelle Modul-Taxonomie steht in [../spec/01-app-composition.md](../spec/01-app-composition.md):
+Aktuelle Modul-Taxonomie steht in [../spec/01-app-composition.md](../spec/01-app-composition.md). Neue verbindliche Space-Module-Specs entstehen unter [../spec/modules/](../spec/modules/).
 
 - App Shell = globaler, space-übergreifender Rahmen,
 - Space Module = pro Space aktivierbare Oberfläche,
@@ -27,3 +27,4 @@ Normative Grundlage:
 - [../spec/README.md](../spec/README.md)
 - [../spec/00-architecture.md](../spec/00-architecture.md)
 - [../spec/01-app-composition.md](../spec/01-app-composition.md)
+- [../spec/modules/README.md](../spec/modules/README.md)

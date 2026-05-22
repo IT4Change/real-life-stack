@@ -80,6 +80,8 @@ Real Life Stack besitzt nicht die soziale oder spielerische Semantik. Er macht s
 
 RLS-Space-Modules werden künftig frisch und spec-driven definiert. Der bestehende Ordner [docs/modules/](docs/modules/) enthält frühes Brainstorming aus der Zeit vor der heutigen RLS/RLNP/Game-Abgrenzung und gilt vorerst nur als Inspirationsmaterial.
 
+Neue verbindliche Space-Module-Specs entstehen unter [docs/spec/modules/](docs/spec/modules/). Der erste ausgearbeitete Entwurf ist [Feed](docs/spec/modules/feed.md).
+
 | Space Module | Beschreibung |
 |-------|--------------|
 | [**Map**](docs/modules/map.md) | Lokale Orte, Ressourcen und Aktivitäten auf einer Karte visualisieren |
@@ -87,7 +89,7 @@ RLS-Space-Modules werden künftig frisch und spec-driven definiert. Der bestehen
 | [**Feed**](docs/modules/feed.md) | Aktivitäten-Stream aus allen Space Modules: Was passiert in der Community? |
 | **Kanban / Tasks** | Aufgaben und Workflows innerhalb eines Space organisieren |
 | **Marketplace** | Angebote, Bedürfnisse, Ressourcen und mögliche Matches sichtbar machen |
-| **Questlog** | Quests, QuestRuns, Evidence und Completion-Status anzeigen |
+| **Quests** | Quest-Übersicht, Questlog, QuestRuns, Evidence und Completion-Status anzeigen |
 | **Campaign View** | Adventures, Campaigns und World State als Spielansicht darstellen |
 
 ---

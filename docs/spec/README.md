@@ -44,6 +44,7 @@ Die sechs Kern-Dokumente bauen in dieser Reihenfolge aufeinander auf:
 
 | Dokument | Status | Zweck |
 |---|---|---|
+| [modules/](modules/) | Normative Detail-Specs im Aufbau | Verbindliche Space-Module-Spezifikationen auf Basis der Kern-Spec |
 | [architektur2.md](architektur2.md) | Historische Referenz, nicht direkt normativ | bisher beste Gesamtbeschreibung; wird schrittweise in die neue Spec-Struktur überführt |
 | [reaktivitaet.md](reaktivitaet.md) | Ergänzende Referenz | Bestehendes Detailverhalten für Reaktivität und Relations; wird später in passende Kern-Slices überführt |
 
@@ -60,6 +61,7 @@ Aktuell:
 | Bereich | Normativ? | Bedeutung |
 |---|---:|---|
 | `docs/spec/` | ja | Stabiler Vertrag für Implementierungen |
+| `docs/spec/modules/` | ja | Verbindliche Space-Module-Detail-Specs |
 | `docs/spec/decisions/` | ja | Architekturentscheidungen und Begriffsentscheidungen |
 | `docs/modules/` | nein | Frühes Modul-Brainstorming; Inspirationsmaterial für künftige Modul-Specs |
 | `docs/concepts/` | nein | Explorative Konzepte, Produktideen, Integrationsnotizen |

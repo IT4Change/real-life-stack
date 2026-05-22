@@ -31,7 +31,7 @@ App
       ├─ Calendar
       ├─ Kanban
       ├─ Marketplace
-      ├─ Questlog
+      ├─ Quests
       └─ Campaign View
 ```
 
@@ -106,7 +106,7 @@ Beispiele:
 | Calendar | zeitliche Ansicht auf Events, Quests oder Campaign-Phasen | Items mit `start` / `end` |
 | Kanban / Tasks | Aufgaben- und Workflow-Ansicht | Items mit `status` |
 | Marketplace | Angebote, Bedürfnisse, Ressourcen und mögliche Matches | Items, Profilfelder, Tags oder Relations |
-| Questlog | Quests, QuestRuns, Evidence und Completion-Status | RLNP-Items und Confirmations |
+| Quests | Quest-Übersicht, Questlog, QuestRuns, Evidence und Completion-Status | RLNP-Items und Confirmations |
 | Campaign View | Adventures, Campaigns und World State | Game-Projektionen über Items, Relations und Confirmations |
 
 ## Module Components
@@ -123,7 +123,8 @@ Beispiele:
 - ReactionBar,
 - DateWidget,
 - LocationWidget,
-- PeopleWidget.
+- PeopleWidget,
+- Questlog.
 
 Regeln:
 
@@ -146,7 +147,7 @@ Nicht jedes sichtbare UI-Element ist ein Space Module.
 | VerificationDialog | App Shell |
 | RelayStatusBadge | App Shell / Connector-Status |
 | DebugDashboard | App Shell / Debug/Admin |
-| ItemPreview, ItemDetail, Composer | Module Component |
+| ItemPreview, ItemDetail, Composer, Questlog | Module Component |
 
 ## Abgrenzung zu RLNP, Game und WoT
 
@@ -161,16 +162,26 @@ Space Modules machen externe Semantik bedienbar, besitzen sie aber nicht.
 
 Beispiel:
 
-Ein Questlog ist ein Space Module. Es darf Quests, QuestRuns, Evidence und Confirmations anzeigen und bedienbar machen. Es definiert aber nicht selbst, was eine Quest sozial bedeutet oder wann eine Quest als abgeschlossen gilt. Diese Semantik bleibt im RLNP.
+Ein Quests-Modul ist ein Space Module. Es darf Quests, QuestRuns, Evidence, Completion-Status und verschiedene Quest-Komponenten anzeigen und bedienbar machen. Ein Questlog ist darin eine mögliche Module Component, aber nicht selbst die ganze Modul-Ebene. Das Quests-Modul definiert nicht selbst, was eine Quest sozial bedeutet oder wann eine Quest als abgeschlossen gilt. Diese Semantik bleibt im RLNP.
+
+## Modul-Detail-Specs
+
+Verbindliche Detail-Specs für Space Modules entstehen unter [modules/](modules/). Der alte Ordner [../modules/](../modules/) bleibt historisches Brainstorming und Inspirationsmaterial.
+
+Aktuell:
+
+- [modules/template.md](modules/template.md)
+- [modules/feed.md](modules/feed.md)
 
 ## Offene Punkte
 
-Diese Spec definiert die Taxonomie. Detail-Specs für einzelne Space Modules können später folgen.
+Diese Spec definiert die Taxonomie. Detail-Specs für weitere Space Modules können später folgen.
 
 Mögliche spätere Dokumente:
 
-- `06-feed-module.md`,
-- `07-map-module.md`,
-- `08-calendar-module.md`,
-- `09-marketplace-module.md`,
-- `10-questlog-module.md`.
+- `modules/map.md`,
+- `modules/calendar.md`,
+- `modules/kanban.md`,
+- `modules/marketplace.md`,
+- `modules/quests.md`,
+- `modules/campaign-view.md`.

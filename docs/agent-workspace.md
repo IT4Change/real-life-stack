@@ -230,7 +230,7 @@ Der normative Einstieg liegt in `docs/spec/README.md`. Der Architekturanker ist 
 RLS unterscheidet:
 
 - **App Shell** — globaler, space-übergreifender Rahmen: Navigation, Space Switcher, User/Profile, Contacts, Verification, Notifications, Debug/Admin.
-- **Space Module** — pro Space aktivierbare Oberfläche: Feed, Map, Calendar, Kanban, Marketplace, Questlog, Campaign View.
+- **Space Module** — pro Space aktivierbare Oberfläche: Feed, Map, Calendar, Kanban, Marketplace, Quests, Campaign View.
 - **Module Component** — wiederverwendbarer Baustein innerhalb von Modulen: ItemPreview, ItemDetail, Composer, Filter, Comments, Reactions.
 
 Profile, Contacts, Verification und Auth sind App-Shell-Flächen, keine Space Modules. Sie können in Space Modules sichtbar werden, werden aber nicht pro Space als Modul aktiviert.
@@ -256,6 +256,8 @@ Ausführliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Rege
 - `docs/spec/03-capabilities.md` — optionale Connector-Capabilities und Type Guards
 - `docs/spec/04-items-relations-groups-spaces.md` — Items, Relations, Groups/Spaces und RLNP/Game-Projektionen
 - `docs/spec/05-confirmations-and-trust.md` — Claims, Confirmations, Attestations und Trust-Level
+- `docs/spec/modules/README.md` — verbindliche Space-Module-Detail-Specs
+- `docs/spec/modules/template.md` — Vorlage für neue Space-Module-Specs
 - `docs/spec/architektur2.md` — historische Architektur-Referenz, nicht direkt normativ
 - `docs/spec/reaktivitaet.md` — Reaktivität, Relations, Anti-Patterns (PFLICHTLEKTÜRE vor reaktiven Features)
 - `docs/modules/README.md` — Einordnung des alten Modul-Brainstormings

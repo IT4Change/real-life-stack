@@ -1,7 +1,7 @@
 # Reaktivität im Real Life Stack — Spezifikation & AI-Instruktionen
 
 > Verbindliche Referenz für alle Entwickler und AI-Assistenten.
-> Gilt für: data-interface, local-connector, wot-connector, toolkit (Hooks), UI-Module.
+> Gilt für: data-interface, local-connector, wot-connector, toolkit (Hooks), App Shell und Space Modules.
 
 ---
 
@@ -22,7 +22,7 @@
 │  (useItems, useItem, useRelatedItems, useGroups)         │
 │  → useState + useEffect + subscribe                      │
 ├─────────────────────────────────────────────────────────┤
-│  UI-Module          Reine Darstellung                    │
+│  UI-Flächen         Reine Darstellung                    │
 │  (Feed, Kanban, Kalender, Karte)                         │
 │  → Empfangen Daten via Hooks, kein eigener State         │
 └─────────────────────────────────────────────────────────┘
@@ -35,7 +35,7 @@
 | **wot-core** | CRDT-Events, Subscribable bereitstellen | UI kennen, React importieren |
 | **Connector** | Subscribable → Observable übersetzen, Filter anwenden | Direkt React State setzen |
 | **Hooks** | Observable → React State, Capability-Checks | Eigene Datenhaltung, Business-Logik |
-| **UI-Module** | Rendern, User-Interaktion | Connector direkt ansprechen, Daten fetchen |
+| **UI-Flächen** | Rendern, User-Interaktion | Connector direkt ansprechen, Daten fetchen |
 
 ---
 
