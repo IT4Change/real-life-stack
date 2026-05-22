@@ -27,7 +27,6 @@ import {
 } from "@real-life-stack/data-interface"
 
 import {
-  WebSocketMessagingAdapter,
   OutboxMessagingAdapter,
   PersonalDocOutboxStore,
   PersonalDocSpaceMetadataStorage,
@@ -78,6 +77,7 @@ import type { WotConnectorConfig, RlsSpaceDoc, SerializedItem } from "./types.js
 import { serializeItem, deserializeItem } from "./serialization.js"
 import { CrossGroupIndex } from "./CrossGroupIndex.js"
 import { mapPersonalDocConfirmations } from "./confirmations.js"
+import { CompatibleWebSocketMessagingAdapter } from "./compatible-websocket-messaging-adapter.js"
 
 // --- Constants ---
 
@@ -200,7 +200,7 @@ export class WotConnector extends BaseConnector {
   private attestationWorkflow = new AttestationWorkflow({ crypto: new WebCryptoProtocolCryptoAdapter() })
 
   // Adapters (initialized after auth)
-  private wsAdapter: WebSocketMessagingAdapter | null = null
+  private wsAdapter: CompatibleWebSocketMessagingAdapter | null = null
   private outboxAdapter: OutboxMessagingAdapter | null = null
   private replication: YjsReplicationAdapter | null = null
   private groupKeyService: GroupKeyService | null = null
@@ -974,8 +974,8 @@ export class WotConnector extends BaseConnector {
     try { localStorage.setItem("rls-wot-active-did", did) } catch { /* ignore */ }
 
     // 1. WebSocket connect (MUST happen before PersonalDoc so it can receive sync messages)
-    this.wsAdapter = new WebSocketMessagingAdapter(this.config.relayUrl, {
-      signBrokerAuthTranscript: (transcriptBytes: Uint8Array) => this.identity.signEd25519(transcriptBytes),
+    this.wsAdapter = new CompatibleWebSocketMessagingAdapter(this.config.relayUrl, {
+      signBrokerAuthBytes: (signingBytes: Uint8Array) => this.identity.signEd25519(signingBytes),
     })
 
     // Register relay state listener BEFORE connect so we catch the 'connected' event
