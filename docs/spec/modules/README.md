@@ -36,6 +36,7 @@ Grundlagen:
 | [template.md](template.md) | Vorlage | Gemeinsames Raster für neue Space-Module-Specs |
 | [feed.md](feed.md) | Normativer Entwurf v0.1 | Aktivitäts- und Inhaltsstrom im Current Space |
 | [kanban.md](kanban.md) | Normativer Entwurf v0.1 | Workflow- und Aufgabenboard im Current Space |
+| [calendar.md](calendar.md) | Normativer Entwurf v0.1 | Zeitliche Projektion von Items im Current Space |
 
 ## Reihenfolge für neue Module
 

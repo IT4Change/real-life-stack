@@ -100,6 +100,23 @@ Feed ist das Referenzmodul für einen generischen Aktivitäts- und Inhaltsstrom 
 
 Die Feed-Overview darf keine Backend-Simulation erzwingen. Sie zeigt das Zusammenspiel von Composer, FeedItem und optionalen Social Slots; echte Mutationen, Relations und Confirmations werden über Connector-Capabilities angebunden.
 
+## Calendar-Referenzmapping
+
+Calendar ist das Referenzmodul für zeitliche Projektionen im Current Space. Es zeigt Items unterschiedlicher Typen als Monats-, Wochen-, Tages- oder Listenansicht, wenn sie ein parsebares `data.start` tragen.
+
+| Spec-Begriff | Code | Storybook | Daten-/Capability-Annahme |
+|---|---|---|---|
+| Calendar Space Module | `packages/toolkit/src/components/calendar/calendar-module.stories.tsx` | `RLS/Space Modules/Calendar/Overview` | Items im Current Space mit `data.start`, optional `data.end` |
+| Header und Ansichtsauswahl | `calendar-view.tsx` | `RLS/Space Modules/Calendar/Overview` | UI-Zustand steuert Zeitraum, Monat/Woche/Tag/Liste und Heute-Sprung |
+| Filter | `calendar-view.tsx` | `RLS/Space Modules/Calendar/Overview` | Typ-, Orts- und Current-User-Filter bleiben lokal; Persistenz ist App-/Shell-Verantwortung |
+| Monatsansicht | `calendar-view.tsx` | `RLS/Space Modules/Calendar/Overview` | `Item.data.start` gruppiert Events nach Kalendertag; Event-Pills öffnen das Item |
+| Wochen-/Tagesansicht | `calendar-view.tsx` | `RLS/Space Modules/Calendar/Overview` | Zeitgebundene Items werden auf einfache Zeitslots projiziert |
+| Eventliste | `calendar-view.tsx` | `RLS/Space Modules/Calendar/Overview` | Zeitgebundene Items im sichtbaren Zeitraum, sortiert und nach Tag gruppiert |
+| Event-Erstellung/Bearbeitung | `CalendarView` Create-Hook, später über `ContentComposer` | Create-Hook sichtbar, Persistenz noch nicht abgebildet | Persistente Erstellung braucht `ItemWriter`; Calendar bleibt ohne Writer read-only |
+| Teilnehmer/Bestätigungen | spätere Module Components | noch nicht abgebildet | Optional über `RelationCapable` und `ConfirmationCapable` |
+
+Die Calendar-Overview orientiert sich am Edge-Prototyp unter `https://real-life-stack.de/edge/` (Navigation `Kalender`), bleibt aber technisch eine backend-agnostische Projektion über generische Items.
+
 ## Nicht-Ziele
 
 Diese Spec definiert nicht:

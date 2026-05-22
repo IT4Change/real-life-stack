@@ -103,7 +103,7 @@ Beispiele:
 |---|---|---|
 | Feed | Aktivität, Posts, Events, Dokumentation, Kommentare, Reaktionen | Items und Relations |
 | Map | räumliche Ansicht auf Orte, Events, Ressourcen oder Quests | Items mit `location` |
-| Calendar | zeitliche Ansicht auf Events, Quests oder Campaign-Phasen | Items mit `start` / `end` |
+| Calendar | zeitliche Monats-, Wochen-, Tages- oder Listenansicht auf Events, Quests oder Campaign-Phasen | Items mit `start` / `end` |
 | Kanban / Tasks | Aufgaben- und Workflow-Ansicht | Items mit `status` |
 | Marketplace | Angebote, Bedürfnisse, Ressourcen und mögliche Matches | Items, Profilfelder, Tags oder Relations |
 | Quests | Quest-Übersicht, Questlog, QuestRuns, Evidence und Completion-Status | RLNP-Items und Confirmations |
@@ -173,6 +173,7 @@ Aktuell:
 - [modules/template.md](modules/template.md)
 - [modules/feed.md](modules/feed.md)
 - [modules/kanban.md](modules/kanban.md)
+- [modules/calendar.md](modules/calendar.md)
 
 ## Offene Punkte
 
@@ -181,7 +182,6 @@ Diese Spec definiert die Taxonomie. Detail-Specs für weitere Space Modules kön
 Mögliche spätere Dokumente:
 
 - `modules/map.md`,
-- `modules/calendar.md`,
 - `modules/marketplace.md`,
 - `modules/quests.md`,
 - `modules/campaign-view.md`.
