@@ -1,10 +1,26 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
 import type { Item } from "@real-life-stack/data-interface"
+import { useMemo, useState } from "react"
+import { ContentComposer, type ContentComposerSubmitData } from "./content-composer"
+import { FeedComposerTrigger } from "./feed-composer-trigger"
 import { FeedItem } from "./feed-item"
 
 const now = new Date()
 
-const items: Array<{ item: Item; author: { name: string; avatar?: string }; comments?: number }> = [
+type FeedEntry = {
+  item: Item
+  author: { name: string; avatar?: string }
+  comments?: number
+  reactions?: Array<{ emoji: string; count: number }>
+}
+
+const currentUser = {
+  id: "user-1",
+  name: "Anna Schmidt",
+  avatar: "https://randomuser.me/api/portraits/women/44.jpg",
+}
+
+const initialItems: FeedEntry[] = [
   {
     item: {
       id: "post-1",
@@ -17,8 +33,12 @@ const items: Array<{ item: Item; author: { name: string; avatar?: string }; comm
         tags: ["garten", "planung"],
       },
     },
-    author: { name: "Anna Schmidt", avatar: "https://randomuser.me/api/portraits/women/44.jpg" },
+    author: { name: currentUser.name, avatar: currentUser.avatar },
     comments: 4,
+    reactions: [
+      { emoji: "❤️", count: 5 },
+      { emoji: "👍", count: 3 },
+    ],
   },
   {
     item: {
@@ -36,6 +56,7 @@ const items: Array<{ item: Item; author: { name: string; avatar?: string }; comm
     },
     author: { name: "Max Mustermann", avatar: "https://randomuser.me/api/portraits/men/32.jpg" },
     comments: 2,
+    reactions: [{ emoji: "👍", count: 6 }],
   },
   {
     item: {
@@ -51,28 +72,101 @@ const items: Array<{ item: Item; author: { name: string; avatar?: string }; comm
       },
     },
     author: { name: "Thomas Müller", avatar: "https://randomuser.me/api/portraits/men/67.jpg" },
+    comments: 1,
   },
 ]
 
-function StaticReactionSlot() {
+function getStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+function StaticReactionSlot({ reactions }: { reactions: Array<{ emoji: string; count: number }> }) {
   return (
     <div className="flex items-center gap-1 text-xs text-muted-foreground">
-      <span className="rounded-full border bg-muted/50 px-2 py-0.5">❤️ 5</span>
-      <span className="rounded-full border bg-muted/50 px-2 py-0.5">👍 3</span>
+      {reactions.map((reaction) => (
+        <span key={reaction.emoji} className="rounded-full border bg-muted/50 px-2 py-0.5">
+          {reaction.emoji} {reaction.count}
+        </span>
+      ))}
     </div>
   )
 }
 
 function FeedModuleOverview() {
+  const [feedItems, setFeedItems] = useState(initialItems)
+  const sortedItems = useMemo(
+    () => [...feedItems].sort((a, b) => Date.parse(b.item.createdAt) - Date.parse(a.item.createdAt)),
+    [feedItems],
+  )
+
+  const handleCreatePost = (submitData: ContentComposerSubmitData) => {
+    const text = typeof submitData.data.text === "string" ? submitData.data.text.trim() : ""
+    const title = typeof submitData.data.title === "string" ? submitData.data.title.trim() : ""
+    const tags = getStringArray(submitData.data.tags)
+
+    if (!text && !title) return
+
+    const item: Item = {
+      id: `post-${Date.now()}`,
+      type: submitData.contentType,
+      createdAt: new Date().toISOString(),
+      createdBy: currentUser.id,
+      data: {
+        title,
+        content: text,
+        tags,
+      },
+    }
+
+    setFeedItems((current) => [
+      {
+        item,
+        author: { name: currentUser.name, avatar: currentUser.avatar },
+        comments: 0,
+      },
+      ...current,
+    ])
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-3">
-      {items.map(({ item, author, comments }) => (
+      <FeedComposerTrigger
+        userName={currentUser.name}
+        userAvatar={currentUser.avatar}
+        placeholder="Was gibt es Neues im Gemeinschaftsgarten?"
+      >
+        {({ onClose, initialText }) => (
+          <div className="p-4 sm:p-6">
+            <ContentComposer
+              contentTypes={[
+                {
+                  id: "post",
+                  label: "Post",
+                  defaultWidgets: ["text", "tags"],
+                  submitLabel: "Posten",
+                },
+              ]}
+              initialData={{ text: initialText ?? "" }}
+              showPreview={false}
+              showVisibility={false}
+              tagQuickSuggestions={["garten", "planung", "infrastruktur", "workshop"]}
+              onSubmit={(data) => {
+                handleCreatePost(data)
+                onClose()
+              }}
+              onCancel={onClose}
+            />
+          </div>
+        )}
+      </FeedComposerTrigger>
+
+      {sortedItems.map(({ item, author, comments, reactions }) => (
         <FeedItem
           key={item.id}
           item={item}
           author={author}
           commentCount={comments}
-          reactionSlot={<StaticReactionSlot />}
+          reactionSlot={reactions ? <StaticReactionSlot reactions={reactions} /> : undefined}
         />
       ))}
     </div>

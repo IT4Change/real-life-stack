@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { PostCard, type Post } from './post-card'
 
 const meta: Meta<typeof PostCard> = {
-  title: 'RLS/Space Modules/Feed/Components/PostCard',
+  title: 'RLS/Module Components/Feed/PostCard',
   component: PostCard,
   tags: ['autodocs'],
 }

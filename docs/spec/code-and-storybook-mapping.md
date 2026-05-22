@@ -71,6 +71,35 @@ Eine Overview-Story zeigt:
 
 Overview-Stories sind visuelle Einstiegspunkte, keine Integrationstests und keine Backend-Simulation.
 
+## Kanban-Referenzmapping
+
+Kanban / Tasks ist das erste abgerundete Referenzmodul für diese Mapping-Regeln. Es zeigt, wie ein Space Module aus wiederverwendbaren Module Components, generischen Items und optionalen Capabilities zusammengesetzt wird.
+
+| Spec-Begriff | Code | Storybook | Daten-/Capability-Annahme |
+|---|---|---|---|
+| Kanban / Tasks Space Module | `packages/toolkit/src/components/kanban/kanban-module.stories.tsx` | `RLS/Space Modules/Kanban/Overview` | Items im Current Space mit Kanban-kompatiblem `data.status` |
+| Board-Layout | `kanban-board.tsx` | `RLS/Space Modules/Kanban/Board` | `Item.data.status`, `Item.data.position`, optional `relations: assignedTo` und `users` |
+| Filter/Werkzeuge | `kanban-toolbar.tsx` | `RLS/Space Modules/Kanban/Toolbar` | Items, optionale `users`, optionaler `currentUserId`; Mutationen werden über Callbacks/Capabilities angebunden |
+| Task-Erstellung/Bearbeitung | `kanban-task-create.tsx` | Modulkomponente; in späteren Stories direkt prüfbar | `ItemWriter` für persistente Erstellung/Bearbeitung; App entscheidet über erlaubte Felder |
+| Kartendetail | `kanban-card-detail.tsx` | Modulkomponente; in späteren Stories direkt prüfbar | Item-Daten, optional `users`, Tags, Status und Assignee-Relations |
+
+Die Kanban-Komponenten stellen ihren eigenen Container-Query-Kontext bereit, damit sie auch außerhalb der App Shell, z.B. in Storybook oder eingebetteten Modulflächen, korrekt zwischen mobiler und breiter Darstellung wechseln.
+
+## Feed-Referenzmapping
+
+Feed ist das Referenzmodul für einen generischen Aktivitäts- und Inhaltsstrom im Current Space. Es zeigt Items unterschiedlicher Typen als Stream, ohne selbst neue Fachobjekte zu erfinden.
+
+| Spec-Begriff | Code | Storybook | Daten-/Capability-Annahme |
+|---|---|---|---|
+| Feed Space Module | `packages/toolkit/src/components/feed/feed-module.stories.tsx` | `RLS/Space Modules/Feed/Overview` | Feed-fähige Items im Current Space, sortiert nach `createdAt` |
+| Feed Item | `feed-item.tsx` | In der Overview als Standardprojektion verwendet | Generisches `Item` mit `data.title`, `data.content` oder `data.description`; type-spezifische Metadaten bleiben optional |
+| Composer | `feed-composer-trigger.tsx`, `content-composer.tsx` | `RLS/Module Components/ContentComposer` und Feed-Overview | Persistente Erstellung braucht später `ItemWriter`; die Story hält neue Items nur lokal |
+| Reaktionen | `reactions/` | `RLS/Module Components/Reactions/...`; in der Overview als statischer Slot sichtbar | Optional über `RelationCapable`/`reactsTo`; Feed bleibt nutzbar ohne Relations |
+| Kommentare | `comments/` | `RLS/Module Components/Comments/CommentSection` | Optional über `RelationCapable`/`commentOn`; FeedItem kann Kommentaranzahlen anzeigen |
+| PostCard | `post-card.tsx` | `RLS/Module Components/Feed/PostCard` | Spezifische ältere Post-Projektion; nicht die kanonische generische Feed-Projektion |
+
+Die Feed-Overview darf keine Backend-Simulation erzwingen. Sie zeigt das Zusammenspiel von Composer, FeedItem und optionalen Social Slots; echte Mutationen, Relations und Confirmations werden über Connector-Capabilities angebunden.
+
 ## Nicht-Ziele
 
 Diese Spec definiert nicht:

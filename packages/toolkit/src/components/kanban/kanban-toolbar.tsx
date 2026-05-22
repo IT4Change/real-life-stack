@@ -283,7 +283,7 @@ export function KanbanToolbar({
   ) : null
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
+    <div className={cn("@container flex flex-col gap-2", className)}>
       {/* First row: actions + filter toggle + settings */}
       <div className="flex items-center gap-2">
         {onCreateItem && (

@@ -1,6 +1,6 @@
 "use client"
 
-import { Calendar, CheckSquare, MapPin, Tag } from "lucide-react"
+import { Calendar, CheckSquare, MapPin, MessageCircle, Tag } from "lucide-react"
 import type { Item } from "@real-life-stack/data-interface"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/primitives/avatar"
 import { RelativeTime } from "@/components/primitives/relative-time"
@@ -34,12 +34,12 @@ function TypeBadge({ type }: { type: string }) {
     event: {
       icon: Calendar,
       label: "Event",
-      className: "bg-secondary/10 text-secondary border-secondary/20",
+      className: "bg-blue-50 text-blue-700 border-blue-200",
     },
     task: {
       icon: CheckSquare,
       label: "Task",
-      className: "bg-accent/10 text-accent border-accent/20",
+      className: "bg-amber-50 text-amber-700 border-amber-200",
     },
   }
 
@@ -143,10 +143,11 @@ export function FeedItem({
           {commentCount != null && commentCount > 0 && (
             <button
               type="button"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
+              className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
               onClick={(e) => { e.stopPropagation(); onCommentClick?.() }}
             >
-              💬 {commentCount} Kommentar{commentCount !== 1 ? "e" : ""}
+              <MessageCircle className="h-3 w-3" />
+              {commentCount} Kommentar{commentCount !== 1 ? "e" : ""}
             </button>
           )}
         </div>

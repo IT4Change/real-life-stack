@@ -1,7 +1,8 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import type { Meta, StoryObj } from "@storybook/react-vite"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { KanbanBoard } from "./kanban-board"
+import { KanbanToolbar, applyKanbanFilter, type KanbanFilter } from "./kanban-toolbar"
 
 const users: User[] = [
   { id: "user-1", displayName: "Anna Schmidt", avatarUrl: "https://randomuser.me/api/portraits/women/44.jpg" },
@@ -69,6 +70,17 @@ const initialItems: Item[] = [
 
 function KanbanModuleOverview() {
   const [items, setItems] = useState(initialItems)
+  const [filter, setFilter] = useState<KanbanFilter>({
+    searchText: "",
+    assignedTo: null,
+    myTasksOnly: false,
+    tags: [],
+  })
+
+  const filteredItems = useMemo(
+    () => applyKanbanFilter(items, filter, "user-1"),
+    [items, filter]
+  )
 
   const handleMoveItem = (itemId: string, newStatus: string, position: number) => {
     setItems((prev) => {
@@ -94,12 +106,45 @@ function KanbanModuleOverview() {
     })
   }
 
+  const handleCreateItem = () => {
+    const id = `task-${Date.now()}`
+    setItems((prev) => {
+      const todoItems = prev.filter((item) => (item.data.status as string) === "todo")
+      return [
+        ...prev,
+        {
+          id,
+          type: "task",
+          createdAt: new Date().toISOString(),
+          createdBy: "user-1",
+          data: {
+            title: "Neuer Task",
+            description: "",
+            status: "todo",
+            position: todoItems.length,
+            tags: [],
+          },
+          relations: [{ predicate: "assignedTo", target: "global:user-1" }],
+        },
+      ]
+    })
+  }
+
   return (
-    <KanbanBoard
-      items={items}
-      users={users}
-      onMoveItem={handleMoveItem}
-    />
+    <div className="space-y-4">
+      <KanbanToolbar
+        items={items}
+        users={users}
+        currentUserId="user-1"
+        onFilterChange={setFilter}
+        onCreateItem={handleCreateItem}
+      />
+      <KanbanBoard
+        items={filteredItems}
+        users={users}
+        onMoveItem={handleMoveItem}
+      />
+    </div>
   )
 }
 
