@@ -27,7 +27,6 @@ import {
 } from "@real-life-stack/data-interface"
 
 import {
-  WotIdentity,
   WebSocketMessagingAdapter,
   OutboxMessagingAdapter,
   PersonalDocOutboxStore,
@@ -39,7 +38,9 @@ import {
   InMemoryGraphCacheStore,
   VerificationWorkflow,
   AttestationWorkflow,
+  IdentityWorkflow,
   WebCryptoProtocolCryptoAdapter,
+  IndexedDbIdentitySeedVault,
   CompactStorageManager,
   TracedCompactStorageManager,
   TracedOutboxMessagingAdapter,
@@ -57,6 +58,7 @@ import type {
   MessageEnvelope,
   MessageType,
   PublicProfile,
+  PublicIdentitySession,
 } from "@real-life/wot-core"
 import {
   YjsReplicationAdapter,
@@ -83,6 +85,104 @@ const RLS_SPACE_TYPE = "rls"
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
 // Overview mode: setCurrentGroup(null) = show all items from all spaces
 
+class WorkflowBackedIdentity implements PublicIdentitySession {
+  private readonly workflow: IdentityWorkflow
+
+  constructor() {
+    const crypto = new WebCryptoProtocolCryptoAdapter()
+    this.workflow = new IdentityWorkflow({
+      crypto,
+      vault: new IndexedDbIdentitySeedVault({ crypto }),
+    })
+  }
+
+  get did(): string {
+    return this.session().did
+  }
+
+  get kid(): string {
+    return this.session().kid
+  }
+
+  get ed25519PublicKey(): Uint8Array {
+    return this.session().ed25519PublicKey
+  }
+
+  get x25519PublicKey(): Uint8Array {
+    return this.session().x25519PublicKey
+  }
+
+  async create(userPassphrase: string, storeSeed: boolean = true): Promise<{ mnemonic: string; did: string }> {
+    const { mnemonic, identity } = await this.workflow.createIdentity({
+      passphrase: userPassphrase,
+      storeSeed,
+    })
+    return { mnemonic, did: identity.getDid() }
+  }
+
+  async unlock(mnemonic: string, passphrase: string, storeSeed: boolean = false): Promise<void> {
+    await this.workflow.recoverIdentity({ mnemonic, passphrase, storeSeed })
+  }
+
+  async unlockFromStorage(passphrase?: string): Promise<void> {
+    await this.workflow.unlockStoredIdentity(passphrase === undefined ? {} : { passphrase })
+  }
+
+  hasStoredIdentity(): Promise<boolean> {
+    return this.workflow.hasStoredIdentity()
+  }
+
+  hasActiveSession(): Promise<boolean> {
+    return this.workflow.hasActiveSession()
+  }
+
+  async deleteStoredIdentity(): Promise<void> {
+    await this.workflow.deleteStoredIdentity()
+  }
+
+  getDid(): string {
+    return this.session().getDid()
+  }
+
+  sign(data: string): Promise<string> {
+    return this.session().sign(data)
+  }
+
+  signJws(payload: unknown): Promise<string> {
+    return this.session().signJws(payload)
+  }
+
+  signEd25519(data: Uint8Array): Promise<Uint8Array> {
+    return this.session().signEd25519(data)
+  }
+
+  deriveFrameworkKey(info: string): Promise<Uint8Array> {
+    return this.session().deriveFrameworkKey(info)
+  }
+
+  getPublicKeyMultibase(): Promise<string> {
+    return this.session().getPublicKeyMultibase()
+  }
+
+  getEncryptionPublicKeyBytes(): Promise<Uint8Array> {
+    return this.session().getEncryptionPublicKeyBytes()
+  }
+
+  encryptForRecipient(...args: Parameters<PublicIdentitySession["encryptForRecipient"]>): ReturnType<PublicIdentitySession["encryptForRecipient"]> {
+    return this.session().encryptForRecipient(...args)
+  }
+
+  decryptForMe(...args: Parameters<PublicIdentitySession["decryptForMe"]>): ReturnType<PublicIdentitySession["decryptForMe"]> {
+    return this.session().decryptForMe(...args)
+  }
+
+  private session(): PublicIdentitySession {
+    const identity = this.workflow.getCurrentIdentity()
+    if (!identity) throw new Error("Identity not unlocked")
+    return identity
+  }
+}
+
 function isVerificationConfirmation(c: ConfirmationView): boolean {
   return c.schema === "wot:verification"
 }
@@ -91,7 +191,7 @@ function isVerificationConfirmation(c: ConfirmationView): boolean {
 
 export class WotConnector extends BaseConnector {
   private config: WotConnectorConfig
-  private identity: WotIdentity
+  private identity: WorkflowBackedIdentity
   private httpDiscovery: HttpDiscoveryAdapter
   private discovery: OfflineFirstDiscoveryAdapter
   private publishStateStore: InMemoryPublishStateStore
@@ -149,7 +249,7 @@ export class WotConnector extends BaseConnector {
   constructor(config: WotConnectorConfig) {
     super()
     this.config = config
-    this.identity = new WotIdentity()
+    this.identity = new WorkflowBackedIdentity()
     this.httpDiscovery = new HttpDiscoveryAdapter(config.profilesUrl)
     this.publishStateStore = new InMemoryPublishStateStore()
     this.graphCacheStore = new InMemoryGraphCacheStore()
@@ -875,7 +975,7 @@ export class WotConnector extends BaseConnector {
 
     // 1. WebSocket connect (MUST happen before PersonalDoc so it can receive sync messages)
     this.wsAdapter = new WebSocketMessagingAdapter(this.config.relayUrl, {
-      signChallenge: (nonce: string) => this.identity.sign(nonce),
+      signBrokerAuthTranscript: (transcriptBytes: Uint8Array) => this.identity.signEd25519(transcriptBytes),
     })
 
     // Register relay state listener BEFORE connect so we catch the 'connected' event

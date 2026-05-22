@@ -47,7 +47,8 @@ jobs:
       - name: Checkout web-of-trust (for linked packages)
         uses: actions/checkout@v4
         with:
-          repository: antontranelis/web-of-trust
+          repository: real-life-org/web-of-trust
+          ref: spec-vnext
           path: .wot
 
       - name: Build web-of-trust packages
