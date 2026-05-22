@@ -172,6 +172,7 @@ Aktuell:
 
 - [modules/template.md](modules/template.md)
 - [modules/feed.md](modules/feed.md)
+- [modules/kanban.md](modules/kanban.md)
 
 ## Offene Punkte
 
@@ -181,7 +182,6 @@ Mögliche spätere Dokumente:
 
 - `modules/map.md`,
 - `modules/calendar.md`,
-- `modules/kanban.md`,
 - `modules/marketplace.md`,
 - `modules/quests.md`,
 - `modules/campaign-view.md`.
