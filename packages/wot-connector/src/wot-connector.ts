@@ -801,6 +801,7 @@ export class WotConnector extends BaseConnector {
       if (!doc.items) doc.items = {}
       doc.items[id] = serialized
     })
+    if (this.currentGroupId) this.crossGroupIndex?.reindexGroup(this.currentGroupId)
     this.notifyAllObservers()
     return newItem
   }
@@ -828,9 +829,10 @@ export class WotConnector extends BaseConnector {
       if (updates.schemaVersion !== undefined) existing.schemaVersion = updates.schemaVersion
     })
 
-    // Reindex if in personal view (handle is not currentHandle)
-    if (this.currentGroupId === null && this.crossGroupIndex) {
-      const spaceId = this.crossGroupIndex.getItemGroupId(id)
+    // Reindex the affected group so CrossGroupIndex reflects local writes
+    // (handle.onRemoteUpdate only fires for origin === 'remote')
+    if (this.crossGroupIndex) {
+      const spaceId = this.currentGroupId ?? this.crossGroupIndex.getItemGroupId(id)
       if (spaceId) this.crossGroupIndex.reindexGroup(spaceId)
     }
 
@@ -845,14 +847,16 @@ export class WotConnector extends BaseConnector {
 
     const handle = await this.resolveHandleForItem(id)
 
+    // Capture owning space before mutation (after delete, item is gone from index)
+    const spaceIdForReindex =
+      this.currentGroupId ?? this.crossGroupIndex?.getItemGroupId(id) ?? null
+
     handle.transact((doc) => {
       delete doc.items[id]
     })
 
-    // Reindex if in personal view
-    if (this.currentGroupId === null && this.crossGroupIndex) {
-      const spaceId = this.crossGroupIndex.getItemGroupId(id)
-      if (spaceId) this.crossGroupIndex.reindexGroup(spaceId)
+    if (this.crossGroupIndex && spaceIdForReindex) {
+      this.crossGroupIndex.reindexGroup(spaceIdForReindex)
     }
 
     this.notifyAllObservers()
