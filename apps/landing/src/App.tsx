@@ -78,7 +78,7 @@ function Header() {
             ))}
             <Button asChild>
               <a
-                href="https://github.com/IT4Change/real-life-stack"
+                href="https://github.com/real-life-org/real-life-stack"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -113,7 +113,7 @@ function Header() {
               ))}
               <Button asChild className="w-full">
                 <a
-                  href="https://github.com/IT4Change/real-life-stack"
+                  href="https://github.com/real-life-org/real-life-stack"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -205,8 +205,8 @@ function PrivacyPage() {
           <h2 className="text-xl font-semibold mt-8 mb-3">8. Open Source</h2>
           <p>
             Der vollständige Quellcode ist unter der MIT-Lizenz verfügbar:{' '}
-            <a href="https://github.com/IT4Change/real-life-stack" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-              github.com/IT4Change/real-life-stack
+            <a href="https://github.com/real-life-org/real-life-stack" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              github.com/real-life-org/real-life-stack
             </a>
           </p>
 
@@ -405,7 +405,7 @@ function App() {
           </p>
           <div className="flex gap-4 justify-center">
             <a
-              href="https://github.com/IT4Change/real-life-stack"
+              href="https://github.com/real-life-org/real-life-stack"
               className="hover:text-foreground transition-colors"
               target="_blank"
               rel="noopener"
