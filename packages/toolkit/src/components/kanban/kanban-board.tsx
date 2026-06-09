@@ -283,7 +283,7 @@ export function KanbanBoard({
       if (list) list.push(item)
     }
     for (const list of map.values()) {
-      list.sort((a, b) => ((a.data.position as number) ?? 0) - ((b.data.position as number) ?? 0))
+      list.sort((a, b) => ((a.data.order as number) ?? 0) - ((b.data.order as number) ?? 0))
     }
     return map
   }, [items, columns])

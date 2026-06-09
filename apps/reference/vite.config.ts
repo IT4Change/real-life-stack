@@ -25,9 +25,12 @@ export default defineConfig({
   },
   server: {
     headers: {
-      // Required for SharedArrayBuffer (Automerge WASM)
+      // Required for SharedArrayBuffer (Automerge WASM).
+      // `credentialless` keeps SharedArrayBuffer working AND allows cross-origin
+      // resources without CORP headers (OSM tiles, third-party avatars, …).
+      // Supported in Chrome 96+, Firefox 124+, Safari 17+.
       'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
     },
   },
 })

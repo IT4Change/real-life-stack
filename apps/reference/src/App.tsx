@@ -1,11 +1,10 @@
-import { useState, useMemo, useCallback, useEffect, type DragEvent, lazy, Suspense } from "react"
+import { useState, useMemo, useCallback, useEffect, useRef, type DragEvent, lazy, Suspense } from "react"
 import { Routes, Route, useParams, useNavigate } from "react-router-dom"
 import {
   Newspaper,
   Map as MapIcon,
   Calendar,
   Plus,
-  MapPin,
   Sun,
   Moon,
   Columns3,
@@ -36,10 +35,6 @@ import {
   defaultColumns,
   AdaptivePanel,
   CalendarView,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Button,
   DropdownMenu,
   DropdownMenuTrigger,
@@ -77,6 +72,7 @@ import {
   ReactionBar,
   FeedItem,
   FeedComposerTrigger,
+  type MapMarkerSpec,
   type Workspace,
   type CommentQuote,
   type UserData,
@@ -87,6 +83,7 @@ import {
 } from "@real-life-stack/toolkit"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
 import { hasGroups, isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile, hasItemGroups } from "@real-life-stack/data-interface"
+import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers, demoGroupItems } from "@real-life-stack/data-interface/demo-data"
 import { MockConnector } from "@real-life-stack/mock-connector"
 import { LocalConnector } from "@real-life-stack/local-connector"
@@ -251,93 +248,92 @@ function FeedView({ groupId }: { groupId: string }) {
   )
 }
 
+/**
+ * Map module — first real version using the LeafletMapAdapter from toolkit.
+ *
+ * Shows every item in the current space that has `data.position` (GeoJSON
+ * Point). This is the cross-module case: a workshop with `type=event` and a
+ * `position` appears on both the calendar and the map.
+ */
 function MapView() {
-  const { data: places } = useItems({ type: "place" })
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  // Adapter lives in state so the markers-effect re-runs once `mount()` has
+  // actually resolved. With lazy-loaded leaflet, `mount()` is genuinely async,
+  // and the StrictMode double-mount race is too tight for refs alone.
+  const [adapter, setAdapter] = useState<LeafletMapAdapter | null>(null)
+  const { data: items } = useItems()
 
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardContent className="p-0">
-          <div className="relative aspect-[16/10] rounded-xl overflow-hidden bg-gradient-to-br from-primary/5 via-primary/10 to-secondary/5">
-            {/* Decorative map elements */}
-            <div className="absolute inset-0">
-              {/* Grid lines */}
-              <div className="absolute inset-0 opacity-20">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div
-                    key={`h-${i}`}
-                    className="absolute h-px bg-primary/30 w-full"
-                    style={{ top: `${(i + 1) * 12.5}%` }}
-                  />
-                ))}
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div
-                    key={`v-${i}`}
-                    className="absolute w-px bg-primary/30 h-full"
-                    style={{ left: `${(i + 1) * 12.5}%` }}
-                  />
-                ))}
-              </div>
+  const markers: MapMarkerSpec[] = useMemo(() => {
+    const list: MapMarkerSpec[] = []
+    for (const item of items) {
+      const pos = item.data.position as { type?: string; coordinates?: number[] } | undefined
+      if (!pos || pos.type !== "Point" || !Array.isArray(pos.coordinates) || pos.coordinates.length < 2) continue
+      const [lng, lat] = pos.coordinates
+      if (typeof lng !== "number" || typeof lat !== "number") continue
+      list.push({
+        id: item.id,
+        position: [lng, lat],
+        label: typeof item.data.title === "string" ? item.data.title : item.id,
+      })
+    }
+    return list
+  }, [items])
 
-              {/* Location markers from connector */}
-              {places.map((place, i) => {
-                const positions = [
-                  { top: "25%", left: "33%" },
-                  { top: "50%", left: "66%" },
-                  { top: "66%", left: "25%" },
-                ]
-                const pos = positions[i % positions.length]
-                const colors = ["text-primary", "text-secondary", "text-accent"]
-                return (
-                  <div key={place.id} className="absolute" style={{ top: pos.top, left: pos.left }}>
-                    <div className="relative">
-                      <MapPin className={`h-7 w-7 ${colors[i % colors.length]} drop-shadow-lg`} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+  // Mount the adapter once. Lazy-loaded leaflet means mount() is properly
+  // async, which exposes a classic StrictMode race: both effect passes start
+  // their own mount() in parallel and would race for the same DOM container,
+  // ending in Leaflet's "Map container is already initialized" error.
+  //
+  // Robust fix: each effect run gets its own fresh inner div as Leaflet's
+  // container, appended to the stable outer ref. On cleanup we tear down the
+  // adapter and remove the inner div, so the second pass gets a pristine
+  // container that no previous mount can have claimed.
+  useEffect(() => {
+    if (!containerRef.current) return
+    const inner = document.createElement("div")
+    inner.style.height = "100%"
+    inner.style.width = "100%"
+    containerRef.current.appendChild(inner)
 
-            {/* Center content */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="bg-background/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border">
-                <MapPin className="h-12 w-12 text-primary mx-auto mb-3" />
-                <p className="text-foreground font-semibold text-center">
-                  Interaktive Karte
-                </p>
-                <p className="text-muted-foreground text-sm text-center mt-1">
-                  {places.length} Orte in deiner Nähe
-                </p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+    let cancelled = false
+    let mounted = false
+    const ad = new LeafletMapAdapter()
+    ad.mount(inner, {
+      center: [13.4, 52.5], // Berlin-ish default; replace with space config later
+      zoom: 6,
+    }).then(
+      () => {
+        if (cancelled) {
+          ad.unmount().catch(() => {})
+        } else {
+          mounted = true
+          setAdapter(ad)
+        }
+      },
+      (err) => {
+        // eslint-disable-next-line no-console
+        console.error("LeafletMapAdapter mount failed", err)
+      },
+    )
+    return () => {
+      cancelled = true
+      if (mounted) {
+        ad.unmount().catch(() => {})
+        setAdapter((current) => (current === ad ? null : current))
+      }
+      inner.remove()
+    }
+  }, [])
 
-      {/* Nearby locations from connector */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">In der Nähe</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {places.map((place) => (
-            <div
-              key={place.id}
-              className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
-            >
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <MapPin className="h-5 w-5 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-foreground">{String(place.data.title)}</p>
-                <p className="text-xs text-muted-foreground">{String(place.data.address ?? "")}</p>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  )
+  // Push markers to the adapter once it is mounted, and on every change.
+  useEffect(() => {
+    adapter?.setMarkers(markers)
+  }, [adapter, markers])
+
+  // `isolate` creates a new stacking context so Leaflet's internal z-indices
+  // (zoom controls up to 1000, popup panes 700, marker panes 600) stay contained
+  // and don't overlay the navbar / workspace switcher / user menu above.
+  return <div ref={containerRef} className="h-full w-full isolate" />
 }
 
 function CalendarViewWrapper() {
@@ -488,13 +484,13 @@ function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, o
         const s = (t.data.status as string) ?? "todo"
         return s === newStatus && t.id !== itemId
       })
-      .sort((a, b) => ((a.data.position as number) ?? 0) - ((b.data.position as number) ?? 0))
+      .sort((a, b) => ((a.data.order as number) ?? 0) - ((b.data.order as number) ?? 0))
 
     // Insert at target position and reassign positions
     columnItems.splice(position, 0, item)
     for (let i = 0; i < columnItems.length; i++) {
       const t = columnItems[i]
-      updateItem(t.id, { data: { ...t.data, status: newStatus, position: i } })
+      updateItem(t.id, { data: { ...t.data, status: newStatus, order: i } })
     }
   }
 
@@ -562,7 +558,7 @@ function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, o
     const newItem = await createItem({
       type: "task",
       createdBy: currentUser?.id ?? "user-1",
-      data: { title: "", description: "", status: "todo", position: tasks.length, tags: [] },
+      data: { title: "", description: "", status: "todo", order: tasks.length, tags: [] },
     })
     if (newItem) {
       setPanelState({ mode: "edit", item: newItem })
@@ -661,12 +657,12 @@ function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, o
             const s = (t.data.status as string) ?? "todo"
             return s === newStatus && t.id !== itemId
           })
-          .sort((a, b) => ((a.data.position as number) ?? 0) - ((b.data.position as number) ?? 0))
+          .sort((a, b) => ((a.data.order as number) ?? 0) - ((b.data.order as number) ?? 0))
 
         columnItems.splice(position, 0, item)
         for (let i = 0; i < columnItems.length; i++) {
           const t = columnItems[i]
-          updateItem(t.id, { data: { ...t.data, status: newStatus, position: i } })
+          updateItem(t.id, { data: { ...t.data, status: newStatus, order: i } })
         }
       })
     }
@@ -1088,11 +1084,13 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
             <p className="text-sm text-muted-foreground mt-2">Der Space existiert nicht oder du hast keinen Zugang.</p>
             <Button variant="outline" className="mt-4" onClick={() => navigate("/")}>Zurück zur Übersicht</Button>
           </div>
+        ) : activeModule === "map" ? (
+          // Map fills the entire Space — no container, no padding, no width cap
+          <MapView />
         ) : (
           <div className={`container mx-auto px-4 pt-6 ${activeModule === "kanban" ? "max-w-5xl" : "max-w-3xl"}`}>
             {activeModule === "feed" && <FeedView groupId={activeWorkspace?.id ?? ""} />}
             {activeModule === "kanban" && <KanbanView activeWorkspaceId={activeWorkspace?.id ?? null} groups={groups} selectedItemId={urlItemId} onItemSelect={(id) => navigate(`/spaces/${activeWorkspace?.id}/${activeModule}/item/${id}`)} onItemClose={() => navigate(`/spaces/${activeWorkspace?.id}/${activeModule}`)} />}
-            {activeModule === "map" && <MapView />}
             {activeModule === "calendar" && <CalendarViewWrapper />}
           </div>
         )}

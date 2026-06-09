@@ -152,7 +152,7 @@ export const EventVorausgefuellt: Story = {
     initialContentType: "event",
     initialData: {
       title: "Fruehlings-Pflanzaktion",
-      date: { start: "2026-03-28T10:00" },
+      start: "2026-03-28T10:00",
     },
     onSubmit: action("onSubmit"),
     peopleSuggestions,

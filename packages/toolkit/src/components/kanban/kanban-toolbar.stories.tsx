@@ -16,7 +16,7 @@ const tasks: Item[] = [
     type: "task",
     createdAt: new Date().toISOString(),
     createdBy: "user-1",
-    data: { title: "Beete vorbereiten", description: "Erde umgraben und Kompost einarbeiten", status: "todo", position: 0, tags: ["garten"] },
+    data: { title: "Beete vorbereiten", description: "Erde umgraben und Kompost einarbeiten", status: "todo", order: 0, tags: ["garten"] },
     relations: [{ predicate: "assignedTo", target: "global:user-2" }],
   },
   {
@@ -24,7 +24,7 @@ const tasks: Item[] = [
     type: "task",
     createdAt: new Date().toISOString(),
     createdBy: "user-2",
-    data: { title: "Samen bestellen", description: "Tomaten, Zucchini, Kräuter", status: "doing", position: 0, tags: ["garten", "einkauf"] },
+    data: { title: "Samen bestellen", description: "Tomaten, Zucchini, Kräuter", status: "doing", order: 0, tags: ["garten", "einkauf"] },
     relations: [{ predicate: "assignedTo", target: "global:user-2" }],
   },
   {
@@ -32,7 +32,7 @@ const tasks: Item[] = [
     type: "task",
     createdAt: new Date().toISOString(),
     createdBy: "user-1",
-    data: { title: "Wasserschlauch reparieren", description: "Leck am Verbindungsstück abdichten", status: "done", position: 0, tags: ["infrastruktur"] },
+    data: { title: "Wasserschlauch reparieren", description: "Leck am Verbindungsstück abdichten", status: "done", order: 0, tags: ["infrastruktur"] },
     relations: [{ predicate: "assignedTo", target: "global:user-3" }],
   },
   {
@@ -40,14 +40,14 @@ const tasks: Item[] = [
     type: "task",
     createdAt: new Date().toISOString(),
     createdBy: "user-3",
-    data: { title: "Gartenplan zeichnen", description: "Welches Beet bekommt welche Pflanzen?", status: "todo", position: 1, tags: ["planung"] },
+    data: { title: "Gartenplan zeichnen", description: "Welches Beet bekommt welche Pflanzen?", status: "todo", order: 1, tags: ["planung"] },
   },
   {
     id: "task-5",
     type: "task",
     createdAt: new Date().toISOString(),
     createdBy: "user-1",
-    data: { title: "Kompost umsetzen", description: "Der Kompost muss umgesetzt und belüftet werden", status: "doing", position: 1, tags: ["garten"] },
+    data: { title: "Kompost umsetzen", description: "Der Kompost muss umgesetzt und belüftet werden", status: "doing", order: 1, tags: ["garten"] },
     relations: [{ predicate: "assignedTo", target: "global:user-1" }],
   },
 ]
@@ -108,14 +108,14 @@ export const ToolbarWithBoard: Story = {
 
         const columnItems = prev
           .filter((t) => (t.data.status as string) === newStatus && t.id !== itemId)
-          .sort((a, b) => ((a.data.position as number) ?? 0) - ((b.data.position as number) ?? 0))
+          .sort((a, b) => ((a.data.order as number) ?? 0) - ((b.data.order as number) ?? 0))
 
         const movedItem = { ...item, data: { ...item.data, status: newStatus } }
         columnItems.splice(position, 0, movedItem)
 
         const updated = columnItems.map((t, i) => ({
           ...t,
-          data: { ...t.data, position: i },
+          data: { ...t.data, order: i },
         }))
 
         const otherItems = prev.filter(
@@ -141,7 +141,7 @@ export const ToolbarWithBoard: Story = {
                 type: "task",
                 createdAt: new Date().toISOString(),
                 createdBy: "user-1",
-                data: { title: "Neuer Task", status: "todo", position: prev.length, tags: [] },
+                data: { title: "Neuer Task", status: "todo", order: prev.length, tags: [] },
               },
             ])
           }}

@@ -20,7 +20,7 @@ const initialItems: Item[] = [
       title: "Materialliste fertigstellen",
       description: "Holz, Schrauben und Erde für den Hochbeetbau prüfen.",
       status: "todo",
-      position: 0,
+      order: 0,
       tags: ["hochbeet"],
     },
     relations: [{ predicate: "assignedTo", target: "global:user-1" }],
@@ -34,7 +34,7 @@ const initialItems: Item[] = [
       title: "Hochbeet-Projekt koordinieren",
       description: "Status ist Board-Workflow, keine Projektbewertung.",
       status: "doing",
-      position: 0,
+      order: 0,
       tags: ["projekt"],
     },
     relations: [{ predicate: "assignedTo", target: "global:user-2" }],
@@ -48,7 +48,7 @@ const initialItems: Item[] = [
       title: "Dokumentation vorbereiten",
       description: "Fotos und kurze Notizen für den Feed sammeln.",
       status: "doing",
-      position: 1,
+      order: 1,
       tags: ["doku"],
     },
     relations: [{ predicate: "assignedTo", target: "global:user-3" }],
@@ -62,7 +62,7 @@ const initialItems: Item[] = [
       title: "Termin abstimmen",
       description: "Samstag 10 Uhr ist bestätigt.",
       status: "done",
-      position: 0,
+      order: 0,
       tags: ["orga"],
     },
   },
@@ -89,13 +89,13 @@ function KanbanModuleOverview() {
 
       const columnItems = prev
         .filter((candidate) => (candidate.data.status as string) === newStatus && candidate.id !== itemId)
-        .sort((a, b) => ((a.data.position as number) ?? 0) - ((b.data.position as number) ?? 0))
+        .sort((a, b) => ((a.data.order as number) ?? 0) - ((b.data.order as number) ?? 0))
 
       columnItems.splice(position, 0, { ...item, data: { ...item.data, status: newStatus } })
 
       const updatedColumnItems = columnItems.map((candidate, index) => ({
         ...candidate,
-        data: { ...candidate.data, position: index },
+        data: { ...candidate.data, order: index },
       }))
 
       const otherItems = prev.filter(
@@ -121,7 +121,7 @@ function KanbanModuleOverview() {
             title: "Neuer Task",
             description: "",
             status: "todo",
-            position: todoItems.length,
+            order: todoItems.length,
             tags: [],
           },
           relations: [{ predicate: "assignedTo", target: "global:user-1" }],
