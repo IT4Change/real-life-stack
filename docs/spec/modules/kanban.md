@@ -45,7 +45,7 @@ Andere Item-Typen dürfen erscheinen, wenn sie bewusst einen Board-Workflow übe
 | `data.title` | Kartentitel |
 | `data.description` / `data.content` | Beschreibung oder Kontext |
 | `data.status` | Spaltenzuordnung |
-| `data.order` | Reihenfolge innerhalb einer Spalte (siehe [task/v1](../schemas/vocab/task/v1/schema.json); nicht `data.position` — das ist in [place/v1](../schemas/vocab/place/v1/schema.json) der GeoJSON-Punkt) |
+| `data.order` | Reihenfolge innerhalb einer Spalte (siehe [task/v1](../schemas/vocab/task/v1/schema.json); nicht `data.position` — das ist in [place/v1](../schemas/vocab/place/v1/schema.json) die GeoJSON-Geometrie: Point, Polygon oder LineString) |
 | `data.tags` | Themen, Labels oder Filter |
 | `data.commentCount` | optionale Kommentar-Zusammenfassung |
 | `createdAt` | Erstellzeitpunkt, Fallback-Sortierung oder Detailanzeige |

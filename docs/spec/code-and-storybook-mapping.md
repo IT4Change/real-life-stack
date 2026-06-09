@@ -23,7 +23,8 @@ Der Toolkit-Code muss die RLS-Taxonomie nicht in jedem Ordnernamen exakt spiegel
 | Module Components | Unterordner innerhalb von Space Modules, geteilte Toolkit-Komponenten (`detail/`) | FeedItem, ContentComposer, ReactionBar, CommentSection, KanbanCard, KanbanToolbar, ItemDetailPanel |
 | Primitives | `packages/toolkit/src/components/primitives/` | Button, Card, Dialog, Input, Tabs |
 | Hooks | `packages/toolkit/src/hooks/` | useItems, useComments, useReactions, useConfirmations |
-| Logik-Helfer | `packages/toolkit/src/lib/` | applyItemListFilter (Display-Filter), parseEventDate / isAllDayDate, computeColumnReorder + normalizeStatus (`components/kanban/reorder.ts`) |
+| Logik-Helfer (modulübergreifend) | `packages/toolkit/src/lib/` | applyItemListFilter (Display-Filter), parseEventDate / isAllDayDate |
+| Logik-Helfer (modulgebunden) | im jeweiligen Modul-Ordner, z.B. `components/kanban/reorder.ts` | computeColumnReorder, normalizeStatus |
 
 In der Reference-App spiegelt sich die Taxonomie so:
 
