@@ -1,13 +1,9 @@
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from "react"
-import { Routes, Route, useParams, useNavigate } from "react-router-dom"
+import { Routes, Route, useNavigate } from "react-router-dom"
 import {
-  Newspaper,
-  Map as MapIcon,
-  Calendar,
   Plus,
   Sun,
   Moon,
-  Columns3,
 } from "lucide-react"
 
 import {
@@ -41,7 +37,6 @@ import {
   ConnectorProvider,
   useItems,
   useMembers,
-  useGroups,
   useCreateGroup,
   useUpdateGroup,
   useDeleteGroup,
@@ -60,31 +55,17 @@ import {
   type MapMarkerSpec,
   type Workspace,
   type UserData,
-  type Module,
   type ConnectorOption,
   type GroupDialogMode,
 } from "@real-life-stack/toolkit"
 import type { Item, DataInterface } from "@real-life-stack/data-interface"
-import { hasGroups, isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile } from "@real-life-stack/data-interface"
+import { isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile } from "@real-life-stack/data-interface"
 import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers, demoGroupItems } from "@real-life-stack/data-interface/demo-data"
 import { MockConnector } from "@real-life-stack/mock-connector"
 import { LocalConnector } from "@real-life-stack/local-connector"
 import { KanbanView } from "./views/kanban-view"
-
-const MODULE_ICONS: Record<string, typeof Newspaper> = {
-  feed: Newspaper,
-  map: MapIcon,
-  calendar: Calendar,
-  kanban: Columns3,
-}
-
-const MODULE_LABELS: Record<string, string> = {
-  feed: "Feed",
-  map: "Karte",
-  calendar: "Kalender",
-  kanban: "Kanban",
-}
+import { useWorkspaceRouting, STORAGE_KEY_GROUP } from "./hooks/use-workspace-routing"
 
 const CONNECTOR_OPTIONS: ConnectorOption[] = [
   { id: "mock", name: "Mock", description: "In-Memory, kein Speichern" },
@@ -426,8 +407,17 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
 function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: string; onConnectorChange: (id: string) => void }) {
   const connector = useConnector()
   const navigate = useNavigate()
-  const { spaceId: urlSpaceId, module: urlModule, itemId: urlItemId } = useParams<{ spaceId?: string; module?: string; itemId?: string }>()
-  const { data: groups } = useGroups()
+  const {
+    groups,
+    workspaces,
+    activeWorkspace,
+    activeModule,
+    modules,
+    urlSpaceId,
+    urlItemId,
+    handleWorkspaceChange,
+    handleModuleChange,
+  } = useWorkspaceRouting()
   const createGroup = useCreateGroup()
   const updateGroup = useUpdateGroup()
   const deleteGroup = useDeleteGroup()
@@ -470,21 +460,6 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     setGroupDialogOpen(true)
   }, [groups])
 
-  const basePath = import.meta.env.BASE_URL
-  const OVERVIEW_WORKSPACE: Workspace = { id: "__overview__", name: "Mein Netzwerk", scope: "overview" }
-  const workspaces: Workspace[] = useMemo(
-    () => [
-      OVERVIEW_WORKSPACE,
-      ...groups.map((g) => ({
-        id: g.id,
-        name: g.name,
-        avatar: g.data?.image as string | undefined ?? (g.data?.avatar ? `${basePath}${g.data.avatar}` : undefined),
-        scope: g.data?.scope as string | undefined,
-      })),
-    ],
-    [groups, basePath]
-  )
-
   const userData: UserData = useMemo(
     () => ({
       id: currentUser?.id ?? "",
@@ -496,78 +471,8 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   )
 
   const [isDark, setIsDark] = useState(false)
-
-  // Derive active workspace from URL params (with fallback to localStorage → first space)
-  const activeWorkspace: Workspace | null = useMemo(() => {
-    if (urlSpaceId) {
-      const found = workspaces.find((w) => w.id === urlSpaceId)
-      if (found) return found
-      // Space ID from URL but not found in list — might still be loading
-      if (workspaces.length === 0) return { id: urlSpaceId, name: "" }
-      // Unknown space ID (e.g. from a different connector) — fall back to first workspace
-    }
-    // No space in URL or unknown ID — try localStorage, then first workspace
-    const savedId = localStorage.getItem(STORAGE_KEY_GROUP)
-    if (savedId) {
-      const found = workspaces.find((w) => w.id === savedId)
-      if (found) return found
-    }
-    return workspaces[0] ?? null
-  }, [urlSpaceId, workspaces])
-
-  // Derive active module from URL params
-  const VALID_MODULES = ["feed", "kanban", "calendar", "map"]
-  const activeModule = urlModule && VALID_MODULES.includes(urlModule) ? urlModule : (localStorage.getItem(STORAGE_KEY_MODULE) ?? "feed")
-
-  // Redirect to URL with space/module if not already there
-  useEffect(() => {
-    if (workspaces.length === 0) return
-    if (!urlSpaceId && activeWorkspace) {
-      navigate(`/spaces/${activeWorkspace.id}/${activeModule}`, { replace: true })
-    }
-  }, [workspaces.length, urlSpaceId, activeWorkspace, activeModule, navigate])
-
-  // Sync connector current group when workspace changes
-  useEffect(() => {
-    if (activeWorkspace && hasGroups(connector)) {
-      connector.setCurrentGroup(activeWorkspace.scope === "overview" ? null : activeWorkspace.id)
-    }
-  }, [activeWorkspace?.id, connector])
-
-  // Save to localStorage for next session
-  useEffect(() => {
-    if (activeWorkspace) localStorage.setItem(STORAGE_KEY_GROUP, activeWorkspace.id)
-    if (urlModule && VALID_MODULES.includes(urlModule)) localStorage.setItem(STORAGE_KEY_MODULE, urlModule)
-  }, [activeWorkspace?.id, urlModule])
-
-  // Derive available modules from active group's data.modules (overview = all modules)
-  const isOverview = activeWorkspace?.scope === "overview"
-  const activeGroup = isOverview ? null : groups.find((g) => g.id === activeWorkspace?.id)
-  const groupModuleIds = isOverview
-    ? ["feed", "kanban", "calendar", "map"]
-    : (activeGroup?.data?.modules as string[] | undefined) ?? ["feed", "kanban", "calendar", "map"]
   const supportsMessaging = hasMessaging(connector)
   const [debugOpen, setDebugOpen] = useState(false)
-  const modules: Module[] = useMemo(
-    () => groupModuleIds
-      .filter((id) => MODULE_ICONS[id])
-      .map((id) => ({ id, label: MODULE_LABELS[id] ?? id, icon: MODULE_ICONS[id] })),
-    [groupModuleIds.join(",")]
-  )
-
-  // When switching workspace, navigate to URL
-  const handleWorkspaceChange = useCallback((workspace: Workspace) => {
-    const group = groups.find((g) => g.id === workspace.id)
-    const mods = (group?.data?.modules as string[] | undefined) ?? ["feed", "kanban", "calendar", "map"]
-    const mod = mods.includes(activeModule) ? activeModule : (mods[0] ?? "feed")
-    navigate(`/spaces/${workspace.id}/${mod}`)
-  }, [groups, activeModule, navigate])
-
-  const handleModuleChange = (moduleId: string) => {
-    if (activeWorkspace) {
-      navigate(`/spaces/${activeWorkspace.id}/${moduleId}`)
-    }
-  }
 
   const toggleTheme = () => {
     setIsDark(!isDark)
@@ -773,8 +678,6 @@ async function createConnector(type: string): Promise<DataInterface> {
 }
 
 const STORAGE_KEY_CONNECTOR = "rls-connector"
-const STORAGE_KEY_GROUP = "rls-active-group"
-const STORAGE_KEY_MODULE = "rls-active-module"
 const initialDevMode = new URLSearchParams(window.location.search).has('dev')
 
 function getInitialConnectorId(): string {
