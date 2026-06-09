@@ -514,10 +514,13 @@ export function ContentComposer({
                         showRecurrence: data.rrule !== undefined,
                       }}
                       onChange={(v) =>
+                        // Coerce empty strings from cleared inputs to undefined so
+                        // showEnd / showRecurrence stay derived correctly and downstream
+                        // code doesn't have to handle "" alongside undefined.
                         updateMany({
                           start: v.start || undefined,
-                          end: v.end,
-                          rrule: v.rrule,
+                          end: v.end || undefined,
+                          rrule: v.rrule || undefined,
                         })
                       }
                       label={widgetLabel}
