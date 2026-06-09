@@ -1,5 +1,5 @@
 import { useState, useMemo, type ReactNode } from "react"
-import type { Item, User, Relation } from "@real-life-stack/data-interface"
+import type { Item, User } from "@real-life-stack/data-interface"
 import { Button } from "../primitives/button"
 import { Input } from "../primitives/input"
 import {
@@ -13,67 +13,19 @@ import {
 } from "../primitives/dropdown-menu"
 import { Plus, CheckSquare, User as UserIcon, Users, Search, Tag, Settings, Filter, X } from "lucide-react"
 import { cn } from "../../lib/utils"
-
-export interface KanbanFilter {
-  searchText: string
-  assignedTo: string | null
-  myTasksOnly: boolean
-  tags: string[]
-}
+import type { ItemListFilter } from "../../lib/item-filter"
 
 export interface KanbanToolbarProps {
   items: Item[]
   users?: User[]
   currentUserId?: string
   availableTags?: string[]
-  onFilterChange?: (filter: KanbanFilter) => void
+  onFilterChange?: (filter: ItemListFilter) => void
   onCreateItem?: () => void
   onMultiSelectChange?: (enabled: boolean) => void
   onEditColumns?: () => void
   extraActions?: ReactNode
   className?: string
-}
-
-function getAssigneeIds(item: Item): string[] {
-  return (item.relations ?? [])
-    .filter((r: Relation) => r.predicate === "assignedTo")
-    .map((r: Relation) => r.target.replace(/^global:/, ""))
-}
-
-export function applyKanbanFilter(
-  items: Item[],
-  filter: KanbanFilter,
-  currentUserId?: string
-): Item[] {
-  return items.filter((item) => {
-    // Search text
-    if (filter.searchText) {
-      const q = filter.searchText.toLowerCase()
-      const title = String(item.data.title ?? "").toLowerCase()
-      const description = String(item.data.description ?? "").toLowerCase()
-      if (!title.includes(q) && !description.includes(q)) return false
-    }
-
-    // My tasks only
-    if (filter.myTasksOnly && currentUserId) {
-      const assignees = getAssigneeIds(item)
-      if (!assignees.includes(currentUserId)) return false
-    }
-
-    // Assigned to specific user
-    if (filter.assignedTo) {
-      const assignees = getAssigneeIds(item)
-      if (!assignees.includes(filter.assignedTo)) return false
-    }
-
-    // Tags (AND logic)
-    if (filter.tags.length > 0) {
-      const itemTags = (item.data.tags as string[]) ?? []
-      if (!filter.tags.every((t) => itemTags.includes(t))) return false
-    }
-
-    return true
-  })
 }
 
 export function KanbanToolbar({
@@ -90,7 +42,7 @@ export function KanbanToolbar({
 }: KanbanToolbarProps) {
   const [searchText, setSearchText] = useState("")
   const [assignedTo, setAssignedTo] = useState<string | null>(null)
-  const [myTasksOnly, setMyTasksOnly] = useState(false)
+  const [myItemsOnly, setMyItemsOnly] = useState(false)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [multiSelect, setMultiSelect] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -108,8 +60,8 @@ export function KanbanToolbar({
   }, [items, availableTags])
 
   // Notify parent synchronously — avoids extra render cycle from useEffect
-  const notify = (patch: Partial<KanbanFilter>) => {
-    const next = { searchText, assignedTo, myTasksOnly, tags: selectedTags, ...patch }
+  const notify = (patch: Partial<ItemListFilter>) => {
+    const next = { searchText, assignedTo, myItemsOnly, tags: selectedTags, ...patch }
     onFilterChange?.(next)
   }
 
@@ -118,14 +70,14 @@ export function KanbanToolbar({
     notify({ searchText: value })
   }
 
-  const handleMyTasksToggle = () => {
-    if (myTasksOnly) {
-      setMyTasksOnly(false)
-      notify({ myTasksOnly: false })
+  const handleMyItemsToggle = () => {
+    if (myItemsOnly) {
+      setMyItemsOnly(false)
+      notify({ myItemsOnly: false })
     } else {
-      setMyTasksOnly(true)
+      setMyItemsOnly(true)
       setAssignedTo(null)
-      notify({ myTasksOnly: true, assignedTo: null })
+      notify({ myItemsOnly: true, assignedTo: null })
     }
   }
 
@@ -135,8 +87,8 @@ export function KanbanToolbar({
       notify({ assignedTo: null })
     } else {
       setAssignedTo(userId)
-      setMyTasksOnly(false)
-      notify({ assignedTo: userId, myTasksOnly: false })
+      setMyItemsOnly(false)
+      notify({ assignedTo: userId, myItemsOnly: false })
     }
   }
 
@@ -167,16 +119,16 @@ export function KanbanToolbar({
   const resetFilters = () => {
     setSearchText("")
     setAssignedTo(null)
-    setMyTasksOnly(false)
+    setMyItemsOnly(false)
     setSelectedTags([])
-    onFilterChange?.({ searchText: "", assignedTo: null, myTasksOnly: false, tags: [] })
+    onFilterChange?.({ searchText: "", assignedTo: null, myItemsOnly: false, tags: [] })
   }
 
-  const hasActiveFilters = searchText || assignedTo || myTasksOnly || selectedTags.length > 0
+  const hasActiveFilters = searchText || assignedTo || myItemsOnly || selectedTags.length > 0
 
   // Count active filters for badge
   const activeFilterCount =
-    (searchText ? 1 : 0) + (assignedTo ? 1 : 0) + (myTasksOnly ? 1 : 0) + selectedTags.length
+    (searchText ? 1 : 0) + (assignedTo ? 1 : 0) + (myItemsOnly ? 1 : 0) + selectedTags.length
 
   // --- Shared filter elements ---
 
@@ -296,8 +248,8 @@ export function KanbanToolbar({
         {currentUserId && (
           <Button
             size="sm"
-            variant={myTasksOnly ? "secondary" : "outline"}
-            onClick={handleMyTasksToggle}
+            variant={myItemsOnly ? "secondary" : "outline"}
+            onClick={handleMyItemsToggle}
           >
             <UserIcon className="h-4 w-4 shrink-0" />
             <span className="ml-1 hidden @3xl:inline">Meine Tasks</span>

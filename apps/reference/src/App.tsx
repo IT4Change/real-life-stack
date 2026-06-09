@@ -28,7 +28,7 @@ import {
   ConnectorSwitcher,
   KanbanBoard,
   KanbanToolbar,
-  applyKanbanFilter,
+  applyItemListFilter,
   ContentComposer,
   type ContentComposerSubmitData,
   type ContentTypeConfig,
@@ -77,7 +77,7 @@ import {
   type CommentQuote,
   type UserData,
   type Module,
-  type KanbanFilter,
+  type ItemListFilter,
   type ConnectorOption,
   type GroupDialogMode,
 } from "@real-life-stack/toolkit"
@@ -477,10 +477,10 @@ function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, o
   const { mutate: updateItem } = useUpdateItem()
   const { mutate: createItem } = useCreateItem()
   const { mutate: deleteItem } = useDeleteItem()
-  const [filter, setFilter] = useState<KanbanFilter>({
+  const [filter, setFilter] = useState<ItemListFilter>({
     searchText: "",
     assignedTo: null,
-    myTasksOnly: false,
+    myItemsOnly: false,
     tags: [],
   })
   const [panelState, setPanelState] = useState<KanbanPanelState>({ mode: "closed" })
@@ -502,7 +502,7 @@ function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, o
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null)
 
   const filteredTasks = useMemo(
-    () => applyKanbanFilter(tasks, filter, currentUser?.id),
+    () => applyItemListFilter(tasks, filter, currentUser?.id),
     [tasks, filter, currentUser?.id]
   )
 
