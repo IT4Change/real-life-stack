@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { Button } from "../primitives/button"
 import { cn } from "../../lib/utils"
+import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 import type { Item } from "@real-life-stack/data-interface"
 
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -45,6 +46,8 @@ interface CalendarEvent {
   item: Item
   start: Date
   end?: Date
+  /** True when the source value was a bare YYYY-MM-DD (no clock time). */
+  allDay: boolean
   title: string
   description?: string
   location?: string
@@ -115,7 +118,10 @@ function startOfWeek(date: Date): Date {
 
 function getEventDate(value: unknown): Date | null {
   if (!value) return null
-  const date = new Date(String(value))
+  // parseEventDate handles bare YYYY-MM-DD as local midnight; without
+  // this, all-day events would shift by the local UTC offset (e.g. CEST
+  // would show "02:00" on a date the user picked as the full day).
+  const date = parseEventDate(String(value))
   return Number.isNaN(date.getTime()) ? null : date
 }
 
@@ -135,10 +141,16 @@ function toCalendarEvent(item: Item): CalendarEvent | null {
 
   const end = getEventDate(item.data.end) ?? undefined
   const description = item.data.description ?? item.data.content
+  // Treat the event as all-day when the source string carries no clock
+  // time on either end. Same rule as feed-item.tsx.
+  const startRaw = typeof item.data.start === "string" ? item.data.start : ""
+  const endRaw = typeof item.data.end === "string" ? item.data.end : ""
+  const allDay = isAllDayDate(startRaw) && (!endRaw || isAllDayDate(endRaw))
   return {
     item,
     start,
     end,
+    allDay,
     title: String(item.data.title ?? item.data.name ?? "Ohne Titel"),
     description: typeof description === "string" ? description : undefined,
     location: getLocationLabel(item.data.locationName, item.data.address),
@@ -257,7 +269,8 @@ function formatTime(date: Date): string {
   return date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
 }
 
-function formatEventTime(start: Date, end?: Date): string {
+function formatEventTime(start: Date, end?: Date, allDay?: boolean): string {
+  if (allDay) return "Ganztägig"
   const startTime = formatTime(start)
   if (!end) return `${startTime} Uhr`
   return `${startTime} - ${formatTime(end)} Uhr`
@@ -869,7 +882,11 @@ function EventPill({ event, compact = false, onClick }: EventPillProps) {
         getEventTypeClass(event.item.type),
       )}
     >
-      {compact ? `${formatTime(event.start)} ${event.title}` : event.title}
+      {compact
+        ? event.allDay
+          ? event.title
+          : `${formatTime(event.start)} ${event.title}`
+        : event.title}
     </button>
   )
 }
@@ -902,7 +919,7 @@ function EventCard({ event, onClick }: EventCardProps) {
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Clock className="h-3.5 w-3.5" />
-              {formatEventTime(event.start, event.end)}
+              {formatEventTime(event.start, event.end, event.allDay)}
             </span>
             {event.location && (
               <span className="inline-flex min-w-0 items-center gap-1">
