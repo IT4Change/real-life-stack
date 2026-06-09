@@ -17,6 +17,13 @@ export interface UseCommentsResult {
   comments: CommentWithAuthor[]
   /** All comments (first + second level) for threading. */
   allComments: Item[]
+  /**
+   * Resolved author info per user id, covering authors of ALL comments
+   * (first + second level). Consumers building reply lists from
+   * `allComments` use this instead of showing the raw `createdBy`
+   * (which is a DID on the WoT connector).
+   */
+  authors: Map<string, { name: string; avatar?: string }>
   /** Whether the data is still loading. */
   isLoading: boolean
   /** Whether the current user can comment (authenticated + writable connector). */
@@ -150,6 +157,7 @@ export function useComments(itemId: string): UseCommentsResult {
   return {
     comments: commentsWithAuthors,
     allComments,
+    authors: resolvedAuthors,
     isLoading: false,
     canComment,
     createComment,
