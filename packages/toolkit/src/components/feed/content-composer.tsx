@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/primitives/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { latLngFromPoint, pointFromLatLng, type GeoJSONPoint } from "@/lib/geo"
 import { WidgetWrapper } from "./widgets/widget-wrapper"
 import { TitleWidget } from "./widgets/title-widget"
 import { TextWidget } from "./widgets/text-widget"
@@ -62,8 +63,20 @@ export interface WidgetData {
   title?: string
   text?: string
   media?: MediaFile[]
-  date?: DateRange
-  location?: LocationData
+  /** ISO datetime, start of an event/task. Spec: data.start */
+  start?: string
+  /** ISO datetime, end of an event/task. Spec: data.end */
+  end?: string
+  /** Optional RFC 5545 recurrence rule. Spec: data.rrule */
+  rrule?: string
+  /** Human-readable address. Spec: data.address */
+  address?: string
+  /** Named location (e.g. "Markthalle 7"). Spec: data.locationName */
+  locationName?: string
+  /** GeoJSON Point for map display. Spec: data.position */
+  position?: GeoJSONPoint
+  /** Online meeting URL (Zoom, Jitsi, etc.). Spec: data.meetingLink */
+  meetingLink?: string
   people?: string[]
   tags?: string[]
   status?: string
@@ -180,8 +193,6 @@ const DEFAULT_DATA: WidgetData = {
   title: "",
   text: "",
   media: [],
-  date: { start: "" },
-  location: {},
   people: [],
   tags: [],
   status: "",
@@ -274,8 +285,12 @@ export function ContentComposer({
         prev.group !== data.group ||
         prev.tags !== data.tags ||
         prev.people !== data.people ||
-        prev.date !== data.date ||
-        prev.location !== data.location ||
+        prev.start !== data.start ||
+        prev.end !== data.end ||
+        prev.address !== data.address ||
+        prev.locationName !== data.locationName ||
+        prev.position !== data.position ||
+        prev.meetingLink !== data.meetingLink ||
         prev.media !== data.media
       if (isTextOnly && !hasNonTextChange) {
         const timer = setTimeout(() => {
@@ -326,6 +341,11 @@ export function ContentComposer({
     value: WidgetData[K],
   ) => {
     setData((d) => ({ ...d, [key]: value }))
+  }
+
+  // Multi-field patch (used by widgets that map to several spec fields)
+  const updateMany = (patch: Partial<WidgetData>) => {
+    setData((d) => ({ ...d, ...patch }))
   }
 
   // Toggle a manual widget
@@ -485,15 +505,44 @@ export function ContentComposer({
                   )}
                   {widgetId === "date" && (
                     <DateWidget
-                      value={data.date || { start: "" }}
-                      onChange={(v) => updateData("date", v)}
+                      value={{
+                        start: data.start ?? "",
+                        end: data.end,
+                        rrule: data.rrule,
+                        showEnd: data.end !== undefined,
+                        showTime: typeof data.start === "string" && data.start.includes("T"),
+                        showRecurrence: data.rrule !== undefined,
+                      }}
+                      onChange={(v) =>
+                        updateMany({
+                          start: v.start || undefined,
+                          end: v.end,
+                          rrule: v.rrule,
+                        })
+                      }
                       label={widgetLabel}
                     />
                   )}
                   {widgetId === "location" && (
                     <LocationWidget
-                      value={data.location || {}}
-                      onChange={(v) => updateData("location", v)}
+                      value={{
+                        address: data.address,
+                        link: data.meetingLink,
+                        position: data.position ? latLngFromPoint(data.position) ?? undefined : undefined,
+                        isOnline:
+                          data.meetingLink !== undefined &&
+                          data.address === undefined &&
+                          data.position === undefined,
+                      }}
+                      onChange={(v) =>
+                        updateMany({
+                          address: v.address || undefined,
+                          meetingLink: v.link || undefined,
+                          position: v.position
+                            ? pointFromLatLng(v.position.lat, v.position.lng)
+                            : undefined,
+                        })
+                      }
                       label={widgetLabel}
                       renderMap={renderLocationMap}
                     />
@@ -711,15 +760,15 @@ function DefaultPreview({
           ))}
         </div>
       )}
-      {has("date") && data.date?.start && (
+      {has("date") && data.start && (
         <div className="text-sm text-muted-foreground">
-          {data.date.start}
-          {data.date.end && ` — ${data.date.end}`}
+          {data.start}
+          {data.end && ` — ${data.end}`}
         </div>
       )}
-      {has("location") && (data.location?.address || data.location?.link) && (
+      {has("location") && (data.address || data.locationName || data.meetingLink) && (
         <div className="text-sm text-muted-foreground">
-          {data.location.address || data.location.link}
+          {data.locationName || data.address || data.meetingLink}
         </div>
       )}
       {has("people") && data.people && data.people.length > 0 && (

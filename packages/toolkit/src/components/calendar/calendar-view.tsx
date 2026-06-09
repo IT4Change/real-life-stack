@@ -123,19 +123,17 @@ function getStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
 }
 
-function getLocation(value: unknown, fallback: unknown): string | undefined {
-  if (typeof value === "string") return value
-  if (value && typeof value === "object" && "name" in value && typeof value.name === "string") {
-    return value.name
-  }
-  return typeof fallback === "string" ? fallback : undefined
+function getLocationLabel(locationName: unknown, address: unknown): string | undefined {
+  if (typeof locationName === "string" && locationName.length > 0) return locationName
+  if (typeof address === "string" && address.length > 0) return address
+  return undefined
 }
 
 function toCalendarEvent(item: Item): CalendarEvent | null {
-  const start = getEventDate(item.data.start ?? item.data.startTime)
+  const start = getEventDate(item.data.start)
   if (!start) return null
 
-  const end = getEventDate(item.data.end ?? item.data.endTime) ?? undefined
+  const end = getEventDate(item.data.end) ?? undefined
   const description = item.data.description ?? item.data.content
   return {
     item,
@@ -143,7 +141,7 @@ function toCalendarEvent(item: Item): CalendarEvent | null {
     end,
     title: String(item.data.title ?? item.data.name ?? "Ohne Titel"),
     description: typeof description === "string" ? description : undefined,
-    location: getLocation(item.data.location, item.data.address),
+    location: getLocationLabel(item.data.locationName, item.data.address),
     tags: getStringArray(item.data.tags),
   }
 }
