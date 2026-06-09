@@ -6,7 +6,6 @@
 
     "displayName": { "@id": "rls:displayName", "@type": "xsd:string" },
     "avatarUrl": { "@id": "rls:avatarUrl", "@type": "@id" },
-    "bio": { "@id": "rls:bio", "@type": "xsd:string" },
-    "pronouns": { "@id": "rls:pronouns", "@type": "xsd:string" }
+    "bio": { "@id": "rls:bio", "@type": "xsd:string" }
   }
 }
