@@ -21,7 +21,12 @@ export interface Workspace {
 
 interface WorkspaceSwitcherProps {
   workspaces: Workspace[]
-  activeWorkspace: Workspace
+  /**
+   * Null when no workspace is active — e.g. the URL points at a space
+   * the user has no access to. The trigger renders a neutral state so
+   * the user can still switch to one of their workspaces.
+   */
+  activeWorkspace: Workspace | null
   onWorkspaceChange: (workspace: Workspace) => void
   onCreateWorkspace?: () => void
   onEditWorkspace?: (workspace: Workspace) => void
@@ -45,7 +50,7 @@ export function WorkspaceSwitcher({
 
   const personalWorkspace = workspaces.find((w) => w.scope === "overview")
   const groupWorkspaces = workspaces.filter((w) => w.scope !== "overview")
-  const isPersonalActive = activeWorkspace.scope === "overview"
+  const isPersonalActive = activeWorkspace?.scope === "overview"
 
   return (
     <DropdownMenu>
@@ -54,15 +59,21 @@ export function WorkspaceSwitcher({
           <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
             <Home className="h-4 w-4 text-primary" />
           </div>
-        ) : (
+        ) : activeWorkspace ? (
           <Avatar className="h-8 w-8 rounded-lg">
             <AvatarImage src={activeWorkspace.avatar} alt={activeWorkspace.name} className="rounded-lg" />
             <AvatarFallback className="text-sm font-semibold rounded-md">
               {getInitials(activeWorkspace.name)}
             </AvatarFallback>
           </Avatar>
+        ) : (
+          <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center">
+            <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+          </div>
         )}
-        <span className="hidden sm:inline-block text-lg font-semibold">{activeWorkspace.name}</span>
+        <span className="hidden sm:inline-block text-lg font-semibold">
+          {activeWorkspace ? activeWorkspace.name : "Space wählen"}
+        </span>
         <ChevronsUpDown className="h-4 w-4 opacity-50 hidden sm:block" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">

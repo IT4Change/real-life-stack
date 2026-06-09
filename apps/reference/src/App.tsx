@@ -211,7 +211,9 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <AppShell>
       <Navbar>
         <NavbarStart>
-          {activeWorkspace ? (
+          {workspaces.length > 0 ? (
+            // Switcher stays available even when activeWorkspace is null
+            // (no-access URL) so the user can navigate to their spaces.
             <WorkspaceSwitcher
               workspaces={workspaces}
               activeWorkspace={activeWorkspace}
