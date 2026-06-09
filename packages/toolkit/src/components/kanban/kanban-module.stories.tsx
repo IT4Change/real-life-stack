@@ -2,7 +2,8 @@ import { useMemo, useState } from "react"
 import type { Meta, StoryObj } from "@storybook/react-vite"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { KanbanBoard } from "./kanban-board"
-import { KanbanToolbar, applyItemListFilter, type ItemListFilter } from "./kanban-toolbar"
+import { KanbanToolbar } from "./kanban-toolbar"
+import { applyItemListFilter, type ItemListFilter } from "../../lib/item-filter"
 
 const users: User[] = [
   { id: "user-1", displayName: "Anna Schmidt", avatarUrl: "https://randomuser.me/api/portraits/women/44.jpg" },
