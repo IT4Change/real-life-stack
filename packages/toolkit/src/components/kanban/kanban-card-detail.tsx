@@ -1,6 +1,7 @@
 import type { Item, User, Relation } from "@real-life-stack/data-interface"
 import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
 import { cn, getTagColor } from "../../lib/utils"
+import { normalizeStatus } from "./kanban-board"
 import { Calendar, Tag, User as UserIcon, AlignLeft } from "lucide-react"
 
 function getInitials(name: string): string {
@@ -19,22 +20,27 @@ function getAssigneeIds(item: Item): string[] {
 }
 
 
+// Keys are task/v1 spec IDs; legacy todo/doing get folded in via
+// normalizeStatus before lookup, so persisted items don't render as
+// raw IDs.
 function getStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    todo: "To Do",
-    doing: "In Arbeit",
+    open: "To Do",
+    "in-progress": "In Arbeit",
     done: "Erledigt",
+    archived: "Archiviert",
   }
-  return labels[status] ?? status
+  return labels[normalizeStatus(status)] ?? status
 }
 
 function getStatusColor(status: string): string {
   const colors: Record<string, string> = {
-    todo: "bg-muted text-muted-foreground",
-    doing: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+    open: "bg-muted text-muted-foreground",
+    "in-progress": "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
     done: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+    archived: "bg-muted/60 text-muted-foreground",
   }
-  return colors[status] ?? "bg-muted text-muted-foreground"
+  return colors[normalizeStatus(status)] ?? "bg-muted text-muted-foreground"
 }
 
 export interface KanbanCardDetailProps {

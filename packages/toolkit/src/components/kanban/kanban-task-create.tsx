@@ -1,7 +1,7 @@
 import { useState, useRef, type KeyboardEvent } from "react"
 import type { KanbanColumn } from "./kanban-board"
 import type { User, Group } from "@real-life-stack/data-interface"
-import { defaultColumns } from "./kanban-board"
+import { defaultColumns, normalizeStatus } from "./kanban-board"
 import { Input } from "../primitives/input"
 import { Textarea } from "../primitives/textarea"
 import { Button } from "../primitives/button"
@@ -18,22 +18,26 @@ function getInitials(name: string): string {
     .slice(0, 2)
 }
 
+// Keys are task/v1 spec IDs; legacy todo/doing get folded in via
+// normalizeStatus before lookup.
 function getStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    todo: "To Do",
-    doing: "In Arbeit",
+    open: "To Do",
+    "in-progress": "In Arbeit",
     done: "Erledigt",
+    archived: "Archiviert",
   }
-  return labels[status] ?? status
+  return labels[normalizeStatus(status)] ?? status
 }
 
 function getStatusColor(status: string): string {
   const colors: Record<string, string> = {
-    todo: "bg-muted text-muted-foreground",
-    doing: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+    open: "bg-muted text-muted-foreground",
+    "in-progress": "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
     done: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+    archived: "bg-muted/60 text-muted-foreground",
   }
-  return colors[status] ?? "bg-muted text-muted-foreground"
+  return colors[normalizeStatus(status)] ?? "bg-muted text-muted-foreground"
 }
 
 
