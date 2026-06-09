@@ -37,7 +37,7 @@ Typische map-fähige Item-Typen:
 place, event, person, project, resource, task, quest, campaign-stop
 ```
 
-Diese Liste ist offen. Entscheidend ist, ob ein Item räumlich darstellbar ist — siehe [06-schema-composition-and-tags.md](../06-schema-composition-and-tags.md).
+Diese Liste ist offen. Entscheidend ist, ob ein Item räumlich darstellbar ist — siehe [06-schema-composition.md](../06-schema-composition.md).
 
 | Feld | Bedeutung im Map |
 |---|---|
@@ -46,7 +46,7 @@ Diese Liste ist offen. Entscheidend ist, ob ein Item räumlich darstellbar ist �
 | `data.address` | optionaler menschlicher Adresstext |
 | `data.locationName` | optionaler benannter Ort (z.B. „Markthalle 7") |
 | `data.description` / `data.content` | Kurzbeschreibung oder Detailtext |
-| `tags` (top-level) | Themen, Filter oder Hinweise — siehe [06-schema-composition-and-tags.md](../06-schema-composition-and-tags.md) |
+| `tags` | Themen, Filter oder Hinweise — siehe [07-tags.md](../07-tags.md) (`data.tags` vs top-level offen) |
 | `data.icon` / `data.color` | optionale Marker-Hints (UI-Defaults gelten, wenn fehlt) |
 | `createdAt` | Erstellzeitpunkt, nicht Ortszeitpunkt |
 | `createdBy` | Ursprung oder Autor |
@@ -201,7 +201,7 @@ Map nutzt die generische `ItemFilters`-Komponente, die modulübergreifend die gl
 - **Generische Filter** (aus `ItemFilters`): `type`, `tag`, `schema`, `createdBy`, freie Suche.
 - **Map-spezifische Filter** (vom Map Module ergänzt): `bounds` (nur Items im sichtbaren Ausschnitt), `withinRadius`, `hasPosition`, `geometryType`.
 
-Die Kombination wird in den `ItemFilter` der `DataInterface`-Observable abgebildet (siehe [02-data-interface.md](../02-data-interface.md) und [06-schema-composition-and-tags.md](../06-schema-composition-and-tags.md)). Map-spezifische Filter, die `ItemFilter` nicht direkt kennt (z.B. `bounds`), werden vom Map Module nach dem `observe()` clientseitig angewendet.
+Die Kombination wird in den `ItemFilter` der `DataInterface`-Observable abgebildet (siehe [02-data-interface.md](../02-data-interface.md), [06-schema-composition.md](../06-schema-composition.md) und [07-tags.md](../07-tags.md)). Map-spezifische Filter, die `ItemFilter` nicht direkt kennt (z.B. `bounds`), werden vom Map Module nach dem `observe()` clientseitig angewendet.
 
 ## Komponenten
 

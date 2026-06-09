@@ -256,11 +256,75 @@ Beispiele:
 
 ---
 
+## Frage 4 — Wo liegt das `tags`-Feld am Item?
+
+### Der Anwendungsfall
+
+Tags kategorisieren Items thematisch („Garten", „Permakultur", „Einkauf"). Heute wird das Feld an zwei verschiedenen Stellen verwendet:
+
+- **Code-Stand** (Kanban, Calendar, Feed, demo-data): `item.data.tags: string[]`
+- **`base/v1` JSON-Schema:** `tags` als **top-level** Property neben `id`, `@context`, `data`
+
+Beide Lokationen sind in der aktuellen Spec gelandet und müssen zueinander gebracht werden.
+
+### Zwei Optionen
+
+#### Option a — `data.tags` (heutiger Code)
+
+```json
+{
+  "id": "abc",
+  "@context": ["…/base/v1", "…/task/v1"],
+  "data": {
+    "title": "Beete vorbereiten",
+    "status": "todo",
+    "tags": ["garten", "einkauf"]
+  }
+}
+```
+
+- ✅ Symmetrisch zu allen anderen Inhaltsfeldern (`title`, `status`, `start`, …)
+- ✅ Keine Migration des bestehenden Toolkit-Codes / der demo-data nötig
+- ✅ Tags sind „Inhaltsattribut" — passt zur Auffassung, dass jedes Item beliebige Inhaltsfelder in `data` hat
+- ❌ Cross-Schema-Filter (`hasTag`) muss wissen, dass `tags` in `data` liegt
+- ❌ Tags sind in der Diskussion „eine eigene Achse" — top-level würde das visuell unterstreichen
+
+#### Option b — `tags` top-level (Spec-Stand)
+
+```json
+{
+  "id": "abc",
+  "@context": ["…/base/v1", "…/task/v1"],
+  "data": {
+    "title": "Beete vorbereiten",
+    "status": "todo"
+  },
+  "tags": ["garten", "einkauf"]
+}
+```
+
+- ✅ Tags sind eine separate Identitäts-Achse, analog zu `relations`
+- ✅ Cross-Schema-Filter (`hasTag`) sieht das Feld immer am gleichen Ort
+- ✅ Macht „orthogonale Achse zu Schemas" sichtbar
+- ❌ Bricht alle bestehenden Stellen im Toolkit + demo-data, die `item.data.tags` lesen — Migration nötig
+- ❌ Sebastians UI-Code muss umgestellt werden
+
+### Was machen wir am Mittwoch?
+
+**Vorschlag zur Diskussion:** **Option a** — `data.tags` beibehalten. Pragmatisch, Code-Stand respektieren, Tags sind ein Inhaltsfeld wie andere. `base/v1`-Schema wird entsprechend angepasst (Tags-Eintrag verschiebt sich von top-level in den `data`-Block).
+
+Falls langfristig eine top-level-Achse für Tags gewünscht ist (für Konsistenz mit `relations`), kann das in einer späteren Phase als bewusste Migration entstehen.
+
+Tag-Identität, -Display und -Hierarchie sind in [`docs/spec/07-tags.md`](../docs/spec/07-tags.md) genauer beschrieben.
+
+---
+
 ## Was wir am Mittwoch entscheiden sollten
 
 1. **Komposition:** B (`schemas: string[]`) oder C (`@context`-URLs)? → bestimmt wie ein Item aussieht
 2. **Online-Treffen:** I, II oder III? → bestimmt wo `meetingLink` lebt
 3. **Identifier-Format:** α, β oder γ? → bestimmt ob das Schema die Form von `createdBy`/`assignee` festlegt
-4. Konsequenzen für `LocationWidget`-Refactor: bleibt UI gleich? Wird Widget aufgespalten?
+4. **Tags-Lokation:** a (`data.tags`) oder b (top-level `tags`)? → bestimmt wo die Kategorisierungs-Achse am Item liegt
+5. Konsequenzen für `LocationWidget`-Refactor: bleibt UI gleich? Wird Widget aufgespalten?
 
-Keines davon ist eine sofortige Code-Entscheidung — der aktuelle Refactor läuft mit C + I + β. Wechsel auf B oder II ist eine kleine Schema-Umbenennung, kein Architektur-Bruch.
+Keines davon ist eine sofortige Code-Entscheidung — der aktuelle Refactor läuft mit C + I + β + a. Wechsel auf B oder II oder b ist eine kleine Schema- oder Code-Umbenennung, kein Architektur-Bruch.

@@ -1,10 +1,12 @@
-# Schema-Composition and Tags
+# Schema-Composition
 
 **Status:** Normativer Entwurf v0.1
 
-Diese Spec beschreibt, wie ein RLS-Item seine Struktur und Bedeutung trägt — über **kompositorische `@context`-Vokabulare** statt über eine starre Type-Hierarchie — und wie **Tags** als orthogonale Kategorisierungs-Achse organisiert sind.
+Diese Spec beschreibt, wie ein RLS-Item seine Struktur und Bedeutung trägt — über **kompositorische `@context`-Vokabulare** statt über eine starre Type-Hierarchie.
 
-Sie ergänzt [02-data-interface.md](02-data-interface.md) (Core Item) und [04-items-relations-groups-spaces.md](04-items-relations-groups-spaces.md) (Items, Relations, Groups, Spaces).
+Die orthogonale Achse **Kategorisierung** (welchem Thema gehört ein Item an) liegt in [07-tags.md](07-tags.md).
+
+Diese Spec ergänzt [02-data-interface.md](02-data-interface.md) (Core Item) und [04-items-relations-groups-spaces.md](04-items-relations-groups-spaces.md) (Items, Relations, Groups, Spaces).
 
 Code-Referenz: `packages/data-interface/src/index.ts`
 
@@ -19,9 +21,9 @@ Diese Doppelrolle führt zu Konflikten: User legen viele Layer an, um Themen abz
 
 RLS löst die beiden Aspekte voneinander:
 
-- **Struktur** ergibt sich aus den **`@context`-Schemas**, die ein Item komponiert (mehrere parallel möglich)
-- **Kategorisierung** läuft über **Tags** (frei, optional in einem Kategoriebaum strukturierbar)
-- **Thematische Klammer** ist der **Space** selbst — verschiedene Communities haben verschiedene Spaces mit eigenen Schwerpunkten
+- **Struktur** ergibt sich aus den **`@context`-Schemas**, die ein Item komponiert (mehrere parallel möglich) — Gegenstand dieser Spec.
+- **Kategorisierung** läuft über **Tags** (frei oder URN-basiert, optional in einem Kategoriebaum strukturierbar) — siehe [07-tags.md](07-tags.md).
+- **Thematische Klammer** ist der **Space** selbst — verschiedene Communities haben verschiedene Spaces mit eigenen Schwerpunkten.
 
 ## Schema-Composition über `@context`
 
@@ -160,80 +162,20 @@ Aktivierung durch Contacts/Profile-View.
 
 Weitere Vokabulare können von Connectoren oder Modulen ergänzt werden.
 
-## Tags
-
-Tags sind die orthogonale Kategorisierungs-Achse zu Schemas. Während Schemas **Struktur** liefern, liefern Tags **Themenzuordnung**.
-
-### Identität
-
-Tags sind URNs:
-
-- `urn:rls:tag:permaculture` — globaler Tag aus einem Standard-Namespace
-- `urn:rls:tag:space:<space-id>:regional/leipzig` — Space-lokaler Tag
-- `urn:rls:tag:network:<network-id>:thema:bildung` — Netzwerk-Tag (RLNP)
-
-Regeln:
-
-1. Tag-URNs sind stabil und referenzierbar.
-2. Tags ohne Namespace gelten als Space-lokal.
-3. Standard-Tags (`urn:rls:tag:...` ohne Space-/Network-Präfix) kommen aus der Vocabulary-Registry oder einer kuratierten Tag-Library.
-
-### Tag als Item
-
-Tags sind selbst Items, in einem Space (üblicherweise dem Space, in dem sie verwendet werden, oder einem dedizierten Tag-Space):
-
-```json
-{
-  "id": "uuid-tag-perma",
-  "@context": [
-    "https://real-life-stack.org/vocab/base/v1",
-    "https://real-life-stack.org/vocab/tag/v1"
-  ],
-  "createdAt": "…",
-  "createdBy": "did:key:…",
-  "data": {
-    "urn": "urn:rls:tag:permaculture",
-    "name": "Permakultur",
-    "description": "Themen rund um regenerative Landwirtschaft …",
-    "color": "#9bc53d",
-    "icon": "🌱",
-    "parent": "urn:rls:tag:landwirtschaft"
-  }
-}
-```
-
-`tag/v1` definiert die Tag-spezifischen Felder. Tags werden wie alle Items im Space verwaltet — Mitglieder können sie vorschlagen, Space-Admins entscheiden.
-
-### Hierarchie (optional)
-
-Ein Tag kann ein optionales `parent` haben, das auf eine andere Tag-URN zeigt. Daraus ergibt sich ein Baum (oder mehrere Wurzeln). UI-Eigenschaften:
-
-- Filter „zeige `urn:rls:tag:landwirtschaft`" inkludiert implizit alle Kind-Tags (Permakultur, Biolandbau, …)
-- Item-Tags werden üblicherweise als Leaf-Tags zugewiesen (spezifischster Tag)
-- Hierarchie ist **optional** — ein flacher Tag-Pool ist gültig
-
-### Cross-Space-Tags
-
-Spaces können Tags aus anderen Quellen importieren oder global definierte Tags benutzen. Ein importierter Tag bleibt unter seiner Original-URN erreichbar; das Tag-Item kann pro Space mit Display-Overrides (`color`, `icon`) ergänzt werden, die URN bleibt stabil.
-
 ## DataInterface-Erweiterungen
 
-`ItemFilter` wird um schema- und tag-orientierte Felder ergänzt:
+`ItemFilter` wird um ein schema-orientiertes Filter-Feld ergänzt:
 
 ```ts
 interface ItemFilter {
   // ... bestehende Felder (type, hasField, createdBy, source, limit, offset)
   hasSchema?: string[]    // alle genannten @context-Vokabulare müssen aktiv sein
-  hasTag?: string[]       // alle genannten Tag-URNs müssen am Item hängen
 }
 ```
 
-Mindestbedeutung:
+Bedeutung: Item ist nur Match, wenn sein `@context` jede der genannten URLs enthält.
 
-| Feld | Bedeutung |
-|---|---|
-| `hasSchema` | Item ist nur Match, wenn sein `@context` jede der genannten URLs enthält |
-| `hasTag` | Item ist nur Match, wenn sein `tags`-Array jede der genannten URNs enthält. Hierarchische Tag-Auflösung (Eltern-Tag inkludiert Kinder) ist eine UI-Optimierung und kein DataInterface-Vertrag |
+Der analoge `hasTag`-Filter ist in [07-tags.md](07-tags.md) definiert.
 
 `type` bleibt im Filter erhalten, ist aber **kein primärer Strukturfilter** mehr.
 
@@ -247,7 +189,7 @@ Module aktivieren ein Item primär **feldbasiert** (das benötigte Feld ist in `
 
 Da `@context`-Konsistenz aktuell nicht erzwingbar ist, **müssen Module den Feldfilter verwenden** und dürfen `hasSchema` nur als zusätzliche Optimierung anbieten.
 
-> **Status:** `hasSchema` und `hasTag` sind in `ItemFilter` als zukünftige Erweiterung dokumentiert, aber **noch nicht in `data-interface` implementiert**. Module verlassen sich derzeit ausschließlich auf `hasField` und clientseitiges Filtern.
+> **Status:** `hasSchema` ist in `ItemFilter` als zukünftige Erweiterung dokumentiert, aber **noch nicht in `data-interface` implementiert**. Module verlassen sich derzeit ausschließlich auf `hasField` und clientseitiges Filtern.
 
 ## Modul-Konsequenzen
 
@@ -266,7 +208,7 @@ Ein Item mit mehreren Schemas erscheint in jedem zuständigen Modul gleichzeitig
 Bestehende Layer-basierte Daten werden so überführt:
 
 1. **Layer-Strukturteil** → entsprechendes Schema im `@context` (Event-Layer → `event/v1`, Place-Layer → `place/v1`).
-2. **Layer-Themenanteil** → Tag-URN. Aus „Layer: Permakultur-Orte" wird `urn:rls:tag:permaculture` + `place/v1`-Schema. Layer-Name bleibt als Tag-Name erhalten.
+2. **Layer-Themenanteil** → Tag. Aus „Layer: Permakultur-Orte" wird ein Tag (`"permaculture"` oder `urn:rls:tag:permaculture`) + `place/v1`-Schema. Tag-Modell siehe [07-tags.md](07-tags.md).
 3. **Item-Inhalt** → wird gegen die Schemas validiert; Felder, die in keinem aktiven Schema definiert sind, landen in `data` aber sind nicht offiziell spezifiziert.
 4. **Layer-Templates** entfallen — die Schemas selbst sind die Templates.
 
@@ -278,7 +220,7 @@ Diese Spec definiert **nicht**:
 
 - Vocabulary-Inhalte über die in „Standardvokabulare" genannten hinaus
 - Validierungs-Runtime (gehört in `toolkit` oder einen Schema-Validator)
-- Tag-Discovery oder Cross-Space-Tag-Sync (gehört in Sync-/Indexing-Specs)
+- Tag-Identität, Tag-Display, Tag-Hierarchie (siehe [07-tags.md](07-tags.md))
 - Trust-Modell für Vokabular-Definitionen
 - Rendering-Details der einzelnen Module (gehören in `modules/{name}.md`)
 - Wie genau `@context` URLs aufgelöst werden, wenn die Registry offline ist (Resilience-Strategie ist Connector-Detail)
