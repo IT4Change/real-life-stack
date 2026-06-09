@@ -38,7 +38,7 @@ export function CommentSection({
   onReplyChange,
   className,
 }: CommentSectionProps) {
-  const { comments, allComments, canComment, createComment } = useComments(itemId)
+  const { comments, allComments, authors, canComment, createComment } = useComments(itemId)
   const [replyTo, setReplyTo] = useState<CommentQuote | null>(null)
   const [replyToFirstLevel, setReplyToFirstLevel] = useState<string | null>(null)
 
@@ -61,7 +61,9 @@ export function CommentSection({
   const [expandTrigger, setExpandTrigger] = useState<{ threadId: string; tick: number } | null>(null)
   const threadRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
-  // Build replies per first-level comment from allComments
+  // Build replies per first-level comment from allComments. Authors come
+  // from the hook's resolved map — the raw createdBy is an opaque id
+  // (a DID on the WoT connector), not a display name.
   const repliesByParent = useMemo(() => {
     const map = new Map<string, CommentWithAuthor[]>()
     for (const c of allComments) {
@@ -69,11 +71,12 @@ export function CommentSection({
       const replyToId = (c.data as { replyTo?: string }).replyTo
       if (!replyToId) continue
 
+      const author = authors.get(c.createdBy)
       const list = map.get(replyToId) ?? []
       list.push({
         item: c,
-        authorName: c.createdBy,
-        authorAvatar: undefined,
+        authorName: author?.name ?? c.createdBy,
+        authorAvatar: author?.avatar,
         replyCount: 0,
       })
       map.set(replyToId, list)
@@ -82,7 +85,7 @@ export function CommentSection({
       list.sort((a, b) => new Date(a.item.createdAt).getTime() - new Date(b.item.createdAt).getTime())
     }
     return map
-  }, [allComments])
+  }, [allComments, authors])
 
   const handleReply = useCallback((comment: CommentWithAuthor) => {
     const data = comment.item.data as { content: string; replyTo?: string }
