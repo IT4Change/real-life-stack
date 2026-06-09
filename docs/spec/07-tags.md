@@ -43,10 +43,12 @@ Dieses einfache Modell ist UX-pragmatisch und für viele Use-Cases ausreichend. 
 
 ### Einfache Tags (heute)
 
-Ein Tag ist ein **String**, frei vergeben durch den User, gültig im Scope des Space:
+Ein Tag ist ein **String**, frei vergeben durch den User, gültig im Scope des Space. Heute lebt das Feld code-seitig auf `item.data.tags`:
 
 ```json
-"tags": ["garten", "einkauf", "infrastruktur"]
+"data": {
+  "tags": ["garten", "einkauf", "infrastruktur"]
+}
 ```
 
 Keine Eindeutigkeitsgarantie zwischen Spaces — `"infrastruktur"` in Space A ist nicht dasselbe Konzept wie `"infrastruktur"` in Space B. Das ist OK, solange Tags lokal verwendet werden.

@@ -35,11 +35,11 @@ Ein RLS-Item trägt eine `@context`-Liste, die festlegt, welche Vokabulare seine
 interface Item {
   id: string
   '@context': string[]            // ordered list of vocabulary URLs
-  type?: string[]                  // optional UI-hint, deskriptiv
+  type?: string | string[]         // optional UI-hint, deskriptiv
   createdAt: string
   createdBy: string
   data: Record<string, unknown>
-  tags?: string[]                  // tag URNs
+  tags?: string[]                  // tag identifiers (free strings or URNs, see 07-tags.md)
   relations?: Relation[]
 }
 ```
@@ -131,7 +131,7 @@ Wird **immer** als erstes `@context` geführt. Definiert:
 - `address` (String, optional)
 - `locationName` (String, optional)
 
-Aktivierung durch Map-Modul: Items mit `@context` enthält `place/v1` werden auf der Map gerendert.
+Aktivierung durch Map-Modul: Items mit `data.position` werden auf der Map gerendert; konsequente `@context`-Nutzung würde `hasSchema: ['…/place/v1']` als äquivalenten Filter erlauben (siehe „Verhältnis zwischen Schema- und Feldfiltern" unten).
 
 ### `event/v1`
 

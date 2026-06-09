@@ -48,7 +48,7 @@
     "tags": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
-      "description": "URNs identifying tag items."
+      "description": "Tag identifiers. Free strings (e.g. \"garten\") or URNs (e.g. \"urn:rls:tag:permaculture\") — see docs/spec/07-tags.md."
     },
     "relations": {
       "type": "array",
