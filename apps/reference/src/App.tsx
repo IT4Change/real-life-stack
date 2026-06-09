@@ -109,19 +109,34 @@ const CONNECTOR_OPTIONS: ConnectorOption[] = [
 ]
 
 function FeedView({ groupId }: { groupId: string }) {
-  const { data: posts } = useItems({ type: "post" })
-  const { data: events } = useItems({ type: "event" })
+  // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
+  // items by field presence, not the legacy `type` UI hint.
+  // - Posts carry data.content (base/v1)
+  // - Events carry data.start (event/v1)
+  // Cross-context items (e.g. an event-with-place) naturally show up in
+  // multiple modules without any extra handling.
+  const { data: posts } = useItems({ hasField: ["content"] })
+  const { data: events } = useItems({ hasField: ["start"] })
   const { data: members } = useMembers(groupId)
   const { mutate: createItem } = useCreateItem()
   const { data: currentUser } = useCurrentUser()
 
-  // Merge posts + events, sort newest first
-  const feedItems = useMemo(
-    () =>
-      [...posts, ...events]
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [posts, events]
-  )
+  // Merge posts + events, dedupe, sort newest first.
+  // Dedupe is load-bearing: with hasField filters, a single item can
+  // satisfy both queries (a post that also carries data.start, an event
+  // with data.content, …) and would otherwise render twice.
+  //
+  // Comment items also carry `data.content` (use-comments writes them
+  // as `type: "comment"` with `data.content`). Without an exclusion
+  // they'd surface in the feed as if they were posts. Use the `type`
+  // UI-hint as a discriminator — spec 06 keeps `type` valid for that
+  // role even when activation runs on field presence. A future
+  // comment/v1 vocab + hasSchema would make this redundant.
+  const feedItems = useMemo(() => {
+    const merged = [...posts, ...events].filter((it) => it.type !== "comment")
+    const unique = Array.from(new Map(merged.map((it) => [it.id, it])).values())
+    return unique.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }, [posts, events])
 
   // Resolve author info
   const memberMap = useMemo(
@@ -158,11 +173,32 @@ function FeedView({ groupId }: { groupId: string }) {
     },
   ], [])
 
-  const handleCreate = useCallback(async (data: ContentComposerSubmitData) => {
+  const handleCreate = useCallback(async (submission: ContentComposerSubmitData) => {
+    // ContentComposer surfaces the free-text field as `text`; spec base/v1
+    // uses `content` for posts and `description` for items that already
+    // carry a structured payload (events here). Without this mapping a
+    // composer-created post lands in `data.text`, which FeedItem doesn't
+    // render and `hasField: ["content"]` doesn't match.
+    //
+    // We also strip empty defaults from the composer state (it initializes
+    // status/group/title/text/media/people/tags to "" or []). Without this
+    // a post would ship with `data.status = ""` and match the Kanban
+    // filter `hasField: ["status"]`, leaking it onto the board.
+    const { text, ...rest } = submission.data
+    const cleaned = Object.fromEntries(
+      Object.entries(rest).filter(([, v]) => {
+        if (v === "" || v === null || v === undefined) return false
+        if (Array.isArray(v) && v.length === 0) return false
+        return true
+      }),
+    )
+    const itemData = submission.contentType === "post"
+      ? { ...cleaned, ...(text ? { content: text } : {}) }
+      : { ...cleaned, ...(text ? { description: text } : {}) }
     await createItem({
-      type: data.contentType,
+      type: submission.contentType,
       createdBy: currentUser?.id ?? "anonymous",
-      data: data.data,
+      data: itemData,
     })
   }, [createItem, currentUser?.id])
 
@@ -261,7 +297,10 @@ function MapView() {
   // actually resolved. With lazy-loaded leaflet, `mount()` is genuinely async,
   // and the StrictMode double-mount race is too tight for refs alone.
   const [adapter, setAdapter] = useState<LeafletMapAdapter | null>(null)
-  const { data: items } = useItems()
+  // Field-presence filter (spec 06): any item with data.position is
+  // map-renderable, regardless of `type`. The Point/coordinates check
+  // below is still defensive validation, not the activation criterion.
+  const { data: items } = useItems({ hasField: ["position"] })
 
   const markers: MapMarkerSpec[] = useMemo(() => {
     const list: MapMarkerSpec[] = []
@@ -337,7 +376,9 @@ function MapView() {
 }
 
 function CalendarViewWrapper() {
-  const { data: events } = useItems({ type: "event" })
+  // Calendar activates on data.start (event/v1). Cross-context items
+  // (e.g. an event with a place) appear here too.
+  const { data: events } = useItems({ hasField: ["start"] })
 
   return (
     <CalendarView
@@ -428,7 +469,9 @@ type KanbanPanelState =
 
 function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, onItemClose }: { activeWorkspaceId: string | null; groups: Group[]; selectedItemId?: string; onItemSelect?: (id: string) => void; onItemClose?: () => void }) {
   const connector = useConnector()
-  const { data: tasks } = useItems({ type: "task" })
+  // Kanban activates on data.status (task/v1). After the PR-1a status
+  // migration only tasks carry this field, so no event/place leakage.
+  const { data: tasks } = useItems({ hasField: ["status"] })
   const { data: members } = useMembers(activeWorkspaceId === "__overview__" ? null : (activeWorkspaceId ?? "group-1"))
   const { data: currentUser } = useCurrentUser()
   const { mutate: updateItem } = useUpdateItem()
