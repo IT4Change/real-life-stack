@@ -183,7 +183,7 @@ describe("roundtrip", () => {
       schemaVersion: 1,
       data: {
         title: "Roundtrip Test",
-        status: "todo",
+        status: "open",
         priority: 3,
         nested: { deep: true },
       },

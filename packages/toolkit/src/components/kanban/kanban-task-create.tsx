@@ -75,7 +75,7 @@ export function KanbanTaskForm({
   const defaultData: KanbanTaskFormData = {
     title: initialData?.title ?? "",
     description: initialData?.description ?? "",
-    status: initialData?.status ?? "todo",
+    status: initialData?.status ?? "open",
     tags: initialData?.tags ?? [],
     assigneeId: initialData?.assigneeId ?? null,
     groupId: initialData?.groupId ?? defaultGroupId ?? null,

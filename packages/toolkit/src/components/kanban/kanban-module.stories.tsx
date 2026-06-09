@@ -19,7 +19,7 @@ const initialItems: Item[] = [
     data: {
       title: "Materialliste fertigstellen",
       description: "Holz, Schrauben und Erde für den Hochbeetbau prüfen.",
-      status: "todo",
+      status: "open",
       order: 0,
       tags: ["hochbeet"],
     },
@@ -33,7 +33,7 @@ const initialItems: Item[] = [
     data: {
       title: "Hochbeet-Projekt koordinieren",
       description: "Status ist Board-Workflow, keine Projektbewertung.",
-      status: "doing",
+      status: "in-progress",
       order: 0,
       tags: ["projekt"],
     },
@@ -47,7 +47,7 @@ const initialItems: Item[] = [
     data: {
       title: "Dokumentation vorbereiten",
       description: "Fotos und kurze Notizen für den Feed sammeln.",
-      status: "doing",
+      status: "in-progress",
       order: 1,
       tags: ["doku"],
     },
@@ -109,7 +109,7 @@ function KanbanModuleOverview() {
   const handleCreateItem = () => {
     const id = `task-${Date.now()}`
     setItems((prev) => {
-      const todoItems = prev.filter((item) => (item.data.status as string) === "todo")
+      const openItems = prev.filter((item) => (item.data.status as string) === "open")
       return [
         ...prev,
         {
@@ -120,8 +120,8 @@ function KanbanModuleOverview() {
           data: {
             title: "Neuer Task",
             description: "",
-            status: "todo",
-            order: todoItems.length,
+            status: "open",
+            order: openItems.length,
             tags: [],
           },
           relations: [{ predicate: "assignedTo", target: "global:user-1" }],

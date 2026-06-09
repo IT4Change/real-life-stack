@@ -55,9 +55,9 @@ const taskType: ContentTypeConfig = {
   },
   submitLabel: "Task erstellen",
   statusOptions: [
-    { id: "todo", label: "To Do" },
+    { id: "open", label: "To Do" },
     {
-      id: "doing",
+      id: "in-progress",
       label: "In Arbeit",
       className: "bg-blue-100 text-blue-700",
     },
@@ -67,7 +67,7 @@ const taskType: ContentTypeConfig = {
       className: "bg-green-100 text-green-700",
     },
   ],
-  defaultStatus: "todo",
+  defaultStatus: "open",
   groupOptions: [
     { id: "g1", name: "Klimagruppe" },
     { id: "g2", name: "Nachbarschaftshilfe" },
@@ -184,7 +184,7 @@ export const EditModus: Story = {
       group: "g2",
       title: "Beete umgraben",
       text: "Die **Hochbeete** im Gemeinschaftsgarten muessen fuer die Saison vorbereitet werden.",
-      status: "doing",
+      status: "in-progress",
       people: ["u1", "u2"],
       tags: ["Wichtig", "Projekt"],
     },

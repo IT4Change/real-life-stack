@@ -121,7 +121,7 @@ describe("Item CRUD (CRDT-agnostic contract)", () => {
       const item = createItemOnHandle(handle, {
         type: "task",
         createdBy: "did:key:z6MkTest",
-        data: { title: "Test Task", status: "todo" },
+        data: { title: "Test Task", status: "open" },
       })
 
       expect(item.id).toBeDefined()
@@ -189,12 +189,12 @@ describe("Item CRUD (CRDT-agnostic contract)", () => {
     })
 
     it("filters by hasField", () => {
-      createItemOnHandle(handle, { type: "task", createdBy: "u1", data: { title: "A", status: "todo" } })
+      createItemOnHandle(handle, { type: "task", createdBy: "u1", data: { title: "A", status: "open" } })
       createItemOnHandle(handle, { type: "task", createdBy: "u1", data: { title: "B" } })
 
       const withStatus = getItemsFromHandle(handle, { hasField: ["status"] })
       expect(withStatus).toHaveLength(1)
-      expect(withStatus[0].data.status).toBe("todo")
+      expect(withStatus[0].data.status).toBe("open")
     })
 
     it("returns createdAt as ISO string", () => {
@@ -229,7 +229,7 @@ describe("Item CRUD (CRDT-agnostic contract)", () => {
       const item = createItemOnHandle(handle, {
         type: "task",
         createdBy: "u1",
-        data: { title: "Original", status: "todo" },
+        data: { title: "Original", status: "open" },
       })
 
       const updated = updateItemOnHandle(handle, item.id, {
@@ -349,7 +349,7 @@ describe("Observable notification contract", () => {
     const handle = new FakeSpaceHandle()
 
     // Create items
-    createItemOnHandle(handle, { type: "task", createdBy: "u1", data: { status: "todo" } })
+    createItemOnHandle(handle, { type: "task", createdBy: "u1", data: { status: "open" } })
     createItemOnHandle(handle, { type: "task", createdBy: "u1", data: { status: "done" } })
     createItemOnHandle(handle, { type: "event", createdBy: "u1", data: {} })
 

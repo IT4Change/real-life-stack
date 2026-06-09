@@ -11,9 +11,13 @@ export interface KanbanColumn {
   label: string
 }
 
+// IDs follow task/v1 spec enum: open | in-progress | done | archived.
+// `archived` is intentionally omitted from the default UI — it's a valid
+// status, but boards stay readable with three columns. Groups that need
+// it can override via the feature item's customColumns.
 export const defaultColumns: KanbanColumn[] = [
-  { id: "todo", label: "To Do" },
-  { id: "doing", label: "In Arbeit" },
+  { id: "open", label: "To Do" },
+  { id: "in-progress", label: "In Arbeit" },
   { id: "done", label: "Erledigt" },
 ]
 

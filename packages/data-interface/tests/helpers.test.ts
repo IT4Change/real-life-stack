@@ -114,7 +114,7 @@ describe("matchesFilter", () => {
     const item = createItem({
       type: "task",
       createdBy: "user-1",
-      data: { title: "Hello", status: "todo" },
+      data: { title: "Hello", status: "open" },
     })
 
     expect(matchesFilter(item, { type: "task", createdBy: "user-1", hasField: ["status"] })).toBe(true)

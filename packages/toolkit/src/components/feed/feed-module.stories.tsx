@@ -67,7 +67,7 @@ const initialItems: FeedEntry[] = [
       data: {
         title: "Wasserschlauch reparieren",
         description: "Leck am Verbindungsstück abdichten und Materialbedarf dokumentieren.",
-        status: "doing",
+        status: "in-progress",
         tags: ["infrastruktur"],
       },
     },

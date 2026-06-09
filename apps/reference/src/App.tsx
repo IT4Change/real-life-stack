@@ -385,7 +385,7 @@ function TaskEditPanel({ item, taskContentType, onSubmit, onDelete, connector, a
           initialData={{
             title: String(item.data.title ?? ""),
             text: String(item.data.description ?? ""),
-            status: String(item.data.status ?? "todo"),
+            status: String(item.data.status ?? "open"),
             tags: (item.data.tags as string[]) ?? [],
             people: (item.relations ?? [])
               .filter((r: Relation) => r.predicate === "assignedTo")
@@ -481,7 +481,7 @@ function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, o
     // Get items in the target column, sorted by position, excluding the dragged item
     const columnItems = tasks
       .filter((t) => {
-        const s = (t.data.status as string) ?? "todo"
+        const s = (t.data.status as string) ?? "open"
         return s === newStatus && t.id !== itemId
       })
       .sort((a, b) => ((a.data.order as number) ?? 0) - ((b.data.order as number) ?? 0))
@@ -520,7 +520,7 @@ function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, o
       id: col.id,
       label: col.label,
     })),
-    defaultStatus: "todo",
+    defaultStatus: "open",
     groupOptions: concreteGroups.map((g) => ({ id: g.id, name: g.name })),
     groupRequired: true,
   }), [concreteGroups])
@@ -558,7 +558,7 @@ function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, o
     const newItem = await createItem({
       type: "task",
       createdBy: currentUser?.id ?? "user-1",
-      data: { title: "", description: "", status: "todo", order: tasks.length, tags: [] },
+      data: { title: "", description: "", status: "open", order: tasks.length, tags: [] },
     })
     if (newItem) {
       setPanelState({ mode: "edit", item: newItem })
@@ -654,7 +654,7 @@ function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, o
         const groupItems = tasksByGroup.get(g.id) ?? []
         const columnItems = groupItems
           .filter((t) => {
-            const s = (t.data.status as string) ?? "todo"
+            const s = (t.data.status as string) ?? "open"
             return s === newStatus && t.id !== itemId
           })
           .sort((a, b) => ((a.data.order as number) ?? 0) - ((b.data.order as number) ?? 0))

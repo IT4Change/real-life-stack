@@ -47,7 +47,7 @@ export function KanbanCardDetail({ item, users, className }: KanbanCardDetailPro
   const assigneeIds = getAssigneeIds(item)
   const assignees = (users ?? []).filter((u) => assigneeIds.includes(u.id))
   const tags = (item.data.tags as string[]) ?? []
-  const status = (item.data.status as string) ?? "todo"
+  const status = (item.data.status as string) ?? "open"
   const title = String(item.data.title ?? "")
   const description = item.data.description != null ? String(item.data.description) : null
   const createdAt = item.createdAt
