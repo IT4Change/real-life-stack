@@ -88,7 +88,7 @@ Kanban / Tasks ist das erste abgerundete Referenzmodul für diese Mapping-Regeln
 | Spec-Begriff | Code | Storybook | Daten-/Capability-Annahme |
 |---|---|---|---|
 | Kanban / Tasks Space Module | `packages/toolkit/src/components/kanban/kanban-module.stories.tsx` | `RLS/Space Modules/Kanban/Overview` | Items im Current Space mit Kanban-kompatiblem `data.status` |
-| Board-Layout | `kanban-board.tsx` | `RLS/Space Modules/Kanban/Board` | `Item.data.status`, `Item.data.position`, optional `relations: assignedTo` und `users` |
+| Board-Layout | `kanban-board.tsx` | `RLS/Space Modules/Kanban/Board` | `Item.data.status`, `Item.data.order`, optional `relations: assignedTo` und `users` |
 | Filter/Werkzeuge | `kanban-toolbar.tsx` | `RLS/Space Modules/Kanban/Toolbar` | Items, optionale `users`, optionaler `currentUserId`; Mutationen werden über Callbacks/Capabilities angebunden |
 | Task-Erstellung/Bearbeitung | `kanban-task-create.tsx` | Modulkomponente; in späteren Stories direkt prüfbar | `ItemWriter` für persistente Erstellung/Bearbeitung; App entscheidet über erlaubte Felder |
 | Kartendetail | `kanban-card-detail.tsx` | Modulkomponente; in späteren Stories direkt prüfbar | Item-Daten, optional `users`, Tags, Status und Assignee-Relations |
