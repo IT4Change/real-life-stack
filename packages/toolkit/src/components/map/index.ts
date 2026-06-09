@@ -17,6 +17,7 @@ export type {
   MapMountOptions,
   MapMarkerSpec,
   MapViewState,
+  MapViewPatch,
   MapClickEvent,
   MapAdapter,
   Unsubscribe,

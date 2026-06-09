@@ -53,6 +53,15 @@ export interface MapViewState {
   bounds: MapBounds
 }
 
+/**
+ * Programmatic viewport change. Bounds are derived from the resulting view
+ * and intentionally not part of the patch.
+ */
+export interface MapViewPatch {
+  center?: LngLat
+  zoom?: number
+}
+
 export interface MapClickEvent {
   position: LngLat
   /**
@@ -78,8 +87,12 @@ export interface MapAdapter {
    */
   setMarkers(markers: MapMarkerSpec[]): void
 
-  /** Change the viewport programmatically (e.g. for a "show on map" action). */
-  setView(view: Partial<MapViewState> & { center?: LngLat; zoom?: number }): void
+  /**
+   * Change the viewport programmatically (e.g. for a "show on map" action).
+   * `bounds` is not part of the patch — it is a derived value from the
+   * viewport, not an input. Use `center` + `zoom` to position the map.
+   */
+  setView(view: MapViewPatch): void
 
   /** Current viewport. */
   getView(): MapViewState

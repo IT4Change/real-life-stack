@@ -13,6 +13,11 @@
  *   importing this file does not pull the leaflet bundle. Consumers that never
  *   construct a `LeafletMapAdapter` can omit the dependency entirely and the
  *   adapter does not break SSR / non-DOM bundles at import time.
+ * - **Type leak avoidance**: the `LeafletMapAdapter` class only references
+ *   `MapAdapter` types in its public surface (including private field types
+ *   that vite-plugin-dts emits). Internally the Leaflet instances are stored
+ *   under `unknown` and cast where used, so TypeScript consumers that don't
+ *   install `@types/leaflet` do not see a leaflet reference in our `.d.ts`.
  */
 
 import type * as L from "leaflet"
@@ -23,6 +28,7 @@ import type {
   MapClickEvent,
   MapMarkerSpec,
   MapMountOptions,
+  MapViewPatch,
   MapViewState,
   Unsubscribe,
 } from "../adapter"
@@ -44,7 +50,7 @@ async function loadLeaflet(): Promise<typeof L> {
   return leafletModule
 }
 
-function toLatLng(position: LngLat): [number, number] {
+function toLatLngTuple(position: LngLat): [number, number] {
   // GeoJSON convention is [lng, lat] — Leaflet expects [lat, lng].
   return [position[1], position[0]]
 }
@@ -63,23 +69,26 @@ function toBounds(bounds: L.LatLngBounds): MapBounds {
 }
 
 export class LeafletMapAdapter implements MapAdapter {
-  private map: L.Map | null = null
-  private leaflet: typeof L | null = null
-  private markers = new Map<string, L.Marker>()
+  // Internal Leaflet handles are held as `unknown` so the generated `.d.ts`
+  // does not reference `leaflet` types. Consumers without `@types/leaflet`
+  // installed can import the toolkit without TS errors.
+  private mapInstance: unknown = null
+  private leafletInstance: unknown = null
+  private markers = new Map<string, unknown>()
   private markerLabels = new Map<string, string | undefined>()
   private viewListeners = new Set<(view: MapViewState) => void>()
   private clickListeners = new Set<(event: MapClickEvent) => void>()
   private markerClickListeners = new Set<(markerId: string) => void>()
 
   async mount(container: HTMLElement, options: MapMountOptions): Promise<void> {
-    if (this.map) {
+    if (this.mapInstance) {
       throw new Error("LeafletMapAdapter: already mounted")
     }
     const leaflet = await loadLeaflet()
-    this.leaflet = leaflet
+    this.leafletInstance = leaflet
 
     const map = leaflet.map(container, {
-      center: toLatLng(options.center),
+      center: toLatLngTuple(options.center),
       zoom: options.zoom,
       zoomControl: true,
     })
@@ -104,43 +113,45 @@ export class LeafletMapAdapter implements MapAdapter {
       this.clickListeners.forEach((cb) => cb(evt))
     })
 
-    this.map = map
+    this.mapInstance = map
   }
 
   async unmount(): Promise<void> {
-    if (!this.map) return
-    this.markers.forEach((m) => m.remove())
+    const map = this.mapInstance as L.Map | null
+    if (!map) return
+    ;(this.markers as Map<string, L.Marker>).forEach((m) => m.remove())
     this.markers.clear()
     this.markerLabels.clear()
-    this.map.remove()
-    this.map = null
-    this.leaflet = null
+    map.remove()
+    this.mapInstance = null
+    this.leafletInstance = null
     this.viewListeners.clear()
     this.clickListeners.clear()
     this.markerClickListeners.clear()
   }
 
   setMarkers(markers: MapMarkerSpec[]): void {
-    if (!this.map || !this.leaflet) {
+    const map = this.mapInstance as L.Map | null
+    const leaflet = this.leafletInstance as typeof L | null
+    if (!map || !leaflet) {
       throw new Error("LeafletMapAdapter: setMarkers called before mount")
     }
-    const leaflet = this.leaflet
-    const map = this.map
+    const typedMarkers = this.markers as Map<string, L.Marker>
     const next = new Map<string, MapMarkerSpec>(markers.map((m) => [m.id, m]))
 
     // Remove markers that no longer exist
-    for (const [id, marker] of this.markers) {
+    for (const [id, marker] of typedMarkers) {
       if (!next.has(id)) {
         marker.remove()
-        this.markers.delete(id)
+        typedMarkers.delete(id)
         this.markerLabels.delete(id)
       }
     }
 
     // Add or update remaining
     for (const spec of markers) {
-      const existing = this.markers.get(spec.id)
-      const latlng = toLatLng(spec.position)
+      const existing = typedMarkers.get(spec.id)
+      const latlng = toLatLngTuple(spec.position)
       if (existing) {
         existing.setLatLng(latlng)
         // Reconcile tooltip / label changes declaratively:
@@ -166,29 +177,31 @@ export class LeafletMapAdapter implements MapAdapter {
           this.markerClickListeners.forEach((cb) => cb(spec.id))
         })
         marker.addTo(map)
-        this.markers.set(spec.id, marker)
+        typedMarkers.set(spec.id, marker)
         this.markerLabels.set(spec.id, spec.label)
       }
     }
   }
 
-  setView(view: { center?: LngLat; zoom?: number }): void {
-    if (!this.map) return
-    const current = this.map.getCenter()
-    const center = view.center ? toLatLng(view.center) : current
-    const zoom = view.zoom ?? this.map.getZoom()
-    this.map.setView(center, zoom)
+  setView(view: MapViewPatch): void {
+    const map = this.mapInstance as L.Map | null
+    if (!map) return
+    const current = map.getCenter()
+    const center = view.center ? toLatLngTuple(view.center) : current
+    const zoom = view.zoom ?? map.getZoom()
+    map.setView(center, zoom)
   }
 
   getView(): MapViewState {
-    if (!this.map) {
+    const map = this.mapInstance as L.Map | null
+    if (!map) {
       throw new Error("LeafletMapAdapter: getView called before mount")
     }
-    const center = this.map.getCenter()
+    const center = map.getCenter()
     return {
       center: [center.lng, center.lat],
-      zoom: this.map.getZoom(),
-      bounds: toBounds(this.map.getBounds()),
+      zoom: map.getZoom(),
+      bounds: toBounds(map.getBounds()),
     }
   }
 

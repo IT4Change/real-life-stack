@@ -23,7 +23,11 @@ export default defineConfig({
       fileName: 'index',
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime'],
+      // Keep these out of the toolkit bundle. `leaflet` is an optional peer
+      // dependency loaded dynamically by the map adapter; bundling it here
+      // would defeat the optional-peer/lazy-load intent and bloat the toolkit
+      // output for consumers that never use the map.
+      external: ['react', 'react-dom', 'react/jsx-runtime', 'leaflet'],
       onwarn(warning, warn) {
         // Suppress "use client" directive warnings from shadcn/ui + Radix UI
         if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return
