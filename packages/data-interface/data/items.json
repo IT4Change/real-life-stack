@@ -7,7 +7,7 @@
     "data": {
       "title": "KanbanBoard Drag & Drop",
       "description": "Touch-Events und Pointer-Events für mobiles Drag & Drop implementieren",
-      "status": "doing",
+      "status": "in-progress",
       "tags": [
         "toolkit",
         "ui"
@@ -51,7 +51,7 @@
     "data": {
       "title": "CalendarView in Toolkit verschieben",
       "description": "Kalender-Komponente aus der Reference App ins Toolkit Package extrahieren",
-      "status": "todo",
+      "status": "open",
       "tags": [
         "toolkit",
         "refactoring"
@@ -73,7 +73,7 @@
     "data": {
       "title": "GraphQL Subscriptions testen",
       "description": "WebSocket-Verbindung mit Mercurius und graphql-ws verifizieren",
-      "status": "todo",
+      "status": "open",
       "tags": [
         "graphql",
         "backend"
@@ -95,7 +95,7 @@
     "data": {
       "title": "Schein-Design finalisieren",
       "description": "Vorder- und Rückseite der Zeitgutscheine mit Silberdruck-Vorlage fertigstellen",
-      "status": "doing",
+      "status": "in-progress",
       "tags": [
         "design",
         "druck"
@@ -117,7 +117,7 @@
     "data": {
       "title": "Online-Shop Bestellflow",
       "description": "Personalisierte Gutscheine bestellen mit Logo-Upload und Textanpassung",
-      "status": "todo",
+      "status": "open",
       "tags": [
         "shop",
         "feature"
@@ -139,7 +139,7 @@
     "data": {
       "title": "Multiplikatoren-Pakete versenden",
       "description": "50 Scheine pro Multiplikator vorbereiten und verschicken — erste 20 Pakete",
-      "status": "doing",
+      "status": "in-progress",
       "tags": [
         "launch",
         "logistik"
@@ -183,7 +183,7 @@
     "data": {
       "title": "Migration auf automerge-repo",
       "description": "Automerge-repo für automatische Persistenz und Sync statt manuellem save/load",
-      "status": "todo",
+      "status": "open",
       "tags": [
         "crdt",
         "architektur"
@@ -205,7 +205,7 @@
     "data": {
       "title": "Beete vorbereiten",
       "description": "Erde umgraben und Kompost einarbeiten für die Frühjahrspflanzung",
-      "status": "todo",
+      "status": "open",
       "tags": [
         "garten",
         "frühling"
@@ -227,7 +227,7 @@
     "data": {
       "title": "Samen bestellen",
       "description": "Tomaten, Zucchini, Kräuter — samenfeste Sorten von Dreschflegel",
-      "status": "doing",
+      "status": "in-progress",
       "tags": [
         "garten",
         "einkauf"
@@ -272,7 +272,6 @@
       "description": "Wöchentliches Standup — Stand der Module, offene Fragen, nächste Schritte",
       "start": "2026-03-10T10:00",
       "end": "2026-03-10T11:00",
-      "status": "confirmed",
       "tags": [
         "meeting",
         "weekly"
@@ -289,7 +288,6 @@
       "description": "Gemeinsam die neuen Toolkit-Komponenten in Storybook durchgehen",
       "start": "2026-03-14T14:00",
       "end": "2026-03-14T15:30",
-      "status": "confirmed",
       "tags": [
         "review",
         "ui"
@@ -311,7 +309,6 @@
         "lng": 9.68
       },
       "address": "Bad Salzschlirf",
-      "status": "confirmed",
       "tags": [
         "launch",
         "event"
@@ -333,7 +330,6 @@
         "lng": 8.68
       },
       "address": "Gemeinschaftsgarten Sonnenhügel, Am Sonnenhügel 5",
-      "status": "confirmed",
       "tags": [
         "garten",
         "gemeinschaft"
@@ -350,7 +346,6 @@
       "description": "Live-Demo: Identität erstellen, Attestierung austauschen, Relay-Verbindung",
       "start": "2026-03-18T16:00",
       "end": "2026-03-18T17:30",
-      "status": "confirmed",
       "tags": [
         "demo",
         "wot"
@@ -517,8 +512,7 @@
       "tags": [
         "ausstellung",
         "nachbarschaft"
-      ],
-      "status": "confirmed"
+      ]
     }
   },
   {

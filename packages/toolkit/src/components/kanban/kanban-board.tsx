@@ -11,11 +11,35 @@ export interface KanbanColumn {
   label: string
 }
 
+// IDs follow task/v1 spec enum: open | in-progress | done | archived.
+// `archived` is intentionally omitted from the default UI — it's a valid
+// status, but boards stay readable with three columns. Apps that need
+// different columns pass their own set via the `columns` prop;
+// `feature.kanban.customColumns` is a separate capability flag, not a
+// column source.
 export const defaultColumns: KanbanColumn[] = [
-  { id: "todo", label: "To Do" },
-  { id: "doing", label: "In Arbeit" },
+  { id: "open", label: "To Do" },
+  { id: "in-progress", label: "In Arbeit" },
   { id: "done", label: "Erledigt" },
 ]
+
+/**
+ * Map legacy column IDs to the current spec enum.
+ *
+ * Pre-spec demos used `todo` / `doing` as Kanban column IDs. After the
+ * task/v1 enum landed (open | in-progress | done | archived), persisted
+ * items with the old IDs would silently fall out of `itemsByColumn`
+ * (default columns no longer carry those keys). This helper is the
+ * read-time defense: legacy values get folded into the spec ID, and the
+ * next `onMoveItem` call writes the new ID back, so items heal on first
+ * interaction. Unknown values pass through unchanged — they're handled
+ * by the column lookup like any other unmatched status.
+ */
+export function normalizeStatus(status: string): string {
+  if (status === "todo") return "open"
+  if (status === "doing") return "in-progress"
+  return status
+}
 
 export interface KanbanBoardProps {
   items: Item[]
@@ -278,7 +302,8 @@ export function KanbanBoard({
       map.set(col.id, [])
     }
     for (const item of items) {
-      const status = (item.data.status as string) ?? columns[0]?.id
+      const rawStatus = (item.data.status as string) ?? columns[0]?.id
+      const status = normalizeStatus(rawStatus)
       const list = map.get(status)
       if (list) list.push(item)
     }

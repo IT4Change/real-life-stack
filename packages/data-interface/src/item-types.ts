@@ -55,7 +55,7 @@ export interface TaskData extends Commentable {
   title: string
   /** Description, markdown. */
   description?: string
-  /** Kanban column key (e.g. "todo", "doing", "done"). Columns are configurable via the feature item, not hardcoded. */
+  /** Kanban column key. Defaults follow task/v1 spec enum (open | in-progress | done | archived); apps pick the actual column set via the KanbanBoard `columns` prop. */
   status: string
   /** Sort order within a kanban column. Lower values appear higher. */
   position?: number
