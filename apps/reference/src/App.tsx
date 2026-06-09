@@ -5,7 +5,6 @@ import {
   Map as MapIcon,
   Calendar,
   Plus,
-  MapPin,
   Sun,
   Moon,
   Columns3,
@@ -36,10 +35,6 @@ import {
   defaultColumns,
   AdaptivePanel,
   CalendarView,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Button,
   DropdownMenu,
   DropdownMenuTrigger,
@@ -285,21 +280,30 @@ function MapView() {
   }, [items])
 
   // Mount the adapter once. Lazy-loaded leaflet means mount() is properly
-  // async — we must handle StrictMode-style double-invoke cleanly:
-  //   - cleanup before mount resolves    → cancel flag, mount-then will tear down
-  //   - cleanup after mount resolves     → unmount Leaflet, clear state
+  // async, which exposes a classic StrictMode race: both effect passes start
+  // their own mount() in parallel and would race for the same DOM container,
+  // ending in Leaflet's "Map container is already initialized" error.
+  //
+  // Robust fix: each effect run gets its own fresh inner div as Leaflet's
+  // container, appended to the stable outer ref. On cleanup we tear down the
+  // adapter and remove the inner div, so the second pass gets a pristine
+  // container that no previous mount can have claimed.
   useEffect(() => {
     if (!containerRef.current) return
+    const inner = document.createElement("div")
+    inner.style.height = "100%"
+    inner.style.width = "100%"
+    containerRef.current.appendChild(inner)
+
     let cancelled = false
     let mounted = false
     const ad = new LeafletMapAdapter()
-    ad.mount(containerRef.current, {
+    ad.mount(inner, {
       center: [13.4, 52.5], // Berlin-ish default; replace with space config later
       zoom: 6,
     }).then(
       () => {
         if (cancelled) {
-          // cleanup already ran, tear down the leaflet instance we just created
           ad.unmount().catch(() => {})
         } else {
           mounted = true
@@ -317,6 +321,7 @@ function MapView() {
         ad.unmount().catch(() => {})
         setAdapter((current) => (current === ad ? null : current))
       }
+      inner.remove()
     }
   }, [])
 
