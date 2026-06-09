@@ -41,6 +41,20 @@ export function CommentSection({
   const { comments, allComments, canComment, createComment } = useComments(itemId)
   const [replyTo, setReplyTo] = useState<CommentQuote | null>(null)
   const [replyToFirstLevel, setReplyToFirstLevel] = useState<string | null>(null)
+
+  // Reset reply state when the section is reused for a different item
+  // (same instance, no remount — e.g. a detail panel switching items).
+  // Otherwise a pending reply quote from the previous item sticks around
+  // and submitting would attach the comment to a parent that lives on
+  // another item: invisible in both items' thread trees, lost for the
+  // user. Render-time reset per React's "adjusting state when a prop
+  // changes" pattern (no effect, no one-frame stale flash).
+  const [prevItemId, setPrevItemId] = useState(itemId)
+  if (itemId !== prevItemId) {
+    setPrevItemId(itemId)
+    setReplyTo(null)
+    setReplyToFirstLevel(null)
+  }
   const endRef = useRef<HTMLDivElement>(null)
   const shouldScrollRef = useRef(false)
   const scrollToThreadRef = useRef<string | null>(null)

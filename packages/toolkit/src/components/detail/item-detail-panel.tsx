@@ -46,6 +46,20 @@ export function ItemDetailPanel({
   const [submit, setSubmit] = useState<((text: string) => Promise<void>) | null>(null)
   const [cancel, setCancel] = useState<(() => void) | null>(null)
 
+  // The mirrored reply state above is per-item. When the panel is reused
+  // for a different item (same instance, no remount), drop it immediately
+  // instead of waiting for CommentSection's onReplyChange effect — that
+  // fires only after commit, leaving one frame of the previous item's
+  // reply quote in the input. CommentSection resets its own state the
+  // same way.
+  const [prevItemId, setPrevItemId] = useState(itemId)
+  if (itemId !== prevItemId) {
+    setPrevItemId(itemId)
+    setReplyTo(null)
+    setSubmit(null)
+    setCancel(null)
+  }
+
   const handleReplyChange = useCallback(
     (nextReplyTo: CommentQuote | null, nextSubmit: (text: string) => Promise<void>, nextCancel: () => void) => {
       setReplyTo(nextReplyTo)
