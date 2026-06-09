@@ -8,13 +8,13 @@
     "type": "@type",
 
     "createdAt": { "@id": "rls:createdAt", "@type": "xsd:dateTime" },
-    "createdBy": { "@id": "rls:createdBy", "@type": "@id" },
+    "createdBy": { "@id": "rls:createdBy" },
 
     "title": { "@id": "rls:title", "@type": "xsd:string" },
     "content": { "@id": "rls:content", "@type": "xsd:string" },
     "description": { "@id": "rls:description", "@type": "xsd:string" },
 
-    "tags": { "@id": "rls:tags", "@type": "@id", "@container": "@set" },
+    "tags": { "@id": "rls:tags", "@container": "@set" },
     "relations": { "@id": "rls:relations", "@container": "@set" }
   }
 }

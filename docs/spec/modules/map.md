@@ -46,7 +46,7 @@ Diese Liste ist offen. Entscheidend ist, ob ein Item räumlich darstellbar ist �
 | `data.address` | optionaler menschlicher Adresstext |
 | `data.locationName` | optionaler benannter Ort (z.B. „Markthalle 7") |
 | `data.description` / `data.content` | Kurzbeschreibung oder Detailtext |
-| `data.tags` | Themen, Filter oder Hinweise |
+| `tags` (top-level) | Themen, Filter oder Hinweise — siehe [06-schema-composition-and-tags.md](../06-schema-composition-and-tags.md) |
 | `data.icon` / `data.color` | optionale Marker-Hints (UI-Defaults gelten, wenn fehlt) |
 | `createdAt` | Erstellzeitpunkt, nicht Ortszeitpunkt |
 | `createdBy` | Ursprung oder Autor |

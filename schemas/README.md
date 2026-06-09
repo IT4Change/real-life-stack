@@ -4,7 +4,7 @@ This directory holds the **formal definitions** of the RLS standard vocabularies
 
 Each vocabulary is identified by a stable URL of the form:
 
-```
+```text
 https://real-life-stack.org/vocab/{name}/v{version}
 ```
 
@@ -12,7 +12,7 @@ The same URL is referenced by RLS items in their `@context` array. During Phase 
 
 ## Layout
 
-```
+```text
 schemas/
 ├── README.md
 └── vocab/
@@ -60,7 +60,7 @@ An RLS item composes its vocabularies via its `@context` array:
 }
 ```
 
-A validator resolves every URL in `@context`, fetches the matching `schema.json`, and validates `data` against the **`allOf`** of all schemas. Each schema is itself permissive (`additionalProperties: true`), so the composition produces the strictest combined contract.
+A validator resolves every URL in `@context`, fetches the matching `schema.json`, and validates the **entire item object** against the `allOf` of all schemas. Each schema asserts only the fields it owns (under `data` for vocab-owned payload fields, at the top level for base fields like `id`, `createdAt`, `@context`) and is permissive otherwise (`additionalProperties: true`), so the composition produces the strictest combined contract without false rejection on fields contributed by other vocabularies.
 
 ### Adding or evolving a vocabulary
 

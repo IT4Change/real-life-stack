@@ -13,9 +13,12 @@
     },
     "@context": {
       "type": "array",
+      "minItems": 1,
       "items": { "type": "string", "format": "uri" },
-      "contains": { "const": "https://real-life-stack.org/vocab/base/v1" },
-      "description": "Ordered list of vocabulary URLs. Base must be present."
+      "prefixItems": [
+        { "const": "https://real-life-stack.org/vocab/base/v1" }
+      ],
+      "description": "Ordered list of vocabulary URLs. Base must be the first entry."
     },
     "type": {
       "oneOf": [
@@ -60,5 +63,5 @@
       }
     }
   },
-  "required": ["id", "createdAt", "createdBy"]
+  "required": ["id", "@context", "createdAt", "createdBy", "data"]
 }

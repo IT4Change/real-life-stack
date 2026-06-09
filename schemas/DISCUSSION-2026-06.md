@@ -150,7 +150,7 @@ Wenn `meetingLink` in `place/v1` läge, wäre die Bedeutung des Vokabulars unein
 
 #### Option I — `meetingLink` ins `event`-Vokabular (aktueller Stand der Schemas)
 
-```
+```text
 event/v1: start, end, duration, rrule, meetingLink ←
 place/v1: position, address, locationName
 ```
@@ -163,7 +163,7 @@ Konsequenz: Auch ein Workshop, der nur in der Markthalle ist (kein Online-Anteil
 
 #### Option II — Eigenes `meeting`-Vokabular für Online
 
-```
+```text
 event/v1:   start, end, duration, rrule
 place/v1:   position, address, locationName        ← geografisch, „Map-fähig"
 meeting/v1: meetingLink, platform                  ← digital, NICHT „Map-fähig"
@@ -178,7 +178,7 @@ Items haben optional `place` ODER `meeting` ODER beides (hybrid: vor Ort + Live-
 
 #### Option III — `place`-Vokabular um digitale „Orte" erweitern
 
-```
+```text
 place/v1: position?, address?, locationName?, meetingLink?
 ```
 

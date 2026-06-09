@@ -5,7 +5,7 @@
     "xsd": "http://www.w3.org/2001/XMLSchema#",
 
     "status": { "@id": "rls:status", "@type": "@vocab" },
-    "assignee": { "@id": "rls:assignee", "@type": "@id" },
+    "assignee": { "@id": "rls:assignee" },
     "dueAt": { "@id": "rls:dueAt", "@type": "xsd:dateTime" },
     "priority": { "@id": "rls:priority", "@type": "xsd:integer" },
 

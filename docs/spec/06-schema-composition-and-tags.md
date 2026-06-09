@@ -46,9 +46,9 @@ Regeln:
 
 1. `@context[0]` ist immer `https://real-life-stack.org/vocab/base/v1` — definiert die RLS-Item-Basis-Felder (`id`, `createdAt`, `createdBy`, `data`, ...).
 2. Weitere Einträge erweitern das Vokabular und damit die in `data` zulässigen Felder.
-3. Die Reihenfolge wirkt auf Property-Resolution: spätere `@context`-Einträge können frühere Definitionen überschreiben (last-wins, gleiches Verhalten wie JSON-LD).
-4. Semantisch gleiche Properties aus verschiedenen Vokabularen sollen denselben Namen tragen (z.B. `start` für Beginn-Zeitpunkt, egal ob Event oder Task) — Aliasing kann im Vocabulary-Context definiert werden.
-5. `type` ist ein optionaler UI-Hint, **kein struktureller Filter**. UI-Code soll nicht über `type` verzweigen, sondern über Schema-Präsenz im `@context`.
+3. **Property-Namen MÜSSEN über alle Vokabularien eindeutig sein.** JSON-LD's last-wins-Verhalten gilt nur für reine Property-Identifier-Auflösung; die JSON-Schema-Validierung läuft über `allOf` (Schnittmenge) und kennt keine Überschreibung. Vocabulary-Autoren vermeiden Kollisionen aktiv: gleiche Semantik → gleicher Name (Konvention), unterschiedliche Semantik → unterschiedlicher Name. Validator-Verhalten bei einer Kollision ist undefined und gilt als Vokabular-Bug.
+4. Semantisch gleiche Properties aus verschiedenen Vokabularen tragen denselben Namen (z.B. `start` für Beginn-Zeitpunkt, egal ob Event oder Task).
+5. `type` ist ein optionaler UI-Hint, **kein struktureller Filter**. UI-Code soll nicht über `type` verzweigen, sondern über Feld-Präsenz oder (zukünftig) `hasSchema`.
 
 ### Beispiel: Workshop in der Markthalle
 
@@ -96,8 +96,9 @@ RLS-Vokabulare sind als JSON-LD und JSON-Schema unter `https://real-life-stack.o
 
 Jede Vocabulary-URL liefert:
 
-1. Eine JSON-LD-Context-Datei (`*.jsonld`) — definiert Property-Namen und Datentypen
-2. Eine JSON-Schema-Datei (`*.schema.json`) — erlaubt formale Validierung
+1. Eine JSON-LD-Context-Datei `context.jsonld` — definiert Property-Namen und Datentypen
+2. Eine JSON-Schema-Datei `schema.json` — erlaubt formale Validierung
+3. Optional `examples/valid/*.json` — well-formed Beispiel-Items für Tooling und Tests
 
 Connectoren und UI-Code dürfen Vocabularies cachen. Versionierung erfolgt über den `/v{n}/`-Pfad-Segment; nicht-rückwärtskompatible Änderungen erzwingen eine neue Major-Version.
 
@@ -132,19 +133,20 @@ Aktivierung durch Map-Modul: Items mit `@context` enthält `place/v1` werden auf
 
 ### `event/v1`
 
-- `start` (ISO-8601-DateTime) — Beginn
-- `end` (ISO-8601-DateTime, optional) — Ende
-- `duration` (ISO-8601-Duration, optional)
-- `recurrence` (ICAL-RRULE-String, optional)
+- `start` (ISO-8601-DateTime oder -Date) — Beginn
+- `end` (ISO-8601-DateTime oder -Date, optional) — Ende
+- `duration` (ISO-8601-Duration, optional; gegenseitig exklusiv mit `end`)
+- `rrule` (RFC 5545 RRULE-String, optional)
+- `meetingLink` (URL, optional) — siehe Discussion zur Frage „wohin gehört Online-Treffen"
 
 Aktivierung durch Calendar-Modul.
 
 ### `task/v1`
 
 - `status` (Enum: `open` | `in-progress` | `done` | `archived`)
-- `assignee` (DID-String oder Item-Ref, optional)
+- `assignee` (Identifier wie `createdBy`, optional; Einzelwert oder Array für mehrere)
 - `dueAt` (ISO-8601-DateTime, optional)
-- `priority` (Integer, optional)
+- `priority` (Integer ≥ 0, optional)
 
 Aktivierung durch Kanban-Modul.
 
@@ -233,15 +235,27 @@ Mindestbedeutung:
 | `hasSchema` | Item ist nur Match, wenn sein `@context` jede der genannten URLs enthält |
 | `hasTag` | Item ist nur Match, wenn sein `tags`-Array jede der genannten URNs enthält. Hierarchische Tag-Auflösung (Eltern-Tag inkludiert Kinder) ist eine UI-Optimierung und kein DataInterface-Vertrag |
 
-`type` bleibt im Filter erhalten, ist aber **kein primärer Strukturfilter** mehr. UI-Code soll sich auf `hasSchema` stützen.
+`type` bleibt im Filter erhalten, ist aber **kein primärer Strukturfilter** mehr.
+
+### Verhältnis zwischen Schema- und Feldfiltern
+
+Module aktivieren ein Item primär **feldbasiert** (das benötigte Feld ist in `data` vorhanden), weil das die Wahrheit über die Renderbarkeit ist. `hasSchema` ist ein **schnellerer Vorfilter** im Connector, der das gleiche Ergebnis liefert, wenn Vocabularies konsistent angewendet werden:
+
+- Map zeigt Items mit `data.position` (= entspricht `hasSchema: ['…/place/v1']` falls Items das Vocab korrekt deklarieren)
+- Calendar zeigt Items mit `data.start` (= entspricht `hasSchema: ['…/event/v1']`)
+- Kanban zeigt Items mit `data.status` (= entspricht `hasSchema: ['…/task/v1']`)
+
+Da `@context`-Konsistenz aktuell nicht erzwingbar ist, **müssen Module den Feldfilter verwenden** und dürfen `hasSchema` nur als zusätzliche Optimierung anbieten.
+
+> **Status:** `hasSchema` und `hasTag` sind in `ItemFilter` als zukünftige Erweiterung dokumentiert, aber **noch nicht in `data-interface` implementiert**. Module verlassen sich derzeit ausschließlich auf `hasField` und clientseitiges Filtern.
 
 ## Modul-Konsequenzen
 
-| Modul | Aktivierungs-Filter | Was es zeigt |
-|---|---|---|
-| Map | `hasSchema: ['…/place/v1']` | alles räumlich Darstellbare |
-| Calendar | `hasSchema: ['…/event/v1']` | alles zeitlich Darstellbares |
-| Kanban | `hasSchema: ['…/task/v1']` | alles als Aufgabe Darstellbares |
+| Modul | Primärer Filter (heute) | Optimierung (sobald implementiert) | Was es zeigt |
+|---|---|---|---|
+| Map | `hasField: ['position']` | `hasSchema: ['…/place/v1']` | alles räumlich Darstellbare |
+| Calendar | `hasField: ['start']` | `hasSchema: ['…/event/v1']` | alles zeitlich Darstellbares |
+| Kanban | `hasField: ['status']` | `hasSchema: ['…/task/v1']` | alles als Aufgabe Darstellbares |
 | Feed | kein Filter / `hasSchema: ['…/base/v1']` | alles |
 | Contacts | `hasSchema: ['…/person/v1']` | Personen-Profile |
 
