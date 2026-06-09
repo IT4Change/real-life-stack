@@ -1,0 +1,18 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "rls": "https://real-life-stack.org/vocab/task/v1#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "status": { "@id": "rls:status", "@type": "@vocab" },
+    "assignee": { "@id": "rls:assignee" },
+    "dueAt": { "@id": "rls:dueAt", "@type": "xsd:dateTime" },
+    "priority": { "@id": "rls:priority", "@type": "xsd:integer" },
+    "order": { "@id": "rls:order", "@type": "xsd:integer" },
+
+    "open": "rls:open",
+    "in-progress": "rls:in-progress",
+    "done": "rls:done",
+    "archived": "rls:archived"
+  }
+}

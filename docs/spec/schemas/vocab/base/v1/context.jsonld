@@ -1,0 +1,20 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "rls": "https://real-life-stack.org/vocab/base/v1#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "id": "@id",
+    "type": "@type",
+
+    "createdAt": { "@id": "rls:createdAt", "@type": "xsd:dateTime" },
+    "createdBy": { "@id": "rls:createdBy" },
+
+    "title": { "@id": "rls:title", "@type": "xsd:string" },
+    "content": { "@id": "rls:content", "@type": "xsd:string" },
+    "description": { "@id": "rls:description", "@type": "xsd:string" },
+
+    "tags": { "@id": "rls:tags", "@container": "@set" },
+    "relations": { "@id": "rls:relations", "@container": "@set" }
+  }
+}

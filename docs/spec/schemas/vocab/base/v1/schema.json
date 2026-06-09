@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://real-life-stack.org/vocab/base/v1/schema.json",
+  "title": "RLS Base Item Vocabulary",
+  "description": "Common fields present on every RLS item. Always included in @context as the first entry.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable item identifier (UUID, URN, or backend-specific ID)."
+    },
+    "@context": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "format": "uri" },
+      "prefixItems": [
+        { "const": "https://real-life-stack.org/vocab/base/v1" }
+      ],
+      "description": "Ordered list of vocabulary URLs. Base must be the first entry."
+    },
+    "type": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ],
+      "description": "Optional UI hint. Not a structural filter."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "createdBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Backend-defined creator identifier. Common forms: DID, email address, opaque user ID, URN. Schema does not constrain the format — connectors must agree on the convention for their data source."
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Tag identifiers. Free strings (e.g. \"garten\") or URNs (e.g. \"urn:rls:tag:permaculture\") — see docs/spec/07-tags.md."
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["predicate", "target"],
+        "properties": {
+          "predicate": { "type": "string", "minLength": 1 },
+          "target": { "type": "string", "minLength": 1 },
+          "meta": { "type": "object" }
+        }
+      }
+    }
+  },
+  "required": ["id", "@context", "createdAt", "createdBy", "data"]
+}

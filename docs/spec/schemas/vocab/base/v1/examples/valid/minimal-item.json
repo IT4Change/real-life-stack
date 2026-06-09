@@ -1,0 +1,11 @@
+{
+  "id": "01H8XYZ-minimal",
+  "@context": ["https://real-life-stack.org/vocab/base/v1"],
+  "createdAt": "2026-06-09T12:00:00Z",
+  "createdBy": "lena@example.com",
+  "data": {
+    "title": "Erste Notiz",
+    "content": "Eine ganz einfache Notiz ohne weitere Vokabulare."
+  },
+  "tags": ["urn:rls:tag:gedanken"]
+}

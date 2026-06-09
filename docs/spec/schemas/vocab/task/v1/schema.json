@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://real-life-stack.org/vocab/task/v1/schema.json",
+  "title": "RLS Task Vocabulary",
+  "description": "Properties for items representing actionable work. Items carrying this vocabulary appear on the Kanban module.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["open", "in-progress", "done", "archived"]
+        },
+        "assignee": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "minItems": 1
+            }
+          ],
+          "description": "Identifier of the assignee (same format as base/v1 createdBy: DID, email, user ID, …), or an array for multiple assignees."
+        },
+        "dueAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Convention: 0 = no priority, higher = more important."
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Module-specific sort index, used by the Kanban module to order tasks within a status column. Not a task-intrinsic property — separate views (Feed, Calendar) ignore it. May later move to a kanban-specific vocab; kept here for v0.1 to keep the model flat."
+        }
+      }
+    }
+  },
+  "required": ["data"]
+}

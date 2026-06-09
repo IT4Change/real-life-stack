@@ -1,0 +1,27 @@
+{
+  "id": "01H8XYZ-event-workshop",
+  "@context": [
+    "https://real-life-stack.org/vocab/base/v1",
+    "https://real-life-stack.org/vocab/event/v1",
+    "https://real-life-stack.org/vocab/place/v1"
+  ],
+  "type": ["Event", "Place"],
+  "createdAt": "2026-06-09T10:00:00Z",
+  "createdBy": "did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp",
+  "data": {
+    "title": "Permakultur-Workshop in der Markthalle",
+    "description": "Wir stellen Hochbeete für die kommende Saison zusammen.",
+    "start": "2026-07-15T18:00:00Z",
+    "end": "2026-07-15T20:00:00Z",
+    "position": {
+      "type": "Point",
+      "coordinates": [13.4023, 52.5197]
+    },
+    "address": "Marheinekeplatz 15, 10961 Berlin",
+    "locationName": "Markthalle 7"
+  },
+  "tags": ["urn:rls:tag:permakultur", "urn:rls:tag:workshop"],
+  "relations": [
+    { "predicate": "organizedBy", "target": "01H8XYZ-person-lena" }
+  ]
+}

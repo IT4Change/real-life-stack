@@ -1,0 +1,22 @@
+{
+  "id": "01H8XYZ-task-garden",
+  "@context": [
+    "https://real-life-stack.org/vocab/base/v1",
+    "https://real-life-stack.org/vocab/task/v1"
+  ],
+  "type": ["Task"],
+  "createdAt": "2026-06-09T10:00:00Z",
+  "createdBy": "anton@real-life.org",
+  "data": {
+    "title": "Hochbeete für Workshop vorbereiten",
+    "description": "Holz besorgen, zuschneiden, am Vorabend vor Ort lagern.",
+    "status": "in-progress",
+    "assignee": "lena@example.com",
+    "dueAt": "2026-07-14T20:00:00Z",
+    "priority": 2
+  },
+  "tags": ["urn:rls:tag:vorbereitung"],
+  "relations": [
+    { "predicate": "preparesFor", "target": "01H8XYZ-event-workshop" }
+  ]
+}

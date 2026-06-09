@@ -1,6 +1,6 @@
 # Confirmations and Trust
 
-**Status:** Normativer Entwurf v0.2
+**Status:** Normativer Entwurf v0.1
 
 Diese Spec beschreibt, wie Real Life Stack bestätigte Aussagen backend-agnostisch darstellt. Sie ersetzt nicht Web-of-Trust-Attestations und definiert kein neues kryptografisches Format. Sie definiert eine UI- und Connector-Projektion.
 

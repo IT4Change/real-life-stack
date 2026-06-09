@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://real-life-stack.org/vocab/event/v1/schema.json",
+  "title": "RLS Event Vocabulary",
+  "description": "Properties for items with a temporal start. Items carrying this vocabulary appear on the Calendar module.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["start"],
+      "properties": {
+        "start": {
+          "type": "string",
+          "anyOf": [
+            { "format": "date-time" },
+            { "format": "date" }
+          ],
+          "description": "Event start. ISO 8601 datetime or date."
+        },
+        "end": {
+          "type": "string",
+          "anyOf": [
+            { "format": "date-time" },
+            { "format": "date" }
+          ],
+          "description": "Optional event end. Must be >= start when both are datetimes."
+        },
+        "duration": {
+          "type": "string",
+          "pattern": "^(?=P.*[YMDHMS])P(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$",
+          "description": "Optional ISO 8601 duration. Must contain at least one designator+digit pair (rejects bare 'P' and 'PT'). Either end or duration may be present, not both."
+        },
+        "rrule": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional RFC 5545 RRULE for recurrence (e.g. FREQ=WEEKLY;BYDAY=MO)."
+        },
+        "meetingLink": {
+          "type": "string",
+          "format": "uri",
+          "description": "Optional online meeting URL (Zoom, Jitsi, …)."
+        }
+      },
+      "not": {
+        "required": ["end", "duration"]
+      }
+    }
+  },
+  "required": ["data"]
+}
