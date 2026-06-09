@@ -276,7 +276,6 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
           groups={groups}
           urlSpaceId={urlSpaceId}
           urlItemId={urlItemId}
-          workspacesLoaded={workspaces.length > 0}
         />
       </AppShellMain>
 

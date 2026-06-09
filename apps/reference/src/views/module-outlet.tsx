@@ -7,14 +7,15 @@ import { CalendarViewWrapper } from "./calendar-view"
 import { KanbanView } from "./kanban-view"
 
 export interface ModuleOutletProps {
-  /** Workspace resolved by useWorkspaceRouting; null while loading. */
+  /**
+   * Workspace resolved by useWorkspaceRouting. Null means the URL names
+   * a space the user has no access to — renders the no-access notice.
+   */
   activeWorkspace: Workspace | null
   activeModule: string
   groups: Group[]
   urlSpaceId?: string
   urlItemId?: string
-  /** True when a space id is in the URL but unknown — renders the no-access notice. */
-  workspacesLoaded: boolean
 }
 
 /**
@@ -23,10 +24,10 @@ export interface ModuleOutletProps {
  * others = centered container) lives here; everything else stays with
  * the views.
  */
-export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId, urlItemId, workspacesLoaded }: ModuleOutletProps) {
+export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId, urlItemId }: ModuleOutletProps) {
   const navigate = useNavigate()
 
-  if (urlSpaceId && !activeWorkspace && workspacesLoaded) {
+  if (urlSpaceId && !activeWorkspace) {
     return (
       <div className="container mx-auto px-4 pt-12 max-w-md text-center">
         <p className="text-lg font-medium text-foreground">Du bist kein Mitglied dieses Spaces</p>
