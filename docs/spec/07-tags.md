@@ -119,7 +119,7 @@ Beide Lokationen haben Argumente:
 - **`data.tags`** (heute Code-Stand): Tags sind Teil der Item-Daten wie alle anderen Felder. Symmetrisch zu `data.title`, `data.start` etc. Einfach für freie Strings.
 - **`tags` top-level**: Tags sind eine separate Achse der Item-Identität, nicht Teil des fachlichen Inhalts. Analog zu `relations`. Erleichtert Cross-Schema-Filter (`hasTag` greift unabhängig vom Vocabulary).
 
-**Diese Spec legt die Entscheidung bewusst nicht fest** — siehe Diskussionspunkt in [DISCUSSION-2026-06.md](../../schemas/DISCUSSION-2026-06.md). Sobald entschieden, wird das `base/v1`-Schema und der Code (Toolkit + demo-data) angepasst.
+**Diese Spec legt die Entscheidung bewusst nicht fest** — siehe Diskussionspunkt in [DISCUSSION-2026-06.md](schemas/DISCUSSION-2026-06.md). Sobald entschieden, wird das `base/v1`-Schema und der Code (Toolkit + demo-data) angepasst.
 
 ## Hierarchie (optional)
 

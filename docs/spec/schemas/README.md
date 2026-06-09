@@ -1,6 +1,6 @@
 # RLS Vocabularies (Schemas)
 
-This directory holds the **formal definitions** of the RLS standard vocabularies introduced in [`docs/spec/06-schema-composition-and-tags.md`](../docs/spec/06-schema-composition-and-tags.md).
+This directory holds the **formal definitions** of the RLS standard vocabularies introduced in [`../06-schema-composition.md`](../06-schema-composition.md).
 
 Each vocabulary is identified by a stable URL of the form:
 

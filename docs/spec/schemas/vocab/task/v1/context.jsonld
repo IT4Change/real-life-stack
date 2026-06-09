@@ -8,6 +8,7 @@
     "assignee": { "@id": "rls:assignee" },
     "dueAt": { "@id": "rls:dueAt", "@type": "xsd:dateTime" },
     "priority": { "@id": "rls:priority", "@type": "xsd:integer" },
+    "order": { "@id": "rls:order", "@type": "xsd:integer" },
 
     "open": "rls:open",
     "in-progress": "rls:in-progress",

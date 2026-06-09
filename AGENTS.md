@@ -49,6 +49,20 @@ Contributors do not need to use the `wot-agent-runner`.
 
 The runner is optional. Clear scope, working checks, and human review are not optional.
 
+## Spec is Source of Truth
+
+[`docs/spec/`](./docs/spec/) is the **Single Source of Truth** of this repository. Before changing any code that touches items, schemas, modules, capabilities, connectors, or hooks: **read the relevant spec section first**.
+
+- Item shape, fields, vocabularies → [`docs/spec/06-schema-composition.md`](./docs/spec/06-schema-composition.md) and [`docs/spec/schemas/`](./docs/spec/schemas/)
+- Tags → [`docs/spec/07-tags.md`](./docs/spec/07-tags.md)
+- DataInterface and ItemFilter → [`docs/spec/02-data-interface.md`](./docs/spec/02-data-interface.md)
+- Capabilities → [`docs/spec/03-capabilities.md`](./docs/spec/03-capabilities.md)
+- Items, Relations, Groups/Spaces → [`docs/spec/04-items-relations-groups-spaces.md`](./docs/spec/04-items-relations-groups-spaces.md)
+- Space module contracts (Map, Calendar, Kanban, Feed) → [`docs/spec/modules/`](./docs/spec/modules/)
+- Index of all spec docs → [`docs/spec/README.md`](./docs/spec/README.md)
+
+**When code and spec disagree, the spec wins.** Either change the code to match, or change the spec deliberately with a PR note explaining the reason. Do not silently introduce new rules in code, hooks, or concept docs — they must surface in `docs/spec/`.
+
 ## Rules For Agents
 
 - Keep changes small and reviewable.

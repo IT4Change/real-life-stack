@@ -149,6 +149,7 @@ Aktivierung durch Calendar-Modul.
 - `assignee` (Identifier wie `createdBy`, optional; Einzelwert oder Array für mehrere)
 - `dueAt` (ISO-8601-DateTime, optional)
 - `priority` (Integer ≥ 0, optional)
+- `order` (Integer ≥ 0, optional) — modul-spezifischer Sortier-Index, primär für Kanban innerhalb einer Status-Spalte. Andere Views (Feed, Calendar) ignorieren ihn. Kandidat für ein eigenes kanban-Vokabular in einer späteren Version.
 
 Aktivierung durch Kanban-Modul.
 

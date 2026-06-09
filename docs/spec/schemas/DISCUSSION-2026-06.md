@@ -3,7 +3,16 @@
 **Stand:** 2026-06-09 — Vorbereitung Mittwoch
 **Beteiligte:** Anton, Sebastian, Claude
 
-Zwei offene Designfragen sollen am Mittwoch besprochen werden. Diese Datei stellt sie nebeneinander und zeigt jeweils konkrete Optionen — keine Spec, keine Vorentscheidung.
+Die offenen Designfragen unten sollen am Mittwoch besprochen werden. Diese Datei stellt jeweils konkrete Optionen nebeneinander — keine endgültige Spec, keine Vorentscheidung.
+
+**Wichtig zum aktuellen Schema-Stand:** Damit `docs/spec/schemas/` vor dem Treffen ein zusammenhängendes Bild abgeben, sind sie auf die jeweils **vorgeschlagene Option provisorisch festgelegt** — mit einer bekannten Ausnahme:
+
+- Komposition: **C** (`@context`-URLs) — Schemas konsistent.
+- Online-Treffen: **I** (`meetingLink` in `event/v1`) — Schemas konsistent.
+- Identifier-Format: **β** (beliebiger String für `createdBy` / `assignee`) — Schemas konsistent.
+- **Tags-Lokation: hier divergieren Schema und Code.** `base/v1/schema.json` definiert `tags` top-level (Option b), Toolkit-Code und demo-data lesen `item.data.tags` (Option a). Die Auflösung ist exakt der Inhalt von Frage 4 unten.
+
+Sobald am Mittwoch eine andere Option gewinnt, wird das entsprechende Schema minor-bumped (z.B. `event/v1` → `event/v2`) und Verweise werden aktualisiert.
 
 ---
 
@@ -315,7 +324,7 @@ Beide Lokationen sind in der aktuellen Spec gelandet und müssen zueinander gebr
 
 Falls langfristig eine top-level-Achse für Tags gewünscht ist (für Konsistenz mit `relations`), kann das in einer späteren Phase als bewusste Migration entstehen.
 
-Tag-Identität, -Display und -Hierarchie sind in [`docs/spec/07-tags.md`](../docs/spec/07-tags.md) genauer beschrieben.
+Tag-Identität, -Display und -Hierarchie sind in [`../07-tags.md`](../07-tags.md) genauer beschrieben.
 
 ---
 
