@@ -2,7 +2,7 @@ import { useMemo, useState } from "react"
 import type { Meta, StoryObj } from "@storybook/react-vite"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { KanbanBoard } from "./kanban-board"
-import { KanbanToolbar, applyKanbanFilter, type KanbanFilter } from "./kanban-toolbar"
+import { KanbanToolbar, applyItemListFilter, type ItemListFilter } from "./kanban-toolbar"
 
 const users: User[] = [
   { id: "user-1", displayName: "Anna Schmidt", avatarUrl: "https://randomuser.me/api/portraits/women/44.jpg" },
@@ -70,15 +70,15 @@ const initialItems: Item[] = [
 
 function KanbanModuleOverview() {
   const [items, setItems] = useState(initialItems)
-  const [filter, setFilter] = useState<KanbanFilter>({
+  const [filter, setFilter] = useState<ItemListFilter>({
     searchText: "",
     assignedTo: null,
-    myTasksOnly: false,
+    myItemsOnly: false,
     tags: [],
   })
 
   const filteredItems = useMemo(
-    () => applyKanbanFilter(items, filter, "user-1"),
+    () => applyItemListFilter(items, filter, "user-1"),
     [items, filter]
   )
 
