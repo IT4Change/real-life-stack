@@ -10,8 +10,12 @@ Code-Referenzen:
 - `packages/toolkit/src/components/feed/`
 - `packages/toolkit/src/components/kanban/`
 - `packages/toolkit/src/components/calendar/`
+- `packages/toolkit/src/components/map/`
+- `packages/toolkit/src/components/detail/` — modul-agnostisches Detail-Panel
 - `packages/toolkit/src/hooks/`
-- `apps/reference/src/App.tsx`
+- `apps/reference/src/App.tsx` — Komposition: Provider, AuthGate, App Shell
+- `apps/reference/src/views/` — ein File pro Space Module + `module-outlet.tsx` (Dispatch)
+- `apps/reference/src/hooks/use-workspace-routing.ts` — Space/Module-Auflösung aus URL
 
 ## Grundstruktur
 

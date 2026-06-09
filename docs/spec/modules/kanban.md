@@ -45,13 +45,13 @@ Andere Item-Typen dürfen erscheinen, wenn sie bewusst einen Board-Workflow übe
 | `data.title` | Kartentitel |
 | `data.description` / `data.content` | Beschreibung oder Kontext |
 | `data.status` | Spaltenzuordnung |
-| `data.position` | Reihenfolge innerhalb einer Spalte |
+| `data.order` | Reihenfolge innerhalb einer Spalte (siehe [task/v1](../schemas/vocab/task/v1/schema.json); nicht `data.position` — das ist in [place/v1](../schemas/vocab/place/v1/schema.json) die GeoJSON-Geometrie: Point, Polygon oder LineString) |
 | `data.tags` | Themen, Labels oder Filter |
 | `data.commentCount` | optionale Kommentar-Zusammenfassung |
 | `createdAt` | Erstellzeitpunkt, Fallback-Sortierung oder Detailanzeige |
 | `createdBy` | Ursprung oder Autor |
 
-Default-Spalten dürfen `todo`, `doing` und `done` sein. Eine App oder ein Space darf andere Spalten konfigurieren. Spalten sind UI-Workflow-Zustände, keine universellen sozialen Zustände.
+Die Default-Spalten folgen dem `status`-Enum aus [task/v1](../schemas/vocab/task/v1/schema.json): `open`, `in-progress`, `done` (`archived` ist gültig, erscheint aber nicht in der Default-UI). Eine App oder ein Space darf andere Spalten konfigurieren. Spalten sind UI-Workflow-Zustände, keine universellen sozialen Zustände. Legacy-Werte (`todo`, `doing`) werden lesend auf das Enum abgebildet und beim nächsten Schreiben migriert (Self-Healing, siehe `normalizeStatus` im Toolkit).
 
 Wichtig:
 
@@ -73,7 +73,7 @@ Confirmations können im Kanban sichtbar werden, z.B. als Badge oder Hinweis auf
 
 1. `data.status` beschreibt die Position in einem Board-Workflow und macht ein Item kanbanfähig.
 2. `data.status` darf nicht als Quest-Completion, pädagogischer Abschluss, Prüfung oder Attestation interpretiert werden.
-3. `data.position` ordnet Items innerhalb einer Spalte und hat keine fachliche Bedeutung außerhalb des Boards.
+3. `data.order` ordnet Items innerhalb einer Spalte und hat keine fachliche Bedeutung außerhalb des Boards.
 4. Spaltennamen und Spaltenreihenfolge dürfen space-spezifisch konfiguriert werden.
 5. Drag-and-drop ist eine UI-Interaktion; die dauerhafte Wahrheit liegt erst nach erfolgreicher Connector-Mutation vor.
 
@@ -96,7 +96,7 @@ Confirmations können im Kanban sichtbar werden, z.B. als Badge oder Hinweis auf
 | Board lesen | `DataInterface` | Items mit Kanban-kompatiblem `data.status` im Current Space anzeigen |
 | Karte öffnen | Item vorhanden | Detailansicht oder Zielmodul öffnen |
 | Task erstellen | `ItemWriter`, ggf. `Authenticatable` | Item mit `type: "task"` oder konfiguriertem Typ erstellen |
-| Karte verschieben | `ItemWriter` | `data.status` und `data.position` aktualisieren |
+| Karte verschieben | `ItemWriter` | `data.status` und `data.order` aktualisieren |
 | Karte bearbeiten | `ItemWriter` | `data.title`, `data.description`, `data.tags` oder andere UI-Felder aktualisieren |
 | Karte zuweisen | `ItemWriter`, optional `RelationCapable` | `assignedTo`-Relation oder äquivalente Projektion aktualisieren |
 | Karte löschen | `ItemWriter` | Item löschen, wenn die App diese Aktion erlaubt |
@@ -151,6 +151,6 @@ Das Kanban / Tasks Module definiert nicht:
 ## Offene Punkte
 
 1. Wo liegt die Spaltenkonfiguration langfristig: `Group.data.modules`, eigenes Item oder App-Konfiguration?
-2. Soll `data.position` global pro Board, pro Status-Spalte oder pro Space eindeutig sein?
+2. Soll `data.order` global pro Board, pro Status-Spalte oder pro Space eindeutig sein? (Implementierung heute: pro Status-Spalte, Indizes werden beim Drop neu vergeben — siehe `computeColumnReorder`)
 3. Wie wird Cross-Space-Drag-and-drop sauber projiziert, wenn ein Connector `ItemGroupCapable` unterstützt?
 4. Welche Aufgabenfelder gehören in v0 verbindlich zur Task-Projektion und welche bleiben app-spezifisch?

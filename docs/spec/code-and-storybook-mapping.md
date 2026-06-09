@@ -20,9 +20,20 @@ Der Toolkit-Code muss die RLS-Taxonomie nicht in jedem Ordnernamen exakt spiegel
 |---|---|---|
 | App Shell | `packages/toolkit/src/components/layout/`, `auth/`, `contacts/`, `debug/` | Navbar, BottomNav, WorkspaceSwitcher, UserMenu, ProfileDialog, ContactsDialog, VerificationDialog, DebugDashboard |
 | Space Modules | `packages/toolkit/src/components/feed/`, `kanban/`, `calendar/`, `map/` | Feed, Kanban / Tasks, Calendar, Map |
-| Module Components | Unterordner innerhalb von Space Modules oder geteilte Toolkit-Komponenten | FeedItem, ContentComposer, ReactionBar, CommentSection, KanbanCard, KanbanToolbar |
+| Module Components | Unterordner innerhalb von Space Modules, geteilte Toolkit-Komponenten (`detail/`) | FeedItem, ContentComposer, ReactionBar, CommentSection, KanbanCard, KanbanToolbar, ItemDetailPanel |
 | Primitives | `packages/toolkit/src/components/primitives/` | Button, Card, Dialog, Input, Tabs |
 | Hooks | `packages/toolkit/src/hooks/` | useItems, useComments, useReactions, useConfirmations |
+| Logik-Helfer (modulübergreifend) | `packages/toolkit/src/lib/` | applyItemListFilter (Display-Filter), parseEventDate / isAllDayDate |
+| Logik-Helfer (modulgebunden) | im jeweiligen Modul-Ordner, z.B. `components/kanban/reorder.ts` | computeColumnReorder, normalizeStatus |
+
+In der Reference-App spiegelt sich die Taxonomie so:
+
+| App-Ebene | Code-Ort |
+|---|---|
+| Komposition (Provider, AuthGate, App Shell) | `apps/reference/src/App.tsx` |
+| Space-Module-Instanzen (eine Datei pro Modul) | `apps/reference/src/views/feed-view.tsx`, `kanban-view.tsx`, `calendar-view.tsx`, `map-view.tsx` |
+| Modul-Dispatch (welches Modul rendert, wie es den Space füllt) | `apps/reference/src/views/module-outlet.tsx` |
+| Space/Module-Routing (URL → aktiver Space + Modul) | `apps/reference/src/hooks/use-workspace-routing.ts` |
 
 Regeln:
 
@@ -78,7 +89,7 @@ Kanban / Tasks ist das erste abgerundete Referenzmodul für diese Mapping-Regeln
 | Spec-Begriff | Code | Storybook | Daten-/Capability-Annahme |
 |---|---|---|---|
 | Kanban / Tasks Space Module | `packages/toolkit/src/components/kanban/kanban-module.stories.tsx` | `RLS/Space Modules/Kanban/Overview` | Items im Current Space mit Kanban-kompatiblem `data.status` |
-| Board-Layout | `kanban-board.tsx` | `RLS/Space Modules/Kanban/Board` | `Item.data.status`, `Item.data.position`, optional `relations: assignedTo` und `users` |
+| Board-Layout | `kanban-board.tsx` | `RLS/Space Modules/Kanban/Board` | `Item.data.status`, `Item.data.order`, optional `relations: assignedTo` und `users` |
 | Filter/Werkzeuge | `kanban-toolbar.tsx` | `RLS/Space Modules/Kanban/Toolbar` | Items, optionale `users`, optionaler `currentUserId`; Mutationen werden über Callbacks/Capabilities angebunden |
 | Task-Erstellung/Bearbeitung | `kanban-task-create.tsx` | Modulkomponente; in späteren Stories direkt prüfbar | `ItemWriter` für persistente Erstellung/Bearbeitung; App entscheidet über erlaubte Felder |
 | Kartendetail | `kanban-card-detail.tsx` | Modulkomponente; in späteren Stories direkt prüfbar | Item-Daten, optional `users`, Tags, Status und Assignee-Relations |
