@@ -175,10 +175,13 @@ function formatEventDate(start: string, end?: string): string {
     ? null
     : e.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
 
-  // Same day
+  // Same day. Four cases — handle the mixed ones explicitly so a null
+  // side doesn't get interpolated into the string.
   if (s.toDateString() === e.toDateString()) {
     if (!timeStr && !endTimeStr) return dateStr
-    return `${dateStr}, ${timeStr} – ${endTimeStr}`
+    if (timeStr && endTimeStr) return `${dateStr}, ${timeStr} – ${endTimeStr}`
+    if (timeStr) return `${dateStr}, ${timeStr}`
+    return `${dateStr}, bis ${endTimeStr}`
   }
 
   const endDateStr = e.toLocaleDateString("de-DE", { day: "numeric", month: "short" })
