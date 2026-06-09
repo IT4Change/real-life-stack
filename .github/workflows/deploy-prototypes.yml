@@ -48,7 +48,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: real-life-org/web-of-trust
-          ref: spec-vnext
+          # Pinned: wot-core on spec-vnext is mid-refactor. Recent HEAD
+          # broke the build with API-surface changes (GroupKeyService,
+          # HttpDiscoveryAdapter → DiscoveryAdapter,
+          # IndexedDbIdentitySeedVault, PersonalDoc.verifications,
+          # YjsReplicationConfig.groupKeyService, MessageType union).
+          # f79723e is the last spec-vnext commit known to build with
+          # the current packages/wot-connector (master deploy was green
+          # on 2026-05-22 against this commit). Bump the pin once
+          # packages/wot-connector is updated for the new surface.
+          ref: f79723e
           path: .wot
 
       - name: Build web-of-trust packages
