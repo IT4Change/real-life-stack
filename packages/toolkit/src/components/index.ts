@@ -19,3 +19,6 @@ export * from "./kanban"
 export * from "./dashboard"
 export * from "./calendar"
 export * from "./map"
+
+// Module-agnostic detail panel (top slot + comments)
+export * from "./detail"
