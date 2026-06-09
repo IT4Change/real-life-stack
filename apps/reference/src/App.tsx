@@ -121,13 +121,16 @@ function FeedView({ groupId }: { groupId: string }) {
   const { mutate: createItem } = useCreateItem()
   const { data: currentUser } = useCurrentUser()
 
-  // Merge posts + events, sort newest first
-  const feedItems = useMemo(
-    () =>
-      [...posts, ...events]
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [posts, events]
-  )
+  // Merge posts + events, dedupe, sort newest first.
+  // Dedupe is load-bearing: with hasField filters, a single item can
+  // satisfy both queries (a post that also carries data.start, an event
+  // with data.content, …) and would otherwise render twice.
+  const feedItems = useMemo(() => {
+    const unique = Array.from(
+      new Map([...posts, ...events].map((it) => [it.id, it])).values()
+    )
+    return unique.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }, [posts, events])
 
   // Resolve author info
   const memberMap = useMemo(
