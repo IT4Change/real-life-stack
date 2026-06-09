@@ -66,7 +66,7 @@ Regeln:
 3. `createdAt` darf nicht als Terminzeitpunkt interpretiert werden.
 4. Ein Calendar-Event ist keine Teilnahmebestätigung und keine Completion.
 5. Teilnahme, Durchführung, Zusage oder Verifikation werden über Relations oder Confirmations sichtbar, nicht aus dem bloßen Kalendereintrag erfunden.
-6. Legacy- oder Prototypdaten wie `startTime` / `endTime` müssen durch Adapter auf `data.start` / `data.end` normalisiert werden. Toolkit-Komponenten dürfen solche Aliase lesen, aber die Spec-Felder bleiben `data.start` und `data.end`.
+6. Es gibt keinen Alias-Mechanismus. Komponenten lesen ausschließlich `data.start` und `data.end`. Bestehende Prototypdaten in `startTime` / `endTime` werden einmalig migriert.
 
 ## Capabilities
 

@@ -1,0 +1,12 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "rls": "https://real-life-stack.org/vocab/person/v1#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "displayName": { "@id": "rls:displayName", "@type": "xsd:string" },
+    "avatarUrl": { "@id": "rls:avatarUrl", "@type": "@id" },
+    "bio": { "@id": "rls:bio", "@type": "xsd:string" },
+    "pronouns": { "@id": "rls:pronouns", "@type": "xsd:string" }
+  }
+}

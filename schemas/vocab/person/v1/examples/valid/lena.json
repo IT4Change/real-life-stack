@@ -1,0 +1,22 @@
+{
+  "id": "01H8XYZ-person-lena",
+  "@context": [
+    "https://real-life-stack.org/vocab/base/v1",
+    "https://real-life-stack.org/vocab/person/v1",
+    "https://real-life-stack.org/vocab/place/v1"
+  ],
+  "type": ["Person"],
+  "createdAt": "2026-01-15T08:00:00Z",
+  "createdBy": "did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp",
+  "data": {
+    "displayName": "Lena Berg",
+    "bio": "Yoga-Lehrerin, Community-Gärtnerin, baut gerade an einem Permakultur-Garten am Friedrichshain.",
+    "pronouns": "sie/ihr",
+    "position": {
+      "type": "Point",
+      "coordinates": [13.4053, 52.5200]
+    },
+    "locationName": "Prenzlauer Berg, Berlin"
+  },
+  "tags": ["urn:rls:tag:permakultur"]
+}

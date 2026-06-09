@@ -1,0 +1,13 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "rls": "https://real-life-stack.org/vocab/event/v1#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "start": { "@id": "rls:start", "@type": "xsd:dateTime" },
+    "end": { "@id": "rls:end", "@type": "xsd:dateTime" },
+    "duration": { "@id": "rls:duration", "@type": "xsd:duration" },
+    "rrule": { "@id": "rls:rrule", "@type": "xsd:string" },
+    "meetingLink": { "@id": "rls:meetingLink", "@type": "@id" }
+  }
+}
