@@ -262,7 +262,10 @@ function FeedView({ groupId }: { groupId: string }) {
  */
 function MapView() {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const adapterRef = useRef<LeafletMapAdapter | null>(null)
+  // Adapter lives in state so the markers-effect re-runs once `mount()` has
+  // actually resolved. With lazy-loaded leaflet, `mount()` is genuinely async,
+  // and the StrictMode double-mount race is too tight for refs alone.
+  const [adapter, setAdapter] = useState<LeafletMapAdapter | null>(null)
   const { data: items } = useItems()
 
   const markers: MapMarkerSpec[] = useMemo(() => {
@@ -281,34 +284,46 @@ function MapView() {
     return list
   }, [items])
 
-  // Mount once
+  // Mount the adapter once. Lazy-loaded leaflet means mount() is properly
+  // async — we must handle StrictMode-style double-invoke cleanly:
+  //   - cleanup before mount resolves    → cancel flag, mount-then will tear down
+  //   - cleanup after mount resolves     → unmount Leaflet, clear state
   useEffect(() => {
     if (!containerRef.current) return
     let cancelled = false
-    const adapter = new LeafletMapAdapter()
-    adapter
-      .mount(containerRef.current, {
-        center: [13.4, 52.5], // Berlin-ish default; replace with space config later
-        zoom: 6,
-      })
-      .then(() => {
-        if (!cancelled) {
-          adapterRef.current = adapter
-          adapter.setMarkers(markers)
+    let mounted = false
+    const ad = new LeafletMapAdapter()
+    ad.mount(containerRef.current, {
+      center: [13.4, 52.5], // Berlin-ish default; replace with space config later
+      zoom: 6,
+    }).then(
+      () => {
+        if (cancelled) {
+          // cleanup already ran, tear down the leaflet instance we just created
+          ad.unmount().catch(() => {})
+        } else {
+          mounted = true
+          setAdapter(ad)
         }
-      })
+      },
+      (err) => {
+        // eslint-disable-next-line no-console
+        console.error("LeafletMapAdapter mount failed", err)
+      },
+    )
     return () => {
       cancelled = true
-      adapter.unmount().catch(() => {})
-      adapterRef.current = null
+      if (mounted) {
+        ad.unmount().catch(() => {})
+        setAdapter((current) => (current === ad ? null : current))
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Update markers when items change
+  // Push markers to the adapter once it is mounted, and on every change.
   useEffect(() => {
-    adapterRef.current?.setMarkers(markers)
-  }, [markers])
+    adapter?.setMarkers(markers)
+  }, [adapter, markers])
 
   // `isolate` creates a new stacking context so Leaflet's internal z-indices
   // (zoom controls up to 1000, popup panes 700, marker panes 600) stay contained
