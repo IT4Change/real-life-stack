@@ -109,8 +109,14 @@ const CONNECTOR_OPTIONS: ConnectorOption[] = [
 ]
 
 function FeedView({ groupId }: { groupId: string }) {
-  const { data: posts } = useItems({ type: "post" })
-  const { data: events } = useItems({ type: "event" })
+  // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
+  // items by field presence, not the legacy `type` UI hint.
+  // - Posts carry data.content (base/v1)
+  // - Events carry data.start (event/v1)
+  // Cross-context items (e.g. an event-with-place) naturally show up in
+  // multiple modules without any extra handling.
+  const { data: posts } = useItems({ hasField: ["content"] })
+  const { data: events } = useItems({ hasField: ["start"] })
   const { data: members } = useMembers(groupId)
   const { mutate: createItem } = useCreateItem()
   const { data: currentUser } = useCurrentUser()
@@ -158,11 +164,20 @@ function FeedView({ groupId }: { groupId: string }) {
     },
   ], [])
 
-  const handleCreate = useCallback(async (data: ContentComposerSubmitData) => {
+  const handleCreate = useCallback(async (submission: ContentComposerSubmitData) => {
+    // ContentComposer surfaces the free-text field as `text`; spec base/v1
+    // uses `content` for posts and `description` for items that already
+    // carry a structured payload (events here). Without this mapping a
+    // composer-created post lands in `data.text`, which FeedItem doesn't
+    // render and `hasField: ["content"]` doesn't match.
+    const { text, ...rest } = submission.data
+    const itemData = submission.contentType === "post"
+      ? { ...rest, content: text }
+      : { ...rest, description: text }
     await createItem({
-      type: data.contentType,
+      type: submission.contentType,
       createdBy: currentUser?.id ?? "anonymous",
-      data: data.data,
+      data: itemData,
     })
   }, [createItem, currentUser?.id])
 
@@ -261,7 +276,10 @@ function MapView() {
   // actually resolved. With lazy-loaded leaflet, `mount()` is genuinely async,
   // and the StrictMode double-mount race is too tight for refs alone.
   const [adapter, setAdapter] = useState<LeafletMapAdapter | null>(null)
-  const { data: items } = useItems()
+  // Field-presence filter (spec 06): any item with data.position is
+  // map-renderable, regardless of `type`. The Point/coordinates check
+  // below is still defensive validation, not the activation criterion.
+  const { data: items } = useItems({ hasField: ["position"] })
 
   const markers: MapMarkerSpec[] = useMemo(() => {
     const list: MapMarkerSpec[] = []
@@ -337,7 +355,9 @@ function MapView() {
 }
 
 function CalendarViewWrapper() {
-  const { data: events } = useItems({ type: "event" })
+  // Calendar activates on data.start (event/v1). Cross-context items
+  // (e.g. an event with a place) appear here too.
+  const { data: events } = useItems({ hasField: ["start"] })
 
   return (
     <CalendarView
@@ -428,7 +448,9 @@ type KanbanPanelState =
 
 function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, onItemClose }: { activeWorkspaceId: string | null; groups: Group[]; selectedItemId?: string; onItemSelect?: (id: string) => void; onItemClose?: () => void }) {
   const connector = useConnector()
-  const { data: tasks } = useItems({ type: "task" })
+  // Kanban activates on data.status (task/v1). After the PR-1a status
+  // migration only tasks carry this field, so no event/place leakage.
+  const { data: tasks } = useItems({ hasField: ["status"] })
   const { data: members } = useMembers(activeWorkspaceId === "__overview__" ? null : (activeWorkspaceId ?? "group-1"))
   const { data: currentUser } = useCurrentUser()
   const { mutate: updateItem } = useUpdateItem()
