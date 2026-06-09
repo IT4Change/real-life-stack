@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../primitives/card"
 import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
 import { Tooltip, TooltipTrigger, TooltipContent } from "../primitives/tooltip"
 import { cn, getTagColor } from "../../lib/utils"
+import { normalizeStatus } from "./reorder"
 import { EyeOff, Eye, ChevronDown, ChevronRight, MessageCircle } from "lucide-react"
 
 export interface KanbanColumn {
@@ -22,24 +23,6 @@ export const defaultColumns: KanbanColumn[] = [
   { id: "in-progress", label: "In Arbeit" },
   { id: "done", label: "Erledigt" },
 ]
-
-/**
- * Map legacy column IDs to the current spec enum.
- *
- * Pre-spec demos used `todo` / `doing` as Kanban column IDs. After the
- * task/v1 enum landed (open | in-progress | done | archived), persisted
- * items with the old IDs would silently fall out of `itemsByColumn`
- * (default columns no longer carry those keys). This helper is the
- * read-time defense: legacy values get folded into the spec ID, and the
- * next `onMoveItem` call writes the new ID back, so items heal on first
- * interaction. Unknown values pass through unchanged — they're handled
- * by the column lookup like any other unmatched status.
- */
-export function normalizeStatus(status: string): string {
-  if (status === "todo") return "open"
-  if (status === "doing") return "in-progress"
-  return status
-}
 
 export interface KanbanBoardProps {
   items: Item[]

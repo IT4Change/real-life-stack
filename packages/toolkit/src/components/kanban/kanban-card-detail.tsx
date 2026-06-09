@@ -1,7 +1,7 @@
 import type { Item, User, Relation } from "@real-life-stack/data-interface"
 import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
 import { cn, getTagColor } from "../../lib/utils"
-import { normalizeStatus } from "./kanban-board"
+import { normalizeStatus } from "./reorder"
 import { Calendar, Tag, User as UserIcon, AlignLeft } from "lucide-react"
 
 function getInitials(name: string): string {
