@@ -72,7 +72,6 @@ import {
   ReactionBar,
   FeedItem,
   FeedComposerTrigger,
-  LeafletMapAdapter,
   type MapMarkerSpec,
   type Workspace,
   type CommentQuote,
@@ -84,6 +83,7 @@ import {
 } from "@real-life-stack/toolkit"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
 import { hasGroups, isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile, hasItemGroups } from "@real-life-stack/data-interface"
+import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers, demoGroupItems } from "@real-life-stack/data-interface/demo-data"
 import { MockConnector } from "@real-life-stack/mock-connector"
 import { LocalConnector } from "@real-life-stack/local-connector"

@@ -18,9 +18,18 @@ export default defineConfig({
   },
   build: {
     lib: {
-      entry: resolve(__dirname, 'src/index.ts'),
+      // Multiple entries: the main barrel + dedicated subpath entries for
+      // adapters with optional peer dependencies (e.g. leaflet). This way
+      // `@real-life-stack/toolkit/leaflet` is the only thing that touches
+      // leaflet — the main entry stays leaflet-free.
+      entry: {
+        index: resolve(__dirname, 'src/index.ts'),
+        leaflet: resolve(__dirname, 'src/leaflet.ts'),
+      },
       formats: ['es'],
-      fileName: 'index',
+      // Force flat `<name>.js` filenames so the paths in package.json's
+      // `exports` map line up regardless of vite's default per-format suffix.
+      fileName: (_format, entryName) => `${entryName}.js`,
     },
     rollupOptions: {
       // Keep these out of the toolkit bundle. `leaflet` is an optional peer

@@ -11,6 +11,11 @@
       "development": "./src/index.ts",
       "import": "./dist/index.js"
     },
+    "./leaflet": {
+      "types": "./dist/leaflet.d.ts",
+      "development": "./src/leaflet.ts",
+      "import": "./dist/leaflet.js"
+    },
     "./styles/globals.css": "./src/styles/globals.css"
   },
   "files": [

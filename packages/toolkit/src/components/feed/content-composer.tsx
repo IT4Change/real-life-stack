@@ -537,15 +537,31 @@ export function ContentComposer({
                           data.address === undefined &&
                           data.position === undefined,
                       }}
-                      onChange={(v) =>
-                        updateMany({
-                          address: v.address || undefined,
-                          meetingLink: v.link || undefined,
-                          position: v.position
-                            ? pointFromLatLng(v.position.lat, v.position.lng)
-                            : undefined,
-                        })
-                      }
+                      onChange={(v) => {
+                        // LocationWidget owns a Vor-Ort/Online toggle on
+                        // `v.isOnline`. The two modes write into different
+                        // spec fields, so the toggle is honoured by branching
+                        // here and clearing the other mode's fields. Without
+                        // this branch the toggle has no visible effect: the
+                        // derived `isOnline` flag we pass into `value` would
+                        // recompute to the previous mode on the next render.
+                        if (v.isOnline) {
+                          updateMany({
+                            address: undefined,
+                            position: undefined,
+                            locationName: undefined,
+                            meetingLink: v.link || undefined,
+                          })
+                        } else {
+                          updateMany({
+                            address: v.address || undefined,
+                            position: v.position
+                              ? pointFromLatLng(v.position.lat, v.position.lng)
+                              : undefined,
+                            meetingLink: undefined,
+                          })
+                        }
+                      }}
                       label={widgetLabel}
                       renderMap={renderLocationMap}
                     />

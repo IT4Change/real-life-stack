@@ -1,14 +1,15 @@
 /**
- * Map module exports.
+ * Map module barrel.
  *
- * Adapter contract:        ./adapter
- * Concrete adapters:       ./adapters/*
+ * This barrel intentionally exports only the **library-agnostic** Map module
+ * surface — the `MapAdapter` contract and supporting types. It does NOT
+ * re-export concrete adapter implementations (Leaflet, MapLibre, …).
  *
- * Consumers that want to use a specific library import the adapter directly,
- * e.g. `import { LeafletMapAdapter } from "@real-life-stack/toolkit"`.
+ * Concrete adapters live behind dedicated subpath entries so that consumers
+ * which never construct a Leaflet map are not forced to install or bundle
+ * `leaflet`:
  *
- * The leaflet adapter requires the consumer to load `leaflet/dist/leaflet.css`
- * (e.g. once at app entry).
+ *   import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
  */
 
 export type {
@@ -22,5 +23,3 @@ export type {
   MapAdapter,
   Unsubscribe,
 } from "./adapter"
-
-export { LeafletMapAdapter } from "./adapters/leaflet"
