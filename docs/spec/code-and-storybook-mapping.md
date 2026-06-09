@@ -20,9 +20,19 @@ Der Toolkit-Code muss die RLS-Taxonomie nicht in jedem Ordnernamen exakt spiegel
 |---|---|---|
 | App Shell | `packages/toolkit/src/components/layout/`, `auth/`, `contacts/`, `debug/` | Navbar, BottomNav, WorkspaceSwitcher, UserMenu, ProfileDialog, ContactsDialog, VerificationDialog, DebugDashboard |
 | Space Modules | `packages/toolkit/src/components/feed/`, `kanban/`, `calendar/`, `map/` | Feed, Kanban / Tasks, Calendar, Map |
-| Module Components | Unterordner innerhalb von Space Modules oder geteilte Toolkit-Komponenten | FeedItem, ContentComposer, ReactionBar, CommentSection, KanbanCard, KanbanToolbar |
+| Module Components | Unterordner innerhalb von Space Modules, geteilte Toolkit-Komponenten (`detail/`) | FeedItem, ContentComposer, ReactionBar, CommentSection, KanbanCard, KanbanToolbar, ItemDetailPanel |
 | Primitives | `packages/toolkit/src/components/primitives/` | Button, Card, Dialog, Input, Tabs |
 | Hooks | `packages/toolkit/src/hooks/` | useItems, useComments, useReactions, useConfirmations |
+| Logik-Helfer | `packages/toolkit/src/lib/` | applyItemListFilter (Display-Filter), parseEventDate / isAllDayDate, computeColumnReorder + normalizeStatus (`components/kanban/reorder.ts`) |
+
+In der Reference-App spiegelt sich die Taxonomie so:
+
+| App-Ebene | Code-Ort |
+|---|---|
+| Komposition (Provider, AuthGate, App Shell) | `apps/reference/src/App.tsx` |
+| Space-Module-Instanzen (eine Datei pro Modul) | `apps/reference/src/views/feed-view.tsx`, `kanban-view.tsx`, `calendar-view.tsx`, `map-view.tsx` |
+| Modul-Dispatch (welches Modul rendert, wie es den Space füllt) | `apps/reference/src/views/module-outlet.tsx` |
+| Space/Module-Routing (URL → aktiver Space + Modul) | `apps/reference/src/hooks/use-workspace-routing.ts` |
 
 Regeln:
 

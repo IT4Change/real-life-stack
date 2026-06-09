@@ -269,4 +269,6 @@ Ausführliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Rege
 - `packages/toolkit/src/hooks/connector-context.tsx` — ConnectorProvider + useConnector
 - `packages/toolkit/docs/UI-REQUIREMENTS.md` — UI/UX Anforderungen
 - `packages/toolkit/src/styles/globals.css` — Theme & CSS-Variablen
-- `apps/reference/src/App.tsx` — Reference App (Showcase)
+- `apps/reference/src/App.tsx` — Reference App: Komposition (Provider, AuthGate, App Shell)
+- `apps/reference/src/views/` — Space-Module-Views (feed, kanban, calendar, map) + `module-outlet.tsx` (Dispatch)
+- `apps/reference/src/hooks/use-workspace-routing.ts` — Space/Module-Auflösung aus URL (localStorage-Fallback, No-Access-Fall)
