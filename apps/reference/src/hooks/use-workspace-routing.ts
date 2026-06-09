@@ -35,7 +35,11 @@ export interface WorkspaceRouting {
   groups: Group[]
   /** Overview pseudo-workspace + one workspace per group. */
   workspaces: Workspace[]
-  /** Resolved from URL → localStorage → first workspace. Null while empty. */
+  /**
+   * Resolved from URL → localStorage → first workspace. Null when the
+   * URL names a space the user has no access to (groups loaded, id
+   * unknown) — the UI shows the no-access notice in that case.
+   */
   activeWorkspace: Workspace | null
   /** Resolved from URL → localStorage → "feed". */
   activeModule: string
@@ -64,7 +68,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   const connector = useConnector()
   const navigate = useNavigate()
   const { spaceId: urlSpaceId, module: urlModule, itemId: urlItemId } = useParams<{ spaceId?: string; module?: string; itemId?: string }>()
-  const { data: groups } = useGroups()
+  const { data: groups, isLoading: groupsLoading } = useGroups()
 
   const basePath = import.meta.env.BASE_URL
   const workspaces: Workspace[] = useMemo(
@@ -85,18 +89,27 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     if (urlSpaceId) {
       const found = workspaces.find((w) => w.id === urlSpaceId)
       if (found) return found
-      // Space ID from URL but not found in list — might still be loading
-      if (workspaces.length === 0) return { id: urlSpaceId, name: "" }
-      // Unknown space ID (e.g. from a different connector) — fall back to first workspace
+      // Space ID from URL but not in the list. While groups are still
+      // loading we can't tell "no access" from "not yet loaded" — assume
+      // the space exists (optimistic placeholder) so valid deep-links
+      // don't flash the no-access notice. Once groups are present and
+      // the id still doesn't resolve, this is a foreign or inaccessible
+      // space: return null so the UI says so instead of silently falling
+      // back to the overview. (useGroups has no real loading signal —
+      // isLoading approximates it as "list is empty", so a user with
+      // zero groups also resolves unknown ids to the placeholder. Good
+      // enough until the DataInterface exposes a loaded state.)
+      if (groupsLoading) return { id: urlSpaceId, name: "" }
+      return null
     }
-    // No space in URL or unknown ID — try localStorage, then first workspace
+    // No space in URL — try localStorage, then first workspace
     const savedId = localStorage.getItem(STORAGE_KEY_GROUP)
     if (savedId) {
       const found = workspaces.find((w) => w.id === savedId)
       if (found) return found
     }
     return workspaces[0] ?? null
-  }, [urlSpaceId, workspaces])
+  }, [urlSpaceId, workspaces, groupsLoading])
 
   // Derive active module from URL params
   const activeModule = urlModule && VALID_MODULES.includes(urlModule) ? urlModule : (localStorage.getItem(STORAGE_KEY_MODULE) ?? "feed")

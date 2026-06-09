@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from "react"
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
 import { Routes, Route, useNavigate } from "react-router-dom"
 import {
   Plus,
@@ -18,11 +18,6 @@ import {
   ModuleTabs,
   BottomNav,
   ConnectorSwitcher,
-  ContentComposer,
-  type ContentComposerSubmitData,
-  type ContentTypeConfig,
-  AdaptivePanel,
-  CalendarView,
   Button,
   GroupDialog,
   ProfileDialog,
@@ -35,36 +30,27 @@ import {
   IncomingEventsProvider,
   useIncomingEvents,
   ConnectorProvider,
-  useItems,
-  useMembers,
   useCreateGroup,
   useUpdateGroup,
   useDeleteGroup,
   useInviteMember,
   useRemoveMember,
   useCurrentUser,
-  useCreateItem,
   useConnector,
   useContacts,
   useVerification,
   useRelayStatus,
-  ItemDetailPanel,
-  ReactionBar,
-  FeedItem,
-  FeedComposerTrigger,
-  type MapMarkerSpec,
   type Workspace,
   type UserData,
   type ConnectorOption,
   type GroupDialogMode,
 } from "@real-life-stack/toolkit"
-import type { Item, DataInterface } from "@real-life-stack/data-interface"
+import type { DataInterface } from "@real-life-stack/data-interface"
 import { isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile } from "@real-life-stack/data-interface"
-import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers, demoGroupItems } from "@real-life-stack/data-interface/demo-data"
 import { MockConnector } from "@real-life-stack/mock-connector"
 import { LocalConnector } from "@real-life-stack/local-connector"
-import { KanbanView } from "./views/kanban-view"
+import { ModuleOutlet } from "./views/module-outlet"
 import { useWorkspaceRouting, STORAGE_KEY_GROUP } from "./hooks/use-workspace-routing"
 
 const CONNECTOR_OPTIONS: ConnectorOption[] = [
@@ -72,264 +58,6 @@ const CONNECTOR_OPTIONS: ConnectorOption[] = [
   { id: "local", name: "Local", description: "IndexedDB, persistent" },
   { id: "wot", name: "Web of Trust", description: "E2E-verschlüsselt, Multi-Device" },
 ]
-
-function FeedView({ groupId }: { groupId: string }) {
-  // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
-  // items by field presence, not the legacy `type` UI hint.
-  // - Posts carry data.content (base/v1)
-  // - Events carry data.start (event/v1)
-  // Cross-context items (e.g. an event-with-place) naturally show up in
-  // multiple modules without any extra handling.
-  const { data: posts } = useItems({ hasField: ["content"] })
-  const { data: events } = useItems({ hasField: ["start"] })
-  const { data: members } = useMembers(groupId)
-  const { mutate: createItem } = useCreateItem()
-  const { data: currentUser } = useCurrentUser()
-
-  // Merge posts + events, dedupe, sort newest first.
-  // Dedupe is load-bearing: with hasField filters, a single item can
-  // satisfy both queries (a post that also carries data.start, an event
-  // with data.content, …) and would otherwise render twice.
-  //
-  // Comment items also carry `data.content` (use-comments writes them
-  // as `type: "comment"` with `data.content`). Without an exclusion
-  // they'd surface in the feed as if they were posts. Use the `type`
-  // UI-hint as a discriminator — spec 06 keeps `type` valid for that
-  // role even when activation runs on field presence. A future
-  // comment/v1 vocab + hasSchema would make this redundant.
-  const feedItems = useMemo(() => {
-    const merged = [...posts, ...events].filter((it) => it.type !== "comment")
-    const unique = Array.from(new Map(merged.map((it) => [it.id, it])).values())
-    return unique.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  }, [posts, events])
-
-  // Resolve author info
-  const memberMap = useMemo(
-    () => new Map(members.map((m) => [m.id, m])),
-    [members]
-  )
-
-  const resolveAuthor = useCallback((createdBy: string) => {
-    const member = memberMap.get(createdBy)
-    if (member) return { name: member.displayName ?? member.id, avatar: member.avatarUrl }
-    if (currentUser && createdBy === currentUser.id) return { name: currentUser.displayName ?? currentUser.id, avatar: currentUser.avatarUrl }
-    return { name: createdBy }
-  }, [memberMap, currentUser])
-
-  // Detail panel state
-  const [detailItem, setDetailItem] = useState<Item | null>(null)
-
-  // Content type configs for the composer
-  const feedContentTypes: ContentTypeConfig[] = useMemo(() => [
-    {
-      id: "post",
-      label: "Post",
-      defaultWidgets: ["text"],
-      submitLabel: "Posten",
-    },
-    {
-      id: "event",
-      label: "Veranstaltung",
-      defaultWidgets: ["title", "text", "date", "location"],
-      submitLabel: "Erstellen",
-    },
-  ], [])
-
-  const handleCreate = useCallback(async (submission: ContentComposerSubmitData) => {
-    // ContentComposer surfaces the free-text field as `text`; spec base/v1
-    // uses `content` for posts and `description` for items that already
-    // carry a structured payload (events here). Without this mapping a
-    // composer-created post lands in `data.text`, which FeedItem doesn't
-    // render and `hasField: ["content"]` doesn't match.
-    //
-    // We also strip empty defaults from the composer state (it initializes
-    // status/group/title/text/media/people/tags to "" or []). Without this
-    // a post would ship with `data.status = ""` and match the Kanban
-    // filter `hasField: ["status"]`, leaking it onto the board.
-    const { text, ...rest } = submission.data
-    const cleaned = Object.fromEntries(
-      Object.entries(rest).filter(([, v]) => {
-        if (v === "" || v === null || v === undefined) return false
-        if (Array.isArray(v) && v.length === 0) return false
-        return true
-      }),
-    )
-    const itemData = submission.contentType === "post"
-      ? { ...cleaned, ...(text ? { content: text } : {}) }
-      : { ...cleaned, ...(text ? { description: text } : {}) }
-    await createItem({
-      type: submission.contentType,
-      createdBy: currentUser?.id ?? "anonymous",
-      data: itemData,
-    })
-  }, [createItem, currentUser?.id])
-
-  return (
-    <div className="space-y-4">
-      {/* Composer trigger — morphs into fullscreen modal */}
-      <FeedComposerTrigger
-        placeholder="Was gibt's Neues?"
-        userName={currentUser?.displayName}
-        userAvatar={currentUser?.avatarUrl}
-      >
-        {({ onClose, initialText }) => (
-          <div className="flex flex-col h-full">
-            <ContentComposer
-              className="p-4 sm:p-6 flex-1"
-              contentTypes={feedContentTypes}
-              initialData={initialText ? { text: initialText } : undefined}
-              onSubmit={(data) => { handleCreate(data); onClose() }}
-              onCancel={onClose}
-              showPreview={false}
-            />
-          </div>
-        )}
-      </FeedComposerTrigger>
-
-      {/* Feed items */}
-      <div className="space-y-4">
-        {feedItems.map((item) => (
-          <FeedItem
-            key={item.id}
-            item={item}
-            author={resolveAuthor(item.createdBy)}
-            onClick={() => setDetailItem(item)}
-            reactionSlot={item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined}
-            commentCount={(item.data as Record<string, unknown>).commentCount as number | undefined}
-            onCommentClick={() => setDetailItem(item)}
-          />
-        ))}
-      </div>
-
-      {/* Detail panel */}
-      <AdaptivePanel
-        open={detailItem !== null}
-        onClose={() => setDetailItem(null)}
-        allowedModes={["sidebar", "drawer"]}
-        sidebarWidth="420px"
-      >
-        {detailItem && (
-          <ItemDetailPanel
-            itemId={detailItem.id}
-            renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-          >
-            <div className="p-4">
-              <FeedItem
-                item={detailItem}
-                author={resolveAuthor(detailItem.createdBy)}
-                reactionSlot={detailItem.type !== "task" ? <ReactionBar itemId={detailItem.id} /> : undefined}
-              />
-            </div>
-          </ItemDetailPanel>
-        )}
-      </AdaptivePanel>
-    </div>
-  )
-}
-
-/**
- * Map module — first real version using the LeafletMapAdapter from toolkit.
- *
- * Shows every item in the current space that has `data.position` (GeoJSON
- * Point). This is the cross-module case: a workshop with `type=event` and a
- * `position` appears on both the calendar and the map.
- */
-function MapView() {
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  // Adapter lives in state so the markers-effect re-runs once `mount()` has
-  // actually resolved. With lazy-loaded leaflet, `mount()` is genuinely async,
-  // and the StrictMode double-mount race is too tight for refs alone.
-  const [adapter, setAdapter] = useState<LeafletMapAdapter | null>(null)
-  // Field-presence filter (spec 06): any item with data.position is
-  // map-renderable, regardless of `type`. The Point/coordinates check
-  // below is still defensive validation, not the activation criterion.
-  const { data: items } = useItems({ hasField: ["position"] })
-
-  const markers: MapMarkerSpec[] = useMemo(() => {
-    const list: MapMarkerSpec[] = []
-    for (const item of items) {
-      const pos = item.data.position as { type?: string; coordinates?: number[] } | undefined
-      if (!pos || pos.type !== "Point" || !Array.isArray(pos.coordinates) || pos.coordinates.length < 2) continue
-      const [lng, lat] = pos.coordinates
-      if (typeof lng !== "number" || typeof lat !== "number") continue
-      list.push({
-        id: item.id,
-        position: [lng, lat],
-        label: typeof item.data.title === "string" ? item.data.title : item.id,
-      })
-    }
-    return list
-  }, [items])
-
-  // Mount the adapter once. Lazy-loaded leaflet means mount() is properly
-  // async, which exposes a classic StrictMode race: both effect passes start
-  // their own mount() in parallel and would race for the same DOM container,
-  // ending in Leaflet's "Map container is already initialized" error.
-  //
-  // Robust fix: each effect run gets its own fresh inner div as Leaflet's
-  // container, appended to the stable outer ref. On cleanup we tear down the
-  // adapter and remove the inner div, so the second pass gets a pristine
-  // container that no previous mount can have claimed.
-  useEffect(() => {
-    if (!containerRef.current) return
-    const inner = document.createElement("div")
-    inner.style.height = "100%"
-    inner.style.width = "100%"
-    containerRef.current.appendChild(inner)
-
-    let cancelled = false
-    let mounted = false
-    const ad = new LeafletMapAdapter()
-    ad.mount(inner, {
-      center: [13.4, 52.5], // Berlin-ish default; replace with space config later
-      zoom: 6,
-    }).then(
-      () => {
-        if (cancelled) {
-          ad.unmount().catch(() => {})
-        } else {
-          mounted = true
-          setAdapter(ad)
-        }
-      },
-      (err) => {
-        // eslint-disable-next-line no-console
-        console.error("LeafletMapAdapter mount failed", err)
-      },
-    )
-    return () => {
-      cancelled = true
-      if (mounted) {
-        ad.unmount().catch(() => {})
-        setAdapter((current) => (current === ad ? null : current))
-      }
-      inner.remove()
-    }
-  }, [])
-
-  // Push markers to the adapter once it is mounted, and on every change.
-  useEffect(() => {
-    adapter?.setMarkers(markers)
-  }, [adapter, markers])
-
-  // `isolate` creates a new stacking context so Leaflet's internal z-indices
-  // (zoom controls up to 1000, popup panes 700, marker panes 600) stay contained
-  // and don't overlay the navbar / workspace switcher / user menu above.
-  return <div ref={containerRef} className="h-full w-full isolate" />
-}
-
-function CalendarViewWrapper() {
-  // Calendar activates on data.start (event/v1). Cross-context items
-  // (e.g. an event with a place) appear here too.
-  const { data: events } = useItems({ hasField: ["start"] })
-
-  return (
-    <CalendarView
-      events={events}
-      onEventClick={(event) => console.log("Event clicked:", event.id)}
-    />
-  )
-}
 
 const DebugDashboard = lazy(() =>
   import("@real-life-stack/toolkit").then((m) => ({ default: m.DebugDashboard }))
@@ -483,7 +211,9 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <AppShell>
       <Navbar>
         <NavbarStart>
-          {activeWorkspace ? (
+          {workspaces.length > 0 ? (
+            // Switcher stays available even when activeWorkspace is null
+            // (no-access URL) so the user can navigate to their spaces.
             <WorkspaceSwitcher
               workspaces={workspaces}
               activeWorkspace={activeWorkspace}
@@ -542,22 +272,13 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
       </Suspense>
 
       <AppShellMain withBottomNav>
-        {urlSpaceId && !activeWorkspace && workspaces.length > 0 ? (
-          <div className="container mx-auto px-4 pt-12 max-w-md text-center">
-            <p className="text-lg font-medium text-foreground">Du bist kein Mitglied dieses Spaces</p>
-            <p className="text-sm text-muted-foreground mt-2">Der Space existiert nicht oder du hast keinen Zugang.</p>
-            <Button variant="outline" className="mt-4" onClick={() => navigate("/")}>Zurück zur Übersicht</Button>
-          </div>
-        ) : activeModule === "map" ? (
-          // Map fills the entire Space — no container, no padding, no width cap
-          <MapView />
-        ) : (
-          <div className={`container mx-auto px-4 pt-6 ${activeModule === "kanban" ? "max-w-5xl" : "max-w-3xl"}`}>
-            {activeModule === "feed" && <FeedView groupId={activeWorkspace?.id ?? ""} />}
-            {activeModule === "kanban" && <KanbanView activeWorkspaceId={activeWorkspace?.id ?? null} groups={groups} selectedItemId={urlItemId} onItemSelect={(id) => navigate(`/spaces/${activeWorkspace?.id}/${activeModule}/item/${id}`)} onItemClose={() => navigate(`/spaces/${activeWorkspace?.id}/${activeModule}`)} />}
-            {activeModule === "calendar" && <CalendarViewWrapper />}
-          </div>
-        )}
+        <ModuleOutlet
+          activeWorkspace={activeWorkspace}
+          activeModule={activeModule}
+          groups={groups}
+          urlSpaceId={urlSpaceId}
+          urlItemId={urlItemId}
+        />
       </AppShellMain>
 
       <BottomNav
