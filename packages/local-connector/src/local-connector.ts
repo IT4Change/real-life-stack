@@ -480,6 +480,11 @@ export class LocalConnector implements FullConnector {
     if (msg.type === "items-changed" || msg.type === "full-sync") {
       this.items = stored.items.map(i => ({ ...i }))
       this.nextItemId = stored.nextItemId
+      // groupItems holds the group-membership for each item. Without
+      // reloading it here, getScopedItems() filters the freshly arrived
+      // item out of the active group (its id isn't in the stale local
+      // groupItems[groupId]), so observers see "no change" until reload.
+      this.groupItems = stored.groupItems ?? {}
       this.notifyObservers()
     }
 
