@@ -125,10 +125,16 @@ function FeedView({ groupId }: { groupId: string }) {
   // Dedupe is load-bearing: with hasField filters, a single item can
   // satisfy both queries (a post that also carries data.start, an event
   // with data.content, …) and would otherwise render twice.
+  //
+  // Comment items also carry `data.content` (use-comments writes them
+  // as `type: "comment"` with `data.content`). Without an exclusion
+  // they'd surface in the feed as if they were posts. Use the `type`
+  // UI-hint as a discriminator — spec 06 keeps `type` valid for that
+  // role even when activation runs on field presence. A future
+  // comment/v1 vocab + hasSchema would make this redundant.
   const feedItems = useMemo(() => {
-    const unique = Array.from(
-      new Map([...posts, ...events].map((it) => [it.id, it])).values()
-    )
+    const merged = [...posts, ...events].filter((it) => it.type !== "comment")
+    const unique = Array.from(new Map(merged.map((it) => [it.id, it])).values())
     return unique.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   }, [posts, events])
 
@@ -173,10 +179,22 @@ function FeedView({ groupId }: { groupId: string }) {
     // carry a structured payload (events here). Without this mapping a
     // composer-created post lands in `data.text`, which FeedItem doesn't
     // render and `hasField: ["content"]` doesn't match.
+    //
+    // We also strip empty defaults from the composer state (it initializes
+    // status/group/title/text/media/people/tags to "" or []). Without this
+    // a post would ship with `data.status = ""` and match the Kanban
+    // filter `hasField: ["status"]`, leaking it onto the board.
     const { text, ...rest } = submission.data
+    const cleaned = Object.fromEntries(
+      Object.entries(rest).filter(([, v]) => {
+        if (v === "" || v === null || v === undefined) return false
+        if (Array.isArray(v) && v.length === 0) return false
+        return true
+      }),
+    )
     const itemData = submission.contentType === "post"
-      ? { ...rest, content: text }
-      : { ...rest, description: text }
+      ? { ...cleaned, ...(text ? { content: text } : {}) }
+      : { ...cleaned, ...(text ? { description: text } : {}) }
     await createItem({
       type: submission.contentType,
       createdBy: currentUser?.id ?? "anonymous",
