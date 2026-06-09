@@ -5,6 +5,7 @@ import type { Item } from "@real-life-stack/data-interface"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/primitives/avatar"
 import { RelativeTime } from "@/components/primitives/relative-time"
 import { cn } from "@/lib/utils"
+import { isAllDayDate, parseEventDate } from "@/lib/date-utils"
 
 export interface FeedItemProps {
   /** The item to display. */
@@ -157,20 +158,34 @@ export function FeedItem({
 }
 
 function formatEventDate(start: string, end?: string): string {
-  const s = new Date(start)
+  // All-day events (bare YYYY-MM-DD) render date-only — no clock time.
+  // Anything with a time component renders date + time.
+  const startAllDay = isAllDayDate(start)
+  const s = parseEventDate(start)
   const dateStr = s.toLocaleDateString("de-DE", { day: "numeric", month: "short" })
-  const timeStr = s.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+  const timeStr = startAllDay
+    ? null
+    : s.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
 
-  if (!end) return `${dateStr}, ${timeStr}`
+  if (!end) return timeStr ? `${dateStr}, ${timeStr}` : dateStr
 
-  const e = new Date(end)
-  const endTimeStr = e.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+  const endAllDay = isAllDayDate(end)
+  const e = parseEventDate(end)
+  const endTimeStr = endAllDay
+    ? null
+    : e.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
 
-  // Same day
+  // Same day. Four cases — handle the mixed ones explicitly so a null
+  // side doesn't get interpolated into the string.
   if (s.toDateString() === e.toDateString()) {
-    return `${dateStr}, ${timeStr} – ${endTimeStr}`
+    if (!timeStr && !endTimeStr) return dateStr
+    if (timeStr && endTimeStr) return `${dateStr}, ${timeStr} – ${endTimeStr}`
+    if (timeStr) return `${dateStr}, ${timeStr}`
+    return `${dateStr}, bis ${endTimeStr}`
   }
 
   const endDateStr = e.toLocaleDateString("de-DE", { day: "numeric", month: "short" })
-  return `${dateStr}, ${timeStr} – ${endDateStr}, ${endTimeStr}`
+  const startPart = timeStr ? `${dateStr}, ${timeStr}` : dateStr
+  const endPart = endTimeStr ? `${endDateStr}, ${endTimeStr}` : endDateStr
+  return `${startPart} – ${endPart}`
 }
