@@ -43,6 +43,7 @@ Die Kern-Dokumente bauen in dieser Reihenfolge aufeinander auf:
 | [05-confirmations-and-trust.md](05-confirmations-and-trust.md) | Normativer Entwurf | Claims, Confirmations, Attestations und Trust-Level |
 | [06-schema-composition.md](06-schema-composition.md) | Normativer Entwurf | Schema-Komposition über `@context`, Standardvokabulare, `type`-Hint |
 | [07-tags.md](07-tags.md) | Normativer Entwurf | Tags als Kategorisierungs-Achse: einfache Strings + strukturierte URN-Tags |
+| [glossary.md](glossary.md) | Lebendes Dokument | Kurzdefinitionen der Spec-Begrifflichkeit mit Verweisen auf die normative Quelle |
 
 ## Formale Schemas
 
@@ -115,7 +116,7 @@ Schritte auf dem Weg zur vollständig spec-getriebenen Entwicklung. Stufe 1 ist 
 ### Stufe 2 — Maschinen-prüfbar
 
 - ✅ **CI-Schema-Validierung** (umgesetzt): AJV validiert alle `docs/spec/schemas/vocab/*/examples/valid/*.json` gegen ihr Schema und prüft, dass jedes Item in `packages/data-interface/data/items.json` gegen `base/v1` + die in seinem `@context` aktiven Vocabs validiert. Bricht den Build, wenn Daten die Spec verletzen. Tests in `packages/data-interface/tests/schema-validation.test.ts`, Workflow `.github/workflows/spec-validation.yml`.
-- **Glossar** (`docs/spec/glossary.md`, geplant): jede Spec-Begrifflichkeit (Item, Group, Space, Vocab, Schema, Tag, Capability, Connector, Module, Composer, Widget, …) einmalig definiert. Querverweise von den Specs in den Glossar.
+- ✅ **Glossar** ([glossary.md](glossary.md), umgesetzt): Kurzdefinitionen der zentralen Spec-Begriffe (Item, `@context`, Vocabulary, Schema, Tag, Group, Space, Capability, Connector, Composer, Widget, …) mit Verweisen auf die normative Spec-Stelle. `type` bleibt als offener Eintrag markiert, solange die Template-Diskussion läuft (siehe PR #37).
 
 ### Stufe 3 — Generiert und extern (langfristig)
 
