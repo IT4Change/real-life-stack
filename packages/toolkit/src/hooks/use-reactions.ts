@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react"
 import type { Item } from "@real-life-stack/data-interface"
-import { isWritable, hasRelations, isAuthenticatable } from "@real-life-stack/data-interface"
+import { isWritable, hasRelations, isAuthenticatable, deriveContext } from "@real-life-stack/data-interface"
 import type { ReactionSummary } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 
@@ -120,10 +120,12 @@ export function useReactions(itemId: string): UseReactionsResult {
       }
 
       if (!isSameEmoji) {
+        const data = { emoji }
         await writableConnector.createItem({
           type: "reaction",
           createdBy: currentUserId ?? "anonymous",
-          data: { emoji },
+          "@context": deriveContext("reaction", data),
+          data,
           relations: [{ predicate: "reactsTo", target: `item:${itemId}` }],
         })
       }

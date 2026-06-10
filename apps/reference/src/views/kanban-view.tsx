@@ -33,7 +33,7 @@ import {
   type ItemListFilter,
 } from "@real-life-stack/toolkit"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
-import { hasItemGroups } from "@real-life-stack/data-interface"
+import { hasItemGroups, deriveContext } from "@real-life-stack/data-interface"
 
 function TaskEditPanel({ item, taskContentType, onSubmit, onDelete, connector, activeWorkspaceId, members, availableTags }: {
   item: Item
@@ -205,10 +205,12 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   }, [])
 
   const handleTaskCreate = useCallback(async () => {
+    const taskData = { title: "", description: "", status: "open", order: tasks.length, tags: [] }
     const newItem = await createItem({
       type: "task",
       createdBy: currentUser?.id ?? "user-1",
-      data: { title: "", description: "", status: "open", order: tasks.length, tags: [] },
+      "@context": deriveContext("task", taskData),
+      data: taskData,
     })
     if (newItem) {
       setPanelState({ mode: "edit", item: newItem })
@@ -226,9 +228,11 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
     const { data } = submitData
     const relations: Relation[] = (data.people ?? [])
       .map((id) => ({ predicate: "assignedTo", target: `global:${id}` }))
+    const nextData = { ...item.data, title: data.title, description: data.text, status: data.status, tags: data.tags }
     try {
       await updateItem(item.id, {
-        data: { ...item.data, title: data.title, description: data.text, status: data.status, tags: data.tags },
+        "@context": deriveContext(item.type, nextData),
+        data: nextData,
         relations,
       })
     } catch (err) {

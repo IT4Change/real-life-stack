@@ -9,6 +9,7 @@ export function serializeItem(item: Item): SerializedItem {
     createdBy: item.createdBy,
     data: { ...item.data },
   }
+  if (item["@context"]?.length) serialized["@context"] = item["@context"]
   if (item.schema) serialized.schema = item.schema
   if (item.schemaVersion != null) serialized.schemaVersion = item.schemaVersion
   if (item.relations?.length) serialized.relations = item.relations
@@ -23,6 +24,7 @@ export function deserializeItem(serialized: SerializedItem): Item {
     createdBy: serialized.createdBy,
     data: { ...serialized.data },
   }
+  if (serialized["@context"]?.length) item["@context"] = serialized["@context"]
   if (serialized.schema) item.schema = serialized.schema
   if (serialized.schemaVersion != null) item.schemaVersion = serialized.schemaVersion
   if (serialized.relations?.length) item.relations = serialized.relations
