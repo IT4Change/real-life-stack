@@ -57,8 +57,8 @@ export interface TaskData extends Commentable {
   description?: string
   /** Kanban column key. Defaults follow task/v1 spec enum (open | in-progress | done | archived); apps pick the actual column set via the KanbanBoard `columns` prop. */
   status: string
-  /** Sort order within a kanban column. Lower values appear higher. */
-  position?: number
+  /** Sort order within a kanban column (task/v1 `order`). Lower values appear higher. Not `position` — that's place/v1's GeoJSON geometry. */
+  order?: number
   /** Free-text tags for filtering and categorization. */
   tags?: string[]
 }
