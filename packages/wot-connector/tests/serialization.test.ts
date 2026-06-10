@@ -67,6 +67,43 @@ describe("serializeItem", () => {
     expect(serialized.schema).toBeUndefined()
     expect(serialized.schemaVersion).toBeUndefined()
     expect(serialized.relations).toBeUndefined()
+    expect(serialized["@context"]).toBeUndefined()
+  })
+
+  it("preserves @context when present (spec 06)", () => {
+    const item: Item = {
+      id: "item-1",
+      type: "event",
+      createdAt: new Date().toISOString(),
+      createdBy: "user-1",
+      "@context": [
+        "https://real-life-stack.org/vocab/base/v1",
+        "https://real-life-stack.org/vocab/event/v1",
+        "https://real-life-stack.org/vocab/place/v1",
+      ],
+      data: { start: "2026-04-01T10:00:00Z" },
+    }
+
+    const serialized = serializeItem(item)
+    const round = deserializeItem(serialized)
+
+    expect(serialized["@context"]).toEqual(item["@context"])
+    expect(round["@context"]).toEqual(item["@context"])
+  })
+
+  it("omits @context when empty array", () => {
+    const item: Item = {
+      id: "item-1",
+      type: "task",
+      createdAt: new Date().toISOString(),
+      createdBy: "user-1",
+      "@context": [],
+      data: {},
+    }
+
+    const serialized = serializeItem(item)
+
+    expect(serialized["@context"]).toBeUndefined()
   })
 
   it("includes relations when present", () => {

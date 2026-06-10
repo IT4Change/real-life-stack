@@ -29,6 +29,7 @@ export interface SerializedItem {
   type: string
   createdAt: string // ISO string (Automerge can't store Date)
   createdBy: string // DID
+  "@context"?: string[]
   schema?: string
   schemaVersion?: number
   data: Record<string, unknown>
