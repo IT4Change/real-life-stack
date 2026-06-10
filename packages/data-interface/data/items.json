@@ -322,8 +322,8 @@
     "data": {
       "title": "RLS Weekly",
       "description": "Wöchentliches Standup — Stand der Module, offene Fragen, nächste Schritte",
-      "start": "2026-03-10T10:00",
-      "end": "2026-03-10T11:00",
+      "start": "2026-03-10T10:00:00Z",
+      "end": "2026-03-10T11:00:00Z",
       "tags": [
         "meeting",
         "weekly"
@@ -342,8 +342,8 @@
     "data": {
       "title": "Storybook Review",
       "description": "Gemeinsam die neuen Toolkit-Komponenten in Storybook durchgehen",
-      "start": "2026-03-14T14:00",
-      "end": "2026-03-14T15:30",
+      "start": "2026-03-14T14:00:00Z",
+      "end": "2026-03-14T15:30:00Z",
       "tags": [
         "review",
         "ui"
@@ -363,8 +363,8 @@
     "data": {
       "title": "Money Printer Launch",
       "description": "Offizielle Vorstellung der Zeitgutscheine — erste Scheine an Multiplikatoren",
-      "start": "2026-03-29T18:00",
-      "end": "2026-03-29T21:00",
+      "start": "2026-03-29T18:00:00Z",
+      "end": "2026-03-29T21:00:00Z",
       "address": "Bad Salzschlirf",
       "tags": [
         "launch",
@@ -392,8 +392,8 @@
     "data": {
       "title": "Pflanzaktion",
       "description": "Gemeinsam Frühjahrspflanzen setzen — bitte Handschuhe mitbringen",
-      "start": "2026-03-22T10:00",
-      "end": "2026-03-22T14:00",
+      "start": "2026-03-22T10:00:00Z",
+      "end": "2026-03-22T14:00:00Z",
       "address": "Gemeinschaftsgarten Sonnenhügel, Am Sonnenhügel 5",
       "tags": [
         "garten",
@@ -420,8 +420,8 @@
     "data": {
       "title": "WoT Demo Session",
       "description": "Live-Demo: Identität erstellen, Attestierung austauschen, Relay-Verbindung",
-      "start": "2026-03-18T16:00",
-      "end": "2026-03-18T17:30",
+      "start": "2026-03-18T16:00:00Z",
+      "end": "2026-03-18T17:30:00Z",
       "tags": [
         "demo",
         "wot"
@@ -685,8 +685,8 @@
     "data": {
       "title": "Permakultur-Workshop in der Markthalle",
       "description": "Hochbeete bauen, Saison-Planung, gemeinsamer Imbiss",
-      "start": "2026-07-15T18:00",
-      "end": "2026-07-15T20:00",
+      "start": "2026-07-15T18:00:00Z",
+      "end": "2026-07-15T20:00:00Z",
       "position": {
         "type": "Point",
         "coordinates": [
@@ -715,8 +715,8 @@
     "data": {
       "title": "Wochenmarkt im Sonnenhügel-Garten",
       "description": "Verkauf von Saatgut, Setzlingen und Eingewecktem",
-      "start": "2026-06-20T09:00",
-      "end": "2026-06-20T13:00",
+      "start": "2026-06-20T09:00:00Z",
+      "end": "2026-06-20T13:00:00Z",
       "position": {
         "type": "Point",
         "coordinates": [
@@ -745,8 +745,8 @@
     "data": {
       "title": "Repair-Café im Stadtteilzentrum",
       "description": "Bringt eure kaputten Geräte! Werkzeug und Expertise vor Ort",
-      "start": "2026-07-04T14:00",
-      "end": "2026-07-04T18:00",
+      "start": "2026-07-04T14:00:00Z",
+      "end": "2026-07-04T18:00:00Z",
       "position": {
         "type": "Point",
         "coordinates": [
