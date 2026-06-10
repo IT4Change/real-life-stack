@@ -17,7 +17,7 @@ Die frühere Datenmodellierung (insbesondere in Utopia-Map) hat **Layer** in ein
 RLS trennt diese Aspekte:
 
 - **Struktur** ergibt sich aus den **`@context`-Schemas**, die ein Item komponiert (mehrere parallel möglich) — Gegenstand dieser Spec.
-- **Vorlage und Benennung** trägt **`type`** — genau einer pro Item, siehe „Die Rolle von `type`".
+- **Erstellung und Darstellung** definieren **Templates** — genau eines pro Item, referenziert über `type`, siehe „Templates".
 - **Kategorisierung** läuft über **Tags**, inklusive Farbe und Icon — siehe [07-tags.md](07-tags.md).
 - **Sichtbarkeit** in Modulen folgt aus den Feldern — siehe „Verhältnis zwischen Schema- und Feldfiltern".
 - **Thematische Klammer** ist der **Space** selbst — verschiedene Communities haben verschiedene Spaces mit eigenen Schwerpunkten.
@@ -32,7 +32,7 @@ Ein RLS-Item trägt eine `@context`-Liste, die festlegt, welche Vokabulare seine
 interface Item {
   id: string
   '@context': string[]            // ordered list of vocabulary URLs
-  type?: string | string[]         // Vorlage/Benennung, siehe „Die Rolle von `type`"
+  type?: string | string[]         // Template-Referenz, siehe „Templates"
   createdAt: string
   createdBy: string
   data: Record<string, unknown>
@@ -47,7 +47,7 @@ Regeln:
 2. Weitere Einträge erweitern das Vokabular und damit die in `data` zulässigen Felder.
 3. **Property-Namen MÜSSEN über alle Vokabularien eindeutig sein.** JSON-LD's last-wins-Verhalten gilt nur für reine Property-Identifier-Auflösung; die JSON-Schema-Validierung läuft über `allOf` (Schnittmenge) und kennt keine Überschreibung. Vocabulary-Autoren vermeiden Kollisionen aktiv: gleiche Semantik → gleicher Name (Konvention), unterschiedliche Semantik → unterschiedlicher Name. Validator-Verhalten bei einer Kollision ist undefined und gilt als Vokabular-Bug.
 4. Semantisch gleiche Properties aus verschiedenen Vokabularen tragen denselben Namen (z.B. `start` für Beginn-Zeitpunkt, egal ob Event oder Task).
-5. `type` ist ein optionaler UI-Hint, **kein struktureller Filter**. Modul-Aktivierung und Filterung laufen über Feld-Präsenz oder (zukünftig) `hasSchema`. Welche UI-Aufgaben `type` trägt, definiert „Die Rolle von `type`" unten.
+5. `type` referenziert das Template eines Items (siehe „Templates" unten) und ist **kein struktureller Filter**. Modul-Aktivierung und Filterung laufen über Feld-Präsenz oder (zukünftig) `hasSchema`.
 
 ### Beispiel: Workshop in der Markthalle
 
@@ -81,17 +81,21 @@ Wenn zwei `@context`-Schemas dieselbe Semantik treffen (z.B. `start` für Beginn
 
 Wenn semantisch unterschiedliche Konzepte denselben Property-Namen tragen würden, ist das ein **Schema-Design-Fehler**, der durch Aliasing im Vocabulary-Context behoben wird (z.B. `event:start` vs. `subscription:start`).
 
-## Die Rolle von `type`
+## Templates
 
-`type` benennt, als was ein Item erstellt wurde („post", „event", „task"). Es beantwortet die eine Frage, die Komposition offen lässt — was ist dieses Ding? — für Vorlagen, Template-Wahl und Benennung. Bei mehreren Werten zählt der erste.
+Ein **Template** definiert, wie ein Item erstellt und dargestellt wird: Name, Icon, das Start-Widget-Set im Composer und die kontextuelle Beschriftung der Felder — dasselbe `people`-Feld heißt im Event-Template „Teilnehmer einladen", im Task-Template „Zugewiesen". Das Feld `type` ist die **Template-Referenz** des Items; bei mehreren Werten zählt der erste.
+
+Templates und Schemas sind orthogonal: Schemas beschreiben, **welche Felder** ein Item hat — Templates, **als was** es erstellt und gezeigt wird. Zwei Templates können dieselbe Struktur nutzen („Projekt" und „Anzeige" unterscheiden sich nur in Darstellung und Ansprache), und ein Item kann Felder tragen, die sein Template nicht vorsah (etwa ein zugeschalteter Ort am Event).
 
 Regeln:
 
-1. `type` wird beim Erstellen aus der gewählten Vorlage gesetzt und ändert sich nicht von selbst. Eine Typ-Änderung (z.B. Aufgabe → Quest) ist eine eigene, bewusste User-Aktion; die UI darf dabei fehlende Felder der neuen Vorlage nachfordern.
-2. UI darf auf `type` bauen: Composer-Vorlage (Start-Widget-Set; weitere Felder bleiben zuschaltbar), Wahl des Karten-Templates in Feed und Suche, Benennung in Systemtexten.
-3. Modul-Aktivierung, Filterung und Validierung laufen nie über `type` (Regel 5 oben). Calendar, Map und Kanban rendern alle Items einheitlich und brauchen keine Template-Wahl.
-4. Beim Bearbeiten folgt `@context` den tatsächlichen Feldern, `type` bleibt. Beispiel: Ein Event, dessen `start` entfernt wird, verliert `event/v1`, behält `type: "event"`, verschwindet aus dem Calendar und bleibt — sofern `position` vorhanden — auf der Map. Das Feed-Template zeigt es als Event ohne Termin.
-5. Feldänderungen, die Modul-Sichtbarkeit ändern, zeigt die UI im Moment der Änderung an („erscheint nicht mehr im Calendar"). Beim Entfernen eines Pflichtfelds der eigenen Vorlage bietet sie zusätzlich die Typ-Änderung an.
+1. Die Template-Referenz wird beim Erstellen gesetzt und ändert sich nicht von selbst. Ein Template-Wechsel (z.B. Aufgabe → Quest) ist eine eigene, bewusste User-Aktion; die UI darf dabei fehlende Pflichtfelder des neuen Templates nachfordern.
+2. Auf das Template bauen: der Composer (Start-Widget-Set; weitere Felder bleiben zuschaltbar), die Item-Darstellung in Feed und Suche, Icon und Benennung in Systemtexten.
+3. Modul-Aktivierung, Filterung und Validierung laufen nie über das Template (Regel 5 oben). Calendar, Map und Kanban rendern alle Items einheitlich und brauchen keine Template-Wahl.
+4. Beim Bearbeiten folgt `@context` den tatsächlichen Feldern, die Template-Referenz bleibt. Ein Event, dessen `start` entfernt wird, verliert `event/v1`, behält `type: "event"`, verschwindet aus dem Calendar und bleibt — sofern `position` vorhanden — auf der Map; das Event-Template zeigt es als Veranstaltung ohne Termin.
+5. Feldänderungen, die Modul-Sichtbarkeit ändern, zeigt die UI im Moment der Änderung an („erscheint nicht mehr im Calendar"). Beim Entfernen eines Pflichtfelds des eigenen Templates bietet sie den Template-Wechsel als Alternative an.
+
+Templates sind heute im App-Code definiert (`ContentTypeConfig` im Toolkit: `id`, `label`, `icon`, `defaultWidgets`, `widgetLabels`, …). Die Definition ist serialisierbar gehalten; space-konfigurierbare Templates — als Items, analog zu Tag-Items in [07-tags.md](07-tags.md) — sind ein möglicher späterer Schritt außerhalb dieser Spec-Version.
 
 ## Vocabulary-Registry
 
@@ -220,7 +224,7 @@ Bestehende Layer-basierte Daten werden so überführt:
 1. **Layer-Strukturteil** → entsprechendes Schema im `@context` + `type` (Event-Layer → `event/v1`, `type: "event"`).
 2. **Layer-Themenanteil** → Tag. Aus „Layer: Permakultur-Orte" wird ein Tag (`"permaculture"` oder `urn:rls:tag:permaculture`) + `place/v1`-Schema; Marker-Farbe und Icon des Layers werden Tag-Display. Siehe [07-tags.md](07-tags.md).
 3. **Item-Inhalt** → wird gegen die Schemas validiert; Felder, die in keinem aktiven Schema definiert sind, landen in `data` aber sind nicht offiziell spezifiziert.
-4. **Layer-Profile** → Composer-Vorlagen über `type`; die Feldstruktur definieren die Schemas.
+4. **Layer-Profile** → Templates (referenziert über `type`); die Feldstruktur definieren die Schemas.
 
 Ein Migrations-ETL-Script erzeugt aus Directus-Items neue RLS-Items mit korrektem `@context`, `type` und Tags und schreibt sie in den Ziel-Space.
 
