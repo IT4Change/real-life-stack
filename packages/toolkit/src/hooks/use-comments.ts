@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, startTransition } from "react"
 import type { Item, RelatedItemsOptions } from "@real-life-stack/data-interface"
-import { isWritable, hasRelations, isAuthenticatable } from "@real-life-stack/data-interface"
+import { isWritable, hasRelations, isAuthenticatable, deriveContext } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 
 /** A comment with resolved author info, for UI rendering. */
@@ -149,6 +149,7 @@ export function useComments(itemId: string): UseCommentsResult {
     await connector.createItem({
       type: "comment",
       createdBy: currentUserId,
+      "@context": deriveContext("comment", data),
       data,
       relations: [{ predicate: "commentOn", target: `item:${itemId}` }],
     })

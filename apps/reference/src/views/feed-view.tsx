@@ -14,6 +14,7 @@ import {
   useCreateItem,
 } from "@real-life-stack/toolkit"
 import type { Item } from "@real-life-stack/data-interface"
+import { deriveContext } from "@real-life-stack/data-interface"
 
 export function FeedView({ groupId }: { groupId: string }) {
   // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
@@ -102,6 +103,7 @@ export function FeedView({ groupId }: { groupId: string }) {
     await createItem({
       type: submission.contentType,
       createdBy: currentUser?.id ?? "anonymous",
+      "@context": deriveContext(submission.contentType, itemData),
       data: itemData,
     })
   }, [createItem, currentUser?.id])

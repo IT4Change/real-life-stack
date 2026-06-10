@@ -4,6 +4,7 @@
 import { BaseConnector } from "./base-connector.js"
 export { BaseConnector, createObservable, shallowEqual, matchesFilter, findRelatedItems, applyPagination, type ReactiveObservable } from "./base-connector.js"
 export * from "./item-types.js"
+export * from "./vocab.js"
 
 // --- Core Types ---
 
@@ -12,6 +13,15 @@ export interface Item {
   type: string
   createdAt: string
   createdBy: string
+
+  /**
+   * Active vocabularies for this item, as URL identifiers. The first entry is
+   * always `base/v1`; additional entries opt the item into vocab-specific
+   * schemas (event/v1, place/v1, task/v1, person/v1, ...).
+   *
+   * Conformance: see docs/spec/06-schema-composition.md.
+   */
+  "@context"?: string[]
 
   schema?: string
   schemaVersion?: number
