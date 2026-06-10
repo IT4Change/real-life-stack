@@ -83,7 +83,7 @@ Wenn semantisch unterschiedliche Konzepte denselben Property-Namen tragen würde
 
 ## Templates
 
-Ein **Template** definiert, wie ein Item erstellt und dargestellt wird: Name, Icon, das Start-Widget-Set im Composer und die kontextuelle Beschriftung der Felder — dasselbe `people`-Feld heißt im Event-Template „Teilnehmer einladen", im Task-Template „Zugewiesen". Das Feld `type` ist die **Template-Referenz** des Items; bei mehreren Werten zählt der erste.
+Ein **Template** definiert, wie ein Item erstellt und dargestellt wird: Name, Icon, das Start-Widget-Set im Composer und die kontextuelle Beschriftung — dasselbe `title`-Feld heißt im Projekt-Template „Name". Templates binden Widgets auch an unterschiedliche Semantik: das Personen-Widget erfasst im Task-Template eine Zuweisung (`assignedTo`-Relation), im Event-Template Teilnehmer. Das Feld `type` ist die **Template-Referenz** des Items; bei mehreren Werten zählt der erste.
 
 Templates und Schemas sind orthogonal: Schemas beschreiben, **welche Felder** ein Item hat — Templates, **als was** es erstellt und gezeigt wird. Zwei Templates können dieselbe Struktur nutzen („Projekt" und „Anzeige" unterscheiden sich nur in Darstellung und Ansprache), und ein Item kann Felder tragen, die sein Template nicht vorsah (etwa ein zugeschalteter Ort am Event).
 
