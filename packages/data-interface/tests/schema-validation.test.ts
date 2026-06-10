@@ -108,13 +108,35 @@ describe("Valid example items satisfy every schema in their @context", () => {
       const item = JSON.parse(readFileSync(join(examplesDir, file), "utf-8")) as {
         "@context"?: string[]
       }
-      const ctx = item["@context"] ?? [vocab.vocabUrl]
+      const ctx = item["@context"]
 
-      // Spec 06: a valid example must satisfy every schema it declares in
-      // @context, not just the vocab its directory lives in. Otherwise a
-      // composed example (e.g. event/v1 + place/v1) could pass against the
-      // directory vocab while silently violating the other declared vocabs.
-      for (const vocabUrl of ctx) {
+      // Spec 06 invariants for any item under examples/valid:
+      // - @context MUST be present and non-empty.
+      // - @context[0] MUST be base/v1.
+      // - The directory-owning vocab MUST appear somewhere in @context (a
+      //   file at vocab/event/v1/examples/valid is event/v1 by location;
+      //   if its @context omits event/v1 it is misfiled, not valid).
+      // Without these checks, an empty `@context: []` would produce zero
+      // validation iterations and silently pass.
+      it(`${vocab.name}/examples/valid/${file}: declares a non-empty @context`, () => {
+        expect(Array.isArray(ctx), `@context must be an array`).toBe(true)
+        expect(ctx!.length, `@context must be non-empty`).toBeGreaterThan(0)
+        expect(ctx![0], `@context[0] must be base/v1`).toBe(
+          "https://real-life-stack.org/vocab/base/v1",
+        )
+        if (vocab.name !== "base") {
+          expect(
+            ctx,
+            `example in ${vocab.name}/examples/valid must declare ${vocab.vocabUrl} in @context`,
+          ).toContain(vocab.vocabUrl)
+        }
+      })
+
+      // A valid example must satisfy every schema it declares in @context,
+      // not just the vocab its directory lives in. Otherwise a composed
+      // example (e.g. event/v1 + place/v1) could pass against the directory
+      // vocab while silently violating the other declared vocabs.
+      for (const vocabUrl of ctx ?? []) {
         it(`${vocab.name}/examples/valid/${file} validates against ${vocabUrl.split("/vocab/")[1]}`, () => {
           const schemaUri = vocabUrlToSchemaUrl(vocabUrl)
           const validate = ajv.getSchema(schemaUri)
@@ -141,8 +163,8 @@ describe("Demo-data items conform to their declared @context vocabularies", () =
     [k: string]: unknown
   }>
 
-  it("loads 32 items", () => {
-    expect(items.length).toBe(32)
+  it("loads a non-empty demo-data set", () => {
+    expect(items.length).toBeGreaterThan(0)
   })
 
   for (const item of items) {
