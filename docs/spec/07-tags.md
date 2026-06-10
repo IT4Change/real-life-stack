@@ -15,7 +15,9 @@ Beide Modi koexistieren; UI- und Connector-Code soll graduell aufsteigen können
 
 Das frühere Datenmodell in Utopia-Map hat **Layer** doppelt benutzt: einerseits als Strukturtyp (Event vs. Ort vs. Aufgabe), andererseits als Themenfilter (Permakultur vs. Bildung). Diese Doppelrolle hat User dazu gebracht, viele Layer anzulegen, um Themen abzubilden — obwohl die Strukturen gleich waren.
 
-Schemas (siehe 06) lösen die Strukturseite. Tags lösen die Kategorisierungsseite. Mit beiden zusammen ist Layer als Konzept ablösbar.
+Schemas und die `type`-Lesart (siehe 06, dort auch die vollständige Zerlegungs-Tabelle des Layer-Konzepts) lösen die Strukturseite. Tags lösen die Kategorisierungsseite — inklusive der **visuellen Identität**, die in Utopia-Map am Layer hing: `color` und `icon` leben am Tag-Item, die alte Layer-Legende der Karte wird zur Tag-Legende. Mit beidem zusammen ist Layer als Konzept ablösbar.
+
+**Lehre aus dem Layer-Missbrauch:** User quetschen ihr Bedürfnis in die prominenteste Achse, die das System anbietet — nicht in die dafür gedachte. Die Trennung von Struktur und Kategorie hält nur, wenn Tags erstklassige UX bekommen (Picker, Farben, Legende, Filter). Sind Tags zweitklassig sichtbar, wiederholt sich der Missbrauch auf der Template-Achse („ich brauche ein eigenes Permakultur-Ort-Template").
 
 ### Heutiger Code-Stand
 
