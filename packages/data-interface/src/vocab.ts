@@ -13,13 +13,13 @@ export const VOCAB_TASK = "https://real-life-stack.org/vocab/task/v1"
 export const VOCAB_PERSON = "https://real-life-stack.org/vocab/person/v1"
 
 const TASK_STATUS_VALUES = new Set(["open", "in-progress", "done", "archived"])
+const PLACE_GEOMETRY_TYPES = new Set(["Point", "LineString", "Polygon"])
 
-function isGeoJSONPoint(value: unknown): boolean {
+function isPlaceGeometry(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false
   const v = value as Record<string, unknown>
-  if (v.type !== "Point") return false
-  const coords = v.coordinates
-  return Array.isArray(coords) && coords.length >= 2 && coords.every((c) => typeof c === "number")
+  if (typeof v.type !== "string" || !PLACE_GEOMETRY_TYPES.has(v.type)) return false
+  return Array.isArray(v.coordinates) && v.coordinates.length > 0
 }
 
 /**
@@ -28,7 +28,10 @@ function isGeoJSONPoint(value: unknown): boolean {
  * Activation rules:
  * - `base/v1` is always included (always first).
  * - `event/v1` if `data.start` is a non-empty string.
- * - `place/v1` if `data.position` is a GeoJSON Point.
+ * - `place/v1` if `data.position` is a GeoJSON geometry accepted by the
+ *   `place/v1` schema (`Point`, `LineString`, or `Polygon`) with a non-empty
+ *   `coordinates` array. Detailed coordinate shape is validated by AJV, not
+ *   here — this helper only decides whether the vocab is active.
  * - `task/v1` if `type === "task"` or `data.status` is one of the task spec
  *   enum values (`open` | `in-progress` | `done` | `archived`).
  * - `person/v1` if `type === "person"`.
@@ -40,7 +43,7 @@ export function deriveContext(type: string, data: Record<string, unknown>): stri
     ctx.push(VOCAB_EVENT)
   }
 
-  if (isGeoJSONPoint(data.position)) {
+  if (isPlaceGeometry(data.position)) {
     ctx.push(VOCAB_PLACE)
   }
 
