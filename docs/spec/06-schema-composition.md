@@ -12,25 +12,15 @@ Code-Referenz: `packages/data-interface/src/index.ts`
 
 ## Motivation
 
-Die frühere Datenmodellierung (insbesondere in Utopia-Map) hat **Layer** in einer Mehrfachrolle benutzt. Ein Layer war gleichzeitig:
+Die frühere Datenmodellierung (insbesondere in Utopia-Map) hat **Layer** in einer Mehrfachrolle benutzt: als Strukturtyp, als Themenkategorie, als visuelle Identität (Marker-Farbe, Icon) und als Sichtbarkeits-Filter. Das führt zu Konflikten: User legen viele Layer an, um Themen abzubilden, brauchen aber denselben Strukturtyp; ein Item kann immer nur in einem Layer sein, obwohl es gleichzeitig Ort UND Event sein könnte.
 
-1. **Profil-Definition** — welche Felder ein Item hat (Event, Ort, Person, Aufgabe)
-2. **Themenkategorie** — zu welchem Thema ein Item gehört (Permakultur, Bildung, regionale Karte)
-3. **Visuelle Identität** — Marker-Farbe und Icon auf der Karte
-4. **Sichtbarkeits-Toggle** — die Layer-Liste als Filter
+RLS trennt diese Aspekte:
 
-Diese Mehrfachrolle führt zu Konflikten: User legen viele Layer an, um Themen abzubilden, brauchen aber denselben Strukturtyp; ein Item kann immer nur in einem Layer sein, obwohl es gleichzeitig Ort UND Event sein könnte.
-
-RLS zerlegt den Layer in orthogonale Achsen:
-
-| Layer-Funktion | RLS-Achse | Kardinalität |
-|---|---|---|
-| Profil-Definition | **`@context`-Schemas** (Struktur, diese Spec) + **`type`** als Composer-Vorlage und primäre Lesart (siehe unten) | Schemas: mehrere; `type`: einer |
-| Themenkategorie | **Tags** — siehe [07-tags.md](07-tags.md) | mehrere |
-| Visuelle Identität | **Tag-Display** (`color`/`icon` am Tag-Item, siehe 07) oder typ-getriebene Templates — Design-Entscheidung der App | — |
-| Sichtbarkeits-Toggle | **Modul-Aktivierung über Feld-Präsenz** (siehe „Verhältnis zwischen Schema- und Feldfiltern") und Tag-Filter | folgt aus den Daten |
-
-Die **thematische Klammer** ist darüber hinaus der **Space** selbst — verschiedene Communities haben verschiedene Spaces mit eigenen Schwerpunkten.
+- **Struktur** ergibt sich aus den **`@context`-Schemas**, die ein Item komponiert (mehrere parallel möglich) — Gegenstand dieser Spec.
+- **Vorlage und Benennung** trägt **`type`** — genau einer pro Item, siehe „Die Rolle von `type`".
+- **Kategorisierung** läuft über **Tags**, inklusive Farbe und Icon — siehe [07-tags.md](07-tags.md).
+- **Sichtbarkeit** in Modulen folgt aus den Feldern — siehe „Verhältnis zwischen Schema- und Feldfiltern".
+- **Thematische Klammer** ist der **Space** selbst — verschiedene Communities haben verschiedene Spaces mit eigenen Schwerpunkten.
 
 ## Schema-Composition über `@context`
 
@@ -42,7 +32,7 @@ Ein RLS-Item trägt eine `@context`-Liste, die festlegt, welche Vokabulare seine
 interface Item {
   id: string
   '@context': string[]            // ordered list of vocabulary URLs
-  type?: string | string[]         // primäre Lesart (UI-Hint), siehe „Die Rolle von `type`"
+  type?: string | string[]         // Vorlage/Benennung, siehe „Die Rolle von `type`"
   createdAt: string
   createdBy: string
   data: Record<string, unknown>
@@ -57,7 +47,7 @@ Regeln:
 2. Weitere Einträge erweitern das Vokabular und damit die in `data` zulässigen Felder.
 3. **Property-Namen MÜSSEN über alle Vokabularien eindeutig sein.** JSON-LD's last-wins-Verhalten gilt nur für reine Property-Identifier-Auflösung; die JSON-Schema-Validierung läuft über `allOf` (Schnittmenge) und kennt keine Überschreibung. Vocabulary-Autoren vermeiden Kollisionen aktiv: gleiche Semantik → gleicher Name (Konvention), unterschiedliche Semantik → unterschiedlicher Name. Validator-Verhalten bei einer Kollision ist undefined und gilt als Vokabular-Bug.
 4. Semantisch gleiche Properties aus verschiedenen Vokabularen tragen denselben Namen (z.B. `start` für Beginn-Zeitpunkt, egal ob Event oder Task).
-5. `type` ist ein optionaler UI-Hint, **kein struktureller Filter**. Modul-Aktivierung und Filterung laufen über Feld-Präsenz oder (zukünftig) `hasSchema`. Welche UI-Aufgaben `type` legitim trägt, definiert „Die Rolle von `type`: primäre Lesart" unten.
+5. `type` ist ein optionaler UI-Hint, **kein struktureller Filter**. Modul-Aktivierung und Filterung laufen über Feld-Präsenz oder (zukünftig) `hasSchema`. Welche UI-Aufgaben `type` trägt, definiert „Die Rolle von `type`" unten.
 
 ### Beispiel: Workshop in der Markthalle
 
@@ -91,32 +81,17 @@ Wenn zwei `@context`-Schemas dieselbe Semantik treffen (z.B. `start` für Beginn
 
 Wenn semantisch unterschiedliche Konzepte denselben Property-Namen tragen würden, ist das ein **Schema-Design-Fehler**, der durch Aliasing im Vocabulary-Context behoben wird (z.B. `event:start` vs. `subscription:start`).
 
-## Die Rolle von `type`: primäre Lesart
+## Die Rolle von `type`
 
-`type` ist kein struktureller Filter (Regel 5 oben) — aber es ist auch mehr als ein beliebiger Hint. Es trägt die **primäre Lesart** eines Items: die Antwort auf die Frage „was ist das für ein Ding?", die UI-Flächen für genau eine Sache brauchen, für die Komposition keine Antwort liefert. Trägt ein Item mehrere `type`-Werte, ist der erste die primäre Lesart.
+`type` benennt, als was ein Item erstellt wurde („post", „event", „task"). Es beantwortet die eine Frage, die Komposition offen lässt — was ist dieses Ding? — für Vorlagen, Template-Wahl und Benennung. Bei mehreren Werten zählt der erste.
 
-Was darauf bauen **darf**:
+Regeln:
 
-- **Composer-Vorlagen**: Die Typ-Wahl beim Erstellen („Post", „Veranstaltung", „Aufgabe") bestimmt das Start-Widget-Set des Editors. Die Vorlage ist Startpunkt, kein Käfig — Felder bleiben zuschaltbar und entfernbar (so entsteht das Festival: Typ „Event" + zugeschaltetem Ort).
-- **Rendering-Dispatch in aggregierenden Sichten**: Feed, Suche und Benachrichtigungen zeigen Items aller Lesarten und brauchen pro Item genau eine Kartendarstellung — `type` entscheidet das Template. Projektions-Module (Calendar, Map, Kanban) brauchen keinen Dispatch: sie rendern alle Items einheitlich als Termin, Marker oder Karte.
-- **Benennung in Systemtexten**, wo weder Titel noch Modul-Kontext greifen.
-
-Was **nicht** darauf bauen darf: Modul-Aktivierung, Filterung, Validierung — das ist Sache der Felder und Schemas.
-
-### Lebenszyklus: Typ überdauert, Kontext folgt
-
-1. **Erstellen**: `type` wird aus der User-Intention gesetzt (Composer-Vorlage). `@context` wird aus Typ und tatsächlich befüllten Feldern abgeleitet.
-2. **Bearbeiten**: `type` ändert sich **nie automatisch**. `@context` folgt dagegen den tatsächlichen Feldern — wer beim Event das Datum entfernt, verliert `event/v1` aus dem `@context` (sonst wäre das Item dauerhaft schema-invalide), behält aber `type: "event"`. Das Item ist dann eine **ruhende Veranstaltung**: Es verschwindet aus dem Calendar (Feld weg), bleibt auf der Map (Feld da), und sein Template zeigt den unterminierten Zustand an („Termin folgt") statt zu brechen.
-3. **Umwandeln**: `type` darf geändert werden — aber nur als **bewusste User-Handlung** (Aufgabe → Quest, Event → Ort). Die UI darf beim Umwandeln Felder der neuen Lesart nachfordern. Ein stiller Typwandel als Nebenwirkung einer Feldänderung ist unzulässig.
-
-### Konstituierende und zugeschaltete Felder
-
-Aus Vorlage und Komposition ergeben sich zwei Klassen von Feldern mit unterschiedlichem Gewicht beim Entfernen:
-
-- **Zugeschaltetes Feld** (z.B. der Ort am Festival): Entfernen ist trivial. Die betroffene Modul-Sicht verschwindet; die UI nennt die Konsequenz im Moment der Handlung („erscheint nicht mehr auf der Karte").
-- **Konstituierendes Feld** (Pflichtfeld der primären Lesart, z.B. `start` bei `type: "event"`): Entfernen heißt, dass das Item die Struktur seiner eigenen Lesart verlässt. Die UI muss die Konsequenz zeigen und die Wahl anbieten: Feld entfernen und Lesart behalten (ruhender Zustand) **oder** explizit umwandeln.
-
-Dieselbe Transparenz gilt in Gegenrichtung: Wer ein Feld zuschaltet, das ein Modul aktiviert, bekommt das angesagt („wird jetzt auf der Karte angezeigt"). So wird die Komposition für User erlebbar statt verstecktes Systemverhalten.
+1. `type` wird beim Erstellen aus der gewählten Vorlage gesetzt und ändert sich nicht von selbst. Eine Typ-Änderung (z.B. Aufgabe → Quest) ist eine eigene, bewusste User-Aktion; die UI darf dabei fehlende Felder der neuen Vorlage nachfordern.
+2. UI darf auf `type` bauen: Composer-Vorlage (Start-Widget-Set; weitere Felder bleiben zuschaltbar), Wahl des Karten-Templates in Feed und Suche, Benennung in Systemtexten.
+3. Modul-Aktivierung, Filterung und Validierung laufen nie über `type` (Regel 5 oben). Calendar, Map und Kanban rendern alle Items einheitlich und brauchen keine Template-Wahl.
+4. Beim Bearbeiten folgt `@context` den tatsächlichen Feldern, `type` bleibt. Beispiel: Ein Event, dessen `start` entfernt wird, verliert `event/v1`, behält `type: "event"`, verschwindet aus dem Calendar und bleibt — sofern `position` vorhanden — auf der Map. Das Feed-Template zeigt es als Event ohne Termin.
+5. Feldänderungen, die Modul-Sichtbarkeit ändern, zeigt die UI im Moment der Änderung an („erscheint nicht mehr im Calendar"). Beim Entfernen eines Pflichtfelds der eigenen Vorlage bietet sie zusätzlich die Typ-Änderung an.
 
 ## Vocabulary-Registry
 
@@ -240,13 +215,12 @@ Ein Item mit mehreren Schemas erscheint in jedem zuständigen Modul gleichzeitig
 
 ## Migrationspfad von Utopia-Map
 
-Bestehende Layer-basierte Daten werden entlang der Achsen-Tabelle aus der Motivation überführt:
+Bestehende Layer-basierte Daten werden so überführt:
 
-1. **Layer-Strukturteil** → entsprechendes Schema im `@context` (Event-Layer → `event/v1`, Place-Layer → `place/v1`) und passender `type`-Wert als primäre Lesart.
-2. **Layer-Themenanteil** → Tag. Aus „Layer: Permakultur-Orte" wird ein Tag (`"permaculture"` oder `urn:rls:tag:permaculture`) + `place/v1`-Schema. Tag-Modell siehe [07-tags.md](07-tags.md).
-3. **Layer-Darstellung** (Marker-Farbe, Icon) → Display-Felder eines Tag-Items (`color`/`icon`, siehe 07), wenn der Layer thematisch war; die alte Layer-Legende der Karte wird zur Tag-Legende.
-4. **Item-Inhalt** → wird gegen die Schemas validiert; Felder, die in keinem aktiven Schema definiert sind, landen in `data` aber sind nicht offiziell spezifiziert.
-5. **Layer-Profil-Definitionen** → Composer-Vorlagen (`type` wählt das Start-Widget-Set; die Schemas definieren die Feldstruktur). Die Vorlage ist Startpunkt, kein Käfig — anders als der Layer erzwingt sie die Feldmenge nicht dauerhaft.
+1. **Layer-Strukturteil** → entsprechendes Schema im `@context` + `type` (Event-Layer → `event/v1`, `type: "event"`).
+2. **Layer-Themenanteil** → Tag. Aus „Layer: Permakultur-Orte" wird ein Tag (`"permaculture"` oder `urn:rls:tag:permaculture`) + `place/v1`-Schema; Marker-Farbe und Icon des Layers werden Tag-Display. Siehe [07-tags.md](07-tags.md).
+3. **Item-Inhalt** → wird gegen die Schemas validiert; Felder, die in keinem aktiven Schema definiert sind, landen in `data` aber sind nicht offiziell spezifiziert.
+4. **Layer-Profile** → Composer-Vorlagen über `type`; die Feldstruktur definieren die Schemas.
 
 Ein Migrations-ETL-Script erzeugt aus Directus-Items neue RLS-Items mit korrektem `@context`, `type` und Tags und schreibt sie in den Ziel-Space.
 
