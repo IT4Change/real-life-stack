@@ -116,7 +116,6 @@ Schritte auf dem Weg zur vollständig spec-getriebenen Entwicklung. Stufe 1 ist 
 
 - ✅ **CI-Schema-Validierung** (umgesetzt): AJV validiert alle `docs/spec/schemas/vocab/*/examples/valid/*.json` gegen ihr Schema und prüft, dass jedes Item in `packages/data-interface/data/items.json` gegen `base/v1` + die in seinem `@context` aktiven Vocabs validiert. Bricht den Build, wenn Daten die Spec verletzen. Tests in `packages/data-interface/tests/schema-validation.test.ts`, Workflow `.github/workflows/spec-validation.yml`.
 - **Glossar** (`docs/spec/glossary.md`, geplant): jede Spec-Begrifflichkeit (Item, Group, Space, Vocab, Schema, Tag, Capability, Connector, Module, Composer, Widget, …) einmalig definiert. Querverweise von den Specs in den Glossar.
-- **Stub-Conformance-Tests** (geplant) pro Modul-Spec: ein Test prüft, dass der versprochene Vertrag (z.B. `MapAdapter` aus `modules/map.md`) im Code so existiert. Wenn jemand eine Adapter-Methode entfernt, bricht der Test mit Verweis auf die Spec-Stelle.
 
 ### Stufe 3 — Generiert und extern (langfristig)
 
