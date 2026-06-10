@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
 import type { Item } from "@real-life-stack/data-interface"
 import { useMemo, useState } from "react"
-import { ContentComposer, type ContentComposerSubmitData } from "./content-composer"
+import { ContentComposer, type ContentComposerSubmitData } from "../composer/content-composer"
 import { FeedComposerTrigger } from "./feed-composer-trigger"
 import { FeedItem } from "./feed-item"
 

@@ -1,8 +1,8 @@
 "use client"
 
 import { useCallback, useState, type ReactNode } from "react"
-import { CommentSection } from "../feed/comments/comment-section"
-import { CommentInput, type CommentQuote } from "../feed/comments/comment-input"
+import { CommentSection } from "../comments/comment-section"
+import { CommentInput, type CommentQuote } from "../comments/comment-input"
 import { cn } from "../../lib/utils"
 
 /**

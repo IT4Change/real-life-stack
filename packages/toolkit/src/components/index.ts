@@ -13,12 +13,15 @@ export * from "./contacts"
 // Debug
 export * from "./debug"
 
-// Feature modules
+// Space modules
 export * from "./feed"
 export * from "./kanban"
 export * from "./dashboard"
 export * from "./calendar"
 export * from "./map"
 
-// Module-agnostic detail panel (top slot + comments)
+// Shared module components (used across space modules)
+export * from "./comments"
+export * from "./reactions"
+export * from "./composer"
 export * from "./detail"
