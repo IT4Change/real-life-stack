@@ -288,11 +288,43 @@ Caller löst die User-Objekte auf (typischerweise aus `assignedTo`-Relations + M
 
 **Code:** `packages/toolkit/src/components/preview/item-{type-badge,meta-row,comment-count,assignees}.tsx`.
 
-### `FilterBar` (geplant, Phase 3)
+### `FilterBar`
 
-**Zweck:** Shared Filter-UI mit Common-Filtern (Tag-Multiselect, Type, Date-Range, Author) und einem Slot für Modul-spezifische Filter.
+**Zweck:** Shared Filter-UI für jedes *Space Module*. Hält Tags und Item-Type als Common-Filter, exponiert zwei Slots (`chipsExtra`, `drawerExtra`) für Modul-spezifische Filter, plus exportierte Building-Blocks (`FilterChip`, `FilterMultiSelect`, `FilterToggle`, `FilterSection`) für eine einheitliche Optik.
 
-**Status:** Vertrag offen, finalisiert in Phase 3. Die Filter-Primitiven im `ItemFilter` existieren bereits (`hasTag` ist implementiert, siehe [07-tags.md](../07-tags.md); `hasField` und die anderen Filter sind in [02-data-interface.md](../02-data-interface.md) spezifiziert). Phase 3 baut die shared UI darauf und wired Tag-Multiselect / Type-Filter / Date-Range / Author an das vorhandene `ItemFilter`-Interface.
+**Layout-Pattern (Anton + Sebastian-konsens 11.06.2026):** sticky Active-Filter-Chip-Row über dem Modul-Inhalt; ein „Filter"-Button öffnet ein `Sheet` (Drawer) mit allen Optionen. Aktive Filter bleiben immer sichtbar, der Drawer ist nur für die Auswahl.
+
+```ts
+interface FilterBarProps {
+  value: FilterBarValue
+  onChange: (next: FilterBarValue) => void
+  availableTags?: readonly string[]
+  availableTypes?: readonly FilterTypeOption[]
+  chipsExtra?: ReactNode      // Modul-spezifische Active-Chips
+  drawerExtra?: ReactNode     // Modul-spezifische Drawer-Sections
+  trailingActions?: ReactNode // z.B. „Multiselect"-Toggle
+  className?: string
+}
+
+interface FilterBarValue {
+  tags: string[]      // AND
+  types: string[]     // OR
+}
+
+interface FilterTypeOption {
+  id: string
+  label: string
+  icon?: ComponentType<{ className?: string }>
+}
+```
+
+**Controlled component:** der Filter-Wert lebt im Caller (View-State); View-spezifische Persistierung (URL params, localStorage) bleibt Caller-Job.
+
+**Modul-spezifische Filter:** im `extraSlot` zusammensetzen aus den exportierten Building-Blocks (`FilterSection` + `FilterMultiSelect` / `FilterToggle`). Damit sehen Modul-Extras automatisch konsistent mit den Common-Filtern aus.
+
+**Hook:** `useFilterableItems(items, value)` wendet die `FilterBarValue` clientseitig an. `applyFilterBarValue(items, value)` ist als pure Funktion exportiert (Tests, non-React-Caller). Server-seitige Optimierung (Lift `tags` in `ItemFilter.hasTag`) ist bewusst nicht hier — `data-interface` Concern, siehe [02-data-interface.md](../02-data-interface.md).
+
+**Code:** `packages/toolkit/src/components/filter/`. Stories: `filter-bar.stories.tsx` zeigt Default, Pre-Selected, Kanban-Toggle-Extras, Calendar-Location-Extras, Empty-State.
 
 ## Hooks
 
