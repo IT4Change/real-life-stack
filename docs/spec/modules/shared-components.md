@@ -188,6 +188,57 @@ interface ItemPreviewProps {
 
 **Code:** `packages/toolkit/src/components/preview/item-preview.tsx`. Stories: `item-preview.stories.tsx`.
 
+### Adornment-Komponenten
+
+Kleine, zusammensetzbare Bausteine, die Module in die Adornment-Slots von `ItemPreview` legen. Sie sind shared, weil sie modul-übergreifend dieselben Konzepte (Type, Time/Place, Comments) ausdrücken — Feed-Cards, Kanban-Cards, Calendar-Cards greifen alle darauf zu.
+
+#### `ItemTypeBadge`
+
+**Zweck:** Chip mit Icon + Label für den Item-Typ. Belongs in `headerAdornment`.
+
+```ts
+interface ItemTypeBadgeProps {
+  type: string
+  /** Override or extend the type → presentation registry. */
+  config?: Record<string, ItemTypeBadgeConfig>
+  className?: string
+}
+interface ItemTypeBadgeConfig {
+  icon: ComponentType<{ className?: string }>
+  label: string
+  className: string
+}
+```
+
+Default-Registry: `event`, `task`, `place`, `person`. Unbekannte oder Standard-Typen (`post`, `comment`, `reaction`) rendern `null` — Modul-spezifische Typen können per `config`-Prop ergänzt werden.
+
+#### `ItemMetaRow`
+
+**Zweck:** Inline-Zeile mit Date-Hint und Address. Belongs in `metaAdornment`. Rendert `null`, wenn weder `data.start` noch `data.address` vorhanden sind.
+
+```ts
+interface ItemMetaRowProps {
+  item: Item
+  className?: string
+}
+```
+
+Plus eine exportierte Format-Funktion `formatEventRange(start, end?)` für Caller, die den String außerhalb der Inline-Zeile brauchen (z.B. Tooltip, Tabelle).
+
+#### `ItemCommentCount`
+
+**Zweck:** Comment-Count-Button. Belongs in `footerAdornment`. Rendert `null` bei `count <= 0`; ruft `event.stopPropagation()` auf Click, damit ein Card-Click nicht doppelt feuert.
+
+```ts
+interface ItemCommentCountProps {
+  count: number
+  onClick?: () => void
+  className?: string
+}
+```
+
+**Code:** `packages/toolkit/src/components/preview/item-{type-badge,meta-row,comment-count}.tsx`.
+
 ### `FilterBar` (geplant, Phase 3)
 
 **Zweck:** Shared Filter-UI mit Common-Filtern (Tag-Multiselect, Type, Date-Range, Author) und einem Slot für Modul-spezifische Filter.

@@ -1,15 +1,20 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
-import type { Item } from "@real-life-stack/data-interface"
+import type { Item, User } from "@real-life-stack/data-interface"
 import { useMemo, useState } from "react"
 import { ContentComposer, type ContentComposerSubmitData } from "../composer/content-composer"
 import { FeedComposerTrigger } from "./feed-composer-trigger"
-import { FeedItem } from "./feed-item"
+import {
+  ItemPreview,
+  ItemTypeBadge,
+  ItemMetaRow,
+  ItemCommentCount,
+} from "../preview"
 
 const now = new Date()
 
 type FeedEntry = {
   item: Item
-  author: { name: string; avatar?: string }
+  author: User
   comments?: number
   reactions?: Array<{ emoji: string; count: number }>
 }
@@ -32,7 +37,7 @@ const initialItems: FeedEntry[] = [
         content: "Wir treffen uns am Samstag zum Beete vorbereiten und planen die nächsten Schritte."
       }, tags: ["garten", "planung"],
     },
-    author: { name: currentUser.name, avatar: currentUser.avatar },
+    author: { id: currentUser.id, displayName: currentUser.name, avatarUrl: currentUser.avatar },
     comments: 4,
     reactions: [
       { emoji: "❤️", count: 5 },
@@ -52,7 +57,7 @@ const initialItems: FeedEntry[] = [
         address: "Gemeinschaftsgarten Nord"
       }, tags: ["workshop"],
     },
-    author: { name: "Max Mustermann", avatar: "https://randomuser.me/api/portraits/men/32.jpg" },
+    author: { id: "user-2", displayName: "Max Mustermann", avatarUrl: "https://randomuser.me/api/portraits/men/32.jpg" },
     comments: 2,
     reactions: [{ emoji: "👍", count: 6 }],
   },
@@ -68,7 +73,7 @@ const initialItems: FeedEntry[] = [
         status: "in-progress"
       }, tags: ["infrastruktur"],
     },
-    author: { name: "Thomas Müller", avatar: "https://randomuser.me/api/portraits/men/67.jpg" },
+    author: { id: "user-3", displayName: "Thomas Müller", avatarUrl: "https://randomuser.me/api/portraits/men/67.jpg" },
     comments: 1,
   },
 ]
@@ -111,14 +116,14 @@ function FeedModuleOverview() {
       data: {
         title,
         content: text,
-        tags,
       },
+      ...(tags.length > 0 ? { tags } : {}),
     }
 
     setFeedItems((current) => [
       {
         item,
-        author: { name: currentUser.name, avatar: currentUser.avatar },
+        author: { id: currentUser.id, displayName: currentUser.name, avatarUrl: currentUser.avatar },
         comments: 0,
       },
       ...current,
@@ -158,12 +163,24 @@ function FeedModuleOverview() {
       </FeedComposerTrigger>
 
       {sortedItems.map(({ item, author, comments, reactions }) => (
-        <FeedItem
+        <ItemPreview
           key={item.id}
           item={item}
           author={author}
-          commentCount={comments}
-          reactionSlot={reactions ? <StaticReactionSlot reactions={reactions} /> : undefined}
+          headerAdornment={<ItemTypeBadge type={item.type} />}
+          metaAdornment={<ItemMetaRow item={item} />}
+          footerAdornment={
+            reactions || (comments && comments > 0) ? (
+              <>
+                {reactions && <StaticReactionSlot reactions={reactions} />}
+                {comments && comments > 0 ? (
+                  <div className="ml-auto">
+                    <ItemCommentCount count={comments} />
+                  </div>
+                ) : null}
+              </>
+            ) : undefined
+          }
         />
       ))}
     </div>
