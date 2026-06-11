@@ -132,12 +132,12 @@ describe("computeColumnReorder", () => {
 
   it("preserves the rest of the item data in updates", () => {
     const a = makeTask("a", "open", 0)
-    a.data.tags = ["garten"]
+    a.data.priority = "high"
     a.data.description = "Beete vorbereiten"
 
     const updates = computeColumnReorder([a], a, "done", 0)
 
-    expect(updates[0].data.tags).toEqual(["garten"])
+    expect(updates[0].data.priority).toBe("high")
     expect(updates[0].data.description).toBe("Beete vorbereiten")
   })
 })

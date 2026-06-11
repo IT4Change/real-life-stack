@@ -13,6 +13,7 @@ export function serializeItem(item: Item): SerializedItem {
   if (item.schema) serialized.schema = item.schema
   if (item.schemaVersion != null) serialized.schemaVersion = item.schemaVersion
   if (item.relations?.length) serialized.relations = item.relations
+  if (item.tags?.length) serialized.tags = item.tags
   return serialized
 }
 
@@ -28,5 +29,6 @@ export function deserializeItem(serialized: SerializedItem): Item {
   if (serialized.schema) item.schema = serialized.schema
   if (serialized.schemaVersion != null) item.schemaVersion = serialized.schemaVersion
   if (serialized.relations?.length) item.relations = serialized.relations
+  if (serialized.tags?.length) item.tags = serialized.tags
   return item
 }

@@ -29,6 +29,13 @@ export interface Item {
   data: Record<string, unknown>
   relations?: Relation[]
 
+  /**
+   * Free-string or URN tag identifiers. Top-level (not in `data`) so the
+   * `hasTag` filter and cross-vocab listings work regardless of which
+   * vocabulary the item carries. Spec: docs/spec/07-tags.md, base/v1 schema.
+   */
+  tags?: string[]
+
   _source?: string
 }
 
@@ -77,6 +84,11 @@ export interface AuthMethod {
 export interface ItemFilter {
   type?: string
   hasField?: string[]
+  /**
+   * AND-filter on top-level `item.tags`. All listed tags must be present.
+   * Empty array matches every item. Spec: docs/spec/07-tags.md.
+   */
+  hasTag?: string[]
   createdBy?: string
   source?: string
   limit?: number

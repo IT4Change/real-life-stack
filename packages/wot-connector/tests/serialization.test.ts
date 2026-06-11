@@ -106,6 +106,38 @@ describe("serializeItem", () => {
     expect(serialized["@context"]).toBeUndefined()
   })
 
+  it("preserves top-level tags through serialize/deserialize (spec 07-tags.md)", () => {
+    const item: Item = {
+      id: "item-1",
+      type: "task",
+      createdAt: new Date().toISOString(),
+      createdBy: "user-1",
+      data: {},
+      tags: ["garten", "urn:rls:tag:permakultur"],
+    }
+
+    const serialized = serializeItem(item)
+    const round = deserializeItem(serialized)
+
+    expect(serialized.tags).toEqual(item.tags)
+    expect(round.tags).toEqual(item.tags)
+  })
+
+  it("omits tags when empty array", () => {
+    const item: Item = {
+      id: "item-1",
+      type: "task",
+      createdAt: new Date().toISOString(),
+      createdBy: "user-1",
+      data: {},
+      tags: [],
+    }
+
+    const serialized = serializeItem(item)
+
+    expect(serialized.tags).toBeUndefined()
+  })
+
   it("includes relations when present", () => {
     const item: Item = {
       id: "item-1",

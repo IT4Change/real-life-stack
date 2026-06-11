@@ -88,7 +88,7 @@ Spec: [02-data-interface.md](02-data-interface.md)
 
 ## Filter (`ItemFilter`)
 
-Suchbedingung an *DataInterface*-Methoden: `type`, `hasField`, `createdBy`, `source`, `limit`, `offset`. Zukünftig auch `hasTag` (siehe *Tag*) und `hasSchema` (siehe *Vocabulary*).
+Suchbedingung an *DataInterface*-Methoden: `type`, `hasField`, `hasTag` (siehe *Tag*), `createdBy`, `source`, `limit`, `offset`. Zukünftig auch `hasSchema` (siehe *Vocabulary*).
 
 Spec: [02-data-interface.md → §Filter](02-data-interface.md)
 
@@ -156,7 +156,7 @@ Spec: [01-app-composition.md → §Space Modules](01-app-composition.md), [modul
 
 ## Tag
 
-Orthogonale Kategorisierungs-Achse zu *Schemas*. Tags beschreiben die Themenzuordnung, Schemas die Struktur. Heute als freie Strings in `data.tags`; perspektivisch auch als strukturierte URN-Tags mit optionalen Tag-*Items* für Display und Hierarchie.
+Orthogonale Kategorisierungs-Achse zu *Schemas*. Tags beschreiben die Themenzuordnung, Schemas die Struktur. Top-level am Item als `item.tags: string[]`; perspektivisch auch als strukturierte URN-Tags mit optionalen Tag-*Items* für Display und Hierarchie. Filterbar im `ItemFilter` über `hasTag` (AND).
 
 Spec: [07-tags.md](07-tags.md)
 

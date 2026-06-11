@@ -122,6 +122,40 @@ describe("matchesFilter", () => {
     expect(matchesFilter(item, { type: "task", createdBy: "user-2", hasField: ["status"] })).toBe(false)
     expect(matchesFilter(item, { type: "task", createdBy: "user-1", hasField: ["priority"] })).toBe(false)
   })
+
+  it("filters by hasTag — single tag (top-level item.tags)", () => {
+    const item = createItem({ tags: ["garten", "permakultur"] })
+
+    expect(matchesFilter(item, { hasTag: ["garten"] })).toBe(true)
+    expect(matchesFilter(item, { hasTag: ["bauen"] })).toBe(false)
+  })
+
+  it("filters by hasTag — multiple tags (AND, all must be present)", () => {
+    const item = createItem({ tags: ["garten", "permakultur"] })
+
+    expect(matchesFilter(item, { hasTag: ["garten", "permakultur"] })).toBe(true)
+    expect(matchesFilter(item, { hasTag: ["garten", "bauen"] })).toBe(false)
+  })
+
+  it("filters by hasTag — empty array matches every item", () => {
+    const tagged = createItem({ tags: ["garten"] })
+    const untagged = createItem()
+
+    expect(matchesFilter(tagged, { hasTag: [] })).toBe(true)
+    expect(matchesFilter(untagged, { hasTag: [] })).toBe(true)
+  })
+
+  it("filters by hasTag — items without tags fail any non-empty hasTag", () => {
+    const item = createItem()
+
+    expect(matchesFilter(item, { hasTag: ["garten"] })).toBe(false)
+  })
+
+  it("ignores tags inside data — only top-level item.tags counts", () => {
+    const item = createItem({ data: { tags: ["legacy"] } })
+
+    expect(matchesFilter(item, { hasTag: ["legacy"] })).toBe(false)
+  })
 })
 
 describe("findRelatedItems", () => {

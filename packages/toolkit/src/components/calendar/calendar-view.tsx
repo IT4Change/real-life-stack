@@ -154,7 +154,7 @@ function toCalendarEvent(item: Item): CalendarEvent | null {
     title: String(item.data.title ?? item.data.name ?? "Ohne Titel"),
     description: typeof description === "string" ? description : undefined,
     location: getLocationLabel(item.data.locationName, item.data.address),
-    tags: getStringArray(item.data.tags),
+    tags: item.tags ?? [],
   }
 }
 

@@ -34,4 +34,5 @@ export interface SerializedItem {
   schemaVersion?: number
   data: Record<string, unknown>
   relations?: Relation[]
+  tags?: string[]
 }

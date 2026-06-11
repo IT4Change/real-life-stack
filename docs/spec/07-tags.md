@@ -19,18 +19,19 @@ Schemas (siehe 06) lösen die Strukturseite. Tags lösen die Kategorisierungssei
 
 ### Heutiger Code-Stand
 
-Im Toolkit (Kanban-Card, Calendar-Event, Feed-Item) werden Tags heute als **plain string array** auf `item.data.tags` gelesen:
+Im Toolkit (Kanban-Card, Calendar-Event, Feed-Item) werden Tags als **plain string array** auf `item.tags` (top-level) gelesen:
 
 ```ts
-const tags = (item.data.tags as string[]) ?? []
+const tags = item.tags ?? []
 ```
 
 Beispieldaten in Stories und demo-data:
 
 ```json
-"data": {
-  "title": "Beete vorbereiten",
-  "status": "todo",
+{
+  "id": "task-1",
+  "type": "task",
+  "data": { "title": "Beete vorbereiten", "status": "open" },
   "tags": ["garten", "einkauf"]
 }
 ```
@@ -43,10 +44,11 @@ Dieses einfache Modell ist UX-pragmatisch und für viele Use-Cases ausreichend. 
 
 ### Einfache Tags (heute)
 
-Ein Tag ist ein **String**, frei vergeben durch den User, gültig im Scope des Space. Heute lebt das Feld code-seitig auf `item.data.tags`:
+Ein Tag ist ein **String**, frei vergeben durch den User, gültig im Scope des Space. Das Feld lebt am Item **top-level**:
 
 ```json
-"data": {
+{
+  "id": "item-1",
   "tags": ["garten", "einkauf", "infrastruktur"]
 }
 ```
@@ -106,22 +108,18 @@ Wenn UI einen Tag anzeigt:
 
 Damit funktioniert UI sowohl für freie Strings als auch für strukturierte URN-Tags.
 
-## Lokation des `tags`-Feldes — **offene Frage**
+## Lokation des `tags`-Feldes
 
-Aktuell **inkonsistent**:
+Tags leben **top-level am Item**, nicht in `data`:
 
 | Wo | Lokation |
 |---|---|
-| `schemas/vocab/base/v1/schema.json` | `tags` als **top-level** Property |
-| Toolkit-Code (Kanban, Calendar, Feed) | `item.data.tags` |
-| Demo-Daten in `data-interface/data/items.json` | `item.data.tags` |
+| `schemas/vocab/base/v1/schema.json` | `tags` als top-level Property |
+| `Item` TypeScript-Interface | `item.tags?: string[]` |
+| Toolkit-Code (Kanban, Calendar, Feed) | `item.tags` |
+| Demo-Daten in `data-interface/data/items.json` | `item.tags` |
 
-Beide Lokationen haben Argumente:
-
-- **`data.tags`** (heute Code-Stand): Tags sind Teil der Item-Daten wie alle anderen Felder. Symmetrisch zu `data.title`, `data.start` etc. Einfach für freie Strings.
-- **`tags` top-level**: Tags sind eine separate Achse der Item-Identität, nicht Teil des fachlichen Inhalts. Analog zu `relations`. Erleichtert Cross-Schema-Filter (`hasTag` greift unabhängig vom Vocabulary).
-
-**Diese Spec legt die Entscheidung bewusst nicht fest.** Sobald entschieden, wird das `base/v1`-Schema und der Code (Toolkit + demo-data) angepasst.
+Begründung: Tags sind eine separate Achse der Item-Identität, nicht Teil des fachlichen Inhalts. Analog zu `relations`. Die top-level-Lokation erlaubt es, `hasTag` als Cross-Schema-Filter zu nutzen — ein Filter auf `data.title` müsste pro Vocab anders aussehen, ein Filter auf `tags` greift überall gleich.
 
 ## Hierarchie (optional)
 
@@ -154,7 +152,7 @@ Bedeutung: Item ist nur Match, wenn die Tag-Sammlung des Items **jede** der gena
 
 Hierarchische Tag-Auflösung (Eltern-Tag inkludiert Kinder) ist eine UI-Optimierung und kein DataInterface-Vertrag.
 
-> **Status:** `hasTag` ist als zukünftige Erweiterung dokumentiert, aber **noch nicht in `data-interface` implementiert**. Module verlassen sich derzeit auf clientseitiges Filtern nach `data.tags`.
+> **Status:** `hasTag` ist im `data-interface` implementiert (siehe `matchesFilter` in `base-connector.ts`). Connectoren, die `BaseConnector` erben, unterstützen es automatisch. UI-seitige Convenience-Filter (z.B. `applyItemListFilter` im Toolkit) verwenden weiterhin clientseitiges Matching gegen `item.tags`, können den Filter aber an `data-interface` weiterreichen.
 
 ## Migrationspfad
 

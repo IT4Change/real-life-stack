@@ -85,6 +85,12 @@ export function matchesFilter(item: Item, filter: ItemFilter): boolean {
       if (!(field in item.data)) return false
     }
   }
+  if (filter.hasTag && filter.hasTag.length > 0) {
+    const itemTags = item.tags ?? []
+    for (const tag of filter.hasTag) {
+      if (!itemTags.includes(tag)) return false
+    }
+  }
   return true
 }
 

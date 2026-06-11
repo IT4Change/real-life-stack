@@ -65,7 +65,7 @@ function TaskEditPanel({ item, taskContentType, onSubmit, onDelete, connector, a
           title: String(item.data.title ?? ""),
           text: String(item.data.description ?? ""),
           status: String(item.data.status ?? "open"),
-          tags: (item.data.tags as string[]) ?? [],
+          tags: item.tags ?? [],
           people: (item.relations ?? [])
             .filter((r: Relation) => r.predicate === "assignedTo")
             .map((r: Relation) => r.target.replace(/^global:/, "")),
@@ -128,10 +128,7 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const availableTags = useMemo(() => {
     const tagSet = new Set<string>()
     for (const task of tasks) {
-      const taskTags = task.data.tags as string[] | undefined
-      if (taskTags) {
-        for (const tag of taskTags) tagSet.add(tag)
-      }
+      for (const tag of task.tags ?? []) tagSet.add(tag)
     }
     return Array.from(tagSet)
   }, [tasks])
@@ -205,7 +202,7 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   }, [])
 
   const handleTaskCreate = useCallback(async () => {
-    const taskData = { title: "", description: "", status: "open", order: tasks.length, tags: [] }
+    const taskData = { title: "", description: "", status: "open", order: tasks.length }
     const newItem = await createItem({
       type: "task",
       createdBy: currentUser?.id ?? "user-1",
@@ -228,11 +225,14 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
     const { data } = submitData
     const relations: Relation[] = (data.people ?? [])
       .map((id) => ({ predicate: "assignedTo", target: `global:${id}` }))
-    const nextData = { ...item.data, title: data.title, description: data.text, status: data.status, tags: data.tags }
+    const { tags: _legacy, ...dataWithoutLegacyTags } = item.data
+    const nextData = { ...dataWithoutLegacyTags, title: data.title, description: data.text, status: data.status }
+    const nextTags = Array.isArray(data.tags) ? data.tags : item.tags
     try {
       await updateItem(item.id, {
         "@context": deriveContext(item.type, nextData),
         data: nextData,
+        tags: nextTags,
         relations,
       })
     } catch (err) {

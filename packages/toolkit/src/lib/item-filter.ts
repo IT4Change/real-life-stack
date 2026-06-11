@@ -55,7 +55,7 @@ export function applyItemListFilter(
     }
 
     if (filter.tags.length > 0) {
-      const itemTags = (item.data.tags as string[]) ?? []
+      const itemTags = item.tags ?? []
       if (!filter.tags.every((t) => itemTags.includes(t))) return false
     }
 
