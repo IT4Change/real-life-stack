@@ -263,8 +263,15 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const handleTaskEdit = useCallback(async (submitData: ContentComposerSubmitData) => {
     if (panelState.mode !== "edit") return
     const item = panelState.item
-    await editor.submit(submitData, { existingItem: item })
-    // Move item to different group if changed
+    const updated = await editor.submit(submitData, { existingItem: item })
+    if (!updated) {
+      // submit returned null: either the mapper aborted or the connector
+      // rejected the update. The hook has surfaced the error via
+      // editor.error; don't run the group-move side-effect on a write
+      // that didn't land.
+      console.warn("[KanbanView] task edit submit returned null — skipping group-move side-effect")
+      return
+    }
     const data = submitData.data
     if (data.group && hasItemGroups(connector)) {
       const currentGroupId = connector.getItemGroupId(item.id)

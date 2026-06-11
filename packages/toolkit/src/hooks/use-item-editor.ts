@@ -106,6 +106,49 @@ export interface UseItemEditorResult {
  * is fire-and-await. When we adopt server connectors with perceivable
  * latency, an `optimistic: true` mode can be added without API breaks.
  */
+/**
+ * Build the `createItem` payload from a mapped submission. Pure for
+ * testing. `currentUserId` is the fallback for `createdBy`; "anonymous"
+ * is the final fallback when no user is known.
+ *
+ * Omits `tags` when the mapped value is empty or absent (so the on-the-
+ * wire item shape stays minimal). Omits `relations` only when absent —
+ * an explicit empty array is preserved.
+ */
+export function buildCreatePayload(
+  mapped: ItemEditorPayload,
+  currentUserId: string | undefined,
+): Omit<Item, "id" | "createdAt"> {
+  const ctx = mapped["@context"] ?? deriveContext(mapped.type, mapped.data)
+  return {
+    type: mapped.type,
+    createdBy: mapped.createdBy ?? currentUserId ?? "anonymous",
+    "@context": ctx,
+    data: mapped.data,
+    ...(mapped.tags && mapped.tags.length > 0 ? { tags: mapped.tags } : {}),
+    ...(mapped.relations !== undefined ? { relations: mapped.relations } : {}),
+  }
+}
+
+/**
+ * Build the `updateItem` updates from a mapped submission. Pure for
+ * testing. Unlike create, an explicit empty `tags: []` is preserved —
+ * that's how a caller signals "clear the tag list". `tags` is dropped
+ * from the patch only when it's `undefined` (no change requested).
+ */
+export function buildUpdatePayload(
+  mapped: ItemEditorPayload,
+  _existingItem: Item,
+): Partial<Item> {
+  const ctx = mapped["@context"] ?? deriveContext(mapped.type, mapped.data)
+  return {
+    data: mapped.data,
+    "@context": ctx,
+    ...(mapped.tags !== undefined ? { tags: mapped.tags } : {}),
+    ...(mapped.relations !== undefined ? { relations: mapped.relations } : {}),
+  }
+}
+
 export function useItemEditor(options: UseItemEditorOptions): UseItemEditorResult {
   const { currentUserId, mapSubmission, onCreated, onUpdated, onDeleted } = options
   const { mutate: createItem } = useCreateItem()
@@ -144,35 +187,24 @@ export function useItemEditor(options: UseItemEditorOptions): UseItemEditorResul
       const existingItem = submitOptions?.existingItem ?? currentItem
       const activeMode: "create" | "edit" = existingItem ? "edit" : "create"
       const mapped = mapSubmission(submission, { mode: activeMode, existingItem })
-      if (mapped === null) return null
+      if (mapped === null) {
+        // Intentional abort — clear any stale error so the UI doesn't
+        // show one from a previous attempt.
+        setError(null)
+        return null
+      }
 
       setIsSubmitting(true)
       setError(null)
       try {
-        const ctx =
-          mapped["@context"] ?? deriveContext(mapped.type, mapped.data)
-
         if (activeMode === "create") {
-          const payload: Omit<Item, "id" | "createdAt"> = {
-            type: mapped.type,
-            createdBy: mapped.createdBy ?? currentUserId ?? "anonymous",
-            "@context": ctx,
-            data: mapped.data,
-            ...(mapped.tags && mapped.tags.length > 0 ? { tags: mapped.tags } : {}),
-            ...(mapped.relations ? { relations: mapped.relations } : {}),
-          }
+          const payload = buildCreatePayload(mapped, currentUserId)
           const created = await createItem(payload)
           await onCreated?.(created)
           return created
         }
 
-        // edit
-        const update: Partial<Item> = {
-          data: mapped.data,
-          "@context": ctx,
-          ...(mapped.tags !== undefined ? { tags: mapped.tags } : {}),
-          ...(mapped.relations !== undefined ? { relations: mapped.relations } : {}),
-        }
+        const update = buildUpdatePayload(mapped, existingItem!)
         const updated = await updateItem(existingItem!.id, update)
         if (currentItem && currentItem.id === existingItem!.id) {
           setCurrentItem(updated)
