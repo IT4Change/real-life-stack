@@ -157,6 +157,8 @@ interface ReactionBarProps {
 **Vertrag:**
 
 ```ts
+type ItemPreviewDensity = "comfortable" | "compact"
+
 interface ItemPreviewProps {
   item: Item
   /**
@@ -172,9 +174,16 @@ interface ItemPreviewProps {
   metaAdornment?: ReactNode
   /** Slot unter den Tag-Chips (z.B. Assignees, Comment-Count, ReactionBar). */
   footerAdornment?: ReactNode
+  /** Layout-Density (siehe unten). Default `comfortable`. */
+  density?: ItemPreviewDensity
   className?: string
 }
 ```
+
+**Density:**
+
+- `comfortable` (Default) — Feed-Card-Form: Avatar 10×10, font-base Title, p-4 Spacing, Description wird angezeigt, Footer mit Border-Top.
+- `compact` — Kanban-/Liste-Form: Avatar 6×6, font-sm Title, p-3 Spacing, **Description wird ausgeblendet**, Footer ohne Border. Tauglich für dichte Board-Spalten, wo mehrere Cards zugleich sichtbar bleiben sollen.
 
 **Default-Body:** Author-Row (Avatar + Name + `RelativeTime`), Title, Description (`data.content ?? data.description`, max 4 Zeilen), Tags (chips, top-level `item.tags`, Color via `getTagColor`).
 

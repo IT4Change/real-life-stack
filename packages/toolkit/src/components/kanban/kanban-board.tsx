@@ -89,6 +89,7 @@ function KanbanCard({ item, users, isDragged, onDragStart, onDragEnd, onClick }:
       <ItemPreview
         item={displayItem}
         author={null}
+        density="compact"
         onClick={onClick ? () => onClick(item) : undefined}
         footerAdornment={
           showFooter ? (

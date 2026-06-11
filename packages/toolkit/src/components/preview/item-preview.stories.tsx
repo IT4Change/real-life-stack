@@ -135,11 +135,11 @@ export const NoAuthorRow: Story = {
 }
 
 export const KanbanCardShape: Story = {
-  name: "Kanban shape — no author, type-badge on its own row, assignees footer",
+  name: "Kanban shape — compact density, no author, assignees footer",
   args: {
     item: taskItem,
     author: null,
-    headerAdornment: <ItemTypeBadge type="task" />,
+    density: "compact",
     footerAdornment: (
       <>
         <ItemAssignees users={[lena, anton]} />
@@ -149,6 +149,21 @@ export const KanbanCardShape: Story = {
       </>
     ),
     onClick: () => console.log("click"),
+  },
+}
+
+export const CompactWithDescription: Story = {
+  name: "Compact density drops the description block",
+  args: {
+    item: {
+      ...taskItem,
+      data: {
+        ...taskItem.data,
+        description: "Diese lange Beschreibung sollte in der Kanban-Variante nicht erscheinen.",
+      },
+    },
+    author: null,
+    density: "compact",
   },
 }
 
