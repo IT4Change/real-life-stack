@@ -32,4 +32,4 @@ export {
   type ItemEditorMapper,
   type ItemEditorPayload,
 } from "./use-item-editor"
-export { useFilterableItems } from "./use-filterable-items"
+export { useFilterableItems, applyFilterBarValue } from "./use-filterable-items"

@@ -206,7 +206,10 @@ export function FeedView({ groupId }: { groupId: string }) {
               className="p-4 sm:p-6 flex-1"
               contentTypes={feedContentTypes}
               initialData={initialText ? { text: initialText } : undefined}
-              onSubmit={(data) => { editor.submit(data); onClose() }}
+              onSubmit={async (data) => {
+                const result = await editor.submit(data)
+                if (result) onClose()
+              }}
               onCancel={onClose}
               showPreview={false}
             />

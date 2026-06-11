@@ -44,9 +44,13 @@ export function applyFilterBarValue(items: readonly Item[], filter: FilterBarVal
  * shape applies the same way in every module.
  */
 export function useFilterableItems(items: readonly Item[], filter: FilterBarValue): Item[] {
+  // JSON.stringify avoids the `["a", "b"]` vs `["a b"]` collision that
+  // a naive join(" ") would produce — codex-Review #53.
+  const tagsKey = JSON.stringify(filter.tags)
+  const typesKey = JSON.stringify(filter.types)
   return useMemo(
     () => applyFilterBarValue(items, filter),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, filter.tags.join(" "), filter.types.join(" ")],
+    [items, tagsKey, typesKey],
   )
 }
