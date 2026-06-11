@@ -48,7 +48,7 @@ Spec: [05-confirmations-and-trust.md → §Begriffe](05-confirmations-and-trust.
 
 *Module Component* zum Erstellen oder Editieren eines *Items*. Setzt sich aus *Widgets* zusammen (Title, Date, Location, People, Tags) und übergibt das fertige Item an einen *Connector*. Im Code als `ContentComposer` im Toolkit. Boilerplate für Open/Close, `@context`-Ableitung und Mutations-Dispatch ist im `useItemEditor`-Hook gebündelt.
 
-Spec: [modules/shared-components.md → §ContentComposer](modules/shared-components.md), [01-app-composition.md → §Module Components](01-app-composition.md)
+Spec: [modules/shared-components.md](modules/shared-components.md), [01-app-composition.md → §Module Components](01-app-composition.md)
 
 ## Confirmation
 

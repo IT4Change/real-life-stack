@@ -42,17 +42,27 @@ Jede shared Komponente hat: Zweck, Vertrag (TypeScript-Signatur), Slot-Konventio
 
 **Zweck:** Item-Erstellung und -Bearbeitung über eine Widget-Komposition.
 
-**Vertrag:**
+**Vertrag (Pflichtfelder + häufig gesetzte Optionen):**
 
 ```ts
 interface ContentComposerProps {
   contentTypes: ContentTypeConfig[]
   initialContentType?: string
-  initialData?: WidgetData
+  /** Alias für initialContentType, wenn die UI mit einem festen Modus arbeitet. */
+  mode?: string
+  initialData?: Partial<WidgetData>
   onSubmit: (data: ContentComposerSubmitData) => void
-  onCancel: () => void
+  onCancel?: () => void
   onDelete?: () => void
-  // widgets, suggestions, liveUpdate, etc. — siehe Code
+  /** Expliziter Override; sonst `editMode ?? !!onDelete`. */
+  editMode?: boolean
+  widgets?: CustomWidgetDefinition[]
+  showVisibility?: boolean
+  defaultPublic?: boolean
+  liveUpdate?: boolean
+  className?: string
+  // Weitere optionale Props (peopleOptions, tagSuggestions, renderLocationMap,
+  // renderPreview, …) siehe `packages/toolkit/src/components/composer/content-composer.tsx`.
 }
 
 interface ContentComposerSubmitData {
@@ -64,7 +74,7 @@ interface ContentComposerSubmitData {
 
 **Slot-Konvention:** `contentTypes[].defaultWidgets` listet die Widgets, die der Composer für einen Typ rendert (`title`, `text`, `date`, `location`, `status`, `people`, `tags`, `media`, `group`). Modul-spezifische Widgets können per `widgets?: CustomWidgetDefinition[]` ergänzt werden.
 
-**Edit vs. Create:** Der Composer leitet aus dem `onDelete`-Prop ab, ob er sich im Edit-Modus befindet (Delete-Button erscheint, Submit-Label wechselt zu „Speichern"). Caller, die `onDelete` nicht setzen, signalisieren Create-Modus.
+**Edit vs. Create:** Der Composer entscheidet via `editMode ?? !!onDelete` — explizit gesetzter `editMode` gewinnt; ansonsten signalisiert das Vorhandensein von `onDelete` Edit-Modus (Delete-Button erscheint, Submit-Label wechselt zu „Speichern"). Caller ohne beides sind im Create-Modus.
 
 **Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
 
@@ -97,10 +107,25 @@ interface ItemDetailPanelProps {
 ```ts
 interface CommentSectionProps {
   itemId: string
-  renderReactions?: (commentId: string) => ReactNode
-  label?: string
+  placeholder?: string
+  /** Slot für ReactionBar pro Comment. */
+  renderReactions?: (itemId: string) => ReactNode
+  /** Versteckt den eingebauten Input — Caller platziert `CommentInput` selbst. */
+  hideInput?: boolean
+  /**
+   * Reply-State an den Caller herausgeben (für externes CommentInput).
+   * `CommentQuote` ist aus `@real-life-stack/toolkit` re-exportiert.
+   */
+  onReplyChange?: (
+    replyTo: CommentQuote | null,
+    submit: (text: string) => Promise<void>,
+    cancel: () => void,
+  ) => void
+  className?: string
 }
 ```
+
+**Kompositions-Konvention:** Liste und Eingabe werden als Geschwister gerendert; der Caller entscheidet das Layout. `hideInput` + `onReplyChange` erlauben das CommentInput außerhalb des Scroll-Containers zu platzieren (z.B. als gepinnte Eingabeleiste in `ItemDetailPanel`).
 
 **Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
 
@@ -113,11 +138,15 @@ interface CommentSectionProps {
 ```ts
 interface ReactionBarProps {
   itemId: string
+  /** Anzahl distincter Emojis vor dem Einklappen. Default: 6. */
+  maxVisible?: number
+  /** Klick auf Count (Desktop) oder Long-Press (Mobile) öffnet Details. */
+  onOpenDetails?: (emoji?: string) => void
   className?: string
 }
 ```
 
-**Aktionen:** Klick auf Emoji togglet die Reaction des aktuellen Users. Neue Emojis werden über einen Picker hinzugefügt.
+**Aktionen:** Klick auf Emoji togglet die Reaction des aktuellen Users. Neue Emojis werden über einen Picker hinzugefügt. Über `onOpenDetails` kann der Caller eine Liste der Reagierenden öffnen.
 
 **Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
 
@@ -156,7 +185,7 @@ Reine Item-Ableitungen, von beliebigen Komponenten benutzbar.
 
 **Zweck:** Konsolidiert Composer-Modal-State, `@context`-Ableitung und createItem/updateItem-Dispatch. Module liefern einen `mapSubmission`-Mapper; der Hook orchestriert.
 
-**Vertrag:**
+**Vertrag (Options + Result):**
 
 ```ts
 interface UseItemEditorOptions {
@@ -171,6 +200,22 @@ type ItemEditorMapper = (
   submission: ContentComposerSubmitData,
   ctx: { mode: "create" | "edit"; existingItem: Item | null },
 ) => ItemEditorPayload | null
+
+interface UseItemEditorResult {
+  isOpen: boolean
+  mode: "create" | "edit"
+  currentItem: Item | null
+  error: Error | null
+  isSubmitting: boolean
+  openCreate(): void
+  openEdit(item: Item): void
+  close(): void
+  submit(
+    submission: ContentComposerSubmitData,
+    options?: { existingItem?: Item },
+  ): Promise<Item | null>
+  remove(itemId?: string): Promise<void>
+}
 ```
 
 **Schlüssel-Verhalten:**
@@ -190,8 +235,8 @@ Pure Hooks, die Item-Felder normalisiert ausliefern. Module benutzen sie statt m
 |---|---|---|
 | `useItemAuthor` | `(item, users) => User \| undefined` | Resolved `createdBy` gegen User-Liste |
 | `useItemTags` | `(item) => readonly string[]` | Normalisierte Tag-Liste; stabile Identity (Spec [07-tags.md](../07-tags.md)) |
-| `useItemDateHint` | `(item) => ItemDateHint` | Strukturiertes `data.start`/`data.end` (Spec [event/v1](../schemas/vocab/event/v1)) |
-| `useItemPosition` | `(item) => ItemPosition` | GeoJSON-Position; isPlace + Point (Spec [place/v1](../schemas/vocab/place/v1)) |
+| `useItemDateHint` | `(item) => ItemDateHint` | Strukturiertes `data.start`/`data.end` (Spec [event/v1](../schemas/vocab/event/v1/schema.json)) |
+| `useItemPosition` | `(item) => ItemPosition` | GeoJSON-Position; isPlace + Point (Spec [place/v1](../schemas/vocab/place/v1/schema.json)) |
 
 Plus der Default-Formatter `formatItemDateHint(hint)` für eine kompakte Date-Anzeige.
 
