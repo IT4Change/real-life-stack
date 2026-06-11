@@ -12,12 +12,12 @@
       "title": "KanbanBoard Drag & Drop",
       "description": "Touch-Events und Pointer-Events für mobiles Drag & Drop implementieren",
       "status": "in-progress",
-      "tags": [
-        "toolkit",
-        "ui"
-      ],
       "order": 0
     },
+    "tags": [
+      "toolkit",
+      "ui"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -38,12 +38,12 @@
       "title": "Gruppen als Scopes implementieren",
       "description": "setCurrentGroup() filtert getItems() nach aktuellem Scope",
       "status": "done",
-      "tags": [
-        "data-interface",
-        "architektur"
-      ],
       "order": 0
     },
+    "tags": [
+      "data-interface",
+      "architektur"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -64,12 +64,12 @@
       "title": "CalendarView in Toolkit verschieben",
       "description": "Kalender-Komponente aus der Reference App ins Toolkit Package extrahieren",
       "status": "open",
-      "tags": [
-        "toolkit",
-        "refactoring"
-      ],
       "order": 1
     },
+    "tags": [
+      "toolkit",
+      "refactoring"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -90,12 +90,12 @@
       "title": "GraphQL Subscriptions testen",
       "description": "WebSocket-Verbindung mit Mercurius und graphql-ws verifizieren",
       "status": "open",
-      "tags": [
-        "graphql",
-        "backend"
-      ],
       "order": 2
     },
+    "tags": [
+      "graphql",
+      "backend"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -116,12 +116,12 @@
       "title": "Schein-Design finalisieren",
       "description": "Vorder- und Rückseite der Zeitgutscheine mit Silberdruck-Vorlage fertigstellen",
       "status": "in-progress",
-      "tags": [
-        "design",
-        "druck"
-      ],
       "order": 0
     },
+    "tags": [
+      "design",
+      "druck"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -142,12 +142,12 @@
       "title": "Online-Shop Bestellflow",
       "description": "Personalisierte Gutscheine bestellen mit Logo-Upload und Textanpassung",
       "status": "open",
-      "tags": [
-        "shop",
-        "feature"
-      ],
       "order": 1
     },
+    "tags": [
+      "shop",
+      "feature"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -168,12 +168,12 @@
       "title": "Multiplikatoren-Pakete versenden",
       "description": "50 Scheine pro Multiplikator vorbereiten und verschicken — erste 20 Pakete",
       "status": "in-progress",
-      "tags": [
-        "launch",
-        "logistik"
-      ],
       "order": 2
     },
+    "tags": [
+      "launch",
+      "logistik"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -194,12 +194,12 @@
       "title": "MessagingAdapter End-to-End Test",
       "description": "WebSocket Relay mit Heartbeat, ACK und Outbox-Pattern testen",
       "status": "done",
-      "tags": [
-        "messaging",
-        "test"
-      ],
       "order": 0
     },
+    "tags": [
+      "messaging",
+      "test"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -220,12 +220,12 @@
       "title": "Migration auf automerge-repo",
       "description": "Automerge-repo für automatische Persistenz und Sync statt manuellem save/load",
       "status": "open",
-      "tags": [
-        "crdt",
-        "architektur"
-      ],
       "order": 1
     },
+    "tags": [
+      "crdt",
+      "architektur"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -246,12 +246,12 @@
       "title": "Beete vorbereiten",
       "description": "Erde umgraben und Kompost einarbeiten für die Frühjahrspflanzung",
       "status": "open",
-      "tags": [
-        "garten",
-        "frühling"
-      ],
       "order": 0
     },
+    "tags": [
+      "garten",
+      "frühling"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -272,12 +272,12 @@
       "title": "Samen bestellen",
       "description": "Tomaten, Zucchini, Kräuter — samenfeste Sorten von Dreschflegel",
       "status": "in-progress",
-      "tags": [
-        "garten",
-        "einkauf"
-      ],
       "order": 1
     },
+    "tags": [
+      "garten",
+      "einkauf"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -298,11 +298,11 @@
       "title": "Wasserschlauch reparieren",
       "description": "Leck am Verbindungsstück abdichten",
       "status": "done",
-      "tags": [
-        "infrastruktur"
-      ],
       "order": 2
     },
+    "tags": [
+      "infrastruktur"
+    ],
     "relations": [
       {
         "predicate": "assignedTo",
@@ -323,12 +323,12 @@
       "title": "RLS Weekly",
       "description": "Wöchentliches Standup — Stand der Module, offene Fragen, nächste Schritte",
       "start": "2026-03-10T10:00:00Z",
-      "end": "2026-03-10T11:00:00Z",
-      "tags": [
-        "meeting",
-        "weekly"
-      ]
-    }
+      "end": "2026-03-10T11:00:00Z"
+    },
+    "tags": [
+      "meeting",
+      "weekly"
+    ]
   },
   {
     "@context": [
@@ -343,12 +343,12 @@
       "title": "Storybook Review",
       "description": "Gemeinsam die neuen Toolkit-Komponenten in Storybook durchgehen",
       "start": "2026-03-14T14:00:00Z",
-      "end": "2026-03-14T15:30:00Z",
-      "tags": [
-        "review",
-        "ui"
-      ]
-    }
+      "end": "2026-03-14T15:30:00Z"
+    },
+    "tags": [
+      "review",
+      "ui"
+    ]
   },
   {
     "@context": [
@@ -366,10 +366,6 @@
       "start": "2026-03-29T18:00:00Z",
       "end": "2026-03-29T21:00:00Z",
       "address": "Bad Salzschlirf",
-      "tags": [
-        "launch",
-        "event"
-      ],
       "position": {
         "type": "Point",
         "coordinates": [
@@ -377,7 +373,11 @@
           50.56
         ]
       }
-    }
+    },
+    "tags": [
+      "launch",
+      "event"
+    ]
   },
   {
     "@context": [
@@ -395,10 +395,6 @@
       "start": "2026-03-22T10:00:00Z",
       "end": "2026-03-22T14:00:00Z",
       "address": "Gemeinschaftsgarten Sonnenhügel, Am Sonnenhügel 5",
-      "tags": [
-        "garten",
-        "gemeinschaft"
-      ],
       "position": {
         "type": "Point",
         "coordinates": [
@@ -406,7 +402,11 @@
           50.11
         ]
       }
-    }
+    },
+    "tags": [
+      "garten",
+      "gemeinschaft"
+    ]
   },
   {
     "@context": [
@@ -421,12 +421,12 @@
       "title": "WoT Demo Session",
       "description": "Live-Demo: Identität erstellen, Attestierung austauschen, Relay-Verbindung",
       "start": "2026-03-18T16:00:00Z",
-      "end": "2026-03-18T17:30:00Z",
-      "tags": [
-        "demo",
-        "wot"
-      ]
-    }
+      "end": "2026-03-18T17:30:00Z"
+    },
+    "tags": [
+      "demo",
+      "wot"
+    ]
   },
   {
     "@context": [
@@ -438,12 +438,12 @@
     "createdBy": "user-3",
     "data": {
       "title": "Feature-Komponenten umstrukturiert",
-      "content": "Habe die UI-Komponenten von ui/ nach primitives/ verschoben und das KanbanBoard komplett überarbeitet. Drag & Drop funktioniert jetzt auch auf Touch-Geräten. Bitte mal testen!",
-      "tags": [
-        "update",
-        "toolkit"
-      ]
-    }
+      "content": "Habe die UI-Komponenten von ui/ nach primitives/ verschoben und das KanbanBoard komplett überarbeitet. Drag & Drop funktioniert jetzt auch auf Touch-Geräten. Bitte mal testen!"
+    },
+    "tags": [
+      "update",
+      "toolkit"
+    ]
   },
   {
     "@context": [
@@ -455,12 +455,12 @@
     "createdBy": "user-1",
     "data": {
       "title": "Connector-Architektur bewährt sich",
-      "content": "Wir haben jetzt Mock, Local und GraphQL Connector — alle gegen dasselbe Interface. Der Wechsel zur Laufzeit funktioniert. Das validiert unsere Architektur-Entscheidung von Anfang an.",
-      "tags": [
-        "architektur",
-        "milestone"
-      ]
-    }
+      "content": "Wir haben jetzt Mock, Local und GraphQL Connector — alle gegen dasselbe Interface. Der Wechsel zur Laufzeit funktioniert. Das validiert unsere Architektur-Entscheidung von Anfang an."
+    },
+    "tags": [
+      "architektur",
+      "milestone"
+    ]
   },
   {
     "@context": [
@@ -472,12 +472,12 @@
     "createdBy": "user-2",
     "data": {
       "title": "Erste Scheine gedruckt!",
-      "content": "Die ersten Zeitgutscheine sind aus der Druckerei. Silberdruck sieht fantastisch aus. Jetzt geht es an die Multiplikatoren-Pakete — 100 Leute bekommen je 50 Scheine zum Verschenken.",
-      "tags": [
-        "launch",
-        "money-printer"
-      ]
-    }
+      "content": "Die ersten Zeitgutscheine sind aus der Druckerei. Silberdruck sieht fantastisch aus. Jetzt geht es an die Multiplikatoren-Pakete — 100 Leute bekommen je 50 Scheine zum Verschenken."
+    },
+    "tags": [
+      "launch",
+      "money-printer"
+    ]
   },
   {
     "@context": [
@@ -489,13 +489,13 @@
     "createdBy": "user-1",
     "data": {
       "title": "E2E-Verschlüsselung steht",
-      "content": "Der AutomergeReplicationAdapter funktioniert: Automerge CRDT + AES-256-GCM Verschlüsselung + GroupKeyService. Spaces werden verschlüsselt über den Relay gesynct. 31 Tests passen.",
-      "tags": [
-        "wot",
-        "crypto",
-        "milestone"
-      ]
-    }
+      "content": "Der AutomergeReplicationAdapter funktioniert: Automerge CRDT + AES-256-GCM Verschlüsselung + GroupKeyService. Spaces werden verschlüsselt über den Relay gesynct. 31 Tests passen."
+    },
+    "tags": [
+      "wot",
+      "crypto",
+      "milestone"
+    ]
   },
   {
     "@context": [
@@ -507,12 +507,12 @@
     "createdBy": "user-5",
     "data": {
       "title": "Gartenplan für die Saison",
-      "content": "Habe einen Bepflanzungsplan gemacht: Beet 1 Tomaten & Basilikum, Beet 2 Zucchini & Kürbis, Beet 3 Kräuterspirale. Wer hat noch Ideen?",
-      "tags": [
-        "garten",
-        "planung"
-      ]
-    }
+      "content": "Habe einen Bepflanzungsplan gemacht: Beet 1 Tomaten & Basilikum, Beet 2 Zucchini & Kürbis, Beet 3 Kräuterspirale. Wer hat noch Ideen?"
+    },
+    "tags": [
+      "garten",
+      "planung"
+    ]
   },
   {
     "@context": [
@@ -527,9 +527,6 @@
       "title": "Gemeinschaftsgarten Sonnenhügel",
       "description": "Unser Garten — 12 Beete, Kräuterspirale, Kompost und Sitzecke",
       "address": "Am Sonnenhügel 5, 60000 Frankfurt",
-      "tags": [
-        "garten"
-      ],
       "position": {
         "type": "Point",
         "coordinates": [
@@ -537,7 +534,10 @@
           50.11
         ]
       }
-    }
+    },
+    "tags": [
+      "garten"
+    ]
   },
   {
     "@context": [
@@ -552,10 +552,6 @@
       "title": "Saatgut-Bibliothek",
       "description": "Samenfeste Sorten tauschen und ausleihen",
       "address": "Nachbarweg 12, 60000 Frankfurt",
-      "tags": [
-        "garten",
-        "sharing"
-      ],
       "position": {
         "type": "Point",
         "coordinates": [
@@ -563,7 +559,11 @@
           50.112
         ]
       }
-    }
+    },
+    "tags": [
+      "garten",
+      "sharing"
+    ]
   },
   {
     "@context": [
@@ -575,13 +575,13 @@
     "createdBy": "user-6",
     "data": {
       "title": "Kleine Straßenausstellung im April",
-      "content": "Ich plane eine kleine Fotoausstellung an der Mauer gegenüber vom Garten — 10 Prints, selbst aufgehängt, eine Woche lang. Wer möchte mitmachen oder helfen?",
-      "tags": [
-        "fotografie",
-        "ausstellung",
-        "nachbarschaft"
-      ]
-    }
+      "content": "Ich plane eine kleine Fotoausstellung an der Mauer gegenüber vom Garten — 10 Prints, selbst aufgehängt, eine Woche lang. Wer möchte mitmachen oder helfen?"
+    },
+    "tags": [
+      "fotografie",
+      "ausstellung",
+      "nachbarschaft"
+    ]
   },
   {
     "@context": [
@@ -593,11 +593,11 @@
     "createdBy": "user-6",
     "data": {
       "title": "Moment des Tages",
-      "content": "Heute Morgen beim Aufhängen der Schaukästen: eine ältere Frau ist stehengeblieben und hat eine Weile auf das Bild vom Markt geschaut. Das ist der Grund.",
-      "tags": [
-        "fotografie"
-      ]
-    }
+      "content": "Heute Morgen beim Aufhängen der Schaukästen: eine ältere Frau ist stehengeblieben und hat eine Weile auf das Bild vom Markt geschaut. Das ist der Grund."
+    },
+    "tags": [
+      "fotografie"
+    ]
   },
   {
     "@context": [
@@ -615,10 +615,6 @@
       "start": "2026-04-12T16:00:00.000Z",
       "end": "2026-04-12T19:00:00.000Z",
       "address": "Gartenstraße 3, 60000 Frankfurt",
-      "tags": [
-        "ausstellung",
-        "nachbarschaft"
-      ],
       "position": {
         "type": "Point",
         "coordinates": [
@@ -626,7 +622,11 @@
           50.1105
         ]
       }
-    }
+    },
+    "tags": [
+      "ausstellung",
+      "nachbarschaft"
+    ]
   },
   {
     "@context": [
@@ -641,11 +641,6 @@
       "title": "Ausstellungsmauer Gartenstraße",
       "description": "Mauer mit Schaukästen für temporäre Fotoausstellungen — offen für alle Nachbarschaftsprojekte",
       "address": "Gartenstraße 3, 60000 Frankfurt",
-      "tags": [
-        "fotografie",
-        "ausstellung",
-        "nachbarschaft"
-      ],
       "position": {
         "type": "Point",
         "coordinates": [
@@ -653,7 +648,12 @@
           50.1105
         ]
       }
-    }
+    },
+    "tags": [
+      "fotografie",
+      "ausstellung",
+      "nachbarschaft"
+    ]
   },
   {
     "@context": [
@@ -695,12 +695,12 @@
         ]
       },
       "address": "Marheinekeplatz 15, 10961 Berlin",
-      "locationName": "Markthalle Neun",
-      "tags": [
-        "workshop",
-        "permakultur"
-      ]
-    }
+      "locationName": "Markthalle Neun"
+    },
+    "tags": [
+      "workshop",
+      "permakultur"
+    ]
   },
   {
     "@context": [
@@ -725,12 +725,12 @@
         ]
       },
       "address": "Am Sonnenhügel 5, 60000 Frankfurt",
-      "locationName": "Gemeinschaftsgarten Sonnenhügel",
-      "tags": [
-        "markt",
-        "garten"
-      ]
-    }
+      "locationName": "Gemeinschaftsgarten Sonnenhügel"
+    },
+    "tags": [
+      "markt",
+      "garten"
+    ]
   },
   {
     "@context": [
@@ -755,11 +755,11 @@
         ]
       },
       "address": "Friedrichshain, 10243 Berlin",
-      "locationName": "Stadtteilzentrum Friedrichshain",
-      "tags": [
-        "repair",
-        "community"
-      ]
-    }
+      "locationName": "Stadtteilzentrum Friedrichshain"
+    },
+    "tags": [
+      "repair",
+      "community"
+    ]
   }
 ]

@@ -52,7 +52,7 @@ export function KanbanToolbar({
     if (availableTags) return availableTags
     const tagSet = new Set<string>()
     for (const item of items) {
-      for (const tag of (item.data.tags as string[]) ?? []) {
+      for (const tag of item.tags ?? []) {
         tagSet.add(tag)
       }
     }

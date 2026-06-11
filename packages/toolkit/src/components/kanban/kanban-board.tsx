@@ -68,7 +68,7 @@ function KanbanCard({ item, users, isDragged, onDragStart, onDragEnd, onClick }:
   const assigneeIds = getAssigneeIds(item)
   const userMap = new Map((users ?? []).map((u) => [u.id, u]))
   const assignees = assigneeIds.map((id) => userMap.get(id)).filter((u): u is User => u != null)
-  const tags = (item.data.tags as string[]) ?? []
+  const tags = item.tags ?? []
   const commentCount = (item.data.commentCount as number | undefined) ?? 0
 
   return (

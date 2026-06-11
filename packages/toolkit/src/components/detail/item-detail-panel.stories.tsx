@@ -89,9 +89,8 @@ const POST: Item = {
   createdBy: "user-1",
   data: {
     title: "Gemeinschaftsgarten: Samstagstreffen",
-    content: "Wir treffen uns am Samstag zum Beete vorbereiten und planen die nächsten Schritte.",
-    tags: ["garten", "planung"],
-  },
+    content: "Wir treffen uns am Samstag zum Beete vorbereiten und planen die nächsten Schritte."
+  }, tags: ["garten", "planung"],
 }
 
 function comment(id: string, createdBy: string, content: string, replyTo?: string): Item {

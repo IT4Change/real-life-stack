@@ -29,9 +29,8 @@ const initialItems: FeedEntry[] = [
       createdBy: "user-1",
       data: {
         title: "Gemeinschaftsgarten: Samstagstreffen",
-        content: "Wir treffen uns am Samstag zum Beete vorbereiten und planen die nächsten Schritte.",
-        tags: ["garten", "planung"],
-      },
+        content: "Wir treffen uns am Samstag zum Beete vorbereiten und planen die nächsten Schritte."
+      }, tags: ["garten", "planung"],
     },
     author: { name: currentUser.name, avatar: currentUser.avatar },
     comments: 4,
@@ -50,9 +49,8 @@ const initialItems: FeedEntry[] = [
         title: "Workshop: Kompost richtig anlegen",
         content: "Kurzer Praxisworkshop mit Materialliste und offener Fragerunde.",
         start: new Date(now.getTime() + 1000 * 60 * 60 * 24 * 3).toISOString(),
-        address: "Gemeinschaftsgarten Nord",
-        tags: ["workshop"],
-      },
+        address: "Gemeinschaftsgarten Nord"
+      }, tags: ["workshop"],
     },
     author: { name: "Max Mustermann", avatar: "https://randomuser.me/api/portraits/men/32.jpg" },
     comments: 2,
@@ -67,9 +65,8 @@ const initialItems: FeedEntry[] = [
       data: {
         title: "Wasserschlauch reparieren",
         description: "Leck am Verbindungsstück abdichten und Materialbedarf dokumentieren.",
-        status: "in-progress",
-        tags: ["infrastruktur"],
-      },
+        status: "in-progress"
+      }, tags: ["infrastruktur"],
     },
     author: { name: "Thomas Müller", avatar: "https://randomuser.me/api/portraits/men/67.jpg" },
     comments: 1,

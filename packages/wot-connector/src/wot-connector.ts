@@ -827,6 +827,8 @@ export class WotConnector extends BaseConnector {
       if (updates.relations !== undefined) existing.relations = updates.relations
       if (updates.schema !== undefined) existing.schema = updates.schema
       if (updates.schemaVersion !== undefined) existing.schemaVersion = updates.schemaVersion
+      if (updates.tags !== undefined) existing.tags = updates.tags
+      if (updates["@context"] !== undefined) existing["@context"] = updates["@context"]
     })
 
     // Reindex the affected group so CrossGroupIndex reflects local writes

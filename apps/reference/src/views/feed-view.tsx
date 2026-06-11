@@ -89,7 +89,7 @@ export function FeedView({ groupId }: { groupId: string }) {
     // status/group/title/text/media/people/tags to "" or []). Without this
     // a post would ship with `data.status = ""` and match the Kanban
     // filter `hasField: ["status"]`, leaking it onto the board.
-    const { text, ...rest } = submission.data
+    const { text, tags: submittedTags, ...rest } = submission.data
     const cleaned = Object.fromEntries(
       Object.entries(rest).filter(([, v]) => {
         if (v === "" || v === null || v === undefined) return false
@@ -100,11 +100,13 @@ export function FeedView({ groupId }: { groupId: string }) {
     const itemData = submission.contentType === "post"
       ? { ...cleaned, ...(text ? { content: text } : {}) }
       : { ...cleaned, ...(text ? { description: text } : {}) }
+    const tags = Array.isArray(submittedTags) && submittedTags.length > 0 ? submittedTags : undefined
     await createItem({
       type: submission.contentType,
       createdBy: currentUser?.id ?? "anonymous",
       "@context": deriveContext(submission.contentType, itemData),
       data: itemData,
+      ...(tags ? { tags } : {}),
     })
   }, [createItem, currentUser?.id])
 

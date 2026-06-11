@@ -72,7 +72,7 @@ export function FeedItem({
   const data = item.data as Record<string, unknown>
   const title = data.title as string | undefined
   const content = (data.content ?? data.description ?? "") as string
-  const tags = (data.tags as string[] | undefined) ?? []
+  const tags = item.tags ?? []
   const start = data.start as string | undefined
   const end = data.end as string | undefined
   const address = data.address as string | undefined

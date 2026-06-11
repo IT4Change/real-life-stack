@@ -97,6 +97,8 @@ function updateItemOnHandle(
     if (updates.relations !== undefined) existing.relations = updates.relations
     if (updates.schema !== undefined) existing.schema = updates.schema
     if (updates.schemaVersion !== undefined) existing.schemaVersion = updates.schemaVersion
+    if (updates.tags !== undefined) existing.tags = updates.tags
+    if (updates["@context"] !== undefined) existing["@context"] = updates["@context"]
   })
   return getItemFromHandle(handle, id)!
 }
@@ -264,6 +266,61 @@ describe("Item CRUD (CRDT-agnostic contract)", () => {
 
       expect(updated.relations).toHaveLength(1)
       expect(updated.relations![0].predicate).toBe("assignedTo")
+    })
+
+    it("updates top-level tags (spec 07-tags.md)", () => {
+      const item = createItemOnHandle(handle, {
+        type: "task",
+        createdBy: "u1",
+        data: { title: "Beete vorbereiten" },
+        tags: ["garten"],
+      })
+
+      const updated = updateItemOnHandle(handle, item.id, {
+        tags: ["garten", "urn:rls:tag:permakultur"],
+      })
+
+      expect(updated.tags).toEqual(["garten", "urn:rls:tag:permakultur"])
+      expect(updated.data.title).toBe("Beete vorbereiten") // untouched
+    })
+
+    it("clears top-level tags when set to empty array", () => {
+      const item = createItemOnHandle(handle, {
+        type: "task",
+        createdBy: "u1",
+        data: {},
+        tags: ["legacy"],
+      })
+
+      const updated = updateItemOnHandle(handle, item.id, { tags: [] })
+
+      expect(updated.tags).toEqual([])
+    })
+
+    it("updates @context (spec 06-schema-composition.md)", () => {
+      const item = createItemOnHandle(handle, {
+        type: "event",
+        createdBy: "u1",
+        data: { start: "2026-07-15T18:00:00Z" },
+        "@context": [
+          "https://real-life-stack.org/vocab/base/v1",
+          "https://real-life-stack.org/vocab/event/v1",
+        ],
+      })
+
+      const updated = updateItemOnHandle(handle, item.id, {
+        "@context": [
+          "https://real-life-stack.org/vocab/base/v1",
+          "https://real-life-stack.org/vocab/event/v1",
+          "https://real-life-stack.org/vocab/place/v1",
+        ],
+      })
+
+      expect(updated["@context"]).toEqual([
+        "https://real-life-stack.org/vocab/base/v1",
+        "https://real-life-stack.org/vocab/event/v1",
+        "https://real-life-stack.org/vocab/place/v1",
+      ])
     })
 
     it("deep-clones nested objects to avoid CRDT reference errors", () => {

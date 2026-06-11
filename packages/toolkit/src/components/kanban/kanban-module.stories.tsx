@@ -21,9 +21,8 @@ const initialItems: Item[] = [
       title: "Materialliste fertigstellen",
       description: "Holz, Schrauben und Erde für den Hochbeetbau prüfen.",
       status: "open",
-      order: 0,
-      tags: ["hochbeet"],
-    },
+      order: 0
+    }, tags: ["hochbeet"],
     relations: [{ predicate: "assignedTo", target: "global:user-1" }],
   },
   {
@@ -35,9 +34,8 @@ const initialItems: Item[] = [
       title: "Hochbeet-Projekt koordinieren",
       description: "Status ist Board-Workflow, keine Projektbewertung.",
       status: "in-progress",
-      order: 0,
-      tags: ["projekt"],
-    },
+      order: 0
+    }, tags: ["projekt"],
     relations: [{ predicate: "assignedTo", target: "global:user-2" }],
   },
   {
@@ -49,9 +47,8 @@ const initialItems: Item[] = [
       title: "Dokumentation vorbereiten",
       description: "Fotos und kurze Notizen für den Feed sammeln.",
       status: "in-progress",
-      order: 1,
-      tags: ["doku"],
-    },
+      order: 1
+    }, tags: ["doku"],
     relations: [{ predicate: "assignedTo", target: "global:user-3" }],
   },
   {
@@ -63,9 +60,8 @@ const initialItems: Item[] = [
       title: "Termin abstimmen",
       description: "Samstag 10 Uhr ist bestätigt.",
       status: "done",
-      order: 0,
-      tags: ["orga"],
-    },
+      order: 0
+    }, tags: ["orga"],
   },
 ]
 
@@ -122,9 +118,8 @@ function KanbanModuleOverview() {
             title: "Neuer Task",
             description: "",
             status: "open",
-            order: openItems.length,
-            tags: [],
-          },
+            order: openItems.length
+          }, tags: [],
           relations: [{ predicate: "assignedTo", target: "global:user-1" }],
         },
       ]

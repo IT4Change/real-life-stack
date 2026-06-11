@@ -45,7 +45,7 @@ Diese Liste ist offen. Entscheidend sind die darstellbaren Felder.
 | `data.content` / `data.description` | Haupttext oder Kurzbeschreibung |
 | `data.start` / `data.end` | zeitlicher Kontext |
 | `data.location` / `data.address` | räumlicher Kontext |
-| `data.tags` | einfache Sortierung oder Themenhinweis |
+| `tags` | Top-level am Item, einfache Sortierung oder Themenhinweis — siehe [07-tags.md](../07-tags.md) |
 | `createdAt` | Standard-Sortierung |
 | `createdBy` | Autor- oder Ursprungsanzeige |
 
