@@ -54,7 +54,7 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
           onItemClose={() => navigate(`/spaces/${activeWorkspace?.id}/${activeModule}`)}
         />
       )}
-      {activeModule === "calendar" && <CalendarViewWrapper />}
+      {activeModule === "calendar" && <CalendarViewWrapper groupId={activeWorkspace?.id ?? ""} />}
     </div>
   )
 }

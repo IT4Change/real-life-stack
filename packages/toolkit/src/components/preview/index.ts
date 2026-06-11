@@ -7,3 +7,4 @@ export {
 export { ItemMetaRow, formatEventRange, type ItemMetaRowProps } from "./item-meta-row"
 export { ItemCommentCount, type ItemCommentCountProps } from "./item-comment-count"
 export { ItemAssignees, type ItemAssigneesProps } from "./item-assignees"
+export { ItemTimeRange, formatTimeRange, type ItemTimeRangeProps } from "./item-time-range"
