@@ -46,7 +46,7 @@ Andere Item-Typen dürfen erscheinen, wenn sie bewusst einen Board-Workflow übe
 | `data.description` / `data.content` | Beschreibung oder Kontext |
 | `data.status` | Spaltenzuordnung |
 | `data.order` | Reihenfolge innerhalb einer Spalte (siehe [task/v1](../schemas/vocab/task/v1/schema.json); nicht `data.position` — das ist in [place/v1](../schemas/vocab/place/v1/schema.json) die GeoJSON-Geometrie: Point, Polygon oder LineString) |
-| `data.tags` | Themen, Labels oder Filter |
+| `tags` | Top-level am Item, Themen oder Labels — siehe [07-tags.md](../07-tags.md) |
 | `data.commentCount` | optionale Kommentar-Zusammenfassung |
 | `createdAt` | Erstellzeitpunkt, Fallback-Sortierung oder Detailanzeige |
 | `createdBy` | Ursprung oder Autor |
@@ -97,7 +97,7 @@ Confirmations können im Kanban sichtbar werden, z.B. als Badge oder Hinweis auf
 | Karte öffnen | Item vorhanden | Detailansicht oder Zielmodul öffnen |
 | Task erstellen | `ItemWriter`, ggf. `Authenticatable` | Item mit `type: "task"` oder konfiguriertem Typ erstellen |
 | Karte verschieben | `ItemWriter` | `data.status` und `data.order` aktualisieren |
-| Karte bearbeiten | `ItemWriter` | `data.title`, `data.description`, `data.tags` oder andere UI-Felder aktualisieren |
+| Karte bearbeiten | `ItemWriter` | `data.title`, `data.description`, `tags` oder andere UI-Felder aktualisieren |
 | Karte zuweisen | `ItemWriter`, optional `RelationCapable` | `assignedTo`-Relation oder äquivalente Projektion aktualisieren |
 | Karte löschen | `ItemWriter` | Item löschen, wenn die App diese Aktion erlaubt |
 

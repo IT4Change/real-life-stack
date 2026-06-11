@@ -156,13 +156,11 @@ Hierarchische Tag-Auflösung (Eltern-Tag inkludiert Kinder) ist eine UI-Optimier
 
 ## Migrationspfad
 
-Bestehende Code-Stellen (Toolkit, Stories, demo-data) nutzen einfache String-Tags in `data.tags`. Das bleibt gültig. Stufenweiser Ausbau:
+Stand heute: top-level `item.tags`, Display per Hash → Farbe, `hasTag`-Filter im `data-interface`. Weitere Ausbaustufen:
 
-1. **Heute** — String-Tags in `data.tags`, Display per Hash → Farbe.
-2. **Erste Tag-Items** — Tag-Items mit `name`, `color`, `icon` für die Tags, die ein konsistentes Aussehen brauchen sollen. Strings im Item-Feld bleiben gleich; UI-Resolver findet das Tag-Item und nutzt dessen Display.
-3. **URN-Konvention** — sobald ein Tag Cross-Space relevant wird, wird er auf eine URN-Form gehoben und als Tag-Item registriert.
-4. **`hasTag`-Filter** — sobald Connector-seitige Tag-Filterung gebraucht wird, wird `ItemFilter.hasTag` in `data-interface` ergänzt.
-5. **Hierarchie** — `parent`-Relation im Tag-Item wird genutzt, sobald Themenbäume entstehen.
+1. **Erste Tag-Items** — Tag-Items mit `name`, `color`, `icon` für die Tags, die ein konsistentes Aussehen brauchen sollen. Strings im Item-Feld bleiben gleich; UI-Resolver findet das Tag-Item und nutzt dessen Display.
+2. **URN-Konvention** — sobald ein Tag Cross-Space relevant wird, wird er auf eine URN-Form gehoben und als Tag-Item registriert.
+3. **Hierarchie** — `parent`-Relation im Tag-Item wird genutzt, sobald Themenbäume entstehen.
 
 ## Nicht-Ziele
 

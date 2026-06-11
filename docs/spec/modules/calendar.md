@@ -46,7 +46,7 @@ Diese Liste ist offen. Entscheidend ist, ob ein Item zeitlich darstellbar ist.
 | `data.end` | optionaler Endzeitpunkt |
 | `data.location` / `data.address` | räumlicher Kontext |
 | `data.description` / `data.content` | Kurzbeschreibung oder Detailtext |
-| `tags` | Themen, Filter oder Hinweise — siehe [07-tags.md](../07-tags.md) (`data.tags` vs top-level offen) |
+| `tags` | Top-level am Item, Themen oder Filter — siehe [07-tags.md](../07-tags.md) |
 | `createdAt` | Erstellzeitpunkt, nicht Terminzeitpunkt |
 | `createdBy` | Ursprung oder Autor |
 
