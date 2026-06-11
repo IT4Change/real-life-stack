@@ -117,6 +117,8 @@ Beispiele:
 
 Module Components sind wiederverwendbare Bausteine innerhalb von Space Modules. Sie können in mehreren Modulen auftauchen, sind aber nicht selbst pro Space aktivierbare Oberflächen.
 
+Geteilte Bausteine, die mehr als ein Modul nutzt, sind in [modules/shared-components.md](modules/shared-components.md) normativ definiert (Vertrag, Slot-Konvention, Datenanker pro Komponente und pro Hook). Diese Sektion gibt die taxonomische Einordnung.
+
 Beispiele:
 
 - ItemPreview,

@@ -1,0 +1,228 @@
+# Shared Module Components
+
+**Status:** Normativer Entwurf v0.1
+
+Diese Spec listet die wiederverwendbaren Bausteine, die mehr als ein *Space Module* benutzen darf — und beschreibt für jede Komponente den minimalen Vertrag, gegen den Module sich verlassen können. Sie ergänzt [01-app-composition.md §Module Components](../01-app-composition.md) um die maschinen-lesbare Definition jedes geteilten Bausteins.
+
+Sie definiert *nicht* das visuelle Aussehen — das ist Sache der UI-Schicht und liegt im Polish-Backlog. Was hier festgeschrieben ist: API-Form, Daten-Verträge und Slot-Konvention.
+
+Code-Referenz: `packages/toolkit/src/components/` und `packages/toolkit/src/hooks/`.
+
+## Zweck
+
+Module Components abstrahieren wiederkehrendes UI-Verhalten, das jedes neue Modul sonst neu erfindet:
+
+- Item-Vorschau (Preview),
+- Item-Detail mit Comments und Reactions,
+- Composer für Item-Erstellung und -Bearbeitung,
+- Filter über Tags / Type / Date,
+- Profile-Click.
+
+Jede shared Komponente trägt einen klaren Vertrag, damit Module sie ohne Library-Bindung benutzen können.
+
+## Geltungsbereich
+
+Diese Spec deckt:
+
+- die geteilten React-Komponenten im Toolkit (`packages/toolkit/src/components/`),
+- die geteilten Hooks (`packages/toolkit/src/hooks/`),
+- die Slot-/Adornment-Konventionen, die Module nutzen um spezifische Darstellung zu ergänzen.
+
+Sie deckt *nicht*:
+
+- visuelle Spezifikation (Spacings, Farben, Hover-States) — folgt im UI-Polish,
+- modul-spezifische Komponenten (z.B. `KanbanBoard`, `CalendarView`) — bleiben in ihrem Modul,
+- App-Shell-Flächen (Navbar, ProfileDialog) — eigene Verträge in `01-app-composition.md`.
+
+## Komponenten
+
+Jede shared Komponente hat: Zweck, Vertrag (TypeScript-Signatur), Slot-Konvention falls vorhanden, Spec-Anker.
+
+### `ContentComposer`
+
+**Zweck:** Item-Erstellung und -Bearbeitung über eine Widget-Komposition.
+
+**Vertrag:**
+
+```ts
+interface ContentComposerProps {
+  contentTypes: ContentTypeConfig[]
+  initialContentType?: string
+  initialData?: WidgetData
+  onSubmit: (data: ContentComposerSubmitData) => void
+  onCancel: () => void
+  onDelete?: () => void
+  // widgets, suggestions, liveUpdate, etc. — siehe Code
+}
+
+interface ContentComposerSubmitData {
+  contentType: string
+  isPublic: boolean
+  data: WidgetData
+}
+```
+
+**Slot-Konvention:** `contentTypes[].defaultWidgets` listet die Widgets, die der Composer für einen Typ rendert (`title`, `text`, `date`, `location`, `status`, `people`, `tags`, `media`, `group`). Modul-spezifische Widgets können per `widgets?: CustomWidgetDefinition[]` ergänzt werden.
+
+**Edit vs. Create:** Der Composer leitet aus dem `onDelete`-Prop ab, ob er sich im Edit-Modus befindet (Delete-Button erscheint, Submit-Label wechselt zu „Speichern"). Caller, die `onDelete` nicht setzen, signalisieren Create-Modus.
+
+**Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
+
+### `ItemDetailPanel`
+
+**Zweck:** Container für Item-Detail-Anzeige mit Comments-Section. Library-agnostisches Inneres — Caller entscheidet, wie das Panel gerahmt wird (Modal, Drawer, Side-Panel, Route).
+
+**Vertrag:**
+
+```ts
+interface ItemDetailPanelProps {
+  itemId: string
+  children: ReactNode          // Top-Slot: Read-View ODER Composer im Edit-Mode
+  renderCommentReactions?: (commentId: string) => ReactNode
+  commentsLabel?: string
+  className?: string
+}
+```
+
+**Slot-Konvention:** `children` ist der freie Top-Slot. Module füllen ihn mit entweder einer Read-Ansicht (`FeedItem`, künftig `ItemPreview`) oder einem inline `ContentComposer` im Edit-Mode. Der Comments-Bereich wird automatisch gerendert; das `renderCommentReactions`-Slot erlaubt es, ReactionBars an einzelne Comments zu hängen.
+
+**Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
+
+### `CommentSection`
+
+**Zweck:** Comments + Replies UI mit Reply-Threading. Wird intern von `ItemDetailPanel` benutzt, kann aber auch direkt eingebunden werden.
+
+**Vertrag:**
+
+```ts
+interface CommentSectionProps {
+  itemId: string
+  renderReactions?: (commentId: string) => ReactNode
+  label?: string
+}
+```
+
+**Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
+
+### `ReactionBar`
+
+**Zweck:** Emoji-Reactions auf ein Item. Aggregiert Counts pro Emoji, zeigt was der aktuelle User reagiert hat.
+
+**Vertrag:**
+
+```ts
+interface ReactionBarProps {
+  itemId: string
+  className?: string
+}
+```
+
+**Aktionen:** Klick auf Emoji togglet die Reaction des aktuellen Users. Neue Emojis werden über einen Picker hinzugefügt.
+
+**Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
+
+### `ItemPreview` (geplant, Phase 2)
+
+**Zweck:** Generische Item-Card für Listenansichten. Heute hat jedes Modul seine eigene Card (`FeedItem`, inline `KanbanCard`, Calendar `EventPill`/`EventCard`, Map-Marker-Label).
+
+**Geplanter Vertrag:**
+
+```ts
+interface ItemPreviewProps {
+  item: Item
+  users?: readonly User[]
+  headerAdornment?: ReactNode     // z.B. type-badge, status-chip
+  metaAdornment?: ReactNode       // z.B. date-hint, distance
+  footerAdornment?: ReactNode     // z.B. assignees, comment-count
+  onClick?: () => void
+}
+```
+
+**Slot-Konvention:** Module liefern Modul-spezifische Adornments über die drei Slots (header/meta/footer); der Default-Body (title, author, tags, content-preview) kommt von der shared Komponente. Daten-Hooks aus [Hooks](#hooks) füllen die Felder.
+
+**Status:** Vertrag in Phase 2 finalisiert, sobald Sebastian UX-Mockups liefert.
+
+### `FilterBar` (geplant, Phase 3)
+
+**Zweck:** Shared Filter-UI mit Common-Filtern (Tag-Multiselect, Type, Date-Range, Author) und einem Slot für Modul-spezifische Filter.
+
+**Status:** Vertrag offen, finalisiert in Phase 3 zusammen mit der `hasTag`-/`hasField`-Filter-Implementation.
+
+## Hooks
+
+Reine Item-Ableitungen, von beliebigen Komponenten benutzbar.
+
+### `useItemEditor`
+
+**Zweck:** Konsolidiert Composer-Modal-State, `@context`-Ableitung und createItem/updateItem-Dispatch. Module liefern einen `mapSubmission`-Mapper; der Hook orchestriert.
+
+**Vertrag:**
+
+```ts
+interface UseItemEditorOptions {
+  currentUserId: string | undefined
+  mapSubmission: ItemEditorMapper
+  onCreated?: (item: Item) => void | Promise<void>
+  onUpdated?: (item: Item) => void | Promise<void>
+  onDeleted?: (itemId: string) => void | Promise<void>
+}
+
+type ItemEditorMapper = (
+  submission: ContentComposerSubmitData,
+  ctx: { mode: "create" | "edit"; existingItem: Item | null },
+) => ItemEditorPayload | null
+```
+
+**Schlüssel-Verhalten:**
+
+1. Der Mapper gibt eine `ItemEditorPayload` zurück (`type`, `data`, optional `tags`, `relations`, `@context`, `createdBy`) oder `null` zum Abbruch.
+2. Wenn `@context` fehlt, ruft der Hook `deriveContext(type, data)`.
+3. `submit(submission, { existingItem? })` und `remove(itemId?)` akzeptieren Inline-Overrides, damit Views mit eigener Open-State-Logik (z.B. Kanban's `panelState`) den Hook ohne `openEdit`-Round-Trip benutzen können.
+4. Fire-and-await — kein Optimistic-Update. Optimistic kann als opt-in Mode später ohne API-Bruch ergänzt werden.
+
+**Spec-Anker:** [06-schema-composition.md](../06-schema-composition.md) (für `deriveContext`).
+
+### Item-Daten-Hooks
+
+Pure Hooks, die Item-Felder normalisiert ausliefern. Module benutzen sie statt manueller Field-Reader.
+
+| Hook | Signatur | Zweck |
+|---|---|---|
+| `useItemAuthor` | `(item, users) => User \| undefined` | Resolved `createdBy` gegen User-Liste |
+| `useItemTags` | `(item) => readonly string[]` | Normalisierte Tag-Liste; stabile Identity (Spec [07-tags.md](../07-tags.md)) |
+| `useItemDateHint` | `(item) => ItemDateHint` | Strukturiertes `data.start`/`data.end` (Spec [event/v1](../schemas/vocab/event/v1)) |
+| `useItemPosition` | `(item) => ItemPosition` | GeoJSON-Position; isPlace + Point (Spec [place/v1](../schemas/vocab/place/v1)) |
+
+Plus der Default-Formatter `formatItemDateHint(hint)` für eine kompakte Date-Anzeige.
+
+### `useOpenProfile` + `OpenProfileProvider`
+
+**Zweck:** Imperative Handle für „Profile-Open"-Aktion. Der Toolkit liefert nur den Vertrag; die App Shell entscheidet, was „Open Profile" konkret macht (eigenes Profil editieren wenn `userId === currentUser.id`, sonst Read-Only-View).
+
+**Vertrag:**
+
+```ts
+type OpenProfile = (userId: string) => void
+interface OpenProfileProviderProps {
+  openProfile: OpenProfile
+  children: ReactNode
+}
+function useOpenProfile(): OpenProfile  // no-op fallback ohne Provider
+```
+
+**Fallback-Semantik:** Ohne Provider liefert `useOpenProfile()` einen No-op. Avatar-Klick-Stellen können den Hook unbedingt aufrufen, ohne Stories oder Test-Harnesses zu brechen.
+
+## Composability
+
+Module nutzen mehrere shared Components zusammen. Die Verträge sind so geschnitten, dass Komposition direkt funktioniert — keine impliziten Annahmen über Render-Reihenfolge oder DOM-Struktur:
+
+- **Detail mit Edit-Modus:** `ItemDetailPanel` mit `ContentComposer` als `children`, `useItemEditor` für Submit-Routing.
+- **Preview mit Adornments:** `ItemPreview` (Phase 2) mit Modul-Adornments und `useItemAuthor`/`useItemTags`/`useItemDateHint` als Datenquelle.
+- **Filter:** Module nutzen `useItemTags` für die verfügbare Tag-Aggregation und übergeben das an die `FilterBar` (Phase 3).
+
+## Nicht-Ziele
+
+- Visuelle Spezifikation. Diese Spec bindet keine Farben, Spacings oder Hover-States. Polish liegt in der UI-Schicht.
+- Modul-spezifische Komponenten. `KanbanBoard`, `CalendarView`, `MapAdapter` (siehe [map.md](map.md)), `FeedItem` bleiben in ihrem Modul.
+- App-Shell-Flächen. `ProfileDialog`, `WorkspaceSwitcher`, `Navbar` sind in [01-app-composition.md](../01-app-composition.md) spezifiziert, nicht hier.
+- Backend-Verträge. Diese Spec definiert UI-Composition, nicht den DataInterface-Vertrag (siehe [02-data-interface.md](../02-data-interface.md)).
