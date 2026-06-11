@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns,
-  Filter,
   Grid3x3,
   HandHeart,
   List,
@@ -21,6 +20,10 @@ import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 import { ItemPreview } from "../preview/item-preview"
 import { ItemTypeBadge, type ItemTypeBadgeConfig } from "../preview/item-type-badge"
 import { ItemTimeRange } from "../preview/item-time-range"
+import { FilterBar } from "../filter/filter-bar"
+import { FilterSection, FilterToggle, FilterMultiSelect } from "../filter/filter-building-blocks"
+import { emptyFilterBarValue, type FilterBarValue, type FilterTypeOption } from "../filter/types"
+import { useFilterableItems } from "../../hooks/use-filterable-items"
 import type { Item } from "@real-life-stack/data-interface"
 
 /**
@@ -320,31 +323,38 @@ export function CalendarView({
   const [visibleDate, setVisibleDate] = useState(today)
   const [selectedDate, setSelectedDate] = useState(today)
   const [viewMode, setViewMode] = useState<CalendarViewMode>(initialViewMode)
-  const [filtersOpen, setFiltersOpen] = useState(false)
-  const [hiddenTypes, setHiddenTypes] = useState<string[]>([])
+  const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [locationFilter, setLocationFilter] = useState<LocationFilter>("all")
   const [myEventsOnly, setMyEventsOnly] = useState(false)
 
+  const eventsAfterBar = useFilterableItems(events, filterBarValue)
+
   const calendarEvents = useMemo(
-    () => events.map(toCalendarEvent).filter((event): event is CalendarEvent => event !== null).sort(compareEvents),
-    [events],
+    () => eventsAfterBar.map(toCalendarEvent).filter((event): event is CalendarEvent => event !== null).sort(compareEvents),
+    [eventsAfterBar],
   )
 
-  const eventTypes = useMemo(
-    () => [...new Set(calendarEvents.map((event) => event.item.type))].sort(),
-    [calendarEvents],
-  )
+  const availableTags = useMemo(() => {
+    const seen = new Set<string>()
+    for (const event of events) for (const tag of event.tags ?? []) seen.add(tag)
+    return Array.from(seen).sort()
+  }, [events])
+
+  const availableTypes = useMemo<FilterTypeOption[]>(() => {
+    const seen = new Set<string>()
+    for (const event of events) seen.add(event.type)
+    return Array.from(seen).sort().map((id) => ({ id, label: getTypeLabel(id) }))
+  }, [events])
 
   const filteredEvents = useMemo(
     () =>
       calendarEvents.filter((event) => {
-        if (hiddenTypes.includes(event.item.type)) return false
         if (locationFilter === "with" && !event.location) return false
         if (locationFilter === "without" && event.location) return false
         if (myEventsOnly && currentUserId && event.item.createdBy !== currentUserId) return false
         return true
       }),
-    [calendarEvents, currentUserId, hiddenTypes, locationFilter, myEventsOnly],
+    [calendarEvents, currentUserId, locationFilter, myEventsOnly],
   )
 
   const eventsByDay = useMemo(
@@ -364,9 +374,6 @@ export function CalendarView({
     [filteredEvents, visibleDate, viewMode],
   )
 
-  const activeFilterCount =
-    hiddenTypes.length + (locationFilter !== "all" ? 1 : 0) + (myEventsOnly && currentUserId ? 1 : 0)
-
   function movePeriod(direction: -1 | 1) {
     setVisibleDate((date) => {
       if (viewMode === "day") return addDays(date, direction)
@@ -383,18 +390,6 @@ export function CalendarView({
   function selectViewMode(nextMode: CalendarViewMode) {
     setViewMode(nextMode)
     if (nextMode === "day") setSelectedDate(visibleDate)
-  }
-
-  function toggleType(type: string) {
-    setHiddenTypes((current) =>
-      current.includes(type) ? current.filter((item) => item !== type) : [...current, type],
-    )
-  }
-
-  function resetFilters() {
-    setHiddenTypes([])
-    setLocationFilter("all")
-    setMyEventsOnly(false)
   }
 
   return (
@@ -455,21 +450,6 @@ export function CalendarView({
             })}
           </div>
 
-          <Button
-            variant={filtersOpen ? "secondary" : "ghost"}
-            size="icon-sm"
-            aria-label="Filter"
-            onClick={() => setFiltersOpen((open) => !open)}
-            className="relative"
-          >
-            <Filter className="h-4 w-4" />
-            {activeFilterCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
-                {activeFilterCount}
-              </span>
-            )}
-          </Button>
-
           {onCreateEvent && (
             <Button
               size="icon-sm"
@@ -482,76 +462,70 @@ export function CalendarView({
         </div>
       </div>
 
-      {filtersOpen && (
-        <div className="grid gap-4 border-b bg-muted/20 p-4 md:grid-cols-[1fr_auto_auto] md:items-end">
-          <div>
-            <div className="mb-2 text-sm font-medium">Typen</div>
-            <div className="flex flex-wrap gap-2">
-              {eventTypes.map((type) => {
-                const active = !hiddenTypes.includes(type)
-                return (
+      <div className="border-b bg-muted/20 px-4 py-3">
+        <FilterBar
+          value={filterBarValue}
+          onChange={setFilterBarValue}
+          availableTags={availableTags}
+          availableTypes={availableTypes}
+          drawerExtra={
+            <>
+              <FilterSection label="Ort">
+                <FilterMultiSelect
+                  options={[
+                    { id: "with", label: "Mit Ort" },
+                    { id: "without", label: "Ohne Ort" },
+                  ]}
+                  value={locationFilter === "all" ? [] : [locationFilter]}
+                  onChange={(next) => {
+                    if (next.length === 0) setLocationFilter("all")
+                    else setLocationFilter(next[next.length - 1] as LocationFilter)
+                  }}
+                />
+              </FilterSection>
+              {currentUserId && (
+                <FilterSection label="Zuweisung">
+                  <FilterToggle
+                    label="Nur meine Events"
+                    value={myEventsOnly}
+                    onChange={setMyEventsOnly}
+                  />
+                </FilterSection>
+              )}
+            </>
+          }
+          chipsExtra={
+            <>
+              {locationFilter !== "all" && (
+                <span className="inline-flex items-center gap-1 rounded-full border bg-muted/40 pl-2 pr-1 py-0.5 text-xs font-medium">
+                  {locationFilter === "with" ? "Mit Ort" : "Ohne Ort"}
                   <button
-                    key={type}
                     type="button"
-                    aria-pressed={active}
-                    onClick={() => toggleType(type)}
-                    className={cn(
-                      "rounded-full border px-3 py-1 text-sm transition-colors",
-                      active
-                        ? "border-primary/30 bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:bg-muted",
-                    )}
+                    onClick={() => setLocationFilter("all")}
+                    className="rounded-full p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                    aria-label="Ortsfilter entfernen"
                   >
-                    {getTypeLabel(type)}
+                    ×
                   </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-2 text-sm font-medium">Ort</div>
-            <div className="flex rounded-lg bg-muted p-1">
-              {(["all", "with", "without"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setLocationFilter(value)}
-                  className={cn(
-                    "h-8 rounded-md px-3 text-sm font-medium transition-colors",
-                    locationFilter === value
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {value === "all" ? "Alle" : value === "with" ? "Mit Ort" : "Ohne Ort"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {currentUserId && (
-              <button
-                type="button"
-                aria-pressed={myEventsOnly}
-                onClick={() => setMyEventsOnly((value) => !value)}
-                className={cn(
-                  "h-8 rounded-md border px-3 text-sm font-medium transition-colors",
-                  myEventsOnly
-                    ? "border-primary/30 bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-muted",
-                )}
-              >
-                Nur meine
-              </button>
-            )}
-            <Button variant="ghost" size="sm" onClick={resetFilters}>
-              Zurücksetzen
-            </Button>
-          </div>
-        </div>
-      )}
+                </span>
+              )}
+              {myEventsOnly && currentUserId && (
+                <span className="inline-flex items-center gap-1 rounded-full border bg-muted/40 pl-2 pr-1 py-0.5 text-xs font-medium">
+                  Nur meine
+                  <button
+                    type="button"
+                    onClick={() => setMyEventsOnly(false)}
+                    className="rounded-full p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                    aria-label="Filter entfernen"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+            </>
+          }
+        />
+      </div>
 
       {viewMode === "month" && (
         <MonthCalendar

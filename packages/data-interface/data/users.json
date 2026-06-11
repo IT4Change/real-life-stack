@@ -1,6 +1,6 @@
 [
   { "id": "user-1", "displayName": "Anton", "avatarUrl": "/personas/anton.png" },
-  { "id": "user-2", "displayName": "Timo", "avatarUrl": "/personas/timo.jpg" },
+  { "id": "user-2", "displayName": "Timo", "avatarUrl": "/personas/timo.png" },
   { "id": "user-3", "displayName": "Sebastian", "avatarUrl": "/personas/sebastian.jpg" },
   { "id": "user-4", "displayName": "Ulf", "avatarUrl": "https://randomuser.me/api/portraits/men/52.jpg" },
   { "id": "user-5", "displayName": "Lena", "avatarUrl": "https://randomuser.me/api/portraits/women/44.jpg" },

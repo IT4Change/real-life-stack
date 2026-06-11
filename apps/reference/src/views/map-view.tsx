@@ -9,11 +9,23 @@ import {
   ItemTypeBadge,
   ItemMetaRow,
   ReactionBar,
+  FilterBar,
+  emptyFilterBarValue,
+  useFilterableItems,
   getTagAccentColor,
+  type FilterBarValue,
+  type FilterTypeOption,
   type MapMarkerSpec,
 } from "@real-life-stack/toolkit"
 import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
+import { Calendar, MapPin, Sparkles } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
+
+const MAP_TYPES: FilterTypeOption[] = [
+  { id: "event", label: "Events", icon: Calendar },
+  { id: "place", label: "Orte", icon: MapPin },
+  { id: "quest", label: "Quests", icon: Sparkles },
+]
 
 /**
  * Map module — first real version using the LeafletMapAdapter from toolkit.
@@ -45,6 +57,13 @@ export function MapView({ groupId }: { groupId: string }) {
   const { data: currentUser } = useCurrentUser()
 
   const [detailItem, setDetailItem] = useState<Item | null>(null)
+  const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
+  const filteredItems = useFilterableItems(items, filterBarValue)
+  const availableTags = useMemo(() => {
+    const seen = new Set<string>()
+    for (const item of items) for (const tag of item.tags ?? []) seen.add(tag)
+    return Array.from(seen).sort()
+  }, [items])
 
   // Build the markers and an id → item lookup in one pass — marker
   // clicks come back with just the id, and we need the full item to
@@ -52,7 +71,7 @@ export function MapView({ groupId }: { groupId: string }) {
   const { markers, itemsById } = useMemo(() => {
     const markerList: MapMarkerSpec[] = []
     const byId = new Map<string, Item>()
-    for (const item of items) {
+    for (const item of filteredItems) {
       const pos = item.data.position as { type?: string; coordinates?: number[] } | undefined
       if (!pos || pos.type !== "Point" || !Array.isArray(pos.coordinates) || pos.coordinates.length < 2) continue
       const [lng, lat] = pos.coordinates
@@ -67,7 +86,7 @@ export function MapView({ groupId }: { groupId: string }) {
       byId.set(item.id, item)
     }
     return { markers: markerList, itemsById: byId }
-  }, [items])
+  }, [filteredItems])
 
   // Mount the adapter once. Lazy-loaded leaflet means mount() is properly
   // async, which exposes a classic StrictMode race: both effect passes start
@@ -143,12 +162,18 @@ export function MapView({ groupId }: { groupId: string }) {
   )
 
   return (
-    <>
+    <div className="flex h-full w-full flex-col gap-3">
+      <FilterBar
+        value={filterBarValue}
+        onChange={setFilterBarValue}
+        availableTags={availableTags}
+        availableTypes={MAP_TYPES}
+      />
       {/* `isolate` creates a new stacking context so Leaflet's internal
           z-indices (zoom controls up to 1000, popup panes 700, marker
           panes 600) stay contained and don't overlay the navbar /
           workspace switcher / user menu above. */}
-      <div ref={containerRef} className="h-full w-full isolate" />
+      <div ref={containerRef} className="min-h-0 flex-1 isolate" />
 
       <AdaptivePanel
         open={detailItem !== null}
@@ -175,6 +200,6 @@ export function MapView({ groupId }: { groupId: string }) {
           </ItemDetailPanel>
         )}
       </AdaptivePanel>
-    </>
+    </div>
   )
 }

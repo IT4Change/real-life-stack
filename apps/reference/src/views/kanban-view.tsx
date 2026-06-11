@@ -8,8 +8,6 @@ import {
 
 import {
   KanbanBoard,
-  KanbanToolbar,
-  applyItemListFilter,
   computeColumnReorder,
   ContentComposer,
   type ContentComposerSubmitData,
@@ -23,6 +21,13 @@ import {
   DropdownMenuCheckboxItem,
   ItemDetailPanel,
   ReactionBar,
+  FilterBar,
+  FilterSection,
+  FilterToggle,
+  FilterMultiSelect,
+  emptyFilterBarValue,
+  useFilterableItems,
+  type FilterBarValue,
   useItems,
   useUpdateItem,
   useMembers,
@@ -30,8 +35,9 @@ import {
   useConnector,
   useItemEditor,
   type ItemEditorMapper,
-  type ItemListFilter,
 } from "@real-life-stack/toolkit"
+import { Input } from "@real-life-stack/toolkit"
+import { Plus, Search, ListChecks, Columns as ColumnsIcon } from "lucide-react"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
 import { hasItemGroups } from "@real-life-stack/data-interface"
 
@@ -94,12 +100,15 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const { data: members } = useMembers(activeWorkspaceId === "__overview__" ? null : (activeWorkspaceId ?? "group-1"))
   const { data: currentUser } = useCurrentUser()
   const { mutate: updateItem } = useUpdateItem()
-  const [filter, setFilter] = useState<ItemListFilter>({
-    searchText: "",
-    assignedTo: null,
-    myItemsOnly: false,
-    tags: [],
-  })
+  // Shared filter state for the top-of-board FilterBar (tags) plus
+  // kanban-specific extras (myItemsOnly + assignedTo + searchText).
+  // searchText stays a free text input in the trailing actions —
+  // FilterBar's controlled value covers the structured filters.
+  const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
+  const [myItemsOnly, setMyItemsOnly] = useState(false)
+  const [assignedTo, setAssignedTo] = useState<string[]>([])
+  const [searchText, setSearchText] = useState("")
+  const [multiSelect, setMultiSelect] = useState(false)
   const [panelState, setPanelState] = useState<KanbanPanelState>({ mode: "closed" })
   const [panelPinned, setPanelPinned] = useState(false)
 
@@ -118,10 +127,34 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null)
 
-  const filteredTasks = useMemo(
-    () => applyItemListFilter(tasks, filter, currentUser?.id),
-    [tasks, filter, currentUser?.id]
-  )
+  // FilterBar covers tag (and type) — types is empty for the Kanban
+  // case since the board only renders status-bearing tasks.
+  const filteredByBar = useFilterableItems(tasks, filterBarValue)
+
+  // Apply the kanban-specific extras on top: text search across title
+  // / description, assignee filter via relations, "nur meine" toggle.
+  const filteredTasks = useMemo(() => {
+    const needle = searchText.trim().toLowerCase()
+    const assigneeSet = new Set(assignedTo)
+    return filteredByBar.filter((task) => {
+      if (needle) {
+        const title = String(task.data.title ?? "").toLowerCase()
+        const description = String(task.data.description ?? "").toLowerCase()
+        if (!title.includes(needle) && !description.includes(needle)) return false
+      }
+      const relations = task.relations ?? []
+      const taskAssignees = relations
+        .filter((r) => r.predicate === "assignedTo")
+        .map((r) => r.target.replace(/^global:/, ""))
+      if (assigneeSet.size > 0) {
+        if (!taskAssignees.some((id) => assigneeSet.has(id))) return false
+      }
+      if (myItemsOnly && currentUser?.id) {
+        if (!taskAssignees.includes(currentUser.id)) return false
+      }
+      return true
+    })
+  }, [filteredByBar, searchText, assignedTo, myItemsOnly, currentUser?.id])
 
   const availableTags = useMemo(() => {
     const tagSet = new Set<string>()
@@ -350,16 +383,87 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
     return map
   }, [concreteGroups, moveToGroup, tasks, tasksByGroup, updateItem])
 
+  const memberOptions = useMemo(
+    () => members.map((m) => ({ id: m.id, label: m.displayName ?? m.id })),
+    [members],
+  )
+
   return (
     <div className="space-y-4">
-      <KanbanToolbar
-        items={tasks}
-        users={members}
-        currentUserId={currentUser?.id}
-        onFilterChange={setFilter}
-        onCreateItem={handleCreateItem}
-        onEditColumns={() => console.log("Edit columns")}
-        extraActions={viewModeToggle}
+      <FilterBar
+        value={filterBarValue}
+        onChange={setFilterBarValue}
+        availableTags={availableTags}
+        drawerExtra={
+          <>
+            <FilterSection label="Schnellfilter">
+              <FilterToggle
+                label="Nur meine Aufgaben"
+                value={myItemsOnly}
+                onChange={setMyItemsOnly}
+              />
+            </FilterSection>
+            {memberOptions.length > 0 && (
+              <FilterSection label="Zuweisung">
+                <FilterMultiSelect
+                  options={memberOptions}
+                  value={assignedTo}
+                  onChange={setAssignedTo}
+                />
+              </FilterSection>
+            )}
+          </>
+        }
+        chipsExtra={
+          <>
+            {myItemsOnly && (
+              <span className="inline-flex items-center gap-1 rounded-full border bg-muted/40 pl-2 pr-1 py-0.5 text-xs font-medium">
+                Nur meine
+                <button
+                  type="button"
+                  onClick={() => setMyItemsOnly(false)}
+                  className="rounded-full p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                  aria-label="Filter entfernen"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+          </>
+        }
+        trailingActions={
+          <>
+            <div className="relative">
+              <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Suche…"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className="h-8 w-40 pl-7 text-xs"
+              />
+            </div>
+            <Button
+              variant={multiSelect ? "default" : "outline"}
+              size="sm"
+              onClick={() => setMultiSelect((v) => !v)}
+              title="Mehrfachauswahl"
+            >
+              <ListChecks className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => console.log("Edit columns")}
+              title="Spalten bearbeiten"
+            >
+              <ColumnsIcon className="h-4 w-4" />
+            </Button>
+            {viewModeToggle}
+            <Button size="sm" onClick={handleCreateItem}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </>
+        }
       />
 
       {isAggregate && groupedView && tasksByGroup ? (

@@ -10,13 +10,24 @@ import {
   ItemMetaRow,
   ItemCommentCount,
   FeedComposerTrigger,
+  FilterBar,
+  emptyFilterBarValue,
+  useFilterableItems,
+  type FilterBarValue,
+  type FilterTypeOption,
   useItems,
   useMembers,
   useCurrentUser,
   useItemEditor,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
+import { Calendar, FileText } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
+
+const FEED_TYPES: FilterTypeOption[] = [
+  { id: "post", label: "Posts", icon: FileText },
+  { id: "event", label: "Events", icon: Calendar },
+]
 
 export function FeedView({ groupId }: { groupId: string }) {
   // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
@@ -71,6 +82,15 @@ export function FeedView({ groupId }: { groupId: string }) {
 
   // Detail panel state
   const [detailItem, setDetailItem] = useState<Item | null>(null)
+
+  // FilterBar state — controlled, lives in the view
+  const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
+  const filteredFeedItems = useFilterableItems(feedItems, filterBarValue)
+  const availableTags = useMemo(() => {
+    const seen = new Set<string>()
+    for (const item of feedItems) for (const tag of item.tags ?? []) seen.add(tag)
+    return Array.from(seen).sort()
+  }, [feedItems])
 
   // Content type configs for the composer
   const feedContentTypes: ContentTypeConfig[] = useMemo(() => [
@@ -165,9 +185,16 @@ export function FeedView({ groupId }: { groupId: string }) {
         )}
       </FeedComposerTrigger>
 
+      <FilterBar
+        value={filterBarValue}
+        onChange={setFilterBarValue}
+        availableTags={availableTags}
+        availableTypes={FEED_TYPES}
+      />
+
       {/* Feed items */}
       <div className="space-y-4">
-        {feedItems.map((item) => (
+        {filteredFeedItems.map((item) => (
           <ItemPreview
             key={item.id}
             item={item}
