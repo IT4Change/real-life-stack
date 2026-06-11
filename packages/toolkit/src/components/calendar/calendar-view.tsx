@@ -125,10 +125,6 @@ function getEventDate(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-function getStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
-}
-
 function getLocationLabel(locationName: unknown, address: unknown): string | undefined {
   if (typeof locationName === "string" && locationName.length > 0) return locationName
   if (typeof address === "string" && address.length > 0) return address

@@ -12,8 +12,10 @@ const events: Item[] = [
       title: "Yoga im Park",
       start: "2026-05-23T09:00:00.000+02:00",
       end: "2026-05-23T10:30:00.000+02:00",
-      location: "Stadtpark Mitte"
-      description: "Gemeinsam in den Tag starten. Matten bitte selbst mitbringen." }, tags: ["bewegung", "community"],
+      location: "Stadtpark Mitte",
+      description: "Gemeinsam in den Tag starten. Matten bitte selbst mitbringen.",
+    },
+    tags: ["bewegung", "community"],
   },
   {
     id: "event-2",
