@@ -37,3 +37,27 @@ export function getTagColor(tag: string): string {
 export function getTagAccentColor(tag: string): string {
   return paletteEntry(tag).accent
 }
+
+/**
+ * Resolve a possibly app-rooted asset URL against Vite's `BASE_URL`.
+ *
+ * - External URLs (`http(s):`, `data:`, `blob:`) are returned unchanged.
+ * - Bare absolute paths (`/personas/anton.png`) get the deployment's
+ *   base path prepended. Without this the asset 404s as soon as the
+ *   app ships under a subpath (e.g. `/app/`, `/real-life-stack/`).
+ * - Already-prefixed paths are detected and returned untouched.
+ * - Relative paths and empty values are returned unchanged.
+ *
+ * Used by `AvatarImage` automatically and exported for any other
+ * `<img src>` that consumes a stored asset path (logos, badges, …).
+ */
+export function resolveAssetUrl(url: string | undefined): string | undefined {
+  if (!url) return url
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(url)) return url
+  if (!url.startsWith("/")) return url
+  const base = (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/"
+  const trimmed = base.endsWith("/") ? base.slice(0, -1) : base
+  if (!trimmed) return url
+  if (url === trimmed || url.startsWith(`${trimmed}/`)) return url
+  return `${trimmed}${url}`
+}
