@@ -150,26 +150,41 @@ interface ReactionBarProps {
 
 **Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
 
-### `ItemPreview` (geplant, Phase 2)
+### `ItemPreview`
 
-**Zweck:** Generische Item-Card für Listenansichten. Heute hat jedes Modul seine eigene Card (`FeedItem`, inline `KanbanCard`, Calendar `EventPill`/`EventCard`, Map-Marker-Label).
+**Zweck:** Generische Item-Card für Listenansichten. Konsolidiert das Layout, das vorher in jedem Modul dupliziert war (`FeedItem`, inline `KanbanCard`, Calendar `EventCard`).
 
-**Geplanter Vertrag:**
+**Vertrag:**
 
 ```ts
 interface ItemPreviewProps {
   item: Item
-  users?: readonly User[]
-  headerAdornment?: ReactNode     // z.B. type-badge, status-chip
-  metaAdornment?: ReactNode       // z.B. date-hint, distance
-  footerAdornment?: ReactNode     // z.B. assignees, comment-count
+  /**
+   * Resolved item author. Wenn `undefined`, fällt die Card auf
+   * `item.createdBy` als Display-Name zurück. Wenn `null`, wird der
+   * gesamte Author-Block unterdrückt.
+   */
+  author?: User | null
   onClick?: () => void
+  /** Slot neben dem Author-Namen (z.B. Type-Badge, Status-Chip). */
+  headerAdornment?: ReactNode
+  /** Slot zwischen Title und Description (z.B. Date-Hint, Distance). */
+  metaAdornment?: ReactNode
+  /** Slot unter den Tag-Chips (z.B. Assignees, Comment-Count, ReactionBar). */
+  footerAdornment?: ReactNode
+  className?: string
 }
 ```
 
-**Slot-Konvention:** Module liefern Modul-spezifische Adornments über die drei Slots (header/meta/footer); der Default-Body (title, author, tags, content-preview) kommt von der shared Komponente. Daten-Hooks aus [Hooks](#hooks) füllen die Felder.
+**Default-Body:** Author-Row (Avatar + Name + `RelativeTime`), Title, Description (`data.content ?? data.description`, max 4 Zeilen), Tags (chips, top-level `item.tags`, Color via `getTagColor`).
 
-**Status:** Vertrag in Phase 2 finalisiert, sobald Sebastian UX-Mockups liefert.
+**Slot-Konvention:** Module liefern modul-spezifische Cues über die drei Slots; das Default-Layout bleibt konstant. Adornments, die eigene Buttons enthalten, müssen `event.stopPropagation()` aufrufen, damit ein Button-Click nicht den Card-Click mit auslöst.
+
+**Daten-Pfad:** `useItemTags(item)` intern. Author-Resolution liegt beim Caller (`useItemAuthor` empfohlen).
+
+**Sebastian-Polish-Backlog:** Visuelle Spezifikation (Spacings, Card-Höhen, Hover-Transitions, Avatar-Sizing pro Density) — heute orientiert an FeedItem.
+
+**Code:** `packages/toolkit/src/components/preview/item-preview.tsx`. Stories: `item-preview.stories.tsx`.
 
 ### `FilterBar` (geplant, Phase 3)
 
