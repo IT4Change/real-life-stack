@@ -18,3 +18,10 @@ export { useRelayStatus } from "./use-relay-status"
 export { useReactions, useReactionUsers, type AggregatedReaction, type UseReactionsResult, type ReactionUser, type UseReactionUsersResult } from "./use-reactions"
 export { useComments, useReplies, type CommentWithAuthor, type UseCommentsResult, type UseRepliesResult } from "./use-comments"
 export { useIncomingEvents, IncomingEventsProvider } from "./use-incoming-events"
+
+// Item-Detail Hooks (shared across modules — Feed, Kanban, Calendar, Map)
+export { useItemAuthor } from "./use-item-author"
+export { useItemTags } from "./use-item-tags"
+export { useItemDateHint, formatItemDateHint, type ItemDateHint } from "./use-item-date-hint"
+export { useItemPosition, type ItemPosition } from "./use-item-position"
+export { useOpenProfile, OpenProfileProvider, type OpenProfile, type OpenProfileProviderProps } from "./use-open-profile"
