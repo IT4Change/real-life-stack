@@ -28,8 +28,9 @@ import {
   useMembers,
   useCurrentUser,
   useCreateItem,
-  useDeleteItem,
   useConnector,
+  useItemEditor,
+  type ItemEditorMapper,
   type ItemListFilter,
 } from "@real-life-stack/toolkit"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
@@ -95,7 +96,6 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const { data: currentUser } = useCurrentUser()
   const { mutate: updateItem } = useUpdateItem()
   const { mutate: createItem } = useCreateItem()
-  const { mutate: deleteItem } = useDeleteItem()
   const [filter, setFilter] = useState<ItemListFilter>({
     searchText: "",
     assignedTo: null,
@@ -219,39 +219,55 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
     handleTaskCreate()
   }, [handleTaskCreate])
 
+  // Kanban-specific composer mapping: composer surfaces `text` →
+  // item.data.description; `people` (composer-state) → assignedTo
+  // relations. Tags are top-level on the item (spec 07-tags.md), so we
+  // strip any legacy data.tags from the previous item before writing.
+  const mapTaskSubmission = useCallback<ItemEditorMapper>((submission, { existingItem }) => {
+    const { data } = submission
+    const relations: Relation[] = (data.people ?? [])
+      .map((id: string) => ({ predicate: "assignedTo", target: `global:${id}` }))
+    const baseData = existingItem?.data ?? {}
+    const { tags: _legacy, ...dataWithoutLegacyTags } = baseData as Record<string, unknown>
+    const nextData = {
+      ...dataWithoutLegacyTags,
+      title: data.title,
+      description: data.text,
+      status: data.status,
+    }
+    const nextTags = Array.isArray(data.tags) ? data.tags : existingItem?.tags
+    return {
+      type: existingItem?.type ?? submission.contentType,
+      data: nextData,
+      ...(nextTags !== undefined ? { tags: nextTags } : {}),
+      relations,
+    }
+  }, [])
+
+  const editor = useItemEditor({
+    currentUserId: currentUser?.id,
+    mapSubmission: mapTaskSubmission,
+    onDeleted: () => setPanelState({ mode: "closed" }),
+  })
+
   const handleTaskEdit = useCallback(async (submitData: ContentComposerSubmitData) => {
     if (panelState.mode !== "edit") return
     const item = panelState.item
-    const { data } = submitData
-    const relations: Relation[] = (data.people ?? [])
-      .map((id) => ({ predicate: "assignedTo", target: `global:${id}` }))
-    const { tags: _legacy, ...dataWithoutLegacyTags } = item.data
-    const nextData = { ...dataWithoutLegacyTags, title: data.title, description: data.text, status: data.status }
-    const nextTags = Array.isArray(data.tags) ? data.tags : item.tags
-    try {
-      await updateItem(item.id, {
-        "@context": deriveContext(item.type, nextData),
-        data: nextData,
-        tags: nextTags,
-        relations,
-      })
-    } catch (err) {
-      console.error("[KanbanView] updateItem failed:", err)
-    }
+    await editor.submit(submitData, { existingItem: item })
     // Move item to different group if changed
+    const data = submitData.data
     if (data.group && hasItemGroups(connector)) {
       const currentGroupId = connector.getItemGroupId(item.id)
       if (currentGroupId && currentGroupId !== data.group) {
         connector.moveItemToGroup(item.id, data.group)
       }
     }
-  }, [panelState, updateItem, connector])
+  }, [panelState, editor, connector])
 
   const handleTaskDelete = useCallback(() => {
     if (panelState.mode !== "edit") return
-    deleteItem(panelState.item.id)
-    setPanelState({ mode: "closed" })
-  }, [panelState, deleteItem])
+    editor.remove(panelState.item.id)
+  }, [panelState, editor])
 
   const viewModeToggle = isAggregate ? (
     <DropdownMenu>
