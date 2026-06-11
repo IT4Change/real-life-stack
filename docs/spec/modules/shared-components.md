@@ -175,7 +175,7 @@ interface ItemPreviewProps {
 
 **Zweck:** Shared Filter-UI mit Common-Filtern (Tag-Multiselect, Type, Date-Range, Author) und einem Slot für Modul-spezifische Filter.
 
-**Status:** Vertrag offen, finalisiert in Phase 3 zusammen mit der `hasTag`-/`hasField`-Filter-Implementation.
+**Status:** Vertrag offen, finalisiert in Phase 3. Die Filter-Primitiven im `ItemFilter` existieren bereits (`hasTag` ist implementiert, siehe [07-tags.md](../07-tags.md); `hasField` und die anderen Filter sind in [02-data-interface.md](../02-data-interface.md) spezifiziert). Phase 3 baut die shared UI darauf und wired Tag-Multiselect / Type-Filter / Date-Range / Author an das vorhandene `ItemFilter`-Interface.
 
 ## Hooks
 
