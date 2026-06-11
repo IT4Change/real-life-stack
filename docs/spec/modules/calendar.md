@@ -23,7 +23,7 @@ Es unterstützt:
 |---|---|
 | Space Module? | Ja |
 | App-Shell-Fläche? | Nein |
-| Module Components | CalendarView, CalendarHeader, CalendarFilters, MonthView, WeekView, DayView, ListView, EventPreview |
+| Module Components | CalendarView, CalendarHeader, CalendarFilters, MonthView, WeekView, DayView, ListView; geteilt: ItemPreview + Adornments (ItemTypeBadge, ItemTimeRange) für die Listen-Card |
 | Primäre Datenbasis | Items |
 | Externe Semantik | optional RLNP/Game/WoT-Projektionen, aber nicht durch Calendar definiert |
 

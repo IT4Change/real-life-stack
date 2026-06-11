@@ -6,18 +6,18 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Columns,
   Filter,
   Grid3x3,
   List,
-  MapPin,
   Plus,
-  Tag,
 } from "lucide-react"
 import { Button } from "../primitives/button"
 import { cn } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
+import { ItemPreview } from "../preview/item-preview"
+import { ItemTypeBadge } from "../preview/item-type-badge"
+import { ItemTimeRange } from "../preview/item-time-range"
 import type { Item } from "@real-life-stack/data-interface"
 
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -893,51 +893,19 @@ interface EventCardProps {
 }
 
 function EventCard({ event, onClick }: EventCardProps) {
+  // The calendar list-view card uses ItemPreview with `author={null}`
+  // (the date group header above already carries the temporal context),
+  // a TypeBadge in the header slot, and `ItemTimeRange` in the meta
+  // slot — the day is implied by the grouping, so we only need the
+  // time-of-day and address. Tags + description come from ItemPreview's
+  // defaults.
   return (
-    <button
-      type="button"
-      onClick={(clickEvent) => {
-        clickEvent.stopPropagation()
-        onClick?.(event.item)
-      }}
-      className="w-full rounded-lg border bg-background p-4 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
-    >
-      <div className="flex items-start gap-3">
-        <div className={cn("mt-0.5 h-3 w-3 shrink-0 rounded-full", getEventTypeClass(event.item.type))} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h4 className="font-semibold">{event.title}</h4>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-              {getTypeLabel(event.item.type)}
-            </span>
-          </div>
-
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <Clock className="h-3.5 w-3.5" />
-              {formatEventTime(event.start, event.end, event.allDay)}
-            </span>
-            {event.location && (
-              <span className="inline-flex min-w-0 items-center gap-1">
-                <MapPin className="h-3.5 w-3.5" />
-                <span className="truncate">{event.location}</span>
-              </span>
-            )}
-            {event.tags.length > 0 && (
-              <span className="inline-flex items-center gap-1">
-                <Tag className="h-3.5 w-3.5" />
-                {event.tags.join(" · ")}
-              </span>
-            )}
-          </div>
-
-          {event.description && (
-            <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
-              {event.description}
-            </p>
-          )}
-        </div>
-      </div>
-    </button>
+    <ItemPreview
+      item={event.item}
+      author={null}
+      onClick={onClick ? () => onClick(event.item) : undefined}
+      headerAdornment={<ItemTypeBadge type={event.item.type} />}
+      metaAdornment={<ItemTimeRange item={event.item} />}
+    />
   )
 }

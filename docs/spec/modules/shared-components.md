@@ -234,6 +234,21 @@ interface ItemMetaRowProps {
 
 Plus eine exportierte Format-Funktion `formatEventRange(start, end?)` für Caller, die den String außerhalb der Inline-Zeile brauchen (z.B. Tooltip, Tabelle).
 
+#### `ItemTimeRange`
+
+**Zweck:** Schwesterkomponente zu `ItemMetaRow` für Kontexte, in denen das Datum bereits durch die Umgebung gegeben ist (Calendar-Liste mit Tages-Gruppen, „today's events"-Panel). Zeigt nur Uhrzeit + Address.
+
+```ts
+interface ItemTimeRangeProps {
+  item: Item
+  className?: string
+}
+```
+
+All-day-Events rendern als „Ganztägig". Same-day-Range als „18:00 – 20:00", ohne `end` als „18:00". Mehrtägige Range fügt das End-Datum hinzu, damit User nicht denken das Event ende noch am gleichen Tag.
+
+Plus exportierte Format-Funktion `formatTimeRange(start, end?)`.
+
 #### `ItemCommentCount`
 
 **Zweck:** Comment-Count-Badge für `footerAdornment`. Rendert `null` bei `count <= 0`.
