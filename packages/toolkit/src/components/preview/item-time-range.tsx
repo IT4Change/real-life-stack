@@ -7,7 +7,7 @@ import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 
 /**
  * `ItemTimeRange` — inline row showing the time-of-day for an event
- * (and optionally its address), without repeating the date.
+ * (and optionally its location), without repeating the date.
  *
  * Spec: `docs/spec/modules/shared-components.md` → `ItemTimeRange`.
  *
@@ -16,21 +16,37 @@ import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
  * a date group, "today's events" panel) — `ItemMetaRow` shows the
  * full date+time and is the right choice when the date isn't implied.
  *
- * Renders `null` when `data.start` is not a string and `data.address`
- * is empty, so callers can drop it in unconditionally.
+ * Location label uses `locationLabel` if the caller provides it.
+ * Otherwise it falls back to `data.locationName ?? data.address` —
+ * matching how Calendar already resolves event locations via
+ * `toCalendarEvent()`. That way an event with only `data.locationName`
+ * still gets its location rendered on the card.
+ *
+ * Renders `null` when `data.start` is not a string and no location is
+ * available, so callers can drop it in unconditionally.
  */
 export interface ItemTimeRangeProps {
   item: Item
+  /**
+   * Pre-resolved location label. When set, overrides the default
+   * `locationName ?? address` lookup. Use this when the surrounding
+   * module already normalises locations differently.
+   */
+  locationLabel?: string
   className?: string
 }
 
-export function ItemTimeRange({ item, className }: ItemTimeRangeProps) {
+export function ItemTimeRange({ item, locationLabel, className }: ItemTimeRangeProps) {
   const data = item.data as Record<string, unknown>
   const start = typeof data.start === "string" ? data.start : undefined
   const end = typeof data.end === "string" ? data.end : undefined
-  const address = typeof data.address === "string" ? data.address : undefined
+  const location =
+    locationLabel ??
+    (typeof data.locationName === "string" && data.locationName) ||
+    (typeof data.address === "string" && data.address) ||
+    undefined
 
-  if (!start && !address) return null
+  if (!start && !location) return null
 
   return (
     <div className={cn("flex flex-wrap gap-3 text-xs text-muted-foreground", className)}>
@@ -40,10 +56,10 @@ export function ItemTimeRange({ item, className }: ItemTimeRangeProps) {
           {formatTimeRange(start, end)}
         </span>
       )}
-      {address && (
+      {location && (
         <span className="inline-flex items-center gap-1">
           <MapPin className="h-3 w-3" />
-          {address}
+          {location}
         </span>
       )}
     </div>

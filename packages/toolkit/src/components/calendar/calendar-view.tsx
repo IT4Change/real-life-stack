@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import {
+  Briefcase,
   Calendar as CalendarIcon,
   CalendarDays,
   ChevronLeft,
@@ -9,16 +10,43 @@ import {
   Columns,
   Filter,
   Grid3x3,
+  HandHeart,
   List,
   Plus,
+  Sparkles,
 } from "lucide-react"
 import { Button } from "../primitives/button"
 import { cn } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 import { ItemPreview } from "../preview/item-preview"
-import { ItemTypeBadge } from "../preview/item-type-badge"
+import { ItemTypeBadge, type ItemTypeBadgeConfig } from "../preview/item-type-badge"
 import { ItemTimeRange } from "../preview/item-time-range"
 import type { Item } from "@real-life-stack/data-interface"
+
+/**
+ * Calendar-specific item types (project, offer, quest) on top of the
+ * defaults that ItemTypeBadge already knows (event, task, place,
+ * person). Without this override, those types render as `null`, which
+ * would be a visible regression vs. the previous EventCard that
+ * surfaced a label for every known calendar type.
+ */
+const CALENDAR_TYPE_BADGE_CONFIG: Record<string, ItemTypeBadgeConfig> = {
+  project: {
+    icon: Briefcase,
+    label: "Projekt",
+    className: "bg-blue-50 text-blue-700 border-blue-200",
+  },
+  offer: {
+    icon: HandHeart,
+    label: "Angebot",
+    className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+  quest: {
+    icon: Sparkles,
+    label: "Quest",
+    className: "bg-rose-50 text-rose-700 border-rose-200",
+  },
+}
 
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 const MONTH_NAMES = [
@@ -263,13 +291,6 @@ function getTypeLabel(type: string): string {
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
-}
-
-function formatEventTime(start: Date, end?: Date, allDay?: boolean): string {
-  if (allDay) return "Ganztägig"
-  const startTime = formatTime(start)
-  if (!end) return `${startTime} Uhr`
-  return `${startTime} - ${formatTime(end)} Uhr`
 }
 
 function formatDayLabel(date: Date): string {
@@ -897,15 +918,22 @@ function EventCard({ event, onClick }: EventCardProps) {
   // (the date group header above already carries the temporal context),
   // a TypeBadge in the header slot, and `ItemTimeRange` in the meta
   // slot — the day is implied by the grouping, so we only need the
-  // time-of-day and address. Tags + description come from ItemPreview's
-  // defaults.
+  // time-of-day and location. Tags + description come from
+  // ItemPreview's defaults.
+  //
+  // `event.location` is the pre-normalised label that
+  // `toCalendarEvent()` already computed (locationName ?? address).
+  // Pass it through so the card uses the same fallback as the rest of
+  // the calendar UI.
   return (
     <ItemPreview
       item={event.item}
       author={null}
       onClick={onClick ? () => onClick(event.item) : undefined}
-      headerAdornment={<ItemTypeBadge type={event.item.type} />}
-      metaAdornment={<ItemTimeRange item={event.item} />}
+      headerAdornment={
+        <ItemTypeBadge type={event.item.type} config={CALENDAR_TYPE_BADGE_CONFIG} />
+      }
+      metaAdornment={<ItemTimeRange item={event.item} locationLabel={event.location} />}
     />
   )
 }
