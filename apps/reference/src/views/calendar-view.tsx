@@ -3,6 +3,7 @@ import {
   CalendarView as ToolkitCalendarView,
   AdaptivePanel,
   ContentComposer,
+  CreateFab,
   type ContentTypeConfig,
   ItemDetailPanel,
   ItemPreview,
@@ -80,8 +81,9 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         events={events}
         currentUserId={currentUser?.id}
         onEventClick={(event) => setDetailItem(event)}
-        onCreateEvent={() => editor.openCreate()}
       />
+
+      <CreateFab onClick={() => editor.openCreate()} label="Veranstaltung erstellen" />
 
       <Sheet open={editor.isOpen} onOpenChange={(open) => { if (!open) editor.close() }}>
         <SheetContent side="right" className="w-full sm:max-w-lg">

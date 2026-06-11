@@ -21,6 +21,7 @@ import {
   DropdownMenuCheckboxItem,
   ItemDetailPanel,
   ReactionBar,
+  CreateFab,
   FilterBar,
   FilterSection,
   FilterToggle,
@@ -37,7 +38,7 @@ import {
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import { Input } from "@real-life-stack/toolkit"
-import { Plus, Search, ListChecks, Columns as ColumnsIcon } from "lucide-react"
+import { Search, ListChecks, Columns as ColumnsIcon } from "lucide-react"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
 import { hasItemGroups } from "@real-life-stack/data-interface"
 
@@ -459,9 +460,6 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
               <ColumnsIcon className="h-4 w-4" />
             </Button>
             {viewModeToggle}
-            <Button size="sm" onClick={handleCreateItem}>
-              <Plus className="h-4 w-4" />
-            </Button>
           </>
         }
       />
@@ -572,6 +570,8 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
           />
         )}
       </AdaptivePanel>
+
+      <CreateFab onClick={handleCreateItem} label="Aufgabe erstellen" />
     </div>
   )
 }

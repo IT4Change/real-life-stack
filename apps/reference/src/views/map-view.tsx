@@ -11,6 +11,7 @@ import {
   ItemTypeBadge,
   ItemMetaRow,
   ReactionBar,
+  CreateFab,
   FilterBar,
   emptyFilterBarValue,
   useFilterableItems,
@@ -18,7 +19,6 @@ import {
   type ItemEditorMapper,
   getTagAccentColor,
   Input,
-  Button,
   Sheet,
   SheetContent,
   type FilterBarValue,
@@ -26,7 +26,7 @@ import {
   type MapMarkerSpec,
 } from "@real-life-stack/toolkit"
 import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
-import { Calendar, MapPin, Plus, Search, Sparkles } from "lucide-react"
+import { Calendar, MapPin, Search, Sparkles } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
 
 const MAP_TYPES: FilterTypeOption[] = [
@@ -240,23 +240,20 @@ export function MapView({ groupId }: { groupId: string }) {
           availableTags={availableTags}
           availableTypes={MAP_TYPES}
           trailingActions={
-            <>
-              <div className="relative">
-                <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Suche…"
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  className="h-8 w-40 pl-7 text-xs"
-                />
-              </div>
-              <Button size="sm" onClick={() => editor.openCreate()}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </>
+            <div className="relative">
+              <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Suche…"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className="h-8 w-40 pl-7 text-xs bg-background shadow-sm"
+              />
+            </div>
           }
         />
       </div>
+
+      <CreateFab onClick={() => editor.openCreate()} label="Ort erstellen" />
 
       <Sheet open={editor.isOpen} onOpenChange={(open) => { if (!open) editor.close() }}>
         <SheetContent side="right" className="w-full sm:max-w-lg">
