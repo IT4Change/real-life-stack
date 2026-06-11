@@ -27,14 +27,13 @@ import {
   useUpdateItem,
   useMembers,
   useCurrentUser,
-  useCreateItem,
   useConnector,
   useItemEditor,
   type ItemEditorMapper,
   type ItemListFilter,
 } from "@real-life-stack/toolkit"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
-import { hasItemGroups, deriveContext } from "@real-life-stack/data-interface"
+import { hasItemGroups } from "@real-life-stack/data-interface"
 
 function TaskEditPanel({ item, taskContentType, onSubmit, onDelete, connector, activeWorkspaceId, members, availableTags }: {
   item: Item
@@ -95,7 +94,6 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const { data: members } = useMembers(activeWorkspaceId === "__overview__" ? null : (activeWorkspaceId ?? "group-1"))
   const { data: currentUser } = useCurrentUser()
   const { mutate: updateItem } = useUpdateItem()
-  const { mutate: createItem } = useCreateItem()
   const [filter, setFilter] = useState<ItemListFilter>({
     searchText: "",
     assignedTo: null,
@@ -201,26 +199,11 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
     })
   }, [])
 
-  const handleTaskCreate = useCallback(async () => {
-    const taskData = { title: "", description: "", status: "open", order: tasks.length }
-    const newItem = await createItem({
-      type: "task",
-      createdBy: currentUser?.id ?? "user-1",
-      "@context": deriveContext("task", taskData),
-      data: taskData,
-    })
-    if (newItem) {
-      setPanelState({ mode: "edit", item: newItem })
-      onItemSelect?.(newItem.id)
-    }
-  }, [createItem, currentUser?.id, tasks.length, onItemSelect])
-
-  const handleCreateItem = useCallback(() => {
-    handleTaskCreate()
-  }, [handleTaskCreate])
-
-  // Kanban-specific composer mapping: composer surfaces `text` →
-  // item.data.description; `people` (composer-state) → assignedTo
+  // Kanban-specific composer mapping. The same mapper covers both create
+  // and edit; the `existingItem === null` branch supplies the defaults
+  // a freshly-created task carries (status "open", order at end of
+  // column). Field mapping otherwise: composer `text` →
+  // item.data.description; composer-state `people` → assignedTo
   // relations. Tags are top-level on the item (spec 07-tags.md), so we
   // strip any legacy data.tags from the previous item before writing.
   const mapTaskSubmission = useCallback<ItemEditorMapper>((submission, { existingItem }) => {
@@ -229,12 +212,19 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
       .map((id: string) => ({ predicate: "assignedTo", target: `global:${id}` }))
     const baseData = existingItem?.data ?? {}
     const { tags: _legacy, ...dataWithoutLegacyTags } = baseData as Record<string, unknown>
-    const nextData = {
-      ...dataWithoutLegacyTags,
-      title: data.title,
-      description: data.text,
-      status: data.status,
-    }
+    const nextData: Record<string, unknown> = existingItem
+      ? {
+          ...dataWithoutLegacyTags,
+          title: data.title,
+          description: data.text,
+          status: data.status,
+        }
+      : {
+          title: data.title ?? "",
+          description: data.text ?? "",
+          status: data.status ?? "open",
+          order: tasks.length,
+        }
     const nextTags = Array.isArray(data.tags) ? data.tags : existingItem?.tags
     return {
       type: existingItem?.type ?? submission.contentType,
@@ -242,13 +232,33 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
       ...(nextTags !== undefined ? { tags: nextTags } : {}),
       relations,
     }
-  }, [])
+  }, [tasks.length])
 
   const editor = useItemEditor({
     currentUserId: currentUser?.id,
     mapSubmission: mapTaskSubmission,
+    onCreated: (item) => {
+      setPanelState({ mode: "edit", item })
+      onItemSelect?.(item.id)
+    },
     onDeleted: () => setPanelState({ mode: "closed" }),
   })
+
+  const handleTaskCreate = useCallback(() => {
+    // Kanban has no create-modal — the "+" button creates an empty task
+    // and opens the detail panel in edit mode. We feed an empty
+    // composer submission so the mapper's create-branch fills in the
+    // defaults (status "open", order: tasks.length).
+    editor.submit({
+      contentType: "task",
+      isPublic: false,
+      data: {},
+    })
+  }, [editor])
+
+  const handleCreateItem = useCallback(() => {
+    handleTaskCreate()
+  }, [handleTaskCreate])
 
   const handleTaskEdit = useCallback(async (submitData: ContentComposerSubmitData) => {
     if (panelState.mode !== "edit") return
