@@ -232,8 +232,11 @@ export function MapView({ groupId }: { groupId: string }) {
           opt back in via pointer-events-auto. */}
       {/* Leaflet's default zoom controls sit top-left at ~44px; offset
           the FilterBar past them so the trigger doesn't hide the minus
-          button. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-400 py-3 pr-3 pl-16 **:pointer-events-auto">
+          button. The `isolate` on the map container bounds Leaflet's
+          internal z-indices, so a low overlay z keeps the FilterBar
+          above the map but still below Sheet/Dialog (z-50) when the
+          detail panel opens. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 py-3 pr-3 pl-16 **:pointer-events-auto">
         <FilterBar
           value={filterBarValue}
           onChange={setFilterBarValue}
