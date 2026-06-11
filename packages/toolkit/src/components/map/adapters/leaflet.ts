@@ -68,6 +68,46 @@ function toBounds(bounds: L.LatLngBounds): MapBounds {
   }
 }
 
+/**
+ * Translate `MapMarkerSpec.color` (a CSS color, see adapter.ts) into a
+ * concrete Leaflet icon. Without a color we fall back to Leaflet's
+ * default pin so consumers that don't care about colour keep the
+ * library's standard look. With a color we render a small filled circle
+ * via DivIcon — the lowest-friction way to surface arbitrary colours
+ * without bundling a sprite-sheet of pre-coloured pin assets.
+ */
+function buildMarkerIcon(leaflet: typeof L, color: string | undefined): L.Icon | L.DivIcon | undefined {
+  if (!color) return undefined
+  const safe = escapeAttr(color)
+  return leaflet.divIcon({
+    className: "rls-tag-marker",
+    html: `<span style="display:block;width:18px;height:18px;border-radius:9999px;background:${safe};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.35);"></span>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+    tooltipAnchor: [0, -9],
+  })
+}
+
+/** Defensive escape for color strings flowing into an inline style. */
+function escapeAttr(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => {
+    switch (c) {
+      case "&":
+        return "&amp;"
+      case "<":
+        return "&lt;"
+      case ">":
+        return "&gt;"
+      case "\"":
+        return "&quot;"
+      case "'":
+        return "&#39;"
+      default:
+        return c
+    }
+  })
+}
+
 export class LeafletMapAdapter implements MapAdapter {
   // Internal Leaflet handles are held as `unknown` so the generated `.d.ts`
   // does not reference `leaflet` types. Consumers without `@types/leaflet`
@@ -76,6 +116,7 @@ export class LeafletMapAdapter implements MapAdapter {
   private leafletInstance: unknown = null
   private markers = new Map<string, unknown>()
   private markerLabels = new Map<string, string | undefined>()
+  private markerColors = new Map<string, string | undefined>()
   private viewListeners = new Set<(view: MapViewState) => void>()
   private clickListeners = new Set<(event: MapClickEvent) => void>()
   private markerClickListeners = new Set<(markerId: string) => void>()
@@ -122,6 +163,7 @@ export class LeafletMapAdapter implements MapAdapter {
     ;(this.markers as Map<string, L.Marker>).forEach((m) => m.remove())
     this.markers.clear()
     this.markerLabels.clear()
+    this.markerColors.clear()
     map.remove()
     this.mapInstance = null
     this.leafletInstance = null
@@ -145,6 +187,7 @@ export class LeafletMapAdapter implements MapAdapter {
         marker.remove()
         typedMarkers.delete(id)
         this.markerLabels.delete(id)
+        this.markerColors.delete(id)
       }
     }
 
@@ -170,8 +213,21 @@ export class LeafletMapAdapter implements MapAdapter {
           }
           this.markerLabels.set(spec.id, spec.label)
         }
+        // Reconcile color: setIcon when changed (cheap, but not free —
+        // skip when unchanged so unrelated re-renders don't flicker the
+        // marker). When color goes from set → unset we fall back to
+        // Leaflet's default pin so the marker doesn't disappear.
+        const prevColor = this.markerColors.get(spec.id)
+        if (prevColor !== spec.color) {
+          existing.setIcon(buildMarkerIcon(leaflet, spec.color) ?? new leaflet.Icon.Default())
+          this.markerColors.set(spec.id, spec.color)
+        }
       } else {
-        const marker = leaflet.marker(latlng, { title: spec.label })
+        const colorIcon = buildMarkerIcon(leaflet, spec.color)
+        const marker = leaflet.marker(latlng, {
+          title: spec.label,
+          ...(colorIcon ? { icon: colorIcon } : {}),
+        })
         if (spec.label !== undefined) marker.bindTooltip(spec.label)
         marker.on("click", () => {
           this.markerClickListeners.forEach((cb) => cb(spec.id))
@@ -179,6 +235,7 @@ export class LeafletMapAdapter implements MapAdapter {
         marker.addTo(map)
         typedMarkers.set(spec.id, marker)
         this.markerLabels.set(spec.id, spec.label)
+        this.markerColors.set(spec.id, spec.color)
       }
     }
   }
