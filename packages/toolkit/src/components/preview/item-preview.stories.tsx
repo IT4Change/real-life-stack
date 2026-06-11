@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
 import type { Item, User } from "@real-life-stack/data-interface"
-import { Calendar, CheckSquare, MapPin, MessageCircle } from "lucide-react"
 import { ItemPreview } from "./item-preview"
-import { cn } from "../../lib/utils"
+import { ItemTypeBadge } from "./item-type-badge"
+import { ItemMetaRow } from "./item-meta-row"
+import { ItemCommentCount } from "./item-comment-count"
 
 const now = new Date()
 
@@ -62,57 +63,6 @@ const taskItem: Item = {
   tags: ["garten"],
 }
 
-// Reusable adornment helpers for the stories.
-function TypeBadge({ type }: { type: string }) {
-  if (type === "post") return null
-  const config: Record<string, { Icon: typeof Calendar; label: string; className: string }> = {
-    event: { Icon: Calendar, label: "Event", className: "bg-blue-50 text-blue-700 border-blue-200" },
-    task: { Icon: CheckSquare, label: "Task", className: "bg-amber-50 text-amber-700 border-amber-200" },
-  }
-  const cfg = config[type]
-  if (!cfg) return null
-  return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium", cfg.className)}>
-      <cfg.Icon className="h-3 w-3" />
-      {cfg.label}
-    </span>
-  )
-}
-
-function MetaRow({ start, address }: { start?: string; address?: string }) {
-  if (!start && !address) return null
-  return (
-    <div className="flex flex-wrap gap-3">
-      {start && (
-        <span className="inline-flex items-center gap-1">
-          <Calendar className="h-3 w-3" />
-          {new Date(start).toLocaleString("de-DE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-        </span>
-      )}
-      {address && (
-        <span className="inline-flex items-center gap-1">
-          <MapPin className="h-3 w-3" />
-          {address}
-        </span>
-      )}
-    </div>
-  )
-}
-
-function CommentCount({ count }: { count: number }) {
-  if (count <= 0) return null
-  return (
-    <button
-      type="button"
-      onClick={(e) => e.stopPropagation()}
-      className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-    >
-      <MessageCircle className="h-3 w-3" />
-      {count} Kommentar{count !== 1 ? "e" : ""}
-    </button>
-  )
-}
-
 const meta: Meta<typeof ItemPreview> = {
   title: "Module Components / ItemPreview",
   component: ItemPreview,
@@ -142,23 +92,25 @@ export const WithHeaderBadge: Story = {
   args: {
     item: eventItem,
     author: anton,
-    headerAdornment: <TypeBadge type="event" />,
-    metaAdornment: <MetaRow start={eventItem.data.start as string} address={eventItem.data.address as string} />,
+    headerAdornment: <ItemTypeBadge type="event" />,
+    metaAdornment: <ItemMetaRow item={eventItem} />,
     onClick: () => console.log("click"),
   },
 }
 
 export const TaskCard: Story = {
-  name: "Task — with status badge and assignees",
+  name: "Task — with status badge and comment count",
   args: {
     item: taskItem,
     author: lena,
-    headerAdornment: <TypeBadge type="task" />,
+    headerAdornment: <ItemTypeBadge type="task" />,
     footerAdornment: (
-      <div className="flex items-center gap-3 text-xs">
-        <span className="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 font-medium">in Arbeit</span>
-        <CommentCount count={3} />
-      </div>
+      <>
+        <span className="text-xs rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 font-medium">in Arbeit</span>
+        <div className="ml-auto">
+          <ItemCommentCount count={3} />
+        </div>
+      </>
     ),
     onClick: () => console.log("click"),
   },

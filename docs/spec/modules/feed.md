@@ -23,7 +23,7 @@ Er unterstützt:
 |---|---|
 | Space Module? | Ja |
 | App-Shell-Fläche? | Nein |
-| Module Components | FeedItem, ContentComposer, ReactionBar, CommentSection, Widgets |
+| Module Components | ItemPreview + Adornments (ItemTypeBadge, ItemMetaRow, ItemCommentCount), ContentComposer, ReactionBar, CommentSection, Widgets |
 | Primäre Datenbasis | Items und optional Relations |
 | Externe Semantik | optional RLNP/Game/WoT-Projektionen, aber nicht durch den Feed definiert |
 
@@ -113,7 +113,7 @@ Die konkrete Navigation ist App- oder Shell-Verantwortung.
 
 | Komponente | Rolle | Wiederverwendbar? |
 |---|---|---|
-| `FeedItem` | generische Item-Vorschau | ja |
+| `ItemPreview` + Adornments | generische Item-Vorschau (Author / Title / Description / Tags) plus `ItemTypeBadge` im Header, `ItemMetaRow` für Date+Address im Meta-Slot, `ItemCommentCount` im Footer | ja, shared (`packages/toolkit/src/components/preview/`) |
 | `ContentComposer` | Feed- oder Item-Erstellung | ja |
 | `ReactionBar` | Reaktionen anzeigen und setzen | ja |
 | `CommentSection` | Kommentare und Antworten anzeigen | ja |

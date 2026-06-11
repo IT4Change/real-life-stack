@@ -20,7 +20,7 @@ Der Toolkit-Code muss die RLS-Taxonomie nicht in jedem Ordnernamen exakt spiegel
 |---|---|---|
 | App Shell | `packages/toolkit/src/components/layout/`, `auth/`, `contacts/`, `debug/` | Navbar, BottomNav, WorkspaceSwitcher, UserMenu, ProfileDialog, ContactsDialog, VerificationDialog, DebugDashboard |
 | Space Modules | `packages/toolkit/src/components/feed/`, `kanban/`, `calendar/`, `map/` | Feed, Kanban / Tasks, Calendar, Map |
-| Module Components | geteilte Top-Level-Ordner (`comments/`, `reactions/`, `composer/`, `detail/`) oder Unterordner innerhalb von Space Modules | FeedItem, ContentComposer, ReactionBar, CommentSection, KanbanCard, KanbanToolbar, ItemDetailPanel |
+| Module Components | geteilte Top-Level-Ordner (`comments/`, `reactions/`, `composer/`, `detail/`, `preview/`) oder Unterordner innerhalb von Space Modules | ItemPreview + Adornments (ItemTypeBadge, ItemMetaRow, ItemCommentCount), ContentComposer, ReactionBar, CommentSection, ItemDetailPanel, KanbanCard, KanbanToolbar |
 | Primitives | `packages/toolkit/src/components/primitives/` | Button, Card, Dialog, Input, Tabs |
 | Hooks | `packages/toolkit/src/hooks/` | useItems, useComments, useReactions, useConfirmations |
 | Logik-Helfer (modulübergreifend) | `packages/toolkit/src/lib/` | applyItemListFilter (Display-Filter), parseEventDate / isAllDayDate |
@@ -103,13 +103,13 @@ Feed ist das Referenzmodul für einen generischen Aktivitäts- und Inhaltsstrom 
 | Spec-Begriff | Code | Storybook | Daten-/Capability-Annahme |
 |---|---|---|---|
 | Feed Space Module | `packages/toolkit/src/components/feed/feed-module.stories.tsx` | `RLS/Space Modules/Feed/Overview` | Feed-fähige Items im Current Space, sortiert nach `createdAt` |
-| Feed Item | `feed-item.tsx` | In der Overview als Standardprojektion verwendet | Generisches `Item` mit `data.title`, `data.content` oder `data.description`; type-spezifische Metadaten bleiben optional |
+| Feed Item | `preview/item-preview.tsx` (shared) + Adornments (`item-type-badge.tsx`, `item-meta-row.tsx`, `item-comment-count.tsx`) | In der Overview als Standardprojektion verwendet | Generisches `Item` mit `data.title`, `data.content` oder `data.description`; type-spezifische Metadaten kommen über Adornments |
 | Composer | `feed/feed-composer-trigger.tsx` (Feed-Trigger), `composer/content-composer.tsx` (geteilt) | `RLS/Module Components/ContentComposer` und Feed-Overview | Persistente Erstellung braucht später `ItemWriter`; die Story hält neue Items nur lokal |
 | Reaktionen | `components/reactions/` (geteilt) | `RLS/Module Components/Reactions/...`; in der Overview als statischer Slot sichtbar | Optional über `RelationCapable`/`reactsTo`; Feed bleibt nutzbar ohne Relations |
-| Kommentare | `components/comments/` (geteilt) | `RLS/Module Components/Comments/CommentSection` | Optional über `RelationCapable`/`commentOn`; FeedItem kann Kommentaranzahlen anzeigen |
+| Kommentare | `components/comments/` (geteilt) | `RLS/Module Components/Comments/CommentSection` | Optional über `RelationCapable`/`commentOn`; `ItemCommentCount` zeigt die Anzahl im Footer |
 | PostCard | `post-card.tsx` | `RLS/Module Components/Feed/PostCard` | Spezifische ältere Post-Projektion; nicht die kanonische generische Feed-Projektion |
 
-Die Feed-Overview darf keine Backend-Simulation erzwingen. Sie zeigt das Zusammenspiel von Composer, FeedItem und optionalen Social Slots; echte Mutationen, Relations und Confirmations werden über Connector-Capabilities angebunden.
+Die Feed-Overview darf keine Backend-Simulation erzwingen. Sie zeigt das Zusammenspiel von Composer, `ItemPreview` und optionalen Social Slots; echte Mutationen, Relations und Confirmations werden über Connector-Capabilities angebunden.
 
 ## Calendar-Referenzmapping
 

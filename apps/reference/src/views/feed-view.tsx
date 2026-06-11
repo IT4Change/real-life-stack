@@ -5,7 +5,10 @@ import {
   AdaptivePanel,
   ItemDetailPanel,
   ReactionBar,
-  FeedItem,
+  ItemPreview,
+  ItemTypeBadge,
+  ItemMetaRow,
+  ItemCommentCount,
   FeedComposerTrigger,
   useItems,
   useMembers,
@@ -13,7 +16,7 @@ import {
   useItemEditor,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
-import type { Item } from "@real-life-stack/data-interface"
+import type { Item, User } from "@real-life-stack/data-interface"
 
 export function FeedView({ groupId }: { groupId: string }) {
   // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
@@ -44,18 +47,23 @@ export function FeedView({ groupId }: { groupId: string }) {
     return unique.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   }, [posts, events])
 
-  // Resolve author info
+  // Resolve author info as a User the shared ItemPreview can render
+  // directly. Falls back to undefined when the createdBy id isn't a
+  // known member; ItemPreview then shows the raw id with an initials
+  // avatar.
   const memberMap = useMemo(
     () => new Map(members.map((m) => [m.id, m])),
-    [members]
+    [members],
   )
-
-  const resolveAuthor = useCallback((createdBy: string) => {
-    const member = memberMap.get(createdBy)
-    if (member) return { name: member.displayName ?? member.id, avatar: member.avatarUrl }
-    if (currentUser && createdBy === currentUser.id) return { name: currentUser.displayName ?? currentUser.id, avatar: currentUser.avatarUrl }
-    return { name: createdBy }
-  }, [memberMap, currentUser])
+  const resolveAuthor = useCallback(
+    (createdBy: string): User | undefined => {
+      const member = memberMap.get(createdBy)
+      if (member) return member
+      if (currentUser?.id === createdBy) return currentUser
+      return undefined
+    },
+    [memberMap, currentUser],
+  )
 
   // Detail panel state
   const [detailItem, setDetailItem] = useState<Item | null>(null)
@@ -79,7 +87,7 @@ export function FeedView({ groupId }: { groupId: string }) {
   // ContentComposer surfaces the free-text field as `text`; spec base/v1
   // uses `content` for posts and `description` for items that already
   // carry a structured payload (events here). Without this mapping a
-  // composer-created post lands in `data.text`, which FeedItem doesn't
+  // composer-created post lands in `data.text`, which ItemPreview doesn't
   // render and `hasField: ["content"]` doesn't match.
   //
   // We also strip empty defaults from the composer state (it initializes
@@ -111,6 +119,26 @@ export function FeedView({ groupId }: { groupId: string }) {
     mapSubmission,
   })
 
+  // Feed footer convention: a ReactionBar on the left and a comment
+  // count on the right. Tasks intentionally don't get reactions in the
+  // feed view today — open a Sebastian-Polish ticket if that changes.
+  const renderFeedFooter = useCallback((item: Item, onCommentClick: () => void) => {
+    const commentCount = (item.data as Record<string, unknown>).commentCount
+    const count = typeof commentCount === "number" ? commentCount : 0
+    const showReactions = item.type !== "task"
+    if (!showReactions && count <= 0) return undefined
+    return (
+      <>
+        {showReactions && <ReactionBar itemId={item.id} />}
+        {count > 0 && (
+          <div className="ml-auto">
+            <ItemCommentCount count={count} onClick={onCommentClick} />
+          </div>
+        )}
+      </>
+    )
+  }, [])
+
   return (
     <div className="space-y-4">
       {/* Composer trigger — morphs into fullscreen modal */}
@@ -136,14 +164,14 @@ export function FeedView({ groupId }: { groupId: string }) {
       {/* Feed items */}
       <div className="space-y-4">
         {feedItems.map((item) => (
-          <FeedItem
+          <ItemPreview
             key={item.id}
             item={item}
             author={resolveAuthor(item.createdBy)}
             onClick={() => setDetailItem(item)}
-            reactionSlot={item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined}
-            commentCount={(item.data as Record<string, unknown>).commentCount as number | undefined}
-            onCommentClick={() => setDetailItem(item)}
+            headerAdornment={<ItemTypeBadge type={item.type} />}
+            metaAdornment={<ItemMetaRow item={item} />}
+            footerAdornment={renderFeedFooter(item, () => setDetailItem(item))}
           />
         ))}
       </div>
@@ -161,10 +189,14 @@ export function FeedView({ groupId }: { groupId: string }) {
             renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
           >
             <div className="p-4">
-              <FeedItem
+              <ItemPreview
                 item={detailItem}
                 author={resolveAuthor(detailItem.createdBy)}
-                reactionSlot={detailItem.type !== "task" ? <ReactionBar itemId={detailItem.id} /> : undefined}
+                headerAdornment={<ItemTypeBadge type={detailItem.type} />}
+                metaAdornment={<ItemMetaRow item={detailItem} />}
+                footerAdornment={
+                  detailItem.type !== "task" ? <ReactionBar itemId={detailItem.id} /> : undefined
+                }
               />
             </div>
           </ItemDetailPanel>

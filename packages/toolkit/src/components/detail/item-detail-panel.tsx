@@ -11,10 +11,10 @@ import { cn } from "../../lib/utils"
  * comment input pinned to the bottom (outside the scroll container).
  *
  * The top slot is deliberately a plain children slot — the module decides
- * what "detail" means for it: the Feed renders a read-only FeedItem card,
- * Kanban renders a live-updating ContentComposer in edit mode. Both share
- * the identical comment wiring below, which used to be duplicated in the
- * reference app (FeedView detail panel + TaskEditPanel).
+ * what "detail" means for it: the Feed renders a read-only ItemPreview
+ * card, Kanban renders a live-updating ContentComposer in edit mode. Both
+ * share the identical comment wiring below, which used to be duplicated
+ * in the reference app (FeedView detail panel + TaskEditPanel).
  *
  * What this component does NOT decide: how it is opened or framed
  * (AdaptivePanel, dialog, route — caller's choice) and what the top slot

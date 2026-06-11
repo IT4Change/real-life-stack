@@ -3,7 +3,7 @@ import type { Item, ItemFilter, RelatedItemsOptions, User } from "@real-life-sta
 import { BaseConnector, createObservable, findRelatedItems, matchesFilter, type ReactiveObservable } from "@real-life-stack/data-interface"
 import { ConnectorProvider } from "@/hooks/connector-context"
 import { ItemDetailPanel } from "./item-detail-panel"
-import { FeedItem } from "../feed/feed-item"
+import { ItemPreview, ItemTypeBadge, ItemMetaRow } from "../preview"
 
 // ---- In-memory connector ----
 // ItemDetailPanel renders CommentSection, which talks to the connector via
@@ -137,14 +137,16 @@ const meta: Meta<typeof ItemDetailPanel> = {
 export default meta
 type Story = StoryObj<typeof ItemDetailPanel>
 
-/** Feed-Variante: read-only FeedItem als Top-Slot, Kommentare darunter. */
+/** Feed-Variante: read-only ItemPreview als Top-Slot, Kommentare darunter. */
 export const FeedDetail: Story = {
   render: () => (
     <ItemDetailPanel itemId={POST.id}>
       <div className="p-4">
-        <FeedItem
+        <ItemPreview
           item={POST}
-          author={{ name: "Anna Schmidt", avatar: "https://randomuser.me/api/portraits/women/44.jpg" }}
+          author={{ id: "user-1", displayName: "Anna Schmidt", avatarUrl: "https://randomuser.me/api/portraits/women/44.jpg" }}
+          headerAdornment={<ItemTypeBadge type={POST.type} />}
+          metaAdornment={<ItemMetaRow item={POST} />}
         />
       </div>
     </ItemDetailPanel>
