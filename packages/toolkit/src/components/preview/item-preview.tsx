@@ -1,6 +1,6 @@
 "use client"
 
-import type { ReactNode } from "react"
+import type { KeyboardEvent, ReactNode } from "react"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
 import { RelativeTime } from "../primitives/relative-time"
@@ -25,20 +25,26 @@ import { useItemTags } from "../../hooks/use-item-tags"
  *
  * Caller owns the click handler (open detail, etc.). Adornments that
  * carry their own buttons should `event.stopPropagation()` so a button
- * click doesn't double-fire the card click.
+ * click doesn't double-fire the card click. When `onClick` is set the
+ * card also becomes keyboard-activatable (Enter / Space) and exposes
+ * `role="button"` plus `tabIndex={0}` so assistive tech can reach it.
  *
- * Reads `data.title` / `data.content` / `data.description` / `data.start`
- * / `data.end` via plain field access. Tags come from `item.tags`
- * (top-level, spec 07-tags.md). Author resolution stays with the caller
- * — pass a resolved `User` (e.g. via `useItemAuthor`) or rely on the
- * `createdBy` fallback shown below.
+ * Reads `data.title` / `data.content` / `data.description` via plain
+ * field access. Tags come from `item.tags` (top-level, spec 07-tags.md).
+ * Anything time- or place-shaped (date hint, address, distance) is the
+ * caller's job and flows through `metaAdornment`. Author resolution
+ * stays with the caller — pass a resolved `User` (e.g. via
+ * `useItemAuthor`) or rely on the `createdBy` fallback.
  */
 export interface ItemPreviewProps {
   item: Item
   /**
-   * Resolved item author. When absent, the card falls back to
-   * `item.createdBy` as the display name and renders an initials-only
-   * avatar. Pass `null`/`undefined` to suppress the entire author row.
+   * Resolved item author.
+   * - `undefined` (or omitted): the card renders the author row with
+   *   `item.createdBy` as the display name and an initials-only avatar.
+   * - `User`: render with the resolved name/avatar.
+   * - `null`: suppress the entire author row (useful when the
+   *   surrounding view already shows the author context).
    */
   author?: User | null
   /** Card click — typically opens a detail view. */
@@ -83,14 +89,34 @@ export function ItemPreview({
   const authorName = author?.displayName ?? item.createdBy
   const authorAvatar = author?.avatarUrl
 
+  // Keyboard activation: when the card is interactive, treat Enter and
+  // Space like a button. We don't render a real <button> because the
+  // card carries nested interactive content (adornment buttons, links)
+  // which would be invalid inside a button; <article> + button-role is
+  // the standard pattern for clickable cards with nested actions.
+  const interactive = !!onClick
+  const handleKeyDown = interactive
+    ? (e: KeyboardEvent<HTMLElement>) => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onClick?.()
+        }
+      }
+    : undefined
+
   return (
     <article
       className={cn(
         "rounded-lg border bg-card transition-all",
-        onClick && "cursor-pointer hover:border-primary/30 hover:shadow-md",
+        interactive &&
+          "cursor-pointer hover:border-primary/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         className,
       )}
       onClick={onClick}
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onKeyDown={handleKeyDown}
     >
       {author !== null && (
         <div className="flex items-start gap-3 p-4 pb-2">
