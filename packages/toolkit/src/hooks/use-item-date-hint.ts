@@ -49,16 +49,29 @@ export function extractItemDateHint(item: Item | null | undefined): ItemDateHint
   const rawStart = typeof item?.data?.start === "string" ? item.data.start : null
   const rawEnd = typeof item?.data?.end === "string" ? item.data.end : null
   if (!rawStart) return EMPTY_HINT
+
+  // Guard against malformed strings: parseEventDate falls back to the
+  // native Date parser, which returns an `Invalid Date` (NaN time) for
+  // junk input. Passing that to Intl.DateTimeFormat throws RangeError —
+  // mirror the calendar-view.tsx guard and collapse invalid parses to
+  // the empty hint (start) / null (end).
+  const startDate = parseEventDate(rawStart)
+  if (Number.isNaN(startDate.getTime())) return EMPTY_HINT
+
+  let endDate: Date | null = null
+  if (rawEnd) {
+    const parsedEnd = parseEventDate(rawEnd)
+    endDate = Number.isNaN(parsedEnd.getTime()) ? null : parsedEnd
+  }
+
   const isAllDay = isAllDayDate(rawStart)
-  const start = parseEventDate(rawStart)
-  const end = rawEnd ? parseEventDate(rawEnd) : null
   return {
-    start,
-    end,
+    start: startDate,
+    end: endDate,
     isAllDay,
     hasTime: !isAllDay,
     rawStart,
-    rawEnd,
+    rawEnd: endDate ? rawEnd : null,
   }
 }
 

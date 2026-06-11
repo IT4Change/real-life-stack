@@ -50,6 +50,23 @@ describe("extractItemDateHint", () => {
     const hint = extractItemDateHint(makeItem({ start: 12345 }))
     expect(hint.start).toBeNull()
   })
+
+  it("returns the empty hint when start is a malformed string", () => {
+    const hint = extractItemDateHint(makeItem({ start: "not-a-date" }))
+    expect(hint.start).toBeNull()
+    expect(hint.end).toBeNull()
+    expect(hint.rawStart).toBeNull()
+    expect(hint.hasTime).toBe(false)
+  })
+
+  it("keeps a valid start when end is malformed (drops end + rawEnd)", () => {
+    const hint = extractItemDateHint(
+      makeItem({ start: "2026-07-15T18:00:00Z", end: "not-a-date" }),
+    )
+    expect(hint.start?.toISOString()).toBe("2026-07-15T18:00:00.000Z")
+    expect(hint.end).toBeNull()
+    expect(hint.rawEnd).toBeNull()
+  })
 })
 
 describe("formatItemDateHint", () => {
@@ -80,5 +97,11 @@ describe("formatItemDateHint", () => {
     const label = formatItemDateHint(hint, now)
     expect(label).toContain("20")
     expect(label).toMatch(/Aug/i)
+  })
+
+  it("returns null for a malformed-start hint (no Intl throw)", () => {
+    const hint = extractItemDateHint(makeItem({ start: "not-a-date" }))
+    expect(() => formatItemDateHint(hint, now)).not.toThrow()
+    expect(formatItemDateHint(hint, now)).toBeNull()
   })
 })
