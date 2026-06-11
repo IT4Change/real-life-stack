@@ -8,6 +8,7 @@ import {
 } from "../primitives/dialog"
 import { Button } from "../primitives/button"
 import { Input } from "../primitives/input"
+import { resolveAssetUrl } from "../../lib/utils"
 import { Label } from "../primitives/label"
 
 export interface ProfileData {
@@ -94,7 +95,7 @@ export function ProfileDialog({
             <div className="relative group shrink-0">
               {avatar ? (
                 <>
-                  <img src={avatar} alt={name} className="w-14 h-14 rounded-full object-cover ring-2 ring-background shadow-sm" />
+                  <img src={resolveAssetUrl(avatar)} alt={name} className="w-14 h-14 rounded-full object-cover ring-2 ring-background shadow-sm" />
                   <button
                     onClick={() => setAvatar("")}
                     className="absolute -top-1 -right-1 p-0.5 bg-destructive text-white rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
