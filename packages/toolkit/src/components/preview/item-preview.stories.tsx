@@ -4,6 +4,7 @@ import { ItemPreview } from "./item-preview"
 import { ItemTypeBadge } from "./item-type-badge"
 import { ItemMetaRow } from "./item-meta-row"
 import { ItemCommentCount } from "./item-comment-count"
+import { ItemAssignees } from "./item-assignees"
 
 const now = new Date()
 
@@ -130,6 +131,49 @@ export const NoAuthorRow: Story = {
   args: {
     item: { ...postItem, data: { ...postItem.data } },
     author: null,
+  },
+}
+
+export const KanbanCardShape: Story = {
+  name: "Kanban shape — compact density, no author, assignees footer",
+  args: {
+    item: taskItem,
+    author: null,
+    density: "compact",
+    footerAdornment: (
+      <>
+        <ItemAssignees users={[lena, anton]} />
+        <div className="ml-auto">
+          <ItemCommentCount count={2} />
+        </div>
+      </>
+    ),
+    onClick: () => console.log("click"),
+  },
+}
+
+export const CompactWithDescription: Story = {
+  name: "Compact density drops the description block",
+  args: {
+    item: {
+      ...taskItem,
+      data: {
+        ...taskItem.data,
+        description: "Diese lange Beschreibung sollte in der Kanban-Variante nicht erscheinen.",
+      },
+    },
+    author: null,
+    density: "compact",
+  },
+}
+
+export const HeaderAdornmentWithoutAuthor: Story = {
+  name: "Slots are orthogonal — header renders even without author row",
+  args: {
+    item: { ...postItem, data: { title: "Workshop morgen", content: "Treffpunkt: Eingang Markthalle" } },
+    author: null,
+    headerAdornment: <ItemTypeBadge type="event" />,
+    metaAdornment: <ItemMetaRow item={eventItem} />,
   },
 }
 

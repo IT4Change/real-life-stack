@@ -1,11 +1,12 @@
 import { useState, useCallback, useMemo, type DragEvent } from "react"
 import type { Item, User, Relation } from "@real-life-stack/data-interface"
 import { Card, CardContent, CardHeader, CardTitle } from "../primitives/card"
-import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
-import { Tooltip, TooltipTrigger, TooltipContent } from "../primitives/tooltip"
-import { cn, getTagColor } from "../../lib/utils"
+import { cn } from "../../lib/utils"
+import { ItemPreview } from "../preview/item-preview"
+import { ItemAssignees } from "../preview/item-assignees"
+import { ItemCommentCount } from "../preview/item-comment-count"
 import { normalizeStatus } from "./reorder"
-import { EyeOff, Eye, ChevronDown, ChevronRight, MessageCircle } from "lucide-react"
+import { EyeOff, Eye, ChevronDown, ChevronRight } from "lucide-react"
 
 export interface KanbanColumn {
   id: string
@@ -39,15 +40,6 @@ interface DropTarget {
   index: number
 }
 
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2)
-}
-
 function getAssigneeIds(item: Item): string[] {
   return (item.relations ?? [])
     .filter((r: Relation) => r.predicate === "assignedTo")
@@ -68,79 +60,50 @@ function KanbanCard({ item, users, isDragged, onDragStart, onDragEnd, onClick }:
   const assigneeIds = getAssigneeIds(item)
   const userMap = new Map((users ?? []).map((u) => [u.id, u]))
   const assignees = assigneeIds.map((id) => userMap.get(id)).filter((u): u is User => u != null)
-  const tags = item.tags ?? []
   const commentCount = (item.data.commentCount as number | undefined) ?? 0
+  const showFooter = assignees.length > 0 || commentCount > 0
 
+  // Empty-title fallback: a freshly created task lands with `data.title = ""`
+  // and the user only opens it to fill in. Without a placeholder the card
+  // is visually blank. We don't mutate the upstream item — synthesize a
+  // shadow item only when needed.
+  const displayItem = useMemo<Item>(() => {
+    const title = typeof item.data.title === "string" ? item.data.title : ""
+    if (title.length > 0) return item
+    return { ...item, data: { ...item.data, title: "Ohne Titel" } }
+  }, [item])
+
+  // Drag lives on the wrapper. ItemPreview owns the keyboard / click
+  // semantics for opening the detail panel — wrapper handles drag,
+  // ItemPreview handles `onClick`.
   return (
     <div
       draggable
       onDragStart={(e) => onDragStart(e, item.id)}
       onDragEnd={onDragEnd}
-      onClick={() => onClick?.(item)}
       className={cn(
-        "rounded-lg border bg-card p-3 shadow-sm cursor-grab active:cursor-grabbing",
-        "hover:border-primary/30 hover:shadow-md transition-all",
-        "select-none",
+        "cursor-grab active:cursor-grabbing select-none",
         isDragged && "opacity-50"
       )}
     >
-      <p className={cn(
-        "font-medium text-sm leading-snug",
-        String(item.data.title ?? "") ? "text-foreground" : "text-muted-foreground italic"
-      )}>
-        {String(item.data.title ?? "") || "Ohne Titel"}
-      </p>
-
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {tags.map((tag) => (
-            <span
-              key={tag}
-              className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", getTagColor(tag))}
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 mt-2">
-        {assignees.length > 0 && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-center gap-1">
-                <div className="flex -space-x-1.5">
-                  {assignees.map((user) => (
-                    <Avatar key={user.id} className="h-5 w-5 border border-background">
-                      <AvatarImage src={user.avatarUrl} alt={user.displayName} />
-                      <AvatarFallback className="text-[8px] bg-muted">
-                        {getInitials(user.displayName ?? user.id)}
-                      </AvatarFallback>
-                    </Avatar>
-                  ))}
+      <ItemPreview
+        item={displayItem}
+        author={null}
+        density="compact"
+        onClick={onClick ? () => onClick(item) : undefined}
+        footerAdornment={
+          showFooter ? (
+            <>
+              <ItemAssignees users={assignees} />
+              {commentCount > 0 && (
+                <div className="ml-auto">
+                  <ItemCommentCount count={commentCount} />
                 </div>
-                <span className="text-[10px] text-muted-foreground">
-                  {assignees.length === 1
-                    ? assignees[0].displayName
-                    : assignees.length === 2
-                      ? `${assignees[0].displayName}, ${assignees[1].displayName}`
-                      : `${assignees[0].displayName} + ${assignees.length - 1} weitere`}
-                </span>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {assignees.map((u) => u.displayName ?? u.id).join(", ")}
-            </TooltipContent>
-          </Tooltip>
-        )}
-
-        {commentCount > 0 && (
-          <div className="flex items-center gap-0.5 text-muted-foreground ml-auto">
-            <MessageCircle className="h-3 w-3" />
-            <span className="text-[10px]">{commentCount}</span>
-          </div>
-        )}
-      </div>
+              )}
+            </>
+          ) : undefined
+        }
+      />
     </div>
   )
 }

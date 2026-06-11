@@ -18,10 +18,15 @@ import { useItemTags } from "../../hooks/use-item-tags"
  * in through three Adornment slots, so each module decorates the same
  * card without forking the layout.
  *
- * Three slots:
- * - `headerAdornment`: next to the author name (e.g. `<TypeBadge>`)
- * - `metaAdornment`: between title and description (e.g. date hint, distance)
- * - `footerAdornment`: below tags (e.g. assignees, status chip, comment count)
+ * Three slots, each renders independently of the data blocks so a card
+ * with only some sections still places its adornments correctly:
+ * - `headerAdornment`: next to the author name when the author row is
+ *   rendered, otherwise its own top row above the title (e.g.
+ *   `<TypeBadge>`).
+ * - `metaAdornment`: its own row below the title block, also rendered
+ *   when there is no title (e.g. a card with only date+address).
+ * - `footerAdornment`: bordered footer row below tags (e.g. assignees,
+ *   status chip, comment count).
  *
  * Caller owns the click handler (open detail, etc.). Adornments that
  * carry their own buttons should `event.stopPropagation()` so a button
@@ -36,6 +41,15 @@ import { useItemTags } from "../../hooks/use-item-tags"
  * stays with the caller — pass a resolved `User` (e.g. via
  * `useItemAuthor`) or rely on the `createdBy` fallback.
  */
+/**
+ * Layout density. `comfortable` is the feed-card sized default (avatar
+ * 10×10, font-base title, p-4 spacing, description shown). `compact`
+ * is tuned for kanban boards and dense list views: no description in
+ * the body, smaller padding/font/avatar so multiple cards fit a
+ * column without bleeding off-screen.
+ */
+export type ItemPreviewDensity = "comfortable" | "compact"
+
 export interface ItemPreviewProps {
   item: Item
   /**
@@ -55,6 +69,12 @@ export interface ItemPreviewProps {
   metaAdornment?: ReactNode
   /** Slot below the tag chips. */
   footerAdornment?: ReactNode
+  /**
+   * Layout density. Default `comfortable` matches the feed card.
+   * `compact` shrinks paddings and avatar, drops the description
+   * block — fits kanban / dense list contexts.
+   */
+  density?: ItemPreviewDensity
   className?: string
 }
 
@@ -76,18 +96,22 @@ export function ItemPreview({
   headerAdornment,
   metaAdornment,
   footerAdornment,
+  density = "comfortable",
   className,
 }: ItemPreviewProps) {
   const data = item.data as Record<string, unknown>
   const title = typeof data.title === "string" ? data.title : undefined
   const description =
-    (typeof data.content === "string" && data.content) ||
-    (typeof data.description === "string" && data.description) ||
-    ""
+    density === "compact"
+      ? ""
+      : (typeof data.content === "string" && data.content) ||
+        (typeof data.description === "string" && data.description) ||
+        ""
   const tags = useItemTags(item)
 
   const authorName = author?.displayName ?? item.createdBy
   const authorAvatar = author?.avatarUrl
+  const isCompact = density === "compact"
 
   // Keyboard activation: when the card is interactive, treat Enter and
   // Space like a button. We don't render a real <button> because the
@@ -119,37 +143,54 @@ export function ItemPreview({
       onKeyDown={handleKeyDown}
     >
       {author !== null && (
-        <div className="flex items-start gap-3 p-4 pb-2">
-          <Avatar className="h-10 w-10 shrink-0">
+        <div className={cn("flex items-start gap-3", isCompact ? "p-3 pb-1" : "p-4 pb-2")}>
+          <Avatar className={cn("shrink-0", isCompact ? "h-6 w-6" : "h-10 w-10")}>
             <AvatarImage src={authorAvatar} alt={authorName} />
-            <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
+            <AvatarFallback className={cn("bg-primary/10 text-primary font-medium", isCompact ? "text-[10px]" : "text-sm")}>
               {getInitials(authorName)}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-foreground text-sm">{authorName}</span>
+              <span className={cn("font-semibold text-foreground", isCompact ? "text-xs" : "text-sm")}>{authorName}</span>
               {headerAdornment}
             </div>
-            <RelativeTime date={item.createdAt} className="text-xs" />
+            {!isCompact && <RelativeTime date={item.createdAt} className="text-xs" />}
           </div>
         </div>
       )}
 
+      {/* Header-only block — only when the author row is suppressed but a
+          header adornment is still provided (e.g. type badge on a kanban
+          card without an author header). */}
+      {author === null && headerAdornment && (
+        <div className={cn("flex items-center gap-2 flex-wrap", isCompact ? "px-3 pt-2 pb-0.5" : "px-4 pt-3 pb-1")}>
+          {headerAdornment}
+        </div>
+      )}
+
       {(title || description) && (
-        <div className="px-4 pb-3 pt-2">
-          {title && <h3 className="font-semibold text-foreground mb-1">{title}</h3>}
-          {metaAdornment && (
-            <div className="text-xs text-muted-foreground mb-2">{metaAdornment}</div>
+        <div className={cn(isCompact ? "px-3 pb-2 pt-1.5" : "px-4 pb-3 pt-2")}>
+          {title && (
+            <h3 className={cn("text-foreground", isCompact ? "font-medium text-sm leading-snug" : "font-semibold text-base mb-1")}>
+              {title}
+            </h3>
           )}
           {description && (
-            <p className="text-sm text-foreground leading-relaxed line-clamp-4">{description}</p>
+            <p className="text-sm text-foreground leading-relaxed line-clamp-4 mt-1">{description}</p>
           )}
         </div>
       )}
 
+      {/* Meta adornment is its own row, independent of the title/description
+          block. This way a card with date+address but no title still gets
+          the meta hint rendered. */}
+      {metaAdornment && (
+        <div className={cn("text-xs text-muted-foreground", isCompact ? "px-3 pb-2" : "px-4 pb-3")}>{metaAdornment}</div>
+      )}
+
       {tags.length > 0 && (
-        <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+        <div className={cn("flex flex-wrap gap-1", isCompact ? "px-3 pb-2" : "px-4 pb-3 gap-1.5")}>
           {tags.map((tag) => (
             <span
               key={tag}
@@ -165,7 +206,9 @@ export function ItemPreview({
       )}
 
       {footerAdornment && (
-        <div className="border-t px-4 py-2 flex items-center gap-3">{footerAdornment}</div>
+        <div className={cn("flex items-center gap-3", isCompact ? "px-3 py-1.5" : "border-t px-4 py-2")}>
+          {footerAdornment}
+        </div>
       )}
     </article>
   )
