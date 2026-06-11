@@ -90,7 +90,10 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
           <ContentComposer
             className="p-4 sm:p-6"
             contentTypes={calendarContentTypes}
-            onSubmit={(data) => editor.submit(data)}
+            onSubmit={async (data) => {
+              const result = await editor.submit(data)
+              if (result) editor.close()
+            }}
             onCancel={() => editor.close()}
             showPreview={false}
           />
