@@ -38,7 +38,7 @@ import {
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import { Input } from "@real-life-stack/toolkit"
-import { Search, ListChecks, Columns as ColumnsIcon } from "lucide-react"
+import { Search, Columns as ColumnsIcon } from "lucide-react"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
 import { hasItemGroups } from "@real-life-stack/data-interface"
 
@@ -109,7 +109,6 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const [myItemsOnly, setMyItemsOnly] = useState(false)
   const [assignedTo, setAssignedTo] = useState<string[]>([])
   const [searchText, setSearchText] = useState("")
-  const [multiSelect, setMultiSelect] = useState(false)
   const [panelState, setPanelState] = useState<KanbanPanelState>({ mode: "closed" })
   const [panelPinned, setPanelPinned] = useState(false)
 
@@ -443,14 +442,6 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
                 className="h-8 w-40 pl-7 text-xs"
               />
             </div>
-            <Button
-              variant={multiSelect ? "default" : "outline"}
-              size="sm"
-              onClick={() => setMultiSelect((v) => !v)}
-              title="Mehrfachauswahl"
-            >
-              <ListChecks className="h-4 w-4" />
-            </Button>
             <Button
               variant="outline"
               size="sm"
