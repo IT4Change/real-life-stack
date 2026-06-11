@@ -50,20 +50,10 @@ export function extractItemDateHint(item: Item | null | undefined): ItemDateHint
   const rawEnd = typeof item?.data?.end === "string" ? item.data.end : null
   if (!rawStart) return EMPTY_HINT
 
-  // Guard against malformed strings: parseEventDate falls back to the
-  // native Date parser, which returns an `Invalid Date` (NaN time) for
-  // junk input. Passing that to Intl.DateTimeFormat throws RangeError —
-  // mirror the calendar-view.tsx guard and collapse invalid parses to
-  // the empty hint (start) / null (end).
-  const startDate = parseEventDate(rawStart)
-  if (Number.isNaN(startDate.getTime())) return EMPTY_HINT
+  const startDate = parseValidDate(rawStart)
+  if (!startDate) return EMPTY_HINT
 
-  let endDate: Date | null = null
-  if (rawEnd) {
-    const parsedEnd = parseEventDate(rawEnd)
-    endDate = Number.isNaN(parsedEnd.getTime()) ? null : parsedEnd
-  }
-
+  const endDate = rawEnd ? parseValidDate(rawEnd) : null
   const isAllDay = isAllDayDate(rawStart)
   return {
     start: startDate,
@@ -76,13 +66,33 @@ export function extractItemDateHint(item: Item | null | undefined): ItemDateHint
 }
 
 /**
+ * Parse and validate. `parseEventDate` falls back to the native Date
+ * parser which returns `Invalid Date` for junk input, and the bare-date
+ * branch (`new Date(y, m-1, d)`) silently rolls over for out-of-range
+ * values (e.g. `2026-13-45`). Both cases produce a Date whose downstream
+ * `Intl.DateTimeFormat().format()` call throws `RangeError`. Collapse
+ * either failure mode to `null` here so callers can guard once.
+ */
+function parseValidDate(raw: string): Date | null {
+  const date = parseEventDate(raw)
+  if (Number.isNaN(date.getTime())) return null
+  if (isAllDayDate(raw)) {
+    const [y, m, d] = raw.split("-").map(Number)
+    if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
+      return null
+    }
+  }
+  return date
+}
+
+/**
  * Default formatter: short relative or absolute label suitable for
  * Feed-style cards. Locale-aware via Intl. Callers that want different
  * granularity (Calendar week-range, Kanban deadline pill) should
  * compose their own string from the `ItemDateHint` fields.
  */
 export function formatItemDateHint(hint: ItemDateHint, now: Date = new Date()): string | null {
-  if (!hint.start) return null
+  if (!hint.start || Number.isNaN(hint.start.getTime())) return null
   const start = hint.start
   const sameDay = isSameDay(start, now)
   const tomorrow = isSameDay(start, addDays(now, 1))
