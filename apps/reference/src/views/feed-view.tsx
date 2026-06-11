@@ -27,7 +27,11 @@ export function FeedView({ groupId }: { groupId: string }) {
   // multiple modules without any extra handling.
   const { data: posts } = useItems({ hasField: ["content"] })
   const { data: events } = useItems({ hasField: ["start"] })
-  const { data: members } = useMembers(groupId)
+  // `groupId === "__overview__"` is the cross-space aggregate view
+  // ("Mein Netzwerk"). useMembers(null) returns the union of all
+  // members the connector knows about, so author resolution still
+  // resolves the items that surface here from other spaces.
+  const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
 
   // Merge posts + events, dedupe, sort newest first.

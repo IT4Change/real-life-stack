@@ -38,7 +38,10 @@ export function MapView({ groupId }: { groupId: string }) {
   // map-renderable, regardless of `type`. The Point/coordinates check
   // below is still defensive validation, not the activation criterion.
   const { data: items } = useItems({ hasField: ["position"] })
-  const { data: members } = useMembers(groupId)
+  // Cross-space aggregate ("Mein Netzwerk"): useMembers(null) yields
+  // the union of all known members, so authors of map items pulled
+  // in from other spaces still resolve to their User.
+  const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
 
   const [detailItem, setDetailItem] = useState<Item | null>(null)
