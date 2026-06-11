@@ -169,19 +169,18 @@ export function MapView({ groupId }: { groupId: string }) {
           workspace switcher / user menu above. */}
       <div ref={containerRef} className="absolute inset-0 isolate" />
 
-      {/* FilterBar floats above the map (top-left, leaves zoom controls
-          on the right untouched). pointer-events-none on the wrapper so
-          the map keeps panning between the chips; the FilterBar itself
-          re-enables pointer events on its interactive children. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-400 p-3">
-        <div className="pointer-events-auto rounded-lg bg-background/90 p-2 shadow-md backdrop-blur supports-backdrop-filter:bg-background/70">
-          <FilterBar
-            value={filterBarValue}
-            onChange={setFilterBarValue}
-            availableTags={availableTags}
-            availableTypes={MAP_TYPES}
-          />
-        </div>
+      {/* FilterBar floats above the map without a wrapper card —
+          the trigger button + active chips sit directly on the map.
+          pointer-events-none on the layer so the map keeps panning
+          between elements; the FilterBar's own interactive children
+          opt back in via pointer-events-auto. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-400 p-3 **:pointer-events-auto">
+        <FilterBar
+          value={filterBarValue}
+          onChange={setFilterBarValue}
+          availableTags={availableTags}
+          availableTypes={MAP_TYPES}
+        />
       </div>
 
       <AdaptivePanel
