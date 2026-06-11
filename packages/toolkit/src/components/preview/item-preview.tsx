@@ -18,10 +18,15 @@ import { useItemTags } from "../../hooks/use-item-tags"
  * in through three Adornment slots, so each module decorates the same
  * card without forking the layout.
  *
- * Three slots:
- * - `headerAdornment`: next to the author name (e.g. `<TypeBadge>`)
- * - `metaAdornment`: between title and description (e.g. date hint, distance)
- * - `footerAdornment`: below tags (e.g. assignees, status chip, comment count)
+ * Three slots, each renders independently of the data blocks so a card
+ * with only some sections still places its adornments correctly:
+ * - `headerAdornment`: next to the author name when the author row is
+ *   rendered, otherwise its own top row above the title (e.g.
+ *   `<TypeBadge>`).
+ * - `metaAdornment`: its own row below the title block, also rendered
+ *   when there is no title (e.g. a card with only date+address).
+ * - `footerAdornment`: bordered footer row below tags (e.g. assignees,
+ *   status chip, comment count).
  *
  * Caller owns the click handler (open detail, etc.). Adornments that
  * carry their own buttons should `event.stopPropagation()` so a button
@@ -136,16 +141,27 @@ export function ItemPreview({
         </div>
       )}
 
+      {/* Header-only block — only when the author row is suppressed but a
+          header adornment is still provided (e.g. type badge on a kanban
+          card without an author header). */}
+      {author === null && headerAdornment && (
+        <div className="px-4 pt-3 pb-1 flex items-center gap-2 flex-wrap">{headerAdornment}</div>
+      )}
+
       {(title || description) && (
         <div className="px-4 pb-3 pt-2">
           {title && <h3 className="font-semibold text-foreground mb-1">{title}</h3>}
-          {metaAdornment && (
-            <div className="text-xs text-muted-foreground mb-2">{metaAdornment}</div>
-          )}
           {description && (
             <p className="text-sm text-foreground leading-relaxed line-clamp-4">{description}</p>
           )}
         </div>
+      )}
+
+      {/* Meta adornment is its own row, independent of the title/description
+          block. This way a card with date+address but no title still gets
+          the meta hint rendered. */}
+      {metaAdornment && (
+        <div className="px-4 pb-3 text-xs text-muted-foreground">{metaAdornment}</div>
       )}
 
       {tags.length > 0 && (
