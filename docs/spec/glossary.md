@@ -46,9 +46,9 @@ Spec: [05-confirmations-and-trust.md → §Begriffe](05-confirmations-and-trust.
 
 ## Composer
 
-*Module Component* zum Erstellen oder Editieren eines *Items*. Setzt sich aus *Widgets* zusammen (Title, Date, Location, People, Tags) und übergibt das fertige Item an einen *Connector*. Im Code als `ContentComposer` im Toolkit.
+*Module Component* zum Erstellen oder Editieren eines *Items*. Setzt sich aus *Widgets* zusammen (Title, Date, Location, People, Tags) und übergibt das fertige Item an einen *Connector*. Im Code als `ContentComposer` im Toolkit. Boilerplate für Open/Close, `@context`-Ableitung und Mutations-Dispatch ist im `useItemEditor`-Hook gebündelt.
 
-Spec: [01-app-composition.md → §Module Components](01-app-composition.md), [code-and-storybook-mapping.md](code-and-storybook-mapping.md)
+Spec: [modules/shared-components.md](modules/shared-components.md), [01-app-composition.md → §Module Components](01-app-composition.md)
 
 ## Confirmation
 
@@ -114,9 +114,9 @@ Spec: [02-data-interface.md → §Item](02-data-interface.md), [04-items-relatio
 
 ## Module Component
 
-Wiederverwendbarer Baustein innerhalb eines *Space Module*. Beispiele: `ItemPreview`, `ItemDetail`, `ContentComposer`, `FilterBar`, `CommentSection`, `ReactionBar`. Ist nicht selbst pro Space aktivierbar.
+Wiederverwendbarer Baustein innerhalb eines *Space Module*. Beispiele: `ItemPreview`, `ItemDetailPanel`, `ContentComposer`, `FilterBar`, `CommentSection`, `ReactionBar`. Ist nicht selbst pro Space aktivierbar. Geteilte Components mit Vertrag, Slot-Konvention und Datenanker sind in [modules/shared-components.md](modules/shared-components.md) normativ definiert.
 
-Spec: [01-app-composition.md → §Module Components](01-app-composition.md)
+Spec: [01-app-composition.md → §Module Components](01-app-composition.md), [modules/shared-components.md](modules/shared-components.md)
 
 ## Observable
 
