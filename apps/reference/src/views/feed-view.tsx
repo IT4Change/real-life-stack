@@ -21,7 +21,8 @@ import {
   useItemEditor,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
-import { Calendar, FileText } from "lucide-react"
+import { Calendar, FileText, Search } from "lucide-react"
+import { Input } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
 
 const FEED_TYPES: FilterTypeOption[] = [
@@ -85,7 +86,17 @@ export function FeedView({ groupId }: { groupId: string }) {
 
   // FilterBar state — controlled, lives in the view
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
-  const filteredFeedItems = useFilterableItems(feedItems, filterBarValue)
+  const [searchText, setSearchText] = useState("")
+  const itemsAfterBar = useFilterableItems(feedItems, filterBarValue)
+  const filteredFeedItems = useMemo(() => {
+    const needle = searchText.trim().toLowerCase()
+    if (!needle) return itemsAfterBar
+    return itemsAfterBar.filter((item) => {
+      const title = String(item.data.title ?? "").toLowerCase()
+      const content = String(item.data.content ?? item.data.description ?? "").toLowerCase()
+      return title.includes(needle) || content.includes(needle)
+    })
+  }, [itemsAfterBar, searchText])
   const availableTags = useMemo(() => {
     const seen = new Set<string>()
     for (const item of feedItems) for (const tag of item.tags ?? []) seen.add(tag)
@@ -165,6 +176,24 @@ export function FeedView({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
+      <FilterBar
+        value={filterBarValue}
+        onChange={setFilterBarValue}
+        availableTags={availableTags}
+        availableTypes={FEED_TYPES}
+        trailingActions={
+          <div className="relative">
+            <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Suche…"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="h-8 w-40 pl-7 text-xs"
+            />
+          </div>
+        }
+      />
+
       {/* Composer trigger — morphs into fullscreen modal */}
       <FeedComposerTrigger
         placeholder="Was gibt's Neues?"
@@ -184,13 +213,6 @@ export function FeedView({ groupId }: { groupId: string }) {
           </div>
         )}
       </FeedComposerTrigger>
-
-      <FilterBar
-        value={filterBarValue}
-        onChange={setFilterBarValue}
-        availableTags={availableTags}
-        availableTypes={FEED_TYPES}
-      />
 
       {/* Feed items */}
       <div className="space-y-4">

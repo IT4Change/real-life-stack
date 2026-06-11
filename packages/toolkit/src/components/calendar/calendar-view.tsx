@@ -12,9 +12,11 @@ import {
   HandHeart,
   List,
   Plus,
+  Search,
   Sparkles,
 } from "lucide-react"
 import { Button } from "../primitives/button"
+import { Input } from "../primitives/input"
 import { cn } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 import { ItemPreview } from "../preview/item-preview"
@@ -326,6 +328,7 @@ export function CalendarView({
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [locationFilter, setLocationFilter] = useState<LocationFilter>("all")
   const [myEventsOnly, setMyEventsOnly] = useState(false)
+  const [searchText, setSearchText] = useState("")
 
   const eventsAfterBar = useFilterableItems(events, filterBarValue)
 
@@ -346,16 +349,20 @@ export function CalendarView({
     return Array.from(seen).sort().map((id) => ({ id, label: getTypeLabel(id) }))
   }, [events])
 
-  const filteredEvents = useMemo(
-    () =>
-      calendarEvents.filter((event) => {
-        if (locationFilter === "with" && !event.location) return false
-        if (locationFilter === "without" && event.location) return false
-        if (myEventsOnly && currentUserId && event.item.createdBy !== currentUserId) return false
-        return true
-      }),
-    [calendarEvents, currentUserId, locationFilter, myEventsOnly],
-  )
+  const filteredEvents = useMemo(() => {
+    const needle = searchText.trim().toLowerCase()
+    return calendarEvents.filter((event) => {
+      if (locationFilter === "with" && !event.location) return false
+      if (locationFilter === "without" && event.location) return false
+      if (myEventsOnly && currentUserId && event.item.createdBy !== currentUserId) return false
+      if (needle) {
+        const title = event.title.toLowerCase()
+        const description = (event.description ?? "").toLowerCase()
+        if (!title.includes(needle) && !description.includes(needle)) return false
+      }
+      return true
+    })
+  }, [calendarEvents, currentUserId, locationFilter, myEventsOnly, searchText])
 
   const eventsByDay = useMemo(
     () => {
@@ -393,7 +400,82 @@ export function CalendarView({
   }
 
   return (
-    <div className={cn("w-full overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm", className)}>
+    <div className={cn("w-full space-y-3", className)}>
+      <FilterBar
+        value={filterBarValue}
+        onChange={setFilterBarValue}
+        availableTags={availableTags}
+        availableTypes={availableTypes}
+        trailingActions={
+          <div className="relative">
+            <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Suche…"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="h-8 w-40 pl-7 text-xs"
+            />
+          </div>
+        }
+        drawerExtra={
+          <>
+            <FilterSection label="Ort">
+              <FilterMultiSelect
+                options={[
+                  { id: "with", label: "Mit Ort" },
+                  { id: "without", label: "Ohne Ort" },
+                ]}
+                value={locationFilter === "all" ? [] : [locationFilter]}
+                onChange={(next) => {
+                  if (next.length === 0) setLocationFilter("all")
+                  else setLocationFilter(next[next.length - 1] as LocationFilter)
+                }}
+              />
+            </FilterSection>
+            {currentUserId && (
+              <FilterSection label="Zuweisung">
+                <FilterToggle
+                  label="Nur meine Events"
+                  value={myEventsOnly}
+                  onChange={setMyEventsOnly}
+                />
+              </FilterSection>
+            )}
+          </>
+        }
+        chipsExtra={
+          <>
+            {locationFilter !== "all" && (
+              <span className="inline-flex items-center gap-1 rounded-full border bg-muted/40 pl-2 pr-1 py-0.5 text-xs font-medium">
+                {locationFilter === "with" ? "Mit Ort" : "Ohne Ort"}
+                <button
+                  type="button"
+                  onClick={() => setLocationFilter("all")}
+                  className="rounded-full p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                  aria-label="Ortsfilter entfernen"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+            {myEventsOnly && currentUserId && (
+              <span className="inline-flex items-center gap-1 rounded-full border bg-muted/40 pl-2 pr-1 py-0.5 text-xs font-medium">
+                Nur meine
+                <button
+                  type="button"
+                  onClick={() => setMyEventsOnly(false)}
+                  className="rounded-full p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                  aria-label="Filter entfernen"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+          </>
+        }
+      />
+
+      <div className="w-full overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm">
       <div className="flex flex-col gap-3 border-b bg-muted/40 p-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
           <Button
@@ -462,70 +544,6 @@ export function CalendarView({
         </div>
       </div>
 
-      <div className="border-b bg-muted/20 px-4 py-3">
-        <FilterBar
-          value={filterBarValue}
-          onChange={setFilterBarValue}
-          availableTags={availableTags}
-          availableTypes={availableTypes}
-          drawerExtra={
-            <>
-              <FilterSection label="Ort">
-                <FilterMultiSelect
-                  options={[
-                    { id: "with", label: "Mit Ort" },
-                    { id: "without", label: "Ohne Ort" },
-                  ]}
-                  value={locationFilter === "all" ? [] : [locationFilter]}
-                  onChange={(next) => {
-                    if (next.length === 0) setLocationFilter("all")
-                    else setLocationFilter(next[next.length - 1] as LocationFilter)
-                  }}
-                />
-              </FilterSection>
-              {currentUserId && (
-                <FilterSection label="Zuweisung">
-                  <FilterToggle
-                    label="Nur meine Events"
-                    value={myEventsOnly}
-                    onChange={setMyEventsOnly}
-                  />
-                </FilterSection>
-              )}
-            </>
-          }
-          chipsExtra={
-            <>
-              {locationFilter !== "all" && (
-                <span className="inline-flex items-center gap-1 rounded-full border bg-muted/40 pl-2 pr-1 py-0.5 text-xs font-medium">
-                  {locationFilter === "with" ? "Mit Ort" : "Ohne Ort"}
-                  <button
-                    type="button"
-                    onClick={() => setLocationFilter("all")}
-                    className="rounded-full p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-                    aria-label="Ortsfilter entfernen"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-              {myEventsOnly && currentUserId && (
-                <span className="inline-flex items-center gap-1 rounded-full border bg-muted/40 pl-2 pr-1 py-0.5 text-xs font-medium">
-                  Nur meine
-                  <button
-                    type="button"
-                    onClick={() => setMyEventsOnly(false)}
-                    className="rounded-full p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-                    aria-label="Filter entfernen"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-            </>
-          }
-        />
-      </div>
 
       {viewMode === "month" && (
         <MonthCalendar
@@ -575,6 +593,7 @@ export function CalendarView({
           onEventClick={onEventClick}
         />
       )}
+      </div>
     </div>
   )
 }

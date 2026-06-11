@@ -4,6 +4,8 @@ import {
   useMembers,
   useCurrentUser,
   AdaptivePanel,
+  ContentComposer,
+  type ContentTypeConfig,
   ItemDetailPanel,
   ItemPreview,
   ItemTypeBadge,
@@ -12,13 +14,19 @@ import {
   FilterBar,
   emptyFilterBarValue,
   useFilterableItems,
+  useItemEditor,
+  type ItemEditorMapper,
   getTagAccentColor,
+  Input,
+  Button,
+  Sheet,
+  SheetContent,
   type FilterBarValue,
   type FilterTypeOption,
   type MapMarkerSpec,
 } from "@real-life-stack/toolkit"
 import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
-import { Calendar, MapPin, Sparkles } from "lucide-react"
+import { Calendar, MapPin, Plus, Search, Sparkles } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
 
 const MAP_TYPES: FilterTypeOption[] = [
@@ -58,12 +66,60 @@ export function MapView({ groupId }: { groupId: string }) {
 
   const [detailItem, setDetailItem] = useState<Item | null>(null)
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
-  const filteredItems = useFilterableItems(items, filterBarValue)
+  const [searchText, setSearchText] = useState("")
+  const itemsAfterBar = useFilterableItems(items, filterBarValue)
+  const filteredItems = useMemo(() => {
+    const needle = searchText.trim().toLowerCase()
+    if (!needle) return itemsAfterBar
+    return itemsAfterBar.filter((item) => {
+      const title = String(item.data.title ?? "").toLowerCase()
+      const description = String(item.data.description ?? "").toLowerCase()
+      return title.includes(needle) || description.includes(needle)
+    })
+  }, [itemsAfterBar, searchText])
   const availableTags = useMemo(() => {
     const seen = new Set<string>()
     for (const item of items) for (const tag of item.tags ?? []) seen.add(tag)
     return Array.from(seen).sort()
   }, [items])
+
+  const mapContentTypes: ContentTypeConfig[] = useMemo(() => [
+    {
+      id: "place",
+      label: "Ort",
+      defaultWidgets: ["title", "text", "location"],
+      submitLabel: "Erstellen",
+    },
+    {
+      id: "event",
+      label: "Veranstaltung",
+      defaultWidgets: ["title", "text", "date", "location"],
+      submitLabel: "Erstellen",
+    },
+  ], [])
+
+  const mapSubmission = useCallback<ItemEditorMapper>((submission) => {
+    const { text, tags: submittedTags, ...rest } = submission.data
+    const cleaned = Object.fromEntries(
+      Object.entries(rest).filter(([, v]) => {
+        if (v === "" || v === null || v === undefined) return false
+        if (Array.isArray(v) && v.length === 0) return false
+        return true
+      }),
+    )
+    const itemData = { ...cleaned, ...(text ? { description: text } : {}) }
+    const tags = Array.isArray(submittedTags) && submittedTags.length > 0 ? submittedTags : undefined
+    return {
+      type: submission.contentType,
+      data: itemData,
+      ...(tags ? { tags } : {}),
+    }
+  }, [])
+
+  const editor = useItemEditor({
+    currentUserId: currentUser?.id,
+    mapSubmission,
+  })
 
   // Build the markers and an id → item lookup in one pass — marker
   // clicks come back with just the id, and we need the full item to
@@ -174,14 +230,45 @@ export function MapView({ groupId }: { groupId: string }) {
           pointer-events-none on the layer so the map keeps panning
           between elements; the FilterBar's own interactive children
           opt back in via pointer-events-auto. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-400 p-3 **:pointer-events-auto">
+      {/* Leaflet's default zoom controls sit top-left at ~44px; offset
+          the FilterBar past them so the trigger doesn't hide the minus
+          button. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-400 py-3 pr-3 pl-16 **:pointer-events-auto">
         <FilterBar
           value={filterBarValue}
           onChange={setFilterBarValue}
           availableTags={availableTags}
           availableTypes={MAP_TYPES}
+          trailingActions={
+            <>
+              <div className="relative">
+                <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Suche…"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  className="h-8 w-40 pl-7 text-xs"
+                />
+              </div>
+              <Button size="sm" onClick={() => editor.openCreate()}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </>
+          }
         />
       </div>
+
+      <Sheet open={editor.isOpen} onOpenChange={(open) => { if (!open) editor.close() }}>
+        <SheetContent side="right" className="w-full sm:max-w-lg">
+          <ContentComposer
+            className="p-4 sm:p-6"
+            contentTypes={mapContentTypes}
+            onSubmit={(data) => editor.submit(data)}
+            onCancel={() => editor.close()}
+            showPreview={false}
+          />
+        </SheetContent>
+      </Sheet>
 
       <AdaptivePanel
         open={detailItem !== null}
