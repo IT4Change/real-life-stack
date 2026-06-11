@@ -4,16 +4,19 @@ import { MessageCircle } from "lucide-react"
 import { cn } from "../../lib/utils"
 
 /**
- * `ItemCommentCount` — small button showing the number of comments on
- * an item. Belongs in the `footerAdornment` slot of `ItemPreview`.
- * Renders nothing when `count` is zero or negative so callers can drop
- * it in unconditionally.
+ * `ItemCommentCount` — comment-count badge for the `footerAdornment`
+ * slot of `ItemPreview`. Renders nothing when `count <= 0` so callers
+ * can drop it in unconditionally.
  *
  * Spec: `docs/spec/modules/shared-components.md` → `ItemCommentCount`.
  *
- * Calls `event.stopPropagation()` on click so a clickable card around
- * the button doesn't also fire (`ItemPreview` exposes a card-wide
- * `onClick` for opening the detail).
+ * Two render modes depending on `onClick`:
+ * - **With `onClick`**: renders a `<button>` (focusable, hover style)
+ *   and calls `event.stopPropagation()` so a card-wide click on
+ *   `ItemPreview` doesn't double-fire.
+ * - **Without `onClick`**: renders a plain `<span>` (non-interactive,
+ *   not in the tab order). That way a purely informational count
+ *   doesn't show up as a focus stop that performs no action.
  */
 export interface ItemCommentCountProps {
   count: number
@@ -21,22 +24,34 @@ export interface ItemCommentCountProps {
   className?: string
 }
 
+const baseClass =
+  "inline-flex items-center gap-1 text-xs text-muted-foreground"
+
 export function ItemCommentCount({ count, onClick, className }: ItemCommentCountProps) {
   if (count <= 0) return null
+  const label = (
+    <>
+      <MessageCircle className="h-3 w-3" />
+      {count} Kommentar{count !== 1 ? "e" : ""}
+    </>
+  )
+  if (!onClick) {
+    return <span className={cn(baseClass, className)}>{label}</span>
+  }
   return (
     <button
       type="button"
       onClick={(e) => {
         e.stopPropagation()
-        onClick?.()
+        onClick()
       }}
       className={cn(
-        "inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors",
+        baseClass,
+        "hover:text-foreground transition-colors",
         className,
       )}
     >
-      <MessageCircle className="h-3 w-3" />
-      {count} Kommentar{count !== 1 ? "e" : ""}
+      {label}
     </button>
   )
 }

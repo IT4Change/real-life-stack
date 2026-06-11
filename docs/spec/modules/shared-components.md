@@ -94,7 +94,7 @@ interface ItemDetailPanelProps {
 }
 ```
 
-**Slot-Konvention:** `children` ist der freie Top-Slot. Module füllen ihn mit entweder einer Read-Ansicht (`FeedItem`, künftig `ItemPreview`) oder einem inline `ContentComposer` im Edit-Mode. Der Comments-Bereich wird automatisch gerendert; das `renderCommentReactions`-Slot erlaubt es, ReactionBars an einzelne Comments zu hängen.
+**Slot-Konvention:** `children` ist der freie Top-Slot. Module füllen ihn mit entweder einer Read-Ansicht (typischerweise `ItemPreview` mit Adornments) oder einem inline `ContentComposer` im Edit-Mode. Der Comments-Bereich wird automatisch gerendert; das `renderCommentReactions`-Slot erlaubt es, ReactionBars an einzelne Comments zu hängen.
 
 **Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
 
@@ -152,7 +152,7 @@ interface ReactionBarProps {
 
 ### `ItemPreview`
 
-**Zweck:** Generische Item-Card für Listenansichten. Konsolidiert das Layout, das vorher in jedem Modul dupliziert war (`FeedItem`, inline `KanbanCard`, Calendar `EventCard`).
+**Zweck:** Generische Item-Card für Listenansichten. Konsolidiert das Layout, das vorher in jedem Modul dupliziert war (Feed-Card, inline `KanbanCard`, Calendar `EventCard`).
 
 **Vertrag:**
 
@@ -184,7 +184,7 @@ interface ItemPreviewProps {
 
 **Daten-Pfad:** `useItemTags(item)` intern. Author-Resolution liegt beim Caller (`useItemAuthor` empfohlen).
 
-**Sebastian-Polish-Backlog:** Visuelle Spezifikation (Spacings, Card-Höhen, Hover-Transitions, Avatar-Sizing pro Density) — heute orientiert an FeedItem.
+**Sebastian-Polish-Backlog:** Visuelle Spezifikation (Spacings, Card-Höhen, Hover-Transitions, Avatar-Sizing pro Density) — heute orientiert am früheren Feed-Card-Layout.
 
 **Code:** `packages/toolkit/src/components/preview/item-preview.tsx`. Stories: `item-preview.stories.tsx`.
 
@@ -227,7 +227,7 @@ Plus eine exportierte Format-Funktion `formatEventRange(start, end?)` für Calle
 
 #### `ItemCommentCount`
 
-**Zweck:** Comment-Count-Button. Belongs in `footerAdornment`. Rendert `null` bei `count <= 0`; ruft `event.stopPropagation()` auf Click, damit ein Card-Click nicht doppelt feuert.
+**Zweck:** Comment-Count-Badge für `footerAdornment`. Rendert `null` bei `count <= 0`.
 
 ```ts
 interface ItemCommentCountProps {
@@ -236,6 +236,11 @@ interface ItemCommentCountProps {
   className?: string
 }
 ```
+
+Zwei Render-Modi je nach `onClick`:
+
+- **Mit `onClick`**: `<button>` (fokussierbar, Hover-Stil), ruft `event.stopPropagation()` damit der Card-Click nicht doppelt feuert.
+- **Ohne `onClick`**: `<span>` (nicht-interaktiv, nicht im Tab-Order). Ein rein anzeigender Count taucht so nicht als Focus-Stop ohne Aktion auf.
 
 **Code:** `packages/toolkit/src/components/preview/item-{type-badge,meta-row,comment-count}.tsx`.
 
@@ -336,6 +341,6 @@ Module nutzen mehrere shared Components zusammen. Die Verträge sind so geschnit
 ## Nicht-Ziele
 
 - Visuelle Spezifikation. Diese Spec bindet keine Farben, Spacings oder Hover-States. Polish liegt in der UI-Schicht.
-- Modul-spezifische Komponenten. `KanbanBoard`, `CalendarView`, `MapAdapter` (siehe [map.md](map.md)), `FeedItem` bleiben in ihrem Modul.
+- Modul-spezifische Komponenten. `KanbanBoard`, `CalendarView`, `MapAdapter` (siehe [map.md](map.md)) bleiben in ihrem Modul.
 - App-Shell-Flächen. `ProfileDialog`, `WorkspaceSwitcher`, `Navbar` sind in [01-app-composition.md](../01-app-composition.md) spezifiziert, nicht hier.
 - Backend-Verträge. Diese Spec definiert UI-Composition, nicht den DataInterface-Vertrag (siehe [02-data-interface.md](../02-data-interface.md)).
