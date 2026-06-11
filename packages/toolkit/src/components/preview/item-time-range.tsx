@@ -42,9 +42,9 @@ export function ItemTimeRange({ item, locationLabel, className }: ItemTimeRangeP
   const end = typeof data.end === "string" ? data.end : undefined
   const location =
     locationLabel ??
-    (typeof data.locationName === "string" && data.locationName) ||
-    (typeof data.address === "string" && data.address) ||
-    undefined
+    ((typeof data.locationName === "string" && data.locationName) ||
+      (typeof data.address === "string" && data.address) ||
+      undefined)
 
   if (!start && !location) return null
 

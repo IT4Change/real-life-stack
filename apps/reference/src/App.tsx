@@ -369,10 +369,27 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   )
 }
 
+// Avatar URLs in users.json use absolute paths starting with `/personas/…`
+// because the public dir is served from the site root in dev. In a
+// deployed build the app lives under `BASE_URL` (e.g. `/real-life-stack/`
+// on GitHub Pages), so the bare absolute path 404s. Resolve those local
+// paths against `BASE_URL` once at seed time; external http(s) URLs are
+// passed through untouched.
+const baseUrl = import.meta.env.BASE_URL || "/"
+function resolveAvatarUrl(url: string | undefined): string | undefined {
+  if (!url) return url
+  if (/^https?:\/\//i.test(url)) return url
+  if (url.startsWith("/")) {
+    const trimmed = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl
+    return `${trimmed}${url}`
+  }
+  return url
+}
+
 const demoData = {
   items: demoItems,
   groups: demoGroups,
-  users: demoUsers,
+  users: demoUsers.map((u) => ({ ...u, avatarUrl: resolveAvatarUrl(u.avatarUrl) })),
   groupMembers: demoGroupMembers,
   groupItems: demoGroupItems,
 }

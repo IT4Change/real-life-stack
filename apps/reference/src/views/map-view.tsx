@@ -1,6 +1,19 @@
-import { useState, useMemo, useEffect, useRef } from "react"
-import { useItems, type MapMarkerSpec } from "@real-life-stack/toolkit"
+import { useState, useMemo, useEffect, useRef, useCallback } from "react"
+import {
+  useItems,
+  useMembers,
+  useCurrentUser,
+  AdaptivePanel,
+  ItemDetailPanel,
+  ItemPreview,
+  ItemTypeBadge,
+  ItemMetaRow,
+  ReactionBar,
+  getTagAccentColor,
+  type MapMarkerSpec,
+} from "@real-life-stack/toolkit"
 import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
+import type { Item, User } from "@real-life-stack/data-interface"
 
 /**
  * Map module — first real version using the LeafletMapAdapter from toolkit.
@@ -8,8 +21,14 @@ import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
  * Shows every item in the current space that has `data.position` (GeoJSON
  * Point). This is the cross-module case: a workshop with `type=event` and a
  * `position` appears on both the calendar and the map.
+ *
+ * Marker click opens the same AdaptivePanel + ItemDetailPanel + ItemPreview
+ * stack that Feed / Kanban / Calendar use. A Leaflet popup with the
+ * ItemPreview inline (and detail-open as a secondary action) is the
+ * obvious alternative — UX discussion is open, see
+ * `docs/spec/modules/map.md` § Offene Punkte.
  */
-export function MapView() {
+export function MapView({ groupId }: { groupId: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Adapter lives in state so the markers-effect re-runs once `mount()` has
   // actually resolved. With lazy-loaded leaflet, `mount()` is genuinely async,
@@ -19,21 +38,32 @@ export function MapView() {
   // map-renderable, regardless of `type`. The Point/coordinates check
   // below is still defensive validation, not the activation criterion.
   const { data: items } = useItems({ hasField: ["position"] })
+  const { data: members } = useMembers(groupId)
+  const { data: currentUser } = useCurrentUser()
 
-  const markers: MapMarkerSpec[] = useMemo(() => {
-    const list: MapMarkerSpec[] = []
+  const [detailItem, setDetailItem] = useState<Item | null>(null)
+
+  // Build the markers and an id → item lookup in one pass — marker
+  // clicks come back with just the id, and we need the full item to
+  // open the detail panel.
+  const { markers, itemsById } = useMemo(() => {
+    const markerList: MapMarkerSpec[] = []
+    const byId = new Map<string, Item>()
     for (const item of items) {
       const pos = item.data.position as { type?: string; coordinates?: number[] } | undefined
       if (!pos || pos.type !== "Point" || !Array.isArray(pos.coordinates) || pos.coordinates.length < 2) continue
       const [lng, lat] = pos.coordinates
       if (typeof lng !== "number" || typeof lat !== "number") continue
-      list.push({
+      const firstTag = item.tags?.[0]
+      markerList.push({
         id: item.id,
         position: [lng, lat],
         label: typeof item.data.title === "string" ? item.data.title : item.id,
+        color: firstTag ? getTagAccentColor(firstTag) : undefined,
       })
+      byId.set(item.id, item)
     }
-    return list
+    return { markers: markerList, itemsById: byId }
   }, [items])
 
   // Mount the adapter once. Lazy-loaded leaflet means mount() is properly
@@ -87,8 +117,61 @@ export function MapView() {
     adapter?.setMarkers(markers)
   }, [adapter, markers])
 
-  // `isolate` creates a new stacking context so Leaflet's internal z-indices
-  // (zoom controls up to 1000, popup panes 700, marker panes 600) stay contained
-  // and don't overlay the navbar / workspace switcher / user menu above.
-  return <div ref={containerRef} className="h-full w-full isolate" />
+  // Wire marker clicks to the detail panel. The adapter's subscriber
+  // pattern returns an unsubscribe — clean up so we don't leak callbacks
+  // across remounts.
+  useEffect(() => {
+    if (!adapter) return
+    const unsubscribe = adapter.observeMarkerClicks((markerId) => {
+      const item = itemsById.get(markerId)
+      if (item) setDetailItem(item)
+    })
+    return unsubscribe
+  }, [adapter, itemsById])
+
+  const resolveAuthor = useCallback(
+    (createdBy: string): User | undefined => {
+      const member = members.find((m) => m.id === createdBy)
+      if (member) return member
+      if (currentUser?.id === createdBy) return currentUser
+      return undefined
+    },
+    [members, currentUser],
+  )
+
+  return (
+    <>
+      {/* `isolate` creates a new stacking context so Leaflet's internal
+          z-indices (zoom controls up to 1000, popup panes 700, marker
+          panes 600) stay contained and don't overlay the navbar /
+          workspace switcher / user menu above. */}
+      <div ref={containerRef} className="h-full w-full isolate" />
+
+      <AdaptivePanel
+        open={detailItem !== null}
+        onClose={() => setDetailItem(null)}
+        allowedModes={["sidebar", "drawer"]}
+        sidebarWidth="420px"
+      >
+        {detailItem && (
+          <ItemDetailPanel
+            itemId={detailItem.id}
+            renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
+          >
+            <div className="p-4">
+              <ItemPreview
+                item={detailItem}
+                author={resolveAuthor(detailItem.createdBy)}
+                headerAdornment={<ItemTypeBadge type={detailItem.type} />}
+                metaAdornment={<ItemMetaRow item={detailItem} />}
+                footerAdornment={
+                  detailItem.type !== "task" ? <ReactionBar itemId={detailItem.id} /> : undefined
+                }
+              />
+            </div>
+          </ItemDetailPanel>
+        )}
+      </AdaptivePanel>
+    </>
+  )
 }

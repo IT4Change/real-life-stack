@@ -1,5 +1,5 @@
 // Utilities
-export { cn } from "./lib/utils"
+export { cn, getTagColor, getTagAccentColor } from "./lib/utils"
 export { applyItemListFilter, type ItemListFilter } from "./lib/item-filter"
 
 // Components

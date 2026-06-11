@@ -39,7 +39,7 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
 
   if (activeModule === "map") {
     // Map fills the entire Space — no container, no padding, no width cap
-    return <MapView />
+    return <MapView groupId={activeWorkspace?.id ?? ""} />
   }
 
   return (
