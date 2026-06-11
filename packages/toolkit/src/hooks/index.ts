@@ -25,3 +25,10 @@ export { useItemTags } from "./use-item-tags"
 export { useItemDateHint, formatItemDateHint, type ItemDateHint } from "./use-item-date-hint"
 export { useItemPosition, type ItemPosition } from "./use-item-position"
 export { useOpenProfile, OpenProfileProvider, type OpenProfile, type OpenProfileProviderProps } from "./use-open-profile"
+export {
+  useItemEditor,
+  type UseItemEditorOptions,
+  type UseItemEditorResult,
+  type ItemEditorMapper,
+  type ItemEditorPayload,
+} from "./use-item-editor"

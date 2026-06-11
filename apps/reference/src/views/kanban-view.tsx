@@ -27,13 +27,13 @@ import {
   useUpdateItem,
   useMembers,
   useCurrentUser,
-  useCreateItem,
-  useDeleteItem,
   useConnector,
+  useItemEditor,
+  type ItemEditorMapper,
   type ItemListFilter,
 } from "@real-life-stack/toolkit"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
-import { hasItemGroups, deriveContext } from "@real-life-stack/data-interface"
+import { hasItemGroups } from "@real-life-stack/data-interface"
 
 function TaskEditPanel({ item, taskContentType, onSubmit, onDelete, connector, activeWorkspaceId, members, availableTags }: {
   item: Item
@@ -94,8 +94,6 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const { data: members } = useMembers(activeWorkspaceId === "__overview__" ? null : (activeWorkspaceId ?? "group-1"))
   const { data: currentUser } = useCurrentUser()
   const { mutate: updateItem } = useUpdateItem()
-  const { mutate: createItem } = useCreateItem()
-  const { mutate: deleteItem } = useDeleteItem()
   const [filter, setFilter] = useState<ItemListFilter>({
     searchText: "",
     assignedTo: null,
@@ -201,19 +199,62 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
     })
   }, [])
 
-  const handleTaskCreate = useCallback(async () => {
-    const taskData = { title: "", description: "", status: "open", order: tasks.length }
-    const newItem = await createItem({
-      type: "task",
-      createdBy: currentUser?.id ?? "user-1",
-      "@context": deriveContext("task", taskData),
-      data: taskData,
-    })
-    if (newItem) {
-      setPanelState({ mode: "edit", item: newItem })
-      onItemSelect?.(newItem.id)
+  // Kanban-specific composer mapping. The same mapper covers both create
+  // and edit; the `existingItem === null` branch supplies the defaults
+  // a freshly-created task carries (status "open", order at end of
+  // column). Field mapping otherwise: composer `text` →
+  // item.data.description; composer-state `people` → assignedTo
+  // relations. Tags are top-level on the item (spec 07-tags.md), so we
+  // strip any legacy data.tags from the previous item before writing.
+  const mapTaskSubmission = useCallback<ItemEditorMapper>((submission, { existingItem }) => {
+    const { data } = submission
+    const relations: Relation[] = (data.people ?? [])
+      .map((id: string) => ({ predicate: "assignedTo", target: `global:${id}` }))
+    const baseData = existingItem?.data ?? {}
+    const { tags: _legacy, ...dataWithoutLegacyTags } = baseData as Record<string, unknown>
+    const nextData: Record<string, unknown> = existingItem
+      ? {
+          ...dataWithoutLegacyTags,
+          title: data.title,
+          description: data.text,
+          status: data.status,
+        }
+      : {
+          title: data.title ?? "",
+          description: data.text ?? "",
+          status: data.status ?? "open",
+          order: tasks.length,
+        }
+    const nextTags = Array.isArray(data.tags) ? data.tags : existingItem?.tags
+    return {
+      type: existingItem?.type ?? submission.contentType,
+      data: nextData,
+      ...(nextTags !== undefined ? { tags: nextTags } : {}),
+      relations,
     }
-  }, [createItem, currentUser?.id, tasks.length, onItemSelect])
+  }, [tasks.length])
+
+  const editor = useItemEditor({
+    currentUserId: currentUser?.id,
+    mapSubmission: mapTaskSubmission,
+    onCreated: (item) => {
+      setPanelState({ mode: "edit", item })
+      onItemSelect?.(item.id)
+    },
+    onDeleted: () => setPanelState({ mode: "closed" }),
+  })
+
+  const handleTaskCreate = useCallback(() => {
+    // Kanban has no create-modal — the "+" button creates an empty task
+    // and opens the detail panel in edit mode. We feed an empty
+    // composer submission so the mapper's create-branch fills in the
+    // defaults (status "open", order: tasks.length).
+    editor.submit({
+      contentType: "task",
+      isPublic: false,
+      data: {},
+    })
+  }, [editor])
 
   const handleCreateItem = useCallback(() => {
     handleTaskCreate()
@@ -222,36 +263,28 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const handleTaskEdit = useCallback(async (submitData: ContentComposerSubmitData) => {
     if (panelState.mode !== "edit") return
     const item = panelState.item
-    const { data } = submitData
-    const relations: Relation[] = (data.people ?? [])
-      .map((id) => ({ predicate: "assignedTo", target: `global:${id}` }))
-    const { tags: _legacy, ...dataWithoutLegacyTags } = item.data
-    const nextData = { ...dataWithoutLegacyTags, title: data.title, description: data.text, status: data.status }
-    const nextTags = Array.isArray(data.tags) ? data.tags : item.tags
-    try {
-      await updateItem(item.id, {
-        "@context": deriveContext(item.type, nextData),
-        data: nextData,
-        tags: nextTags,
-        relations,
-      })
-    } catch (err) {
-      console.error("[KanbanView] updateItem failed:", err)
+    const updated = await editor.submit(submitData, { existingItem: item })
+    if (!updated) {
+      // submit returned null: either the mapper aborted or the connector
+      // rejected the update. The hook has surfaced the error via
+      // editor.error; don't run the group-move side-effect on a write
+      // that didn't land.
+      console.warn("[KanbanView] task edit submit returned null — skipping group-move side-effect")
+      return
     }
-    // Move item to different group if changed
+    const data = submitData.data
     if (data.group && hasItemGroups(connector)) {
       const currentGroupId = connector.getItemGroupId(item.id)
       if (currentGroupId && currentGroupId !== data.group) {
         connector.moveItemToGroup(item.id, data.group)
       }
     }
-  }, [panelState, updateItem, connector])
+  }, [panelState, editor, connector])
 
   const handleTaskDelete = useCallback(() => {
     if (panelState.mode !== "edit") return
-    deleteItem(panelState.item.id)
-    setPanelState({ mode: "closed" })
-  }, [panelState, deleteItem])
+    editor.remove(panelState.item.id)
+  }, [panelState, editor])
 
   const viewModeToggle = isAggregate ? (
     <DropdownMenu>

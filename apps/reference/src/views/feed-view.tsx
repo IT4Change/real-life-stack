@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback } from "react"
 import {
   ContentComposer,
-  type ContentComposerSubmitData,
   type ContentTypeConfig,
   AdaptivePanel,
   ItemDetailPanel,
@@ -11,10 +10,10 @@ import {
   useItems,
   useMembers,
   useCurrentUser,
-  useCreateItem,
+  useItemEditor,
+  type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import type { Item } from "@real-life-stack/data-interface"
-import { deriveContext } from "@real-life-stack/data-interface"
 
 export function FeedView({ groupId }: { groupId: string }) {
   // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
@@ -26,7 +25,6 @@ export function FeedView({ groupId }: { groupId: string }) {
   const { data: posts } = useItems({ hasField: ["content"] })
   const { data: events } = useItems({ hasField: ["start"] })
   const { data: members } = useMembers(groupId)
-  const { mutate: createItem } = useCreateItem()
   const { data: currentUser } = useCurrentUser()
 
   // Merge posts + events, dedupe, sort newest first.
@@ -78,17 +76,17 @@ export function FeedView({ groupId }: { groupId: string }) {
     },
   ], [])
 
-  const handleCreate = useCallback(async (submission: ContentComposerSubmitData) => {
-    // ContentComposer surfaces the free-text field as `text`; spec base/v1
-    // uses `content` for posts and `description` for items that already
-    // carry a structured payload (events here). Without this mapping a
-    // composer-created post lands in `data.text`, which FeedItem doesn't
-    // render and `hasField: ["content"]` doesn't match.
-    //
-    // We also strip empty defaults from the composer state (it initializes
-    // status/group/title/text/media/people/tags to "" or []). Without this
-    // a post would ship with `data.status = ""` and match the Kanban
-    // filter `hasField: ["status"]`, leaking it onto the board.
+  // ContentComposer surfaces the free-text field as `text`; spec base/v1
+  // uses `content` for posts and `description` for items that already
+  // carry a structured payload (events here). Without this mapping a
+  // composer-created post lands in `data.text`, which FeedItem doesn't
+  // render and `hasField: ["content"]` doesn't match.
+  //
+  // We also strip empty defaults from the composer state (it initializes
+  // status/group/title/text/media/people/tags to "" or []). Without this
+  // a post would ship with `data.status = ""` and match the Kanban
+  // filter `hasField: ["status"]`, leaking it onto the board.
+  const mapSubmission = useCallback<ItemEditorMapper>((submission) => {
     const { text, tags: submittedTags, ...rest } = submission.data
     const cleaned = Object.fromEntries(
       Object.entries(rest).filter(([, v]) => {
@@ -101,14 +99,17 @@ export function FeedView({ groupId }: { groupId: string }) {
       ? { ...cleaned, ...(text ? { content: text } : {}) }
       : { ...cleaned, ...(text ? { description: text } : {}) }
     const tags = Array.isArray(submittedTags) && submittedTags.length > 0 ? submittedTags : undefined
-    await createItem({
+    return {
       type: submission.contentType,
-      createdBy: currentUser?.id ?? "anonymous",
-      "@context": deriveContext(submission.contentType, itemData),
       data: itemData,
       ...(tags ? { tags } : {}),
-    })
-  }, [createItem, currentUser?.id])
+    }
+  }, [])
+
+  const editor = useItemEditor({
+    currentUserId: currentUser?.id,
+    mapSubmission,
+  })
 
   return (
     <div className="space-y-4">
@@ -124,7 +125,7 @@ export function FeedView({ groupId }: { groupId: string }) {
               className="p-4 sm:p-6 flex-1"
               contentTypes={feedContentTypes}
               initialData={initialText ? { text: initialText } : undefined}
-              onSubmit={(data) => { handleCreate(data); onClose() }}
+              onSubmit={(data) => { editor.submit(data); onClose() }}
               onCancel={onClose}
               showPreview={false}
             />
