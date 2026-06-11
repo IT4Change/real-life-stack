@@ -162,18 +162,27 @@ export function MapView({ groupId }: { groupId: string }) {
   )
 
   return (
-    <div className="flex h-full w-full flex-col gap-3">
-      <FilterBar
-        value={filterBarValue}
-        onChange={setFilterBarValue}
-        availableTags={availableTags}
-        availableTypes={MAP_TYPES}
-      />
+    <div className="relative h-full w-full">
       {/* `isolate` creates a new stacking context so Leaflet's internal
           z-indices (zoom controls up to 1000, popup panes 700, marker
           panes 600) stay contained and don't overlay the navbar /
           workspace switcher / user menu above. */}
-      <div ref={containerRef} className="min-h-0 flex-1 isolate" />
+      <div ref={containerRef} className="absolute inset-0 isolate" />
+
+      {/* FilterBar floats above the map (top-left, leaves zoom controls
+          on the right untouched). pointer-events-none on the wrapper so
+          the map keeps panning between the chips; the FilterBar itself
+          re-enables pointer events on its interactive children. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-400 p-3">
+        <div className="pointer-events-auto rounded-lg bg-background/90 p-2 shadow-md backdrop-blur supports-backdrop-filter:bg-background/70">
+          <FilterBar
+            value={filterBarValue}
+            onChange={setFilterBarValue}
+            availableTags={availableTags}
+            availableTypes={MAP_TYPES}
+          />
+        </div>
+      </div>
 
       <AdaptivePanel
         open={detailItem !== null}
