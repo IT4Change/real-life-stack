@@ -40,7 +40,7 @@ import {
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import { Input } from "@real-life-stack/toolkit"
-import { Search, Settings2 } from "lucide-react"
+import { Search, Settings } from "lucide-react"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
 import { hasItemGroups } from "@real-life-stack/data-interface"
 
@@ -515,7 +515,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
               }
               title="Moduleinstellungen"
             >
-              <Settings2 className="h-4 w-4" />
+              <Settings className="h-4 w-4" />
             </Button>
             {viewModeToggle}
           </>

@@ -1,6 +1,6 @@
 "use client"
 
-import { Settings2 } from "lucide-react"
+import { Settings } from "lucide-react"
 import type { ReactNode } from "react"
 
 export interface ModuleSettingsPlaceholderProps {
@@ -30,7 +30,7 @@ export function ModuleSettingsPlaceholder({
     <div className="flex h-full flex-col">
       <div className="border-b p-4 pr-12">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
-          <Settings2 className="h-4 w-4" />
+          <Settings className="h-4 w-4" />
           {moduleLabel}-Einstellungen
         </h2>
       </div>
