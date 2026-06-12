@@ -349,6 +349,19 @@ interface CreateFabProps {
 
 **Code:** `packages/toolkit/src/components/create-fab/`.
 
+### `ModulePanel` + `ModuleSettingsPlaceholder`
+
+`ModulePanelProvider` stellt **eine** `AdaptivePanel`-Instanz pro Modul-Surface bereit; alle Overlay-Inhalte (Filter, Detail, Composer, Einstellungen) öffnen über `useModulePanel().open({ kind, content, onClose? })` in dieselbe Instanz statt sich zu stapeln (Sebastian-Konsens 12.06.2026). Content swappt in place — Filter offen + Item-Klick ersetzt den Filter durch das Detail. `onClose` feuert nur beim echten Schließen (X / Backdrop / Drawer-Drag), nicht beim Content-Swap.
+
+```ts
+type ModulePanelKind = "filter" | "detail" | "composer" | "settings" | "custom"
+interface ModulePanelEntry { kind: ModulePanelKind; content: ReactNode; onClose?: () => void }
+```
+
+**Moduleinstellungen:** jedes Modul bekommt einen Zahnrad-Button (`Settings2`) in `trailingActions`, der `kind: "settings"` ins Panel öffnet. `ModuleSettingsPlaceholder` ist der geteilte Platzhalter, bis echte Settings pro Modul existieren — er reserviert Entry-Point und Fläche (`moduleLabel` + optionale `plannedItems`-Liste). Kanban nutzt ihn heute statt des früheren funktionslosen „Spalten bearbeiten"-Buttons; „Spalten bearbeiten" wird später ein Settings-Eintrag.
+
+**Code:** `packages/toolkit/src/components/module-panel/`.
+
 ## Hooks
 
 Reine Item-Ableitungen, von beliebigen Komponenten benutzbar.

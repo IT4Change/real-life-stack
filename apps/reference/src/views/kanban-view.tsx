@@ -15,6 +15,7 @@ import {
   defaultColumns,
   ModulePanelProvider,
   useModulePanel,
+  ModuleSettingsPlaceholder,
   Button,
   DropdownMenu,
   DropdownMenuTrigger,
@@ -39,7 +40,7 @@ import {
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import { Input } from "@real-life-stack/toolkit"
-import { Search, Columns as ColumnsIcon } from "lucide-react"
+import { Search, Settings2 } from "lucide-react"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
 import { hasItemGroups } from "@real-life-stack/data-interface"
 
@@ -501,10 +502,20 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
             <Button
               variant="outline"
               size="sm"
-              onClick={() => console.log("Edit columns")}
-              title="Spalten bearbeiten"
+              onClick={() =>
+                modulePanel.open({
+                  kind: "settings",
+                  content: (
+                    <ModuleSettingsPlaceholder
+                      moduleLabel="Kanban"
+                      plannedItems={["Spalten bearbeiten", "Standard-Gruppierung", "Sichtbarkeit der Spalten"]}
+                    />
+                  ),
+                })
+              }
+              title="Moduleinstellungen"
             >
-              <ColumnsIcon className="h-4 w-4" />
+              <Settings2 className="h-4 w-4" />
             </Button>
             {viewModeToggle}
           </>
