@@ -1,7 +1,6 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo } from "react"
 import {
   CalendarView as ToolkitCalendarView,
-  AdaptivePanel,
   ContentComposer,
   CreateFab,
   type ContentTypeConfig,
@@ -16,6 +15,7 @@ import {
   useMembers,
   useCurrentUser,
   useItemEditor,
+  useModulePanel,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
@@ -30,7 +30,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
 
-  const [detailItem, setDetailItem] = useState<Item | null>(null)
+  const modulePanel = useModulePanel()
 
   const calendarContentTypes: ContentTypeConfig[] = useMemo(() => [
     {
@@ -75,12 +75,36 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     return undefined
   }
 
+  const openDetail = useCallback((event: Item) => {
+    modulePanel.open({
+      kind: "detail",
+      content: (
+        <ItemDetailPanel
+          itemId={event.id}
+          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
+        >
+          <div className="p-4">
+            <ItemPreview
+              item={event}
+              author={resolveAuthor(event.createdBy)}
+              headerAdornment={<ItemTypeBadge type={event.type} />}
+              metaAdornment={<ItemTimeRange item={event} />}
+              footerAdornment={
+                event.type !== "task" ? <ReactionBar itemId={event.id} /> : undefined
+              }
+            />
+          </div>
+        </ItemDetailPanel>
+      ),
+    })
+  }, [modulePanel, members, currentUser])
+
   return (
     <>
       <ToolkitCalendarView
         events={events}
         currentUserId={currentUser?.id}
-        onEventClick={(event) => setDetailItem(event)}
+        onEventClick={openDetail}
       />
 
       <CreateFab onClick={() => editor.openCreate()} label="Veranstaltung erstellen" />
@@ -100,31 +124,6 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         </SheetContent>
       </Sheet>
 
-      <AdaptivePanel
-        open={detailItem !== null}
-        onClose={() => setDetailItem(null)}
-        allowedModes={["sidebar", "drawer"]}
-        sidebarWidth="420px"
-      >
-        {detailItem && (
-          <ItemDetailPanel
-            itemId={detailItem.id}
-            renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-          >
-            <div className="p-4">
-              <ItemPreview
-                item={detailItem}
-                author={resolveAuthor(detailItem.createdBy)}
-                headerAdornment={<ItemTypeBadge type={detailItem.type} />}
-                metaAdornment={<ItemTimeRange item={detailItem} />}
-                footerAdornment={
-                  detailItem.type !== "task" ? <ReactionBar itemId={detailItem.id} /> : undefined
-                }
-              />
-            </div>
-          </ItemDetailPanel>
-        )}
-      </AdaptivePanel>
     </>
   )
 }

@@ -13,7 +13,8 @@ import {
   type ContentComposerSubmitData,
   type ContentTypeConfig,
   defaultColumns,
-  AdaptivePanel,
+  ModulePanelProvider,
+  useModulePanel,
   Button,
   DropdownMenu,
   DropdownMenuTrigger,
@@ -93,7 +94,32 @@ type KanbanPanelState =
   | { mode: "closed" }
   | { mode: "edit"; item: Item }
 
-export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, onItemClose }: { activeWorkspaceId: string | null; groups: Group[]; selectedItemId?: string; onItemSelect?: (id: string) => void; onItemClose?: () => void }) {
+interface KanbanViewProps {
+  activeWorkspaceId: string | null
+  groups: Group[]
+  selectedItemId?: string
+  onItemSelect?: (id: string) => void
+  onItemClose?: () => void
+}
+
+export function KanbanView(props: KanbanViewProps) {
+  // Pinning state lives at the provider level so the AdaptivePanel
+  // surfaces the pin button. Modal mode allowed for very wide displays.
+  const [panelPinned, setPanelPinned] = useState(false)
+  return (
+    <ModulePanelProvider
+      allowedModes={["modal", "sidebar", "drawer"]}
+      sidebarWidth="420px"
+      sidebarMinWidth="300px"
+      pinned={panelPinned}
+      onPinnedChange={setPanelPinned}
+    >
+      <KanbanViewInner {...props} />
+    </ModulePanelProvider>
+  )
+}
+
+function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSelect, onItemClose }: KanbanViewProps) {
   const connector = useConnector()
   // Kanban activates on data.status (task/v1). After the PR-1a status
   // migration only tasks carry this field, so no event/place leakage.
@@ -110,7 +136,7 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const [assignedTo, setAssignedTo] = useState<string[]>([])
   const [searchText, setSearchText] = useState("")
   const [panelState, setPanelState] = useState<KanbanPanelState>({ mode: "closed" })
-  const [panelPinned, setPanelPinned] = useState(false)
+  const modulePanel = useModulePanel()
 
   // Open item panel from URL deep-link
   useEffect(() => {
@@ -202,6 +228,34 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
     groupOptions: concreteGroups.map((g) => ({ id: g.id, name: g.name })),
     groupRequired: true,
   }), [concreteGroups])
+
+  // Bridge local panelState ↔ shared ModulePanel. Whenever the
+  // task-edit state changes, push the TaskEditPanel into the shared
+  // panel; on close, clear it. The shared panel's X / drawer-drag /
+  // backdrop-click flows through `onClose` back into `handleForceClose`.
+  useEffect(() => {
+    if (panelState.mode === "edit") {
+      modulePanel.open({
+        kind: "detail",
+        content: (
+          <TaskEditPanel
+            item={panelState.item}
+            taskContentType={taskContentType}
+            onSubmit={handleTaskEdit}
+            onDelete={handleTaskDelete}
+            connector={connector}
+            activeWorkspaceId={activeWorkspaceId}
+            members={members}
+            availableTags={availableTags}
+          />
+        ),
+        onClose: handleForceClosePanel,
+      })
+    } else {
+      modulePanel.close()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelState, taskContentType, members, availableTags, activeWorkspaceId])
 
   // Group tasks by their group for the grouped view
   const tasksByGroup = useMemo(() => {
@@ -539,28 +593,6 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
           onItemClick={handleItemClick}
         />
       )}
-      <AdaptivePanel
-        open={panelState.mode !== "closed"}
-        onClose={handleForceClosePanel}
-        allowedModes={["modal", "sidebar", "drawer"]}
-        sidebarWidth="420px"
-        sidebarMinWidth="300px"
-        pinned={panelPinned}
-        onPinnedChange={setPanelPinned}
-      >
-        {panelState.mode === "edit" && (
-          <TaskEditPanel
-            item={panelState.item}
-            taskContentType={taskContentType}
-            onSubmit={handleTaskEdit}
-            onDelete={handleTaskDelete}
-            connector={connector}
-            activeWorkspaceId={activeWorkspaceId}
-            members={members}
-            availableTags={availableTags}
-          />
-        )}
-      </AdaptivePanel>
 
       <CreateFab onClick={handleCreateItem} label="Aufgabe erstellen" />
     </div>

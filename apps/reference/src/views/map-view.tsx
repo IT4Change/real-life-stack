@@ -3,7 +3,7 @@ import {
   useItems,
   useMembers,
   useCurrentUser,
-  AdaptivePanel,
+  useModulePanel,
   ContentComposer,
   type ContentTypeConfig,
   ItemDetailPanel,
@@ -64,7 +64,7 @@ export function MapView({ groupId }: { groupId: string }) {
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
 
-  const [detailItem, setDetailItem] = useState<Item | null>(null)
+  const modulePanel = useModulePanel()
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [searchText, setSearchText] = useState("")
   const itemsAfterBar = useFilterableItems(items, filterBarValue)
@@ -195,18 +195,6 @@ export function MapView({ groupId }: { groupId: string }) {
     adapter?.setMarkers(markers)
   }, [adapter, markers])
 
-  // Wire marker clicks to the detail panel. The adapter's subscriber
-  // pattern returns an unsubscribe — clean up so we don't leak callbacks
-  // across remounts.
-  useEffect(() => {
-    if (!adapter) return
-    const unsubscribe = adapter.observeMarkerClicks((markerId) => {
-      const item = itemsById.get(markerId)
-      if (item) setDetailItem(item)
-    })
-    return unsubscribe
-  }, [adapter, itemsById])
-
   const resolveAuthor = useCallback(
     (createdBy: string): User | undefined => {
       const member = members.find((m) => m.id === createdBy)
@@ -216,6 +204,42 @@ export function MapView({ groupId }: { groupId: string }) {
     },
     [members, currentUser],
   )
+
+  const openDetail = useCallback((item: Item) => {
+    modulePanel.open({
+      kind: "detail",
+      content: (
+        <ItemDetailPanel
+          itemId={item.id}
+          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
+        >
+          <div className="p-4">
+            <ItemPreview
+              item={item}
+              author={resolveAuthor(item.createdBy)}
+              headerAdornment={<ItemTypeBadge type={item.type} />}
+              metaAdornment={<ItemMetaRow item={item} />}
+              footerAdornment={
+                item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined
+              }
+            />
+          </div>
+        </ItemDetailPanel>
+      ),
+    })
+  }, [modulePanel, resolveAuthor])
+
+  // Wire marker clicks to the shared module panel. The adapter's
+  // subscriber returns an unsubscribe — clean up so we don't leak
+  // callbacks across remounts.
+  useEffect(() => {
+    if (!adapter) return
+    const unsubscribe = adapter.observeMarkerClicks((markerId) => {
+      const item = itemsById.get(markerId)
+      if (item) openDetail(item)
+    })
+    return unsubscribe
+  }, [adapter, itemsById, openDetail])
 
   return (
     <div className="relative h-full w-full">
@@ -273,31 +297,6 @@ export function MapView({ groupId }: { groupId: string }) {
         </SheetContent>
       </Sheet>
 
-      <AdaptivePanel
-        open={detailItem !== null}
-        onClose={() => setDetailItem(null)}
-        allowedModes={["sidebar", "drawer"]}
-        sidebarWidth="420px"
-      >
-        {detailItem && (
-          <ItemDetailPanel
-            itemId={detailItem.id}
-            renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-          >
-            <div className="p-4">
-              <ItemPreview
-                item={detailItem}
-                author={resolveAuthor(detailItem.createdBy)}
-                headerAdornment={<ItemTypeBadge type={detailItem.type} />}
-                metaAdornment={<ItemMetaRow item={detailItem} />}
-                footerAdornment={
-                  detailItem.type !== "task" ? <ReactionBar itemId={detailItem.id} /> : undefined
-                }
-              />
-            </div>
-          </ItemDetailPanel>
-        )}
-      </AdaptivePanel>
     </div>
   )
 }

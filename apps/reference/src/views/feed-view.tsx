@@ -2,8 +2,8 @@ import { useState, useMemo, useCallback } from "react"
 import {
   ContentComposer,
   type ContentTypeConfig,
-  AdaptivePanel,
   ItemDetailPanel,
+  useModulePanel,
   ReactionBar,
   ItemPreview,
   ItemTypeBadge,
@@ -81,8 +81,31 @@ export function FeedView({ groupId }: { groupId: string }) {
     [memberMap, currentUser],
   )
 
-  // Detail panel state
-  const [detailItem, setDetailItem] = useState<Item | null>(null)
+  // Detail panel — shared single panel via ModulePanelProvider
+  const modulePanel = useModulePanel()
+  const openDetail = useCallback((item: Item) => {
+    modulePanel.open({
+      kind: "detail",
+      content: (
+        <ItemDetailPanel
+          itemId={item.id}
+          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
+        >
+          <div className="p-4">
+            <ItemPreview
+              item={item}
+              author={resolveAuthor(item.createdBy)}
+              headerAdornment={<ItemTypeBadge type={item.type} />}
+              metaAdornment={<ItemMetaRow item={item} />}
+              footerAdornment={
+                item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined
+              }
+            />
+          </div>
+        </ItemDetailPanel>
+      ),
+    })
+  }, [modulePanel, resolveAuthor])
 
   // FilterBar state — controlled, lives in the view
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
@@ -224,40 +247,14 @@ export function FeedView({ groupId }: { groupId: string }) {
             key={item.id}
             item={item}
             author={resolveAuthor(item.createdBy)}
-            onClick={() => setDetailItem(item)}
+            onClick={() => openDetail(item)}
             headerAdornment={<ItemTypeBadge type={item.type} />}
             metaAdornment={<ItemMetaRow item={item} />}
-            footerAdornment={renderFeedFooter(item, () => setDetailItem(item))}
+            footerAdornment={renderFeedFooter(item, () => openDetail(item))}
           />
         ))}
       </div>
 
-      {/* Detail panel */}
-      <AdaptivePanel
-        open={detailItem !== null}
-        onClose={() => setDetailItem(null)}
-        allowedModes={["sidebar", "drawer"]}
-        sidebarWidth="420px"
-      >
-        {detailItem && (
-          <ItemDetailPanel
-            itemId={detailItem.id}
-            renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-          >
-            <div className="p-4">
-              <ItemPreview
-                item={detailItem}
-                author={resolveAuthor(detailItem.createdBy)}
-                headerAdornment={<ItemTypeBadge type={detailItem.type} />}
-                metaAdornment={<ItemMetaRow item={detailItem} />}
-                footerAdornment={
-                  detailItem.type !== "task" ? <ReactionBar itemId={detailItem.id} /> : undefined
-                }
-              />
-            </div>
-          </ItemDetailPanel>
-        )}
-      </AdaptivePanel>
     </div>
   )
 }

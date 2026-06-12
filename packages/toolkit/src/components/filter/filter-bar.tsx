@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react"
 import { Filter, Tag, Layers } from "lucide-react"
 import { Button } from "../primitives/button"
 import { AdaptivePanel } from "../layout/adaptive-panel"
+import { useOptionalModulePanel } from "../module-panel"
 import { cn } from "../../lib/utils"
 import {
   FilterChip,
@@ -119,52 +120,72 @@ export function FilterBar({
   const hasAnyChips =
     activeTagChips.length > 0 || activeTypeChips.length > 0 || !!chipsExtra
 
+  const modulePanel = useOptionalModulePanel()
+
+  const drawerContent = (
+    <div className="flex h-full flex-col">
+      <div className="border-b p-4 pr-12">
+        <h2 className="text-lg font-semibold">Filter</h2>
+      </div>
+      <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
+        <FilterSection label="Tags">
+          <FilterMultiSelect
+            options={tagOptions}
+            value={value.tags}
+            onChange={updateTags}
+            emptyLabel="Keine Tags verfügbar"
+          />
+        </FilterSection>
+
+        {typeOptions.length > 0 && (
+          <FilterSection label="Typ">
+            <FilterMultiSelect
+              options={typeOptions}
+              value={value.types}
+              onChange={updateTypes}
+            />
+          </FilterSection>
+        )}
+
+        {drawerExtra}
+      </div>
+    </div>
+  )
+
+  const openFilter = () => {
+    if (modulePanel) {
+      modulePanel.open({ kind: "filter", content: drawerContent })
+    } else {
+      setDrawerOpen(true)
+    }
+  }
+
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
       <Button
         variant="outline"
         size="sm"
         className="shrink-0"
-        onClick={() => setDrawerOpen(true)}
+        onClick={openFilter}
       >
         <Filter className="h-4 w-4 mr-1.5" />
         Filter
       </Button>
 
-      <AdaptivePanel
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        allowedModes={["sidebar", "drawer"]}
-        sidebarWidth="380px"
-      >
-        <div className="flex h-full flex-col">
-          <div className="border-b p-4 pr-12">
-            <h2 className="text-lg font-semibold">Filter</h2>
-          </div>
-          <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
-            <FilterSection label="Tags">
-              <FilterMultiSelect
-                options={tagOptions}
-                value={value.tags}
-                onChange={updateTags}
-                emptyLabel="Keine Tags verfügbar"
-              />
-            </FilterSection>
-
-            {typeOptions.length > 0 && (
-              <FilterSection label="Typ">
-                <FilterMultiSelect
-                  options={typeOptions}
-                  value={value.types}
-                  onChange={updateTypes}
-                />
-              </FilterSection>
-            )}
-
-            {drawerExtra}
-          </div>
-        </div>
-      </AdaptivePanel>
+      {/* Fallback own AdaptivePanel — used in Storybook / standalone
+          render where no ModulePanelProvider exists. Inside a module
+          surface the shared provider's single panel takes over and this
+          one stays closed. */}
+      {!modulePanel && (
+        <AdaptivePanel
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          allowedModes={["sidebar", "drawer"]}
+          sidebarWidth="380px"
+        >
+          {drawerContent}
+        </AdaptivePanel>
+      )}
 
       {hasAnyChips && (
         <div className="flex flex-wrap items-center gap-1.5">
