@@ -3,15 +3,16 @@ import type { Item } from "@real-life-stack/data-interface"
 import { applyFilterBarValue } from "../src/hooks/use-filterable-items"
 import { emptyFilterBarValue } from "../src/components/filter/types"
 
-function makeItem(id: string, type: string, tags: string[] = []): Item {
-  return {
+function makeItem(id: string, type: string, tags?: string[] | undefined): Item {
+  const item: Item = {
     id,
     type,
     createdAt: "2026-01-01T00:00:00.000Z",
     createdBy: "user-1",
     data: {},
-    tags,
   }
+  if (tags !== undefined) item.tags = tags
+  return item
 }
 
 const items: Item[] = [
@@ -19,6 +20,7 @@ const items: Item[] = [
   makeItem("b", "event", ["workshop"]),
   makeItem("c", "task", ["garten"]),
   makeItem("d", "post", []),
+  makeItem("e", "post"), // tags property entirely missing — exercises `item.tags ?? []`
 ]
 
 describe("applyFilterBarValue", () => {
@@ -43,7 +45,7 @@ describe("applyFilterBarValue", () => {
 
   it("OR-filters types: items matching any selected type pass", () => {
     const result = applyFilterBarValue(items, { tags: [], types: ["post", "task"] })
-    expect(result.map((i) => i.id).sort()).toEqual(["a", "c", "d"])
+    expect(result.map((i) => i.id).sort()).toEqual(["a", "c", "d", "e"])
   })
 
   it("combines tag AND + type OR", () => {
@@ -62,8 +64,13 @@ describe("applyFilterBarValue", () => {
     expect(result).toEqual([])
   })
 
-  it("treats items without tags as non-matching when tags are required", () => {
+  it("treats items with empty tag arrays as non-matching when tags are required", () => {
     const result = applyFilterBarValue(items, { tags: ["garten"], types: [] })
     expect(result.find((i) => i.id === "d")).toBeUndefined()
+  })
+
+  it("treats items with missing tags property as non-matching when tags are required", () => {
+    const result = applyFilterBarValue(items, { tags: ["garten"], types: [] })
+    expect(result.find((i) => i.id === "e")).toBeUndefined()
   })
 })

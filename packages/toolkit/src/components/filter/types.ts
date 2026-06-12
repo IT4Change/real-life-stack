@@ -12,10 +12,14 @@ export interface FilterBarValue {
   types: string[]
 }
 
-/** Empty `FilterBarValue` constant — handy as initial state. */
+/**
+ * Empty `FilterBarValue` constant — handy as initial state. Deep-frozen
+ * so accidental `emptyFilterBarValue.tags.push(...)` throws instead of
+ * silently sharing state across callers.
+ */
 export const emptyFilterBarValue: FilterBarValue = Object.freeze({
-  tags: [],
-  types: [],
+  tags: Object.freeze([]) as readonly string[] as string[],
+  types: Object.freeze([]) as readonly string[] as string[],
 }) as FilterBarValue
 
 /**

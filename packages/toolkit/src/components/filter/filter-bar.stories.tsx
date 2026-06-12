@@ -1,9 +1,10 @@
 import { useState } from "react"
 import type { Meta, StoryObj } from "@storybook/react-vite"
-import { Calendar, CheckSquare, MapPin, User } from "lucide-react"
+import { Calendar, CheckSquare, MapPin, Search, User } from "lucide-react"
 import { FilterBar } from "./filter-bar"
 import { FilterSection, FilterToggle, FilterMultiSelect } from "./filter-building-blocks"
 import { emptyFilterBarValue, type FilterBarValue, type FilterTypeOption } from "./types"
+import { Input } from "../primitives/input"
 
 const TAGS = ["garten", "permakultur", "workshop", "infrastruktur", "planung"]
 
@@ -110,6 +111,41 @@ export const CalendarShape: Story = {
       )
     }
     return <Wrapper extraDrawer={() => <LocationExtras />} />
+  },
+}
+
+export const WithSearchTrailing: Story = {
+  name: "With Search trailing action (Feed/Map/Calendar pattern)",
+  render: () => {
+    function WithSearch() {
+      const [value, setValue] = useState<FilterBarValue>(emptyFilterBarValue)
+      const [searchText, setSearchText] = useState("")
+      return (
+        <>
+          <FilterBar
+            value={value}
+            onChange={setValue}
+            availableTags={TAGS}
+            availableTypes={TYPES}
+            trailingActions={
+              <div className="relative">
+                <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Suche…"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  className="h-8 w-40 pl-7 text-xs"
+                />
+              </div>
+            }
+          />
+          <pre className="mt-4 rounded bg-muted/40 p-3 text-xs text-muted-foreground">
+            {JSON.stringify({ filter: value, searchText }, null, 2)}
+          </pre>
+        </>
+      )
+    }
+    return <WithSearch />
   },
 }
 

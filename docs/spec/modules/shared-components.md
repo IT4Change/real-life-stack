@@ -326,6 +326,26 @@ interface FilterTypeOption {
 
 **Code:** `packages/toolkit/src/components/filter/`. Stories: `filter-bar.stories.tsx` zeigt Default, Pre-Selected, Kanban-Toggle-Extras, Calendar-Location-Extras, Empty-State.
 
+### `CreateFab`
+
+Einheitlicher Floating-Action-Button für „neues Item erstellen", fixed unten-rechts in der Modul-Surface. Jedes Space-Modul (Feed, Kanban, Calendar, Map) hat damit denselben Create-Entry-Point an derselben Bildschirm-Position.
+
+```ts
+interface CreateFabProps {
+  onClick: () => void
+  label?: string       // aria-label, Default „Erstellen"
+  className?: string
+}
+```
+
+**Positionierung:** `fixed bottom-6 right-6 z-30` mit `pb-[env(safe-area-inset-bottom)]`. Z-Index sitzt bewusst unter `AdaptivePanel` (z-55) und unter Modal-Sheets (z-50/60), damit ein offenes Detail-Panel den FAB sauber überdeckt.
+
+**Beziehung zu `useItemEditor`:** Der FAB ist nur das visuelle Trigger-Element. Der Caller wired `onClick={() => editor.openCreate()}` und rendert das Composer-Sheet selbst — meist mit einer `Sheet` + `ContentComposer`-Kombination, deren `onSubmit` `await editor.submit(data)` aufruft und auf Erfolg `editor.close()` triggert. Dieses Pattern verhindert Mehrfach-Submits durch wiederholtes Klicken auf „Erstellen".
+
+**Feed-Sonderfall:** Feed hat zusätzlich den `FeedComposerTrigger` (input-pill, morpht in Fullscreen-Composer) als primären Create-Entry. Der FAB ist dort heute kein zweiter Trigger — offene Frage für UX-Polish, ob Feed für Konsistenz auch einen FAB bekommen soll.
+
+**Code:** `packages/toolkit/src/components/create-fab/`.
+
 ## Hooks
 
 Reine Item-Ableitungen, von beliebigen Komponenten benutzbar.

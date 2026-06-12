@@ -97,7 +97,14 @@ export function FilterBar({
   const updateTags = (next: string[]) => onChange({ ...value, tags: next })
   const updateTypes = (next: string[]) => onChange({ ...value, types: next })
 
-  const activeTagChips = value.tags.map((tag) => (
+  // Dedupe before rendering — a caller that accidentally passes the
+  // same tag/type twice would otherwise produce duplicate React keys
+  // and visible duplicate chips. Filter logic already treats both as
+  // sets.
+  const uniqueTagIds = useMemo(() => Array.from(new Set(value.tags)), [value.tags])
+  const uniqueTypeIds = useMemo(() => Array.from(new Set(value.types)), [value.types])
+
+  const activeTagChips = uniqueTagIds.map((tag) => (
     <FilterChip
       key={`tag-${tag}`}
       label={tag}
@@ -106,7 +113,7 @@ export function FilterBar({
     />
   ))
 
-  const activeTypeChips = value.types.map((typeId) => (
+  const activeTypeChips = uniqueTypeIds.map((typeId) => (
     <FilterChip
       key={`type-${typeId}`}
       label={typeLabelById.get(typeId) ?? typeId}
