@@ -288,11 +288,79 @@ Caller löst die User-Objekte auf (typischerweise aus `assignedTo`-Relations + M
 
 **Code:** `packages/toolkit/src/components/preview/item-{type-badge,meta-row,comment-count,assignees}.tsx`.
 
-### `FilterBar` (geplant, Phase 3)
+### `FilterBar`
 
-**Zweck:** Shared Filter-UI mit Common-Filtern (Tag-Multiselect, Type, Date-Range, Author) und einem Slot für Modul-spezifische Filter.
+**Zweck:** Shared Filter-UI für jedes *Space Module*. Hält Tags und Item-Type als Common-Filter, exponiert zwei Slots (`chipsExtra`, `drawerExtra`) für Modul-spezifische Filter, plus exportierte Building-Blocks (`FilterChip`, `FilterMultiSelect`, `FilterToggle`, `FilterSection`) für eine einheitliche Optik.
 
-**Status:** Vertrag offen, finalisiert in Phase 3. Die Filter-Primitiven im `ItemFilter` existieren bereits (`hasTag` ist implementiert, siehe [07-tags.md](../07-tags.md); `hasField` und die anderen Filter sind in [02-data-interface.md](../02-data-interface.md) spezifiziert). Phase 3 baut die shared UI darauf und wired Tag-Multiselect / Type-Filter / Date-Range / Author an das vorhandene `ItemFilter`-Interface.
+**Layout-Pattern (Anton + Sebastian-konsens 11.06.2026, revidiert nach Sebastian-Sync 12.06.2026):** sticky Active-Filter-Chip-Row über dem Modul-Inhalt; ein „Filter"-Button öffnet ein `AdaptivePanel` (sidebar auf Desktop, drawer auf Mobile) mit allen Optionen. Aktive Filter bleiben immer sichtbar, das Panel ist nur für die Auswahl. Das `AdaptivePanel` wird bewusst auch für den Filter genutzt — Sebastian-Konsistenz mit Detail-Panel und Composer-Sheet.
+
+```ts
+interface FilterBarProps {
+  value: FilterBarValue
+  onChange: (next: FilterBarValue) => void
+  availableTags?: readonly string[]
+  availableTypes?: readonly FilterTypeOption[]
+  chipsExtra?: ReactNode      // Modul-spezifische Active-Chips
+  drawerExtra?: ReactNode     // Modul-spezifische Drawer-Sections
+  leadingActions?: ReactNode  // direkt neben dem Filter-Button — hier gehört die Suche hin
+  trailingActions?: ReactNode // rechtsbündig, z.B. Spalten-/View-Toggle
+  className?: string
+}
+
+interface FilterBarValue {
+  tags: string[]      // AND
+  types: string[]     // OR
+}
+
+interface FilterTypeOption {
+  id: string
+  label: string
+  icon?: ComponentType<{ className?: string }>
+}
+```
+
+**Controlled component:** der Filter-Wert lebt im Caller (View-State); View-spezifische Persistierung (URL params, localStorage) bleibt Caller-Job.
+
+**Modul-spezifische Filter:** in den Slots `chipsExtra` (Active-Chip-Row) und `drawerExtra` (Auswahl-Drawer) zusammensetzen aus den exportierten Building-Blocks (`FilterSection` + `FilterMultiSelect` / `FilterToggle`). Damit sehen Modul-Extras automatisch konsistent mit den Common-Filtern aus.
+
+**Suche:** gehört in `leadingActions`, direkt neben den Filter-Button (Sebastian-Konsens 12.06.2026: Filter und Suche gehören visuell zusammen). `trailingActions` bleibt für rechtsbündige Modul-Aktionen (Spalten-Editor, View-Mode-Toggle).
+
+**Hook:** `useFilterableItems(items, value)` wendet die `FilterBarValue` clientseitig an. `applyFilterBarValue(items, value)` ist als pure Funktion exportiert (Tests, non-React-Caller). Server-seitige Optimierung (Lift `tags` in `ItemFilter.hasTag`) ist bewusst nicht hier — `data-interface` Concern, siehe [02-data-interface.md](../02-data-interface.md).
+
+**Code:** `packages/toolkit/src/components/filter/`. Stories: `filter-bar.stories.tsx` zeigt Default, Pre-Selected, Kanban-Toggle-Extras, Calendar-Location-Extras, Empty-State.
+
+### `CreateFab`
+
+Einheitlicher Floating-Action-Button für „neues Item erstellen", fixed unten-rechts in der Modul-Surface. Jedes Space-Modul (Feed, Kanban, Calendar, Map) hat damit denselben Create-Entry-Point an derselben Bildschirm-Position.
+
+```ts
+interface CreateFabProps {
+  onClick: () => void
+  label?: string       // aria-label, Default „Erstellen"
+  className?: string
+}
+```
+
+**Positionierung:** `fixed bottom-6 right-6 z-30` mit `pb-[env(safe-area-inset-bottom)]`. Z-Index sitzt bewusst unter `AdaptivePanel` (z-55) und unter Modal-Sheets (z-50/60), damit ein offenes Detail-Panel den FAB sauber überdeckt.
+
+**Beziehung zu `useItemEditor`:** Der FAB ist nur das visuelle Trigger-Element. Der Caller wired `onClick={() => editor.openCreate()}` und rendert das Composer-Sheet selbst — meist mit einer `Sheet` + `ContentComposer`-Kombination, deren `onSubmit` `await editor.submit(data)` aufruft und auf Erfolg `editor.close()` triggert. Dieses Pattern verhindert Mehrfach-Submits durch wiederholtes Klicken auf „Erstellen".
+
+**Feed-Sonderfall:** Feed hat zusätzlich den `FeedComposerTrigger` (input-pill, morpht in Fullscreen-Composer) als primären Create-Entry. Der FAB ist dort heute kein zweiter Trigger — offene Frage für UX-Polish, ob Feed für Konsistenz auch einen FAB bekommen soll.
+
+**Code:** `packages/toolkit/src/components/create-fab/`.
+
+### `ModulePanel` + `ModuleSettingsPlaceholder`
+
+`ModulePanelProvider` stellt **eine** `AdaptivePanel`-Instanz pro Modul-Surface bereit; alle Overlay-Inhalte (Filter, Detail, Composer, Einstellungen) öffnen über `useModulePanel().open({ kind, content, onClose? })` in dieselbe Instanz statt sich zu stapeln (Sebastian-Konsens 12.06.2026). Content swappt in place — Filter offen + Item-Klick ersetzt den Filter durch das Detail. `onClose` feuert nur beim echten Schließen (X / Backdrop / Drawer-Drag), nicht beim Content-Swap.
+
+```ts
+type ModulePanelKind = "filter" | "detail" | "composer" | "settings" | "custom"
+interface ModulePanelEntry { kind: ModulePanelKind; content: ReactNode; onClose?: () => void }
+```
+
+**Moduleinstellungen:** jedes Modul bekommt einen Zahnrad-Button (`Settings2`) in `trailingActions`, der `kind: "settings"` ins Panel öffnet. `ModuleSettingsPlaceholder` ist der geteilte Platzhalter, bis echte Settings pro Modul existieren — er reserviert Entry-Point und Fläche (`moduleLabel` + optionale `plannedItems`-Liste). Kanban nutzt ihn heute statt des früheren funktionslosen „Spalten bearbeiten"-Buttons; „Spalten bearbeiten" wird später ein Settings-Eintrag.
+
+**Code:** `packages/toolkit/src/components/module-panel/`.
 
 ## Hooks
 

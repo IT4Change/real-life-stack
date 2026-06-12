@@ -8,14 +8,14 @@ import {
 
 import {
   KanbanBoard,
-  KanbanToolbar,
-  applyItemListFilter,
   computeColumnReorder,
   ContentComposer,
   type ContentComposerSubmitData,
   type ContentTypeConfig,
   defaultColumns,
-  AdaptivePanel,
+  ModulePanelProvider,
+  useModulePanel,
+  ModuleSettingsPlaceholder,
   Button,
   DropdownMenu,
   DropdownMenuTrigger,
@@ -23,6 +23,14 @@ import {
   DropdownMenuCheckboxItem,
   ItemDetailPanel,
   ReactionBar,
+  CreateFab,
+  FilterBar,
+  FilterSection,
+  FilterToggle,
+  FilterMultiSelect,
+  emptyFilterBarValue,
+  useFilterableItems,
+  type FilterBarValue,
   useItems,
   useUpdateItem,
   useMembers,
@@ -30,8 +38,9 @@ import {
   useConnector,
   useItemEditor,
   type ItemEditorMapper,
-  type ItemListFilter,
 } from "@real-life-stack/toolkit"
+import { Input } from "@real-life-stack/toolkit"
+import { Search, Settings } from "lucide-react"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
 import { hasItemGroups } from "@real-life-stack/data-interface"
 
@@ -86,7 +95,32 @@ type KanbanPanelState =
   | { mode: "closed" }
   | { mode: "edit"; item: Item }
 
-export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSelect, onItemClose }: { activeWorkspaceId: string | null; groups: Group[]; selectedItemId?: string; onItemSelect?: (id: string) => void; onItemClose?: () => void }) {
+interface KanbanViewProps {
+  activeWorkspaceId: string | null
+  groups: Group[]
+  selectedItemId?: string
+  onItemSelect?: (id: string) => void
+  onItemClose?: () => void
+}
+
+export function KanbanView(props: KanbanViewProps) {
+  // Pinning state lives at the provider level so the AdaptivePanel
+  // surfaces the pin button. Modal mode allowed for very wide displays.
+  const [panelPinned, setPanelPinned] = useState(false)
+  return (
+    <ModulePanelProvider
+      allowedModes={["modal", "sidebar", "drawer"]}
+      sidebarWidth="420px"
+      sidebarMinWidth="300px"
+      pinned={panelPinned}
+      onPinnedChange={setPanelPinned}
+    >
+      <KanbanViewInner {...props} />
+    </ModulePanelProvider>
+  )
+}
+
+function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSelect, onItemClose }: KanbanViewProps) {
   const connector = useConnector()
   // Kanban activates on data.status (task/v1). After the PR-1a status
   // migration only tasks carry this field, so no event/place leakage.
@@ -94,14 +128,16 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const { data: members } = useMembers(activeWorkspaceId === "__overview__" ? null : (activeWorkspaceId ?? "group-1"))
   const { data: currentUser } = useCurrentUser()
   const { mutate: updateItem } = useUpdateItem()
-  const [filter, setFilter] = useState<ItemListFilter>({
-    searchText: "",
-    assignedTo: null,
-    myItemsOnly: false,
-    tags: [],
-  })
+  // Shared filter state for the top-of-board FilterBar (tags) plus
+  // kanban-specific extras (myItemsOnly + assignedTo + searchText).
+  // searchText stays a free text input in the trailing actions —
+  // FilterBar's controlled value covers the structured filters.
+  const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
+  const [myItemsOnly, setMyItemsOnly] = useState(false)
+  const [assignedTo, setAssignedTo] = useState<string[]>([])
+  const [searchText, setSearchText] = useState("")
   const [panelState, setPanelState] = useState<KanbanPanelState>({ mode: "closed" })
-  const [panelPinned, setPanelPinned] = useState(false)
+  const modulePanel = useModulePanel()
 
   // Open item panel from URL deep-link
   useEffect(() => {
@@ -118,10 +154,38 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null)
 
-  const filteredTasks = useMemo(
-    () => applyItemListFilter(tasks, filter, currentUser?.id),
-    [tasks, filter, currentUser?.id]
-  )
+  // FilterBar covers tag (and type) — types is empty for the Kanban
+  // case since the board only renders status-bearing tasks.
+  const filteredByBar = useFilterableItems(tasks, filterBarValue)
+
+  // Apply the kanban-specific extras on top: text search across title
+  // / description, assignee filter via relations, "nur meine" toggle.
+  const filteredTasks = useMemo(() => {
+    const needle = searchText.trim().toLowerCase()
+    const assigneeSet = new Set(assignedTo)
+    return filteredByBar.filter((task) => {
+      if (needle) {
+        const haystack = [task.data.title, task.data.description, task.data.content]
+          .map((v) => String(v ?? "").toLowerCase())
+          .join(" ")
+        if (!haystack.includes(needle)) return false
+      }
+      const relations = task.relations ?? []
+      const taskAssignees = relations
+        .filter((r) => r.predicate === "assignedTo")
+        .map((r) => r.target.replace(/^global:/, ""))
+      if (assigneeSet.size > 0) {
+        if (!taskAssignees.some((id) => assigneeSet.has(id))) return false
+      }
+      // Fail-closed: while the toggle is on but currentUser hasn't
+      // resolved yet, show nothing rather than leaking every task.
+      if (myItemsOnly) {
+        if (!currentUser?.id) return false
+        if (!taskAssignees.includes(currentUser.id)) return false
+      }
+      return true
+    })
+  }, [filteredByBar, searchText, assignedTo, myItemsOnly, currentUser?.id])
 
   const availableTags = useMemo(() => {
     const tagSet = new Set<string>()
@@ -169,6 +233,34 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
     groupOptions: concreteGroups.map((g) => ({ id: g.id, name: g.name })),
     groupRequired: true,
   }), [concreteGroups])
+
+  // Bridge local panelState ↔ shared ModulePanel. Whenever the
+  // task-edit state changes, push the TaskEditPanel into the shared
+  // panel; on close, clear it. The shared panel's X / drawer-drag /
+  // backdrop-click flows through `onClose` back into `handleForceClose`.
+  useEffect(() => {
+    if (panelState.mode === "edit") {
+      modulePanel.open({
+        kind: "detail",
+        content: (
+          <TaskEditPanel
+            item={panelState.item}
+            taskContentType={taskContentType}
+            onSubmit={handleTaskEdit}
+            onDelete={handleTaskDelete}
+            connector={connector}
+            activeWorkspaceId={activeWorkspaceId}
+            members={members}
+            availableTags={availableTags}
+          />
+        ),
+        onClose: handleForceClosePanel,
+      })
+    } else {
+      modulePanel.close()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelState, taskContentType, members, availableTags, activeWorkspaceId])
 
   // Group tasks by their group for the grouped view
   const tasksByGroup = useMemo(() => {
@@ -350,16 +442,89 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
     return map
   }, [concreteGroups, moveToGroup, tasks, tasksByGroup, updateItem])
 
+  const memberOptions = useMemo(
+    () => members.map((m) => ({ id: m.id, label: m.displayName ?? m.id })),
+    [members],
+  )
+
   return (
     <div className="space-y-4">
-      <KanbanToolbar
-        items={tasks}
-        users={members}
-        currentUserId={currentUser?.id}
-        onFilterChange={setFilter}
-        onCreateItem={handleCreateItem}
-        onEditColumns={() => console.log("Edit columns")}
-        extraActions={viewModeToggle}
+      <FilterBar
+        value={filterBarValue}
+        onChange={setFilterBarValue}
+        availableTags={availableTags}
+        drawerExtra={
+          <>
+            <FilterSection label="Schnellfilter">
+              <FilterToggle
+                label="Nur meine Aufgaben"
+                value={myItemsOnly}
+                onChange={setMyItemsOnly}
+              />
+            </FilterSection>
+            {memberOptions.length > 0 && (
+              <FilterSection label="Zuweisung">
+                <FilterMultiSelect
+                  options={memberOptions}
+                  value={assignedTo}
+                  onChange={setAssignedTo}
+                />
+              </FilterSection>
+            )}
+          </>
+        }
+        chipsExtra={
+          <>
+            {myItemsOnly && (
+              <span className="inline-flex items-center gap-1 rounded-full border bg-muted/40 pl-2 pr-1 py-0.5 text-xs font-medium">
+                Nur meine
+                <button
+                  type="button"
+                  onClick={() => setMyItemsOnly(false)}
+                  className="rounded-full p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                  aria-label="Filter entfernen"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+          </>
+        }
+        leadingActions={
+          <div className="relative">
+            <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Suche…"
+              aria-label="Aufgaben durchsuchen"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="h-8 w-40 pl-7 text-xs"
+            />
+          </div>
+        }
+        trailingActions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                modulePanel.open({
+                  kind: "settings",
+                  content: (
+                    <ModuleSettingsPlaceholder
+                      moduleLabel="Kanban"
+                      plannedItems={["Spalten bearbeiten", "Standard-Gruppierung", "Sichtbarkeit der Spalten"]}
+                    />
+                  ),
+                })
+              }
+              title="Moduleinstellungen"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+            {viewModeToggle}
+          </>
+        }
       />
 
       {isAggregate && groupedView && tasksByGroup ? (
@@ -446,28 +611,8 @@ export function KanbanView({ activeWorkspaceId, groups, selectedItemId, onItemSe
           onItemClick={handleItemClick}
         />
       )}
-      <AdaptivePanel
-        open={panelState.mode !== "closed"}
-        onClose={handleForceClosePanel}
-        allowedModes={["modal", "sidebar", "drawer"]}
-        sidebarWidth="420px"
-        sidebarMinWidth="300px"
-        pinned={panelPinned}
-        onPinnedChange={setPanelPinned}
-      >
-        {panelState.mode === "edit" && (
-          <TaskEditPanel
-            item={panelState.item}
-            taskContentType={taskContentType}
-            onSubmit={handleTaskEdit}
-            onDelete={handleTaskDelete}
-            connector={connector}
-            activeWorkspaceId={activeWorkspaceId}
-            members={members}
-            availableTags={availableTags}
-          />
-        )}
-      </AdaptivePanel>
+
+      <CreateFab onClick={handleCreateItem} label="Aufgabe erstellen" />
     </div>
   )
 }

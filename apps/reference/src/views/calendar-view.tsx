@@ -1,15 +1,22 @@
-import { useState } from "react"
+import { useCallback, useMemo } from "react"
 import {
   CalendarView as ToolkitCalendarView,
-  AdaptivePanel,
+  ContentComposer,
+  CreateFab,
+  type ContentTypeConfig,
   ItemDetailPanel,
   ItemPreview,
   ItemTypeBadge,
   ItemTimeRange,
   ReactionBar,
+  Sheet,
+  SheetContent,
   useItems,
   useMembers,
   useCurrentUser,
+  useItemEditor,
+  useModulePanel,
+  type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
 
@@ -23,7 +30,39 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
 
-  const [detailItem, setDetailItem] = useState<Item | null>(null)
+  const modulePanel = useModulePanel()
+
+  const calendarContentTypes: ContentTypeConfig[] = useMemo(() => [
+    {
+      id: "event",
+      label: "Veranstaltung",
+      defaultWidgets: ["title", "text", "date", "location"],
+      submitLabel: "Erstellen",
+    },
+  ], [])
+
+  const mapSubmission = useCallback<ItemEditorMapper>((submission) => {
+    const { text, tags: submittedTags, ...rest } = submission.data
+    const cleaned = Object.fromEntries(
+      Object.entries(rest).filter(([, v]) => {
+        if (v === "" || v === null || v === undefined) return false
+        if (Array.isArray(v) && v.length === 0) return false
+        return true
+      }),
+    )
+    const itemData = { ...cleaned, ...(text ? { description: text } : {}) }
+    const tags = Array.isArray(submittedTags) && submittedTags.length > 0 ? submittedTags : undefined
+    return {
+      type: submission.contentType,
+      data: itemData,
+      ...(tags ? { tags } : {}),
+    }
+  }, [])
+
+  const editor = useItemEditor({
+    currentUserId: currentUser?.id,
+    mapSubmission,
+  })
 
   // Resolve event author for the detail-panel ItemPreview. Calendar
   // list cards themselves render with `author={null}` (the date group
@@ -36,38 +75,55 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     return undefined
   }
 
+  const openDetail = useCallback((event: Item) => {
+    modulePanel.open({
+      kind: "detail",
+      content: (
+        <ItemDetailPanel
+          itemId={event.id}
+          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
+        >
+          <div className="p-4">
+            <ItemPreview
+              item={event}
+              author={resolveAuthor(event.createdBy)}
+              headerAdornment={<ItemTypeBadge type={event.type} />}
+              metaAdornment={<ItemTimeRange item={event} />}
+              footerAdornment={
+                event.type !== "task" ? <ReactionBar itemId={event.id} /> : undefined
+              }
+            />
+          </div>
+        </ItemDetailPanel>
+      ),
+    })
+  }, [modulePanel, members, currentUser])
+
   return (
     <>
       <ToolkitCalendarView
         events={events}
-        onEventClick={(event) => setDetailItem(event)}
+        currentUserId={currentUser?.id}
+        onEventClick={openDetail}
       />
 
-      <AdaptivePanel
-        open={detailItem !== null}
-        onClose={() => setDetailItem(null)}
-        allowedModes={["sidebar", "drawer"]}
-        sidebarWidth="420px"
-      >
-        {detailItem && (
-          <ItemDetailPanel
-            itemId={detailItem.id}
-            renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-          >
-            <div className="p-4">
-              <ItemPreview
-                item={detailItem}
-                author={resolveAuthor(detailItem.createdBy)}
-                headerAdornment={<ItemTypeBadge type={detailItem.type} />}
-                metaAdornment={<ItemTimeRange item={detailItem} />}
-                footerAdornment={
-                  detailItem.type !== "task" ? <ReactionBar itemId={detailItem.id} /> : undefined
-                }
-              />
-            </div>
-          </ItemDetailPanel>
-        )}
-      </AdaptivePanel>
+      <CreateFab onClick={() => editor.openCreate()} label="Veranstaltung erstellen" />
+
+      <Sheet open={editor.isOpen} onOpenChange={(open) => { if (!open) editor.close() }}>
+        <SheetContent side="right" className="w-full sm:max-w-lg">
+          <ContentComposer
+            className="p-4 sm:p-6"
+            contentTypes={calendarContentTypes}
+            onSubmit={async (data) => {
+              const result = await editor.submit(data)
+              if (result) editor.close()
+            }}
+            onCancel={() => editor.close()}
+            showPreview={false}
+          />
+        </SheetContent>
+      </Sheet>
+
     </>
   )
 }

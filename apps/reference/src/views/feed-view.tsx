@@ -2,21 +2,33 @@ import { useState, useMemo, useCallback } from "react"
 import {
   ContentComposer,
   type ContentTypeConfig,
-  AdaptivePanel,
   ItemDetailPanel,
+  useModulePanel,
   ReactionBar,
   ItemPreview,
   ItemTypeBadge,
   ItemMetaRow,
   ItemCommentCount,
   FeedComposerTrigger,
+  FilterBar,
+  emptyFilterBarValue,
+  useFilterableItems,
+  type FilterBarValue,
+  type FilterTypeOption,
   useItems,
   useMembers,
   useCurrentUser,
   useItemEditor,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
+import { Calendar, FileText, Search } from "lucide-react"
+import { Input } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
+
+const FEED_TYPES: FilterTypeOption[] = [
+  { id: "post", label: "Posts", icon: FileText },
+  { id: "event", label: "Events", icon: Calendar },
+]
 
 export function FeedView({ groupId }: { groupId: string }) {
   // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
@@ -69,8 +81,51 @@ export function FeedView({ groupId }: { groupId: string }) {
     [memberMap, currentUser],
   )
 
-  // Detail panel state
-  const [detailItem, setDetailItem] = useState<Item | null>(null)
+  // Detail panel — shared single panel via ModulePanelProvider
+  const modulePanel = useModulePanel()
+  const openDetail = useCallback((item: Item) => {
+    modulePanel.open({
+      kind: "detail",
+      content: (
+        <ItemDetailPanel
+          itemId={item.id}
+          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
+        >
+          <div className="p-4">
+            <ItemPreview
+              item={item}
+              author={resolveAuthor(item.createdBy)}
+              headerAdornment={<ItemTypeBadge type={item.type} />}
+              metaAdornment={<ItemMetaRow item={item} />}
+              footerAdornment={
+                item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined
+              }
+            />
+          </div>
+        </ItemDetailPanel>
+      ),
+    })
+  }, [modulePanel, resolveAuthor])
+
+  // FilterBar state — controlled, lives in the view
+  const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
+  const [searchText, setSearchText] = useState("")
+  const itemsAfterBar = useFilterableItems(feedItems, filterBarValue)
+  const filteredFeedItems = useMemo(() => {
+    const needle = searchText.trim().toLowerCase()
+    if (!needle) return itemsAfterBar
+    return itemsAfterBar.filter((item) => {
+      const haystack = [item.data.title, item.data.description, item.data.content]
+        .map((v) => String(v ?? "").toLowerCase())
+        .join(" ")
+      return haystack.includes(needle)
+    })
+  }, [itemsAfterBar, searchText])
+  const availableTags = useMemo(() => {
+    const seen = new Set<string>()
+    for (const item of feedItems) for (const tag of item.tags ?? []) seen.add(tag)
+    return Array.from(seen).sort()
+  }, [feedItems])
 
   // Content type configs for the composer
   const feedContentTypes: ContentTypeConfig[] = useMemo(() => [
@@ -145,6 +200,25 @@ export function FeedView({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
+      <FilterBar
+        value={filterBarValue}
+        onChange={setFilterBarValue}
+        availableTags={availableTags}
+        availableTypes={FEED_TYPES}
+        leadingActions={
+          <div className="relative">
+            <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Suche…"
+              aria-label="Feed durchsuchen"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="h-8 w-40 pl-7 text-xs"
+            />
+          </div>
+        }
+      />
+
       {/* Composer trigger — morphs into fullscreen modal */}
       <FeedComposerTrigger
         placeholder="Was gibt's Neues?"
@@ -157,7 +231,10 @@ export function FeedView({ groupId }: { groupId: string }) {
               className="p-4 sm:p-6 flex-1"
               contentTypes={feedContentTypes}
               initialData={initialText ? { text: initialText } : undefined}
-              onSubmit={(data) => { editor.submit(data); onClose() }}
+              onSubmit={async (data) => {
+                const result = await editor.submit(data)
+                if (result) onClose()
+              }}
               onCancel={onClose}
               showPreview={false}
             />
@@ -167,45 +244,19 @@ export function FeedView({ groupId }: { groupId: string }) {
 
       {/* Feed items */}
       <div className="space-y-4">
-        {feedItems.map((item) => (
+        {filteredFeedItems.map((item) => (
           <ItemPreview
             key={item.id}
             item={item}
             author={resolveAuthor(item.createdBy)}
-            onClick={() => setDetailItem(item)}
+            onClick={() => openDetail(item)}
             headerAdornment={<ItemTypeBadge type={item.type} />}
             metaAdornment={<ItemMetaRow item={item} />}
-            footerAdornment={renderFeedFooter(item, () => setDetailItem(item))}
+            footerAdornment={renderFeedFooter(item, () => openDetail(item))}
           />
         ))}
       </div>
 
-      {/* Detail panel */}
-      <AdaptivePanel
-        open={detailItem !== null}
-        onClose={() => setDetailItem(null)}
-        allowedModes={["sidebar", "drawer"]}
-        sidebarWidth="420px"
-      >
-        {detailItem && (
-          <ItemDetailPanel
-            itemId={detailItem.id}
-            renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-          >
-            <div className="p-4">
-              <ItemPreview
-                item={detailItem}
-                author={resolveAuthor(detailItem.createdBy)}
-                headerAdornment={<ItemTypeBadge type={detailItem.type} />}
-                metaAdornment={<ItemMetaRow item={detailItem} />}
-                footerAdornment={
-                  detailItem.type !== "task" ? <ReactionBar itemId={detailItem.id} /> : undefined
-                }
-              />
-            </div>
-          </ItemDetailPanel>
-        )}
-      </AdaptivePanel>
     </div>
   )
 }
