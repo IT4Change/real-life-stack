@@ -70,23 +70,23 @@ export function ModulePanelProvider({
   onPinnedChange,
 }: ModulePanelProviderProps) {
   const [current, setCurrent] = useState<ModulePanelEntry | null>(null)
-  // Hold a ref to the previous entry's `onClose` so swap-on-open can
-  // notify the previous owner (e.g. Filter knows it got replaced when
-  // the user clicks an item).
-  const previousOnCloseRef = useRef<(() => void) | undefined>(undefined)
+  // Hold a ref to the current entry's `onClose` so an explicit close()
+  // (X button, backdrop, drawer-drag) notifies the owner. We do NOT
+  // fire it on content-swap: re-opening the same logical panel (e.g.
+  // Kanban re-pushing its TaskEditPanel when members/tags load async)
+  // would otherwise cascade into an immediate close.
+  const currentOnCloseRef = useRef<(() => void) | undefined>(undefined)
 
   const open = useCallback((entry: ModulePanelEntry) => {
-    const prev = previousOnCloseRef.current
-    previousOnCloseRef.current = entry.onClose
+    currentOnCloseRef.current = entry.onClose
     setCurrent(entry)
-    if (prev) prev()
   }, [])
 
   const close = useCallback(() => {
-    const prev = previousOnCloseRef.current
-    previousOnCloseRef.current = undefined
+    const owner = currentOnCloseRef.current
+    currentOnCloseRef.current = undefined
     setCurrent(null)
-    if (prev) prev()
+    if (owner) owner()
   }, [])
 
   const value = useMemo<ModulePanelContextValue>(
