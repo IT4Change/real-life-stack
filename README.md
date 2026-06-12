@@ -80,17 +80,17 @@ Real Life Stack besitzt nicht die soziale oder spielerische Semantik. Er macht s
 
 RLS-Space-Modules werden künftig frisch und spec-driven definiert. Der bestehende Ordner [docs/modules/](docs/modules/) enthält frühes Brainstorming aus der Zeit vor der heutigen RLS/RLNP/Game-Abgrenzung und gilt vorerst nur als Inspirationsmaterial.
 
-Neue verbindliche Space-Module-Specs entstehen unter [docs/spec/modules/](docs/spec/modules/). Erste ausgearbeitete Entwürfe sind [Feed](docs/spec/modules/feed.md) und [Kanban / Tasks](docs/spec/modules/kanban.md).
+Neue verbindliche Space-Module-Specs entstehen unter [docs/spec/modules/](docs/spec/modules/). Feed, Kanban, Calendar und Map liegen als normative Entwürfe vor; ihre geteilten Bausteine (ItemPreview, FilterBar, CreateFab, ModulePanel, …) sind in [shared-components.md](docs/spec/modules/shared-components.md) definiert und in der Reference App umgesetzt (siehe [Unified Module UX](docs/concepts/unified-module-ux-2026-06.md)).
 
-| Space Module | Beschreibung |
-|-------|--------------|
-| [**Map**](docs/modules/map.md) | Lokale Orte, Ressourcen und Aktivitäten auf einer Karte visualisieren |
-| [**Calendar**](docs/modules/calendar.md) | Events planen, Termine koordinieren, Einladungen verwalten |
-| [**Feed**](docs/modules/feed.md) | Aktivitäten-Stream aus allen Space Modules: Was passiert in der Community? |
-| [**Kanban / Tasks**](docs/spec/modules/kanban.md) | Aufgaben und Workflows innerhalb eines Space organisieren |
-| **Marketplace** | Angebote, Bedürfnisse, Ressourcen und mögliche Matches sichtbar machen |
-| **Quests** | Quest-Übersicht, Questlog, QuestRuns, Evidence und Completion-Status anzeigen |
-| **Campaign View** | Adventures, Campaigns und World State als Spielansicht darstellen |
+| Space Module | Status | Beschreibung |
+|-------|--------|--------------|
+| [**Feed**](docs/spec/modules/feed.md) | Entwurf v0.1 + implementiert | Aktivitäten-Stream aus allen Space Modules: Was passiert in der Community? |
+| [**Kanban / Tasks**](docs/spec/modules/kanban.md) | Entwurf v0.1 + implementiert | Aufgaben und Workflows innerhalb eines Space organisieren |
+| [**Calendar**](docs/spec/modules/calendar.md) | Entwurf v0.1 + implementiert | Events planen, Termine koordinieren, Einladungen verwalten |
+| [**Map**](docs/spec/modules/map.md) | Entwurf v0.1 + implementiert | Lokale Orte, Ressourcen und Aktivitäten auf einer Karte visualisieren |
+| **Marketplace** | geplant | Angebote, Bedürfnisse, Ressourcen und mögliche Matches sichtbar machen |
+| **Quests** | geplant | Quest-Übersicht, Questlog, QuestRuns, Evidence und Completion-Status anzeigen |
+| **Campaign View** | geplant | Adventures, Campaigns und World State als Spielansicht darstellen |
 
 ---
 
