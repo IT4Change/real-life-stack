@@ -38,7 +38,7 @@ Grundlagen:
 | [kanban.md](kanban.md) | Normativer Entwurf v0.1 | Workflow- und Aufgabenboard im Current Space |
 | [calendar.md](calendar.md) | Normativer Entwurf v0.1 | Zeitliche Projektion von Items im Current Space |
 | [map.md](map.md) | Normativer Entwurf v0.1 | Räumliche Projektion von Items + library-agnostischer Adapter |
-| [shared-components.md](shared-components.md) | Normativer Entwurf v0.1 | Geteilte Module Components und Hooks (Composer, Detail, Preview, Editor, Item-Hooks) |
+| [shared-components.md](shared-components.md) | Normativer Entwurf v0.1 + implementiert | Geteilte Module Components und Hooks (Composer, Detail, Preview, FilterBar, CreateFab, ModulePanel, Editor, Item-Hooks) |
 
 ## Reihenfolge für neue Module
 
