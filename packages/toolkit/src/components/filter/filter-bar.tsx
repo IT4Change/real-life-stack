@@ -48,6 +48,12 @@ export interface FilterBarProps {
   chipsExtra?: ReactNode
   /** Optional drawer content for module-specific filters. */
   drawerExtra?: ReactNode
+  /**
+   * Optional actions directly next to the Filter button (left side).
+   * Search belongs here — Sebastian-Konsens 12.06.2026: Filter und Suche
+   * gehören visuell zusammen.
+   */
+  leadingActions?: ReactNode
   /** Optional trailing actions in the trigger row (e.g. "Multiselect"). */
   trailingActions?: ReactNode
   className?: string
@@ -60,6 +66,7 @@ export function FilterBar({
   availableTypes,
   chipsExtra,
   drawerExtra,
+  leadingActions,
   trailingActions,
   className,
 }: FilterBarProps) {
@@ -171,6 +178,8 @@ export function FilterBar({
         <Filter className="h-4 w-4 mr-1.5" />
         Filter
       </Button>
+
+      {leadingActions && <div className="flex items-center gap-2">{leadingActions}</div>}
 
       {/* Fallback own AdaptivePanel — used in Storybook / standalone
           render where no ModulePanelProvider exists. Inside a module

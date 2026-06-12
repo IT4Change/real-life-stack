@@ -302,7 +302,8 @@ interface FilterBarProps {
   availableTypes?: readonly FilterTypeOption[]
   chipsExtra?: ReactNode      // Modul-spezifische Active-Chips
   drawerExtra?: ReactNode     // Modul-spezifische Drawer-Sections
-  trailingActions?: ReactNode // z.B. „Multiselect"-Toggle
+  leadingActions?: ReactNode  // direkt neben dem Filter-Button — hier gehört die Suche hin
+  trailingActions?: ReactNode // rechtsbündig, z.B. Spalten-/View-Toggle
   className?: string
 }
 
@@ -321,6 +322,8 @@ interface FilterTypeOption {
 **Controlled component:** der Filter-Wert lebt im Caller (View-State); View-spezifische Persistierung (URL params, localStorage) bleibt Caller-Job.
 
 **Modul-spezifische Filter:** in den Slots `chipsExtra` (Active-Chip-Row) und `drawerExtra` (Auswahl-Drawer) zusammensetzen aus den exportierten Building-Blocks (`FilterSection` + `FilterMultiSelect` / `FilterToggle`). Damit sehen Modul-Extras automatisch konsistent mit den Common-Filtern aus.
+
+**Suche:** gehört in `leadingActions`, direkt neben den Filter-Button (Sebastian-Konsens 12.06.2026: Filter und Suche gehören visuell zusammen). `trailingActions` bleibt für rechtsbündige Modul-Aktionen (Spalten-Editor, View-Mode-Toggle).
 
 **Hook:** `useFilterableItems(items, value)` wendet die `FilterBarValue` clientseitig an. `applyFilterBarValue(items, value)` ist als pure Funktion exportiert (Tests, non-React-Caller). Server-seitige Optimierung (Lift `tags` in `ItemFilter.hasTag`) ist bewusst nicht hier — `data-interface` Concern, siehe [02-data-interface.md](../02-data-interface.md).
 

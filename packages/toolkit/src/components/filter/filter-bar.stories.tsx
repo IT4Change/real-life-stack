@@ -114,8 +114,8 @@ export const CalendarShape: Story = {
   },
 }
 
-export const WithSearchTrailing: Story = {
-  name: "With Search trailing action (Feed/Map/Calendar pattern)",
+export const WithSearchLeading: Story = {
+  name: "With Search next to Filter (Feed/Map/Calendar pattern)",
   render: () => {
     function WithSearch() {
       const [value, setValue] = useState<FilterBarValue>(emptyFilterBarValue)
@@ -127,7 +127,7 @@ export const WithSearchTrailing: Story = {
             onChange={setValue}
             availableTags={TAGS}
             availableTypes={TYPES}
-            trailingActions={
+            leadingActions={
               <div className="relative">
                 <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
