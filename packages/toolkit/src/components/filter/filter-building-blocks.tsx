@@ -9,7 +9,8 @@ import { cn } from "../../lib/utils"
  *
  * Spec: `docs/spec/modules/shared-components.md` → `FilterBar`.
  *
- * Module-specific filters live in the `extraSlot` of `FilterBar`.
+ * Module-specific filters live in the `chipsExtra` / `drawerExtra`
+ * slots of `FilterBar`.
  * Composing them out of these primitives keeps the look consistent
  * with the built-in tag/type filters — same chip shape, same toggle
  * affordance, same focus ring.

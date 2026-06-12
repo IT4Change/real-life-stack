@@ -115,9 +115,10 @@ export function FeedView({ groupId }: { groupId: string }) {
     const needle = searchText.trim().toLowerCase()
     if (!needle) return itemsAfterBar
     return itemsAfterBar.filter((item) => {
-      const title = String(item.data.title ?? "").toLowerCase()
-      const content = String(item.data.content ?? item.data.description ?? "").toLowerCase()
-      return title.includes(needle) || content.includes(needle)
+      const haystack = [item.data.title, item.data.description, item.data.content]
+        .map((v) => String(v ?? "").toLowerCase())
+        .join(" ")
+      return haystack.includes(needle)
     })
   }, [itemsAfterBar, searchText])
   const availableTags = useMemo(() => {
@@ -209,6 +210,7 @@ export function FeedView({ groupId }: { groupId: string }) {
             <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Suche…"
+              aria-label="Feed durchsuchen"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               className="h-8 w-40 pl-7 text-xs"

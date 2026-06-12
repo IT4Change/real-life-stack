@@ -165,9 +165,10 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
     const assigneeSet = new Set(assignedTo)
     return filteredByBar.filter((task) => {
       if (needle) {
-        const title = String(task.data.title ?? "").toLowerCase()
-        const description = String(task.data.description ?? "").toLowerCase()
-        if (!title.includes(needle) && !description.includes(needle)) return false
+        const haystack = [task.data.title, task.data.description, task.data.content]
+          .map((v) => String(v ?? "").toLowerCase())
+          .join(" ")
+        if (!haystack.includes(needle)) return false
       }
       const relations = task.relations ?? []
       const taskAssignees = relations
@@ -176,7 +177,10 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
       if (assigneeSet.size > 0) {
         if (!taskAssignees.some((id) => assigneeSet.has(id))) return false
       }
-      if (myItemsOnly && currentUser?.id) {
+      // Fail-closed: while the toggle is on but currentUser hasn't
+      // resolved yet, show nothing rather than leaking every task.
+      if (myItemsOnly) {
+        if (!currentUser?.id) return false
         if (!taskAssignees.includes(currentUser.id)) return false
       }
       return true
@@ -491,6 +495,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
             <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Suche…"
+              aria-label="Aufgaben durchsuchen"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               className="h-8 w-40 pl-7 text-xs"
