@@ -3,13 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react"
 import { Filter, Tag, Layers } from "lucide-react"
 import { Button } from "../primitives/button"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "../primitives/sheet"
+import { AdaptivePanel } from "../layout/adaptive-panel"
 import { cn } from "../../lib/utils"
 import {
   FilterChip,
@@ -127,18 +121,27 @@ export function FilterBar({
 
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetTrigger asChild>
-          <Button variant="outline" size="sm" className="shrink-0">
-            <Filter className="h-4 w-4 mr-1.5" />
-            Filter
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="right" className="w-[320px] sm:w-[380px] p-0">
-          <SheetHeader className="border-b">
-            <SheetTitle>Filter</SheetTitle>
-          </SheetHeader>
-          <div className="flex flex-col gap-6 overflow-y-auto p-4">
+      <Button
+        variant="outline"
+        size="sm"
+        className="shrink-0"
+        onClick={() => setDrawerOpen(true)}
+      >
+        <Filter className="h-4 w-4 mr-1.5" />
+        Filter
+      </Button>
+
+      <AdaptivePanel
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        allowedModes={["sidebar", "drawer"]}
+        sidebarWidth="380px"
+      >
+        <div className="flex h-full flex-col">
+          <div className="border-b p-4 pr-12">
+            <h2 className="text-lg font-semibold">Filter</h2>
+          </div>
+          <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
             <FilterSection label="Tags">
               <FilterMultiSelect
                 options={tagOptions}
@@ -160,8 +163,8 @@ export function FilterBar({
 
             {drawerExtra}
           </div>
-        </SheetContent>
-      </Sheet>
+        </div>
+      </AdaptivePanel>
 
       {hasAnyChips && (
         <div className="flex flex-wrap items-center gap-1.5">

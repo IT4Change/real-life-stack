@@ -292,7 +292,7 @@ Caller löst die User-Objekte auf (typischerweise aus `assignedTo`-Relations + M
 
 **Zweck:** Shared Filter-UI für jedes *Space Module*. Hält Tags und Item-Type als Common-Filter, exponiert zwei Slots (`chipsExtra`, `drawerExtra`) für Modul-spezifische Filter, plus exportierte Building-Blocks (`FilterChip`, `FilterMultiSelect`, `FilterToggle`, `FilterSection`) für eine einheitliche Optik.
 
-**Layout-Pattern (Anton + Sebastian-konsens 11.06.2026):** sticky Active-Filter-Chip-Row über dem Modul-Inhalt; ein „Filter"-Button öffnet ein `Sheet` (Drawer) mit allen Optionen. Aktive Filter bleiben immer sichtbar, der Drawer ist nur für die Auswahl.
+**Layout-Pattern (Anton + Sebastian-konsens 11.06.2026, revidiert nach Sebastian-Sync 12.06.2026):** sticky Active-Filter-Chip-Row über dem Modul-Inhalt; ein „Filter"-Button öffnet ein `AdaptivePanel` (sidebar auf Desktop, drawer auf Mobile) mit allen Optionen. Aktive Filter bleiben immer sichtbar, das Panel ist nur für die Auswahl. Das `AdaptivePanel` wird bewusst auch für den Filter genutzt — Sebastian-Konsistenz mit Detail-Panel und Composer-Sheet.
 
 ```ts
 interface FilterBarProps {
