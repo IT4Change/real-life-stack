@@ -13,20 +13,29 @@ export interface ProfileData {
   avatar?: string
 }
 
-export interface ProfilePanelContentProps {
-  /**
-   * `edit` renders the own-profile form (avatar upload, name/bio inputs,
-   * Save). `view` renders a read-only projection for someone else's
-   * profile. The App Shell picks the mode by comparing the clicked
-   * userId against the current user.
-   */
-  mode: "edit" | "view"
-  profile: ProfileData
-  contactCount?: number
-  /** Required in `edit` mode; ignored in `view`. */
-  onSave?: (updates: { name: string; bio: string; avatar?: string }) => Promise<void>
-  onClose: () => void
-}
+type ProfileSaveHandler = (updates: { name: string; bio: string; avatar?: string }) => Promise<void>
+
+/**
+ * `edit` renders the own-profile form (avatar upload, name/bio inputs,
+ * Save) and requires `onSave`. `view` renders a read-only projection for
+ * someone else's profile. The App Shell picks the mode by comparing the
+ * clicked userId against the current user.
+ */
+export type ProfilePanelContentProps =
+  | {
+      mode: "edit"
+      profile: ProfileData
+      contactCount?: number
+      onSave: ProfileSaveHandler
+      onClose: () => void
+    }
+  | {
+      mode: "view"
+      profile: ProfileData
+      contactCount?: number
+      onSave?: never
+      onClose: () => void
+    }
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -55,6 +64,7 @@ export function ProfilePanelContent({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setName(profile.name)
@@ -111,26 +121,45 @@ export function ProfilePanelContent({
           {/* Avatar */}
           <div className="relative group shrink-0">
             {isEdit ? (
-              avatar ? (
-                <>
-                  <img src={resolveAssetUrl(avatar)} alt={name} className="w-14 h-14 rounded-full object-cover ring-2 ring-background shadow-sm" />
+              <>
+                {avatar ? (
+                  <>
+                    <img src={resolveAssetUrl(avatar)} alt={name} className="w-14 h-14 rounded-full object-cover ring-2 ring-background shadow-sm" />
+                    <button
+                      type="button"
+                      aria-label="Profilbild entfernen"
+                      onClick={() => setAvatar("")}
+                      className="absolute -top-1 -right-1 p-0.5 bg-destructive text-white rounded-full shadow-sm opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Profilbild ändern"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="absolute -bottom-0.5 -right-0.5 p-1 bg-card border border-border rounded-full shadow-sm cursor-pointer opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-accent"
+                    >
+                      <Camera className="h-2.5 w-2.5 text-muted-foreground" />
+                    </button>
+                  </>
+                ) : (
                   <button
-                    onClick={() => setAvatar("")}
-                    className="absolute -top-1 -right-1 p-0.5 bg-destructive text-white rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                    type="button"
+                    aria-label="Profilbild hochladen"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-14 h-14 rounded-full border-2 border-dashed border-border hover:border-primary/50 bg-muted/30 flex items-center justify-center cursor-pointer transition-all hover:bg-muted/50"
                   >
-                    <X className="h-3 w-3" />
+                    <ImagePlus className="h-5 w-5 text-muted-foreground/40" />
                   </button>
-                  <label className="absolute -bottom-0.5 -right-0.5 p-1 bg-card border border-border rounded-full shadow-sm cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent">
-                    <Camera className="h-2.5 w-2.5 text-muted-foreground" />
-                    <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
-                  </label>
-                </>
-              ) : (
-                <label className="w-14 h-14 rounded-full border-2 border-dashed border-border hover:border-primary/50 bg-muted/30 flex items-center justify-center cursor-pointer transition-all hover:bg-muted/50">
-                  <ImagePlus className="h-5 w-5 text-muted-foreground/40" />
-                  <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
-                </label>
-              )
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarUpload}
+                  className="sr-only"
+                />
+              </>
             ) : (
               <Avatar className="w-14 h-14 ring-2 ring-background shadow-sm">
                 <AvatarImage src={avatar} alt={name} />

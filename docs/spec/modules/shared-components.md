@@ -446,7 +446,7 @@ function useOpenProfile(): OpenProfile  // no-op fallback ohne Provider
 
 **`ProfilePanelContent`:** Geteilter Profil-Inhalt mit `mode: "edit" | "view"`. `edit` = eigenes Profil (Avatar-Upload, Name/Bio-Inputs, Save); `view` = read-only Projektion (Avatar/Name/DID, Bio nur wenn vorhanden). Wird ohne eigene Dialog-Hülle gerendert — die App Shell hängt ihn in ihre geteilte `AdaptivePanel`-Instanz.
 
-**App-Shell-Mechanik (Referenz-App):** Ein `OpenProfileProvider` auf App-Ebene hält **eine** `AdaptivePanel`-Instanz mit `allowedModes={["modal"]}` — `modal` auf Desktop und Mobile. (Bewusst kein `drawer`: auf Mobile öffnet das Item-Detail bereits als Drawer; ein zweiter Drawer darüber wäre als gestapelte Ebene unklar. Ein zentriertes Modal liegt sichtbar abgehoben über dem Item-Drawer.) `openProfile(userId)` öffnet sie; eigener User → `edit`, fremder → `view` (lädt via `connector.getUser`). Modal liegt über einem offenen Item-Detail-Panel (z-Stacking), statt es zu ersetzen.
+**App-Shell-Mechanik (Referenz-App):** Die App Shell hostet **eine** `AdaptivePanel`-Instanz mit `allowedModes={["modal"]}` (`modal` auf Desktop und Mobile). Der `OpenProfileProvider` erzeugt das Panel nicht — er liefert nur den `openProfile(userId)`-Callback (no-op ohne Provider), der diese gehostete Instanz öffnet. (Bewusst kein `drawer`: auf Mobile öffnet das Item-Detail bereits als Drawer; ein zweiter Drawer darüber wäre als gestapelte Ebene unklar. Ein zentriertes Modal liegt sichtbar abgehoben über dem Item-Drawer.) `openProfile(userId)` öffnet sie; eigener User → `edit`, fremder → `view` (lädt via `connector.getUser`). Modal liegt über einem offenen Item-Detail-Panel (z-Stacking), statt es zu ersetzen.
 
 ## Composability
 

@@ -161,15 +161,15 @@ function ProfilePanelHost({
   const [foreign, setForeign] = useState<User | null>(null)
 
   useEffect(() => {
-    if (userId == null || isOwn) {
-      setForeign(null)
-      return
-    }
+    // Clear any previously loaded user first, so switching from one
+    // foreign profile to another doesn't briefly show the stale one.
+    setForeign(null)
+    if (userId == null || isOwn) return
     let cancelled = false
     if (isAuthenticatable(connector)) {
       connector.getUser(userId)
         .then((u) => { if (!cancelled) setForeign(u) })
-        .catch(() => {})
+        .catch(() => { if (!cancelled) setForeign(null) })
     }
     return () => { cancelled = true }
   }, [userId, isOwn, connector])
