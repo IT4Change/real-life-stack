@@ -446,7 +446,7 @@ function useOpenProfile(): OpenProfile  // no-op fallback ohne Provider
 
 **`ProfilePanelContent`:** Geteilter Profil-Inhalt mit `mode: "edit" | "view"`. `edit` = eigenes Profil (Avatar-Upload, Name/Bio-Inputs, Save); `view` = read-only Projektion (Avatar/Name/DID, Bio nur wenn vorhanden). Wird ohne eigene Dialog-Hülle gerendert — die App Shell hängt ihn in ihre geteilte `AdaptivePanel`-Instanz.
 
-**App-Shell-Mechanik (Referenz-App):** Ein `OpenProfileProvider` auf App-Ebene hält **eine** `AdaptivePanel`-Instanz (default `modal`, umschaltbar zu sidebar/drawer). `openProfile(userId)` öffnet sie; eigener User → `edit`, fremder → `view` (lädt via `connector.getUser`). Modal liegt über einem offenen Item-Detail-Panel (z-Stacking), statt es zu ersetzen.
+**App-Shell-Mechanik (Referenz-App):** Ein `OpenProfileProvider` auf App-Ebene hält **eine** `AdaptivePanel`-Instanz mit `allowedModes={["modal","drawer"]}` — Desktop `modal` (Dialog-Look), Mobile `drawer`. `openProfile(userId)` öffnet sie; eigener User → `edit`, fremder → `view` (lädt via `connector.getUser`). Modal liegt über einem offenen Item-Detail-Panel (z-Stacking), statt es zu ersetzen.
 
 ## Composability
 

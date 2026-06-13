@@ -198,8 +198,8 @@ function ProfilePanelHost({
     <AdaptivePanel
       open={userId !== null}
       onClose={onClose}
-      allowedModes={["modal", "sidebar", "drawer"]}
-      sidebarWidth="380px"
+      allowedModes={["modal", "drawer"]}
+      modalClassName="sm:max-w-sm"
     >
       {profile && (
         <ProfilePanelContent
