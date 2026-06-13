@@ -19,10 +19,12 @@ Die frühere Datenmodellierung (insbesondere in Utopia-Map) hat **Layer** in ein
 
 Diese Doppelrolle führt zu Konflikten: User legen viele Layer an, um Themen abzubilden, brauchen aber denselben Strukturtyp; ein Item kann immer nur in einem Layer sein, obwohl es gleichzeitig Ort UND Event sein könnte.
 
-RLS löst die beiden Aspekte voneinander:
+RLS trennt diese Aspekte:
 
 - **Struktur** ergibt sich aus den **`@context`-Schemas**, die ein Item komponiert (mehrere parallel möglich) — Gegenstand dieser Spec.
+- **Art** (als was ein Item erstellt wurde) trägt **`type`** — genau eine pro Item, steuert Template und User-Filter, siehe „Die Rolle von `type`".
 - **Kategorisierung** läuft über **Tags** (frei oder URN-basiert, optional in einem Kategoriebaum strukturierbar) — siehe [07-tags.md](07-tags.md).
+- **Modul-Sichtbarkeit** folgt aus den Feldern — siehe „Verhältnis zwischen Schema- und Feldfiltern".
 - **Thematische Klammer** ist der **Space** selbst — verschiedene Communities haben verschiedene Spaces mit eigenen Schwerpunkten.
 
 ## Schema-Composition über `@context`
@@ -35,7 +37,7 @@ Ein RLS-Item trägt eine `@context`-Liste, die festlegt, welche Vokabulare seine
 interface Item {
   id: string
   '@context': string[]            // ordered list of vocabulary URLs
-  type?: string | string[]         // optional UI-hint, deskriptiv
+  type?: string | string[]         // Art des Items (Template + User-Filter), siehe „Die Rolle von `type`"
   createdAt: string
   createdBy: string
   data: Record<string, unknown>
@@ -50,7 +52,7 @@ Regeln:
 2. Weitere Einträge erweitern das Vokabular und damit die in `data` zulässigen Felder.
 3. **Property-Namen MÜSSEN über alle Vokabularien eindeutig sein.** JSON-LD's last-wins-Verhalten gilt nur für reine Property-Identifier-Auflösung; die JSON-Schema-Validierung läuft über `allOf` (Schnittmenge) und kennt keine Überschreibung. Vocabulary-Autoren vermeiden Kollisionen aktiv: gleiche Semantik → gleicher Name (Konvention), unterschiedliche Semantik → unterschiedlicher Name. Validator-Verhalten bei einer Kollision ist undefined und gilt als Vokabular-Bug.
 4. Semantisch gleiche Properties aus verschiedenen Vokabularen tragen denselben Namen (z.B. `start` für Beginn-Zeitpunkt, egal ob Event oder Task).
-5. `type` ist ein optionaler UI-Hint, **kein struktureller Filter**. UI-Code soll nicht über `type` verzweigen, sondern über Feld-Präsenz oder (zukünftig) `hasSchema`.
+5. `type` benennt die Art eines Items (siehe „Die Rolle von `type`") und steuert **nie die Modul-Aktivierung** — welche Items ein Modul zeigt, entscheidet Feld-Präsenz oder (zukünftig) `hasSchema`.
 
 ### Beispiel: Workshop in der Markthalle
 
@@ -83,6 +85,12 @@ Dieses Item erscheint **gleichzeitig auf der Map** (wegen `place`-Schema → `po
 Wenn zwei `@context`-Schemas dieselbe Semantik treffen (z.B. `start` für Beginn), wird das Feld **geteilt**, nicht dupliziert. Beispiel: ein Item, das gleichzeitig Event und Task ist, hat ein gemeinsames `start`. Strukturelle Überlagerung ist beabsichtigt.
 
 Wenn semantisch unterschiedliche Konzepte denselben Property-Namen tragen würden, ist das ein **Schema-Design-Fehler**, der durch Aliasing im Vocabulary-Context behoben wird (z.B. `event:start` vs. `subscription:start`).
+
+### Die Rolle von `type`
+
+`type` benennt die **Art**, als die ein Item erstellt wurde (`post`, `event`, `task`) — die Intention beim Erstellen. Aus ihr wählt der Composer ein **Template** (Widget-Set beim Erstellen, Karten-Darstellung beim Anzeigen); sie bleibt am Item, damit Module und User sich darauf beziehen können. `type` ist genau eine pro Item; bei mehreren Werten zählt die erste.
+
+`type` darf tragen: die Composer-Vorlage, die Karten-Wahl in aggregierenden Sichten (Feed, Suche) und **User-Filter** („zeig mir nur Veranstaltungen"). Es darf **nicht** die **Modul-Aktivierung** steuern: ob ein Item im Calendar erscheint, entscheidet `data.start`, nie `type` — sonst verschwände ein Task mit Fälligkeitsdatum zu Unrecht. Der Unterschied ist prinzipiell: Modul-Aktivierung ist eine System-Frage und immer feldbasiert; ein User-Filter ist eine Mensch-Frage und darf die Intention nutzen, die nur in `type` steht (ein Task mit Deadline und ein Event tragen beide `start` — „die Veranstaltungen" sind aus Feldern allein nicht herauszufiltern).
 
 ## Vocabulary-Registry
 
@@ -178,7 +186,7 @@ Bedeutung: Item ist nur Match, wenn sein `@context` jede der genannten URLs enth
 
 Der analoge `hasTag`-Filter ist in [07-tags.md](07-tags.md) definiert.
 
-`type` bleibt im Filter erhalten, ist aber **kein primärer Strukturfilter** mehr.
+`type` bleibt im Filter erhalten — für **User-Filter** (siehe „Die Rolle von `type`"), nicht als Struktur- oder Aktivierungsfilter.
 
 ### Verhältnis zwischen Schema- und Feldfiltern
 
@@ -208,10 +216,10 @@ Ein Item mit mehreren Schemas erscheint in jedem zuständigen Modul gleichzeitig
 
 Bestehende Layer-basierte Daten werden so überführt:
 
-1. **Layer-Strukturteil** → entsprechendes Schema im `@context` (Event-Layer → `event/v1`, Place-Layer → `place/v1`).
+1. **Layer-Strukturteil** → entsprechendes Schema im `@context` + `type` (Event-Layer → `event/v1`, `type: "event"`).
 2. **Layer-Themenanteil** → Tag. Aus „Layer: Permakultur-Orte" wird ein Tag (`"permaculture"` oder `urn:rls:tag:permaculture`) + `place/v1`-Schema. Tag-Modell siehe [07-tags.md](07-tags.md).
 3. **Item-Inhalt** → wird gegen die Schemas validiert; Felder, die in keinem aktiven Schema definiert sind, landen in `data` aber sind nicht offiziell spezifiziert.
-4. **Layer-Templates** entfallen — die Schemas selbst sind die Templates.
+4. **Layer-Profile** → Templates (Composer-Vorlagen, referenziert über `type`); die Feldstruktur liefern die Schemas.
 
 Ein Migrations-ETL-Script erzeugt aus Directus-Items neue RLS-Items mit korrektem `@context` und Tags und schreibt sie in den Ziel-Space.
 
