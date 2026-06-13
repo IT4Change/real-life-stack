@@ -3,11 +3,14 @@
 import { Reply } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/primitives/avatar"
 import { RelativeTime } from "@/components/primitives/relative-time"
+import { ProfileLink } from "@/components/profile/profile-link"
 import { cn } from "@/lib/utils"
 
 export interface CommentBubbleProps {
   /** Author display name. */
   authorName: string
+  /** Author user id — when set, the avatar opens that profile on click. */
+  authorId?: string
   /** Author avatar URL. */
   authorAvatar?: string
   /** Comment text content. */
@@ -45,6 +48,7 @@ function getInitials(name: string): string {
  */
 export function CommentBubble({
   authorName,
+  authorId,
   authorAvatar,
   content,
   timestamp,
@@ -55,14 +59,24 @@ export function CommentBubble({
   reactionSlot,
   className,
 }: CommentBubbleProps) {
+  const avatar = (
+    <Avatar className="h-8 w-8 shrink-0 mt-0.5">
+      <AvatarImage src={authorAvatar} alt={authorName} />
+      <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+        {getInitials(authorName)}
+      </AvatarFallback>
+    </Avatar>
+  )
+
   return (
     <div className={cn("flex gap-2.5", className)}>
-      <Avatar className="h-8 w-8 shrink-0 mt-0.5">
-        <AvatarImage src={authorAvatar} alt={authorName} />
-        <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
-          {getInitials(authorName)}
-        </AvatarFallback>
-      </Avatar>
+      {authorId ? (
+        <ProfileLink userId={authorId} label={`Profil von ${authorName} öffnen`}>
+          {avatar}
+        </ProfileLink>
+      ) : (
+        avatar
+      )}
 
       <div className="flex-1 min-w-0">
         {/* Author + timestamp */}

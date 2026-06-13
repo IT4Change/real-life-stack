@@ -20,7 +20,10 @@ import {
   ConnectorSwitcher,
   Button,
   GroupDialog,
-  ProfileDialog,
+  AdaptivePanel,
+  OpenProfileProvider,
+  ProfilePanelContent,
+  type ProfileData,
   ContactsDialog,
   VerificationDialog,
   IncomingVerificationDialog,
@@ -45,7 +48,7 @@ import {
   type ConnectorOption,
   type GroupDialogMode,
 } from "@real-life-stack/toolkit"
-import type { DataInterface } from "@real-life-stack/data-interface"
+import type { DataInterface, User } from "@real-life-stack/data-interface"
 import { isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile } from "@real-life-stack/data-interface"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers, demoGroupItems } from "@real-life-stack/data-interface/demo-data"
 import { MockConnector } from "@real-life-stack/mock-connector"
@@ -132,6 +135,85 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
   )
 }
 
+/**
+ * Single App-Shell-level profile surface. Holds one AdaptivePanel that
+ * both the own-profile editor and read-only foreign profiles render
+ * into — opened from anywhere via the OpenProfileProvider. Modal by
+ * default so an avatar click inside an open item-detail sidebar stacks
+ * above it instead of replacing it.
+ */
+function ProfilePanelHost({
+  userId,
+  currentUser,
+  connector,
+  contactCount,
+  onSaveProfile,
+  onClose,
+}: {
+  userId: string | null
+  currentUser: User | null | undefined
+  connector: DataInterface
+  contactCount?: number
+  onSaveProfile: (updates: { name: string; bio: string; avatar?: string }) => Promise<void>
+  onClose: () => void
+}) {
+  const isOwn = userId != null && userId === currentUser?.id
+  const [foreign, setForeign] = useState<User | null>(null)
+
+  useEffect(() => {
+    if (userId == null || isOwn) {
+      setForeign(null)
+      return
+    }
+    let cancelled = false
+    if (isAuthenticatable(connector)) {
+      connector.getUser(userId)
+        .then((u) => { if (!cancelled) setForeign(u) })
+        .catch(() => {})
+    }
+    return () => { cancelled = true }
+  }, [userId, isOwn, connector])
+
+  const profile: ProfileData | null = useMemo(() => {
+    if (userId == null) return null
+    if (isOwn) {
+      return {
+        did: currentUser?.id ?? "",
+        name: currentUser?.displayName ?? "",
+        bio: "",
+        avatar: currentUser?.avatarUrl,
+      }
+    }
+    // Foreign profile: use the loaded user, fall back to the bare id
+    // while getUser is still resolving (or if the connector can't
+    // resolve it).
+    return {
+      did: foreign?.id ?? userId,
+      name: foreign?.displayName ?? userId,
+      avatar: foreign?.avatarUrl,
+    }
+  }, [userId, isOwn, currentUser, foreign])
+
+  return (
+    <AdaptivePanel
+      open={userId !== null}
+      onClose={onClose}
+      allowedModes={["modal", "sidebar", "drawer"]}
+      sidebarWidth="380px"
+    >
+      {profile && (
+        <ProfilePanelContent
+          mode={isOwn ? "edit" : "view"}
+          profile={profile}
+          contactCount={isOwn ? contactCount : undefined}
+          onSave={onSaveProfile}
+          onClose={onClose}
+        />
+      )}
+    </AdaptivePanel>
+  )
+}
+
 function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: string; onConnectorChange: (id: string) => void }) {
   const connector = useConnector()
   const navigate = useNavigate()
@@ -158,13 +240,11 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   // Dialog state
   const [contactsDialogOpen, setContactsDialogOpen] = useState(false)
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false)
-  const [profileDialogOpen, setProfileDialogOpen] = useState(false)
-  const profileData = useMemo(() => ({
-    did: currentUser?.id ?? "",
-    name: currentUser?.displayName ?? "",
-    bio: "",
-    avatar: currentUser?.avatarUrl,
-  }), [currentUser])
+  // One id drives the shared profile panel; null = closed. The own
+  // profile (id === currentUser.id) opens the editor, any other id a
+  // read-only view.
+  const [profileUserId, setProfileUserId] = useState<string | null>(null)
+  const openProfile = useCallback((userId: string) => setProfileUserId(userId), [])
 
   const handleSaveProfile = useCallback(async (updates: { name: string; bio: string; avatar?: string }) => {
     if (hasProfile(connector)) {
@@ -208,6 +288,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   }
 
   return (
+    <OpenProfileProvider openProfile={openProfile}>
     <AppShell>
       <Navbar>
         <NavbarStart>
@@ -255,7 +336,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
           </Button>
           <UserMenu
             user={userData}
-            onProfile={() => setProfileDialogOpen(true)}
+            onProfile={() => { if (currentUser?.id) openProfile(currentUser.id) }}
             onContacts={supportsContacts ? () => setContactsDialogOpen(true) : undefined}
             contactCount={activeContacts.length}
             onVerify={() => setVerifyDialogOpen(true)}
@@ -320,12 +401,13 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
           await removeMember(groupId, userId)
         }}
       />
-      <ProfileDialog
-        open={profileDialogOpen}
-        onOpenChange={setProfileDialogOpen}
-        profile={profileData}
+      <ProfilePanelHost
+        userId={profileUserId}
+        currentUser={currentUser}
+        connector={connector}
         contactCount={activeContacts.length}
-        onSave={handleSaveProfile}
+        onSaveProfile={handleSaveProfile}
+        onClose={() => setProfileUserId(null)}
       />
 
       {/* Contacts Dialog */}
@@ -366,6 +448,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         </div>
       )}
     </AppShell>
+    </OpenProfileProvider>
   )
 }
 

@@ -442,6 +442,12 @@ function useOpenProfile(): OpenProfile  // no-op fallback ohne Provider
 
 **Fallback-Semantik:** Ohne Provider liefert `useOpenProfile()` einen No-op. Avatar-Klick-Stellen können den Hook unbedingt aufrufen, ohne Stories oder Test-Harnesses zu brechen.
 
+**`ProfileLink`:** Wrapper, der ein Avatar-Element klickbar macht (`userId`-Prop → `useOpenProfile`). Keyboard-aktivierbar (Enter/Space) und per Default mit `stopPropagation`, damit ein Avatar-Klick in einer klickbaren Card (z.B. `ItemPreview`) nicht das Detail öffnet, sondern das Profil. Eingesetzt in `ItemPreview` (Autor), `ItemAssignees`, `CommentBubble` (via `authorId`), `ReactionDetails`, `ContactCard`.
+
+**`ProfilePanelContent`:** Geteilter Profil-Inhalt mit `mode: "edit" | "view"`. `edit` = eigenes Profil (Avatar-Upload, Name/Bio-Inputs, Save); `view` = read-only Projektion (Avatar/Name/DID, Bio nur wenn vorhanden). Wird ohne eigene Dialog-Hülle gerendert — die App Shell hängt ihn in ihre geteilte `AdaptivePanel`-Instanz.
+
+**App-Shell-Mechanik (Referenz-App):** Ein `OpenProfileProvider` auf App-Ebene hält **eine** `AdaptivePanel`-Instanz (default `modal`, umschaltbar zu sidebar/drawer). `openProfile(userId)` öffnet sie; eigener User → `edit`, fremder → `view` (lädt via `connector.getUser`). Modal liegt über einem offenen Item-Detail-Panel (z-Stacking), statt es zu ersetzen.
+
 ## Composability
 
 Module nutzen mehrere shared Components zusammen. Die Verträge sind so geschnitten, dass Komposition direkt funktioniert — keine impliziten Annahmen über Render-Reihenfolge oder DOM-Struktur:
@@ -454,5 +460,5 @@ Module nutzen mehrere shared Components zusammen. Die Verträge sind so geschnit
 
 - Visuelle Spezifikation. Diese Spec bindet keine Farben, Spacings oder Hover-States. Polish liegt in der UI-Schicht.
 - Modul-spezifische Komponenten. `KanbanBoard`, `CalendarView`, `MapAdapter` (siehe [map.md](map.md)) bleiben in ihrem Modul.
-- App-Shell-Flächen. `ProfileDialog`, `WorkspaceSwitcher`, `Navbar` sind in [01-app-composition.md](../01-app-composition.md) spezifiziert, nicht hier.
+- App-Shell-Flächen. `WorkspaceSwitcher`, `Navbar` sind in [01-app-composition.md](../01-app-composition.md) spezifiziert, nicht hier. (Die Profil-*Mechanik* `useOpenProfile`/`ProfileLink`/`ProfilePanelContent` ist shared und oben definiert; wie die App Shell sie einhängt, ist app-spezifisch.)
 - Backend-Verträge. Diese Spec definiert UI-Composition, nicht den DataInterface-Vertrag (siehe [02-data-interface.md](../02-data-interface.md)).

@@ -4,6 +4,7 @@ import type { KeyboardEvent, ReactNode } from "react"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
 import { RelativeTime } from "../primitives/relative-time"
+import { ProfileLink } from "../profile/profile-link"
 import { cn, getTagColor } from "../../lib/utils"
 import { useItemTags } from "../../hooks/use-item-tags"
 
@@ -111,6 +112,7 @@ export function ItemPreview({
 
   const authorName = author?.displayName ?? item.createdBy
   const authorAvatar = author?.avatarUrl
+  const authorId = author?.id ?? item.createdBy
   const isCompact = density === "compact"
 
   // Keyboard activation: when the card is interactive, treat Enter and
@@ -144,12 +146,14 @@ export function ItemPreview({
     >
       {author !== null && (
         <div className={cn("flex items-start gap-3", isCompact ? "p-3 pb-1" : "p-4 pb-2")}>
-          <Avatar className={cn("shrink-0", isCompact ? "h-6 w-6" : "h-10 w-10")}>
-            <AvatarImage src={authorAvatar} alt={authorName} />
-            <AvatarFallback className={cn("bg-primary/10 text-primary font-medium", isCompact ? "text-[10px]" : "text-sm")}>
-              {getInitials(authorName)}
-            </AvatarFallback>
-          </Avatar>
+          <ProfileLink userId={authorId} label={`Profil von ${authorName} öffnen`}>
+            <Avatar className={cn("shrink-0", isCompact ? "h-6 w-6" : "h-10 w-10")}>
+              <AvatarImage src={authorAvatar} alt={authorName} />
+              <AvatarFallback className={cn("bg-primary/10 text-primary font-medium", isCompact ? "text-[10px]" : "text-sm")}>
+                {getInitials(authorName)}
+              </AvatarFallback>
+            </Avatar>
+          </ProfileLink>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className={cn("font-semibold text-foreground", isCompact ? "text-xs" : "text-sm")}>{authorName}</span>

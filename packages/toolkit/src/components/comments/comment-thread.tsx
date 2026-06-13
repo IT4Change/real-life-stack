@@ -48,6 +48,7 @@ export function CommentThread({
       {/* First-level comment */}
       <CommentBubble
         authorName={comment.authorName}
+        authorId={comment.item.createdBy}
         authorAvatar={comment.authorAvatar}
         content={(comment.item.data as { content: string }).content}
         timestamp={comment.item.createdAt}
@@ -93,6 +94,7 @@ export function CommentThread({
                 <div key={reply.item.id} data-reply>
                 <CommentBubble
                   authorName={reply.authorName}
+                  authorId={reply.item.createdBy}
                   authorAvatar={reply.authorAvatar}
                   content={data.content}
                   timestamp={reply.item.createdAt}

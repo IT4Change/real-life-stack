@@ -4,6 +4,7 @@ import type { ContactInfo } from "@real-life-stack/data-interface"
 
 import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
 import { Button } from "../primitives/button"
+import { ProfileLink } from "../profile/profile-link"
 import { cn } from "@/lib/utils"
 
 function getInitials(name: string): string {
@@ -50,12 +51,14 @@ export function ContactCard({
         className
       )}
     >
-      <Avatar className="h-10 w-10">
-        <AvatarImage src={contact.avatar} alt={displayName} />
-        <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
-          {contact.name ? getInitials(contact.name) : "?"}
-        </AvatarFallback>
-      </Avatar>
+      <ProfileLink userId={contact.id} label={`Profil von ${displayName} öffnen`}>
+        <Avatar className="h-10 w-10">
+          <AvatarImage src={contact.avatar} alt={displayName} />
+          <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
+            {contact.name ? getInitials(contact.name) : "?"}
+          </AvatarFallback>
+        </Avatar>
+      </ProfileLink>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">

@@ -1,13 +1,8 @@
 import { useState, useEffect, useRef } from "react"
 import { Copy, Check, ImagePlus, X, Camera, Pencil } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog"
 import { Button } from "../primitives/button"
 import { Input } from "../primitives/input"
+import { Avatar, AvatarImage, AvatarFallback } from "../primitives/avatar"
 import { resolveAssetUrl } from "../../lib/utils"
 import { Label } from "../primitives/label"
 
@@ -18,21 +13,41 @@ export interface ProfileData {
   avatar?: string
 }
 
-export interface ProfileDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+export interface ProfilePanelContentProps {
+  /**
+   * `edit` renders the own-profile form (avatar upload, name/bio inputs,
+   * Save). `view` renders a read-only projection for someone else's
+   * profile. The App Shell picks the mode by comparing the clicked
+   * userId against the current user.
+   */
+  mode: "edit" | "view"
   profile: ProfileData
   contactCount?: number
-  onSave: (updates: { name: string; bio: string; avatar?: string }) => Promise<void>
+  /** Required in `edit` mode; ignored in `view`. */
+  onSave?: (updates: { name: string; bio: string; avatar?: string }) => Promise<void>
+  onClose: () => void
 }
 
-export function ProfileDialog({
-  open,
-  onOpenChange,
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "?"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+/**
+ * Inner content of the profile panel — rendered inside the App Shell's
+ * shared `AdaptivePanel` (modal / sidebar / drawer), not its own dialog.
+ * Both the own-profile editor and read-only foreign profiles share this
+ * one surface so they look and behave the same.
+ */
+export function ProfilePanelContent({
+  mode,
   profile,
   contactCount,
   onSave,
-}: ProfileDialogProps) {
+  onClose,
+}: ProfilePanelContentProps) {
   const [name, setName] = useState(profile.name)
   const [bio, setBio] = useState(profile.bio ?? "")
   const [avatar, setAvatar] = useState(profile.avatar ?? "")
@@ -46,6 +61,8 @@ export function ProfileDialog({
     setBio(profile.bio ?? "")
     setAvatar(profile.avatar ?? "")
   }, [profile.name, profile.bio, profile.avatar])
+
+  const isEdit = mode === "edit"
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -62,11 +79,12 @@ export function ProfileDialog({
   }
 
   const handleSave = async () => {
+    if (!onSave) return
     setSaving(true)
     setError(null)
     try {
       await onSave({ name: name.trim(), bio: bio.trim(), avatar })
-      onOpenChange(false)
+      onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fehler beim Speichern")
     } finally {
@@ -85,15 +103,15 @@ export function ProfileDialog({
     : profile.did
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm gap-0 p-0 overflow-hidden" aria-describedby={undefined}>
-        <DialogTitle className="sr-only">Profil bearbeiten</DialogTitle>
-        {/* Profile Identity Header */}
-        <div className="relative px-6 pt-6 pb-5">
-          <div className="flex items-center gap-4">
-            {/* Avatar */}
-            <div className="relative group shrink-0">
-              {avatar ? (
+    <div className="flex h-full flex-col">
+      {/* Identity header — leave room (pr-12) for the AdaptivePanel's
+          close / mode-switch controls in the top-right. */}
+      <div className="relative px-6 pt-6 pb-5 pr-12">
+        <div className="flex items-center gap-4">
+          {/* Avatar */}
+          <div className="relative group shrink-0">
+            {isEdit ? (
+              avatar ? (
                 <>
                   <img src={resolveAssetUrl(avatar)} alt={name} className="w-14 h-14 rounded-full object-cover ring-2 ring-background shadow-sm" />
                   <button
@@ -112,11 +130,18 @@ export function ProfileDialog({
                   <ImagePlus className="h-5 w-5 text-muted-foreground/40" />
                   <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
                 </label>
-              )}
-            </div>
+              )
+            ) : (
+              <Avatar className="w-14 h-14 ring-2 ring-background shadow-sm">
+                <AvatarImage src={avatar} alt={name} />
+                <AvatarFallback className="text-lg">{getInitials(name)}</AvatarFallback>
+              </Avatar>
+            )}
+          </div>
 
-            {/* Name + Meta */}
-            <div className="flex-1 min-w-0 -mt-1 group/name">
+          {/* Name + Meta */}
+          <div className="flex-1 min-w-0 -mt-1 group/name">
+            {isEdit ? (
               <div className="relative">
                 <Input
                   ref={nameInputRef}
@@ -140,31 +165,35 @@ export function ProfileDialog({
                   <Pencil className="h-3 w-3" />
                 </button>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {contactCount != null ? `${contactCount} Kontakte` : ""}
-              </p>
-            </div>
+            ) : (
+              <h2 className="text-base font-semibold truncate">{name}</h2>
+            )}
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {contactCount != null ? `${contactCount} Kontakte` : ""}
+            </p>
           </div>
         </div>
+      </div>
 
-        {/* Details */}
-        <div className="px-6 pb-2 space-y-4">
-          {/* DID badge */}
-          <button
-            onClick={handleCopyDid}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-muted/60 hover:bg-muted transition-colors cursor-pointer group/did"
-            title="DID kopieren"
-          >
-            <code className="text-[10px] font-mono text-muted-foreground tracking-tight">
-              {shortDid}
-            </code>
-            {copied ? (
-              <Check className="h-3 w-3 text-green-600 shrink-0" />
-            ) : (
-              <Copy className="h-3 w-3 text-muted-foreground/50 group-hover/did:text-muted-foreground shrink-0 transition-colors" />
-            )}
-          </button>
+      {/* Details */}
+      <div className="px-6 pb-2 space-y-4">
+        {/* DID badge */}
+        <button
+          onClick={handleCopyDid}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-muted/60 hover:bg-muted transition-colors cursor-pointer group/did"
+          title="DID kopieren"
+        >
+          <code className="text-[10px] font-mono text-muted-foreground tracking-tight">
+            {shortDid}
+          </code>
+          {copied ? (
+            <Check className="h-3 w-3 text-green-600 shrink-0" />
+          ) : (
+            <Copy className="h-3 w-3 text-muted-foreground/50 group-hover/did:text-muted-foreground shrink-0 transition-colors" />
+          )}
+        </button>
 
+        {isEdit ? (
           <div className="space-y-1.5">
             <Label htmlFor="profile-bio" className="text-xs text-muted-foreground">Ueber mich</Label>
             <Input
@@ -175,22 +204,32 @@ export function ProfileDialog({
               className="h-9"
             />
           </div>
+        ) : (
+          bio.trim() && (
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">Ueber</p>
+              <p className="text-sm">{bio}</p>
+            </div>
+          )
+        )}
 
-          {error && (
-            <p className="text-xs text-destructive">{error}</p>
-          )}
-        </div>
+        {error && (
+          <p className="text-xs text-destructive">{error}</p>
+        )}
+      </div>
 
-        {/* Footer */}
-        <DialogFooter className="px-6 py-4">
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
+      {/* Footer — only edit mode needs actions; view relies on the
+          panel's own close control. */}
+      {isEdit && (
+        <div className="mt-auto flex justify-end gap-2 px-6 py-4">
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
             Abbrechen
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving || !name.trim()}>
             {saving ? "Speichern..." : "Speichern"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      )}
+    </div>
   )
 }
