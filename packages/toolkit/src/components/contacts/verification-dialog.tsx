@@ -49,6 +49,9 @@ export function VerificationDialog({
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<{ stream: MediaStream | null }>({ stream: null })
+  // Bumped on every stopScanner(); lets an in-flight startScanner() detect that
+  // the dialog was closed (or scanning stopped) while getUserMedia() was pending.
+  const scanTokenRef = useRef(0)
   const challengeCreated = useRef(false)
 
   // Auto-create challenge when dialog opens
@@ -83,6 +86,10 @@ export function VerificationDialog({
   }, [challenge?.code])
 
   const stopScanner = useCallback(() => {
+    // Invalidate any pending getUserMedia() so a stream that resolves *after*
+    // this stop (dialog closed while the permission prompt was open) gets
+    // dropped instead of re-activating the camera.
+    scanTokenRef.current++
     if (scannerRef.current.stream) {
       for (const track of scannerRef.current.stream.getTracks()) {
         track.stop()
@@ -126,13 +133,22 @@ export function VerificationDialog({
   }
 
   const startScanner = async () => {
+    const token = ++scanTokenRef.current
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
       })
+      // Dialog closed (or scanning stopped) while the prompt was pending →
+      // this request is stale: drop the stream, never activate the camera.
+      if (token !== scanTokenRef.current) {
+        for (const track of stream.getTracks()) track.stop()
+        return
+      }
       scannerRef.current.stream = stream
       setIsScanning(true)
     } catch {
+      // Ignore failures from a superseded request (e.g. closed mid-prompt).
+      if (token !== scanTokenRef.current) return
       // Camera not available — show manual entry instead
       setIsScanning(false)
       setShowManualEntry(true)
