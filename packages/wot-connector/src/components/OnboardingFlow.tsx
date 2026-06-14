@@ -111,24 +111,35 @@ export function OnboardingFlow({ connector, onComplete, onSwitchToRecovery }: On
 
   const allChecked = checklistItems.every((item) => item.checked)
 
-  // Biometric protect path: generates random passphrase, stores via biometrics
+  // Biometric protect path: generates random passphrase, stores via biometrics.
+  // Order matters: enroll FIRST so a cancelled/failed biometric prompt leaves no
+  // stored identity behind a random passphrase the user never saw. Only once the
+  // keystore holds the passphrase do we create the identity with it; if that step
+  // fails we roll the keystore entry back so no orphan key is stranded.
   const handleBiometricProtect = async () => {
     setLoading(true)
     setError("")
+    const randomPassphrase = generateRandomPassphrase()
     try {
-      const randomPassphrase = generateRandomPassphrase()
+      await BiometricService.enroll(randomPassphrase)
+    } catch {
+      // Prompt cancelled / enrollment failed — nothing persisted yet.
+      setLoading(false)
+      goToStep("password")
+      return
+    }
+    try {
       await connector.authenticate("create", {
         mnemonic: mnemonic.join(" "),
         passphrase: randomPassphrase,
         displayName: displayName.trim() || undefined,
         bio: bio.trim() || undefined,
       })
-      await BiometricService.enroll(randomPassphrase)
       goToStep("complete")
       setTimeout(onComplete, 2000)
     } catch {
-      // Biometric enrollment failed — fall back to password step
-      setError("")
+      // Identity creation failed after enrollment — roll back the keystore entry.
+      await BiometricService.unenroll().catch(() => {})
       setLoading(false)
       goToStep("password")
     }

@@ -35,22 +35,33 @@ export function RecoveryFlow({ connector, onComplete, onBack }: RecoveryFlowProp
   const words = mnemonic.trim().split(/\s+/)
   const mnemonicValid = words.length === 12 && words.every((w) => w.length > 0)
 
-  // Biometric recovery path: generates random passphrase, stores via biometrics
+  // Biometric recovery path: generates random passphrase, stores via biometrics.
+  // Order matters: enroll FIRST so a cancelled/failed biometric prompt leaves no
+  // recovered identity behind a random passphrase the user never saw. Only once
+  // the keystore holds the passphrase do we recover with it; if that step fails
+  // we roll the keystore entry back so no orphan key is stranded.
   const handleBiometricRecover = async () => {
     if (!mnemonicValid) return
     setLoading(true)
     setError("")
+    const randomPassphrase = generateRandomPassphrase()
     try {
-      const randomPassphrase = generateRandomPassphrase()
+      await BiometricService.enroll(randomPassphrase)
+    } catch {
+      // Prompt cancelled / enrollment failed — nothing persisted yet.
+      setLoading(false)
+      setStep("passphrase")
+      return
+    }
+    try {
       await connector.authenticate("mnemonic", {
         mnemonic: words.join(" "),
         passphrase: randomPassphrase,
       } as any)
-      await BiometricService.enroll(randomPassphrase)
       onComplete()
     } catch {
-      // Biometric enrollment failed — fall back to password step
-      setError("")
+      // Recovery failed after enrollment — roll back the keystore entry.
+      await BiometricService.unenroll().catch(() => {})
       setLoading(false)
       setStep("passphrase")
     }
