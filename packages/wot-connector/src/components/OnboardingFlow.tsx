@@ -138,8 +138,13 @@ export function OnboardingFlow({ connector, onComplete, onSwitchToRecovery }: On
       goToStep("complete")
       setTimeout(onComplete, 2000)
     } catch {
-      // Identity creation failed after enrollment — roll back the keystore entry.
+      // Creation failed after enrollment. authenticate("create") is not atomic —
+      // it stores the seed before later steps (bootstrap, auth-state) that can
+      // still throw — so roll back BOTH the keystore entry AND any already-stored
+      // identity, else a partial failure strands an identity behind the unseen
+      // random passphrase.
       await BiometricService.unenroll().catch(() => {})
+      await connector.logout().catch(() => {})
       setLoading(false)
       goToStep("password")
     }

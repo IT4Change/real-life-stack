@@ -60,8 +60,13 @@ export function RecoveryFlow({ connector, onComplete, onBack }: RecoveryFlowProp
       } as any)
       onComplete()
     } catch {
-      // Recovery failed after enrollment — roll back the keystore entry.
+      // Recovery failed after enrollment. authenticate("mnemonic") is not atomic —
+      // it stores the seed before later steps (bootstrap, auth-state) that can
+      // still throw — so roll back BOTH the keystore entry AND any already-stored
+      // identity, else a partial failure strands an identity behind the unseen
+      // random passphrase.
       await BiometricService.unenroll().catch(() => {})
+      await connector.logout().catch(() => {})
       setLoading(false)
       setStep("passphrase")
     }
