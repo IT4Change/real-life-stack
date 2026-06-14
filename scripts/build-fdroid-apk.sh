@@ -101,6 +101,25 @@ VITE_BASE_PATH=/ npx vite build
 echo "==> Syncing Capacitor..."
 npx cap sync android
 
+# Make sure gradle can find the Android SDK without relying on the
+# caller's environment. Prefer ANDROID_HOME/ANDROID_SDK_ROOT, else probe
+# the usual locations, then pin it via local.properties (gitignored).
+ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [[ -z "$ANDROID_SDK" || ! -d "$ANDROID_SDK/platform-tools" ]]; then
+  for cand in "$HOME/Android/Sdk" "$HOME/Library/Android/sdk" "/opt/android-sdk" "/usr/lib/android-sdk"; do
+    if [[ -d "$cand/platform-tools" ]]; then ANDROID_SDK="$cand"; break; fi
+  done
+fi
+if [[ -z "$ANDROID_SDK" || ! -d "$ANDROID_SDK/platform-tools" ]]; then
+  echo "ERROR: Android SDK not found. Set ANDROID_HOME (or install the SDK" >&2
+  echo "       so it lands in ~/Android/Sdk) and re-run." >&2
+  exit 1
+fi
+export ANDROID_HOME="$ANDROID_SDK"
+export ANDROID_SDK_ROOT="$ANDROID_SDK"
+echo "sdk.dir=$ANDROID_SDK" > "$APP_DIR/android/local.properties"
+echo "==> Android SDK: $ANDROID_SDK"
+
 cd "$APP_DIR/android"
 if [[ "$BUILD_TYPE" == "debug" ]]; then
   echo "==> Building DEBUG APK..."
