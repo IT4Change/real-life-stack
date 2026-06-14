@@ -15,6 +15,17 @@ import { get, set, del, createStore } from "idb-keyval"
 
 // --- Types ---
 
+/**
+ * Bump this whenever the demo seed data changes in a way that existing
+ * local stores should pick up (e.g. updated `users.json`, new demo
+ * items). On the next load a persisted store stamped with an older
+ * version is discarded and re-seeded, instead of silently keeping the
+ * stale data. This is a demo-data refresh switch, not a data migration
+ * — a re-seed throws away anything created locally, which is fine for
+ * the local-only dev/test connector.
+ */
+export const SEED_VERSION = 1
+
 interface StoredState {
   items: Item[]
   groups: Group[]
@@ -24,6 +35,8 @@ interface StoredState {
   currentUserId: string | null
   currentGroupId: string | null
   nextItemId: number
+  /** Seed version the store was last seeded with (see SEED_VERSION). */
+  seedVersion: number
 }
 
 interface BroadcastMessage {
@@ -76,15 +89,34 @@ export class LocalConnector implements FullConnector {
           currentUserId: seed.users[0]?.id ?? null,
           currentGroupId: seed.groups[0]?.id ?? null,
           nextItemId: 100,
+          seedVersion: SEED_VERSION,
         }
       : null
   }
 
   async init(): Promise<void> {
-    // Load from IndexedDB or seed
+    // Load from IndexedDB, or (re)seed. We re-seed when there is no
+    // stored state yet, or when the stored state was seeded with an
+    // older SEED_VERSION — that's how demo-data changes (e.g. updated
+    // avatars) reach an existing local store without a manual reset.
     const stored = await get<StoredState>("state", this.store)
+    const shouldSeed = this.seedData && (!stored || stored.seedVersion !== SEED_VERSION)
 
-    if (stored) {
+    if (shouldSeed) {
+      this.items = this.seedData!.items.map(i => ({ ...i }))
+      this.groups = [...this.seedData!.groups]
+      this.users = [...this.seedData!.users]
+      this.groupMembers = { ...this.seedData!.groupMembers }
+      this.groupItems = { ...this.seedData!.groupItems }
+      this.nextItemId = this.seedData!.nextItemId
+      this.currentUser = this.seedData!.currentUserId
+        ? this.users.find((u) => u.id === this.seedData!.currentUserId) ?? null
+        : null
+      this.currentGroup = this.seedData!.currentGroupId
+        ? this.groups.find((g) => g.id === this.seedData!.currentGroupId) ?? null
+        : null
+      await this.persist()
+    } else if (stored) {
       this.items = stored.items.map(i => ({ ...i }))
       this.groups = stored.groups
       this.users = stored.users
@@ -97,20 +129,6 @@ export class LocalConnector implements FullConnector {
       this.currentGroup = stored.currentGroupId
         ? this.groups.find((g) => g.id === stored.currentGroupId) ?? null
         : null
-    } else if (this.seedData) {
-      this.items = this.seedData.items.map(i => ({ ...i }))
-      this.groups = [...this.seedData.groups]
-      this.users = [...this.seedData.users]
-      this.groupMembers = { ...this.seedData.groupMembers }
-      this.groupItems = { ...this.seedData.groupItems }
-      this.nextItemId = this.seedData.nextItemId
-      this.currentUser = this.seedData.currentUserId
-        ? this.users.find((u) => u.id === this.seedData!.currentUserId) ?? null
-        : null
-      this.currentGroup = this.seedData.currentGroupId
-        ? this.groups.find((g) => g.id === this.seedData!.currentGroupId) ?? null
-        : null
-      await this.persist()
     }
 
     this.currentUserObs.set(this.currentUser)
@@ -462,6 +480,7 @@ export class LocalConnector implements FullConnector {
       currentUserId: this.currentUser?.id ?? null,
       currentGroupId: this.currentGroup?.id ?? null,
       nextItemId: this.nextItemId,
+      seedVersion: SEED_VERSION,
     }
     await set("state", state, this.store)
   }
