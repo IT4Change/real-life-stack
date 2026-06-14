@@ -97,10 +97,17 @@ export class LocalConnector implements FullConnector {
   async init(): Promise<void> {
     // Load from IndexedDB, or (re)seed. We re-seed when there is no
     // stored state yet, or when the stored state was seeded with an
-    // older SEED_VERSION — that's how demo-data changes (e.g. updated
-    // avatars) reach an existing local store without a manual reset.
+    // older (or pre-versioning) SEED_VERSION — that's how demo-data
+    // changes (e.g. updated avatars) reach an existing local store
+    // without a manual reset. A store stamped with a *newer* version
+    // (e.g. after checking out an older branch) is left intact rather
+    // than discarded.
     const stored = await get<StoredState>("state", this.store)
-    const shouldSeed = this.seedData && (!stored || stored.seedVersion !== SEED_VERSION)
+    const shouldSeed = this.seedData && (
+      !stored ||
+      stored.seedVersion === undefined ||
+      stored.seedVersion < SEED_VERSION
+    )
 
     if (shouldSeed) {
       this.items = this.seedData!.items.map(i => ({ ...i }))

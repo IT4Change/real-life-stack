@@ -77,4 +77,12 @@ describe("LocalConnector — seed versioning", () => {
     expect(set).toHaveBeenCalled()
     expect((await c.getUser("user-1"))?.displayName).toBe("Alice (new seed)")
   })
+
+  it("keeps a store stamped with a newer version (e.g. after a downgrade)", async () => {
+    vi.mocked(get).mockResolvedValue(storedWith(SEED_VERSION + 1, "Alice (newer)"))
+    const c = new LocalConnector(seed)
+    await c.init()
+    expect(set).not.toHaveBeenCalled()
+    expect((await c.getUser("user-1"))?.displayName).toBe("Alice (newer)")
+  })
 })
