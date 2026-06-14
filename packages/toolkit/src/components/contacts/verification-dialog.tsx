@@ -89,6 +89,11 @@ export function VerificationDialog({
       }
       scannerRef.current.stream = null
     }
+    // Release the stream from the <video> element too — stopping the tracks
+    // alone leaves some browsers holding the camera "warm" (LED stays on).
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
     setIsScanning(false)
   }, [])
 
@@ -182,10 +187,13 @@ export function VerificationDialog({
     video.addEventListener("loadeddata", () => requestAnimationFrame(scanFrame), { once: true })
   }, [isScanning, stopScanner])
 
-  // Cleanup scanner on unmount
+  // Stop the camera whenever the dialog is no longer open — covers every close
+  // path (onOpenChange/escape, and the direct setVerifyDialogOpen(false) in
+  // App.tsx that bypasses handleClose) — plus a final cleanup on unmount.
   useEffect(() => {
+    if (!open) stopScanner()
     return () => stopScanner()
-  }, [stopScanner])
+  }, [open, stopScanner])
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
