@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/primitives/avatar"
+import { ProfileLink } from "@/components/profile/profile-link"
 import { useReactionUsers } from "@/hooks/use-reactions"
 import type { AggregatedReaction } from "@/hooks/use-reactions"
 
@@ -111,12 +112,14 @@ export function ReactionDetails({
                 key={`${user.id}-${user.emoji}`}
                 className="flex items-center gap-3 px-4 py-2 hover:bg-muted/50 transition-colors"
               >
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={user.avatarUrl} alt={user.displayName} />
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
-                    {getInitials(user.displayName)}
-                  </AvatarFallback>
-                </Avatar>
+                <ProfileLink userId={user.id} label={`Profil von ${user.displayName} öffnen`}>
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={user.avatarUrl} alt={user.displayName} />
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+                      {getInitials(user.displayName)}
+                    </AvatarFallback>
+                  </Avatar>
+                </ProfileLink>
                 <span className="flex-1 text-sm text-foreground truncate">
                   {user.displayName}
                 </span>

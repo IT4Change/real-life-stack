@@ -3,6 +3,7 @@
 import type { User } from "@real-life-stack/data-interface"
 import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
 import { Tooltip, TooltipTrigger, TooltipContent } from "../primitives/tooltip"
+import { ProfileLink } from "../profile/profile-link"
 import { cn } from "../../lib/utils"
 
 /**
@@ -51,12 +52,18 @@ export function ItemAssignees({ users, className }: ItemAssigneesProps) {
         <div className={cn("flex items-center gap-1", className)}>
           <div className="flex -space-x-1.5">
             {users.map((user) => (
-              <Avatar key={user.id} className="h-5 w-5 border border-background">
-                <AvatarImage src={user.avatarUrl} alt={user.displayName ?? user.id} />
-                <AvatarFallback className="text-[8px] bg-muted">
-                  {getInitials(user.displayName ?? user.id)}
-                </AvatarFallback>
-              </Avatar>
+              <ProfileLink
+                key={user.id}
+                userId={user.id}
+                label={`Profil von ${user.displayName ?? user.id} öffnen`}
+              >
+                <Avatar className="h-5 w-5 border border-background">
+                  <AvatarImage src={user.avatarUrl} alt={user.displayName ?? user.id} />
+                  <AvatarFallback className="text-[8px] bg-muted">
+                    {getInitials(user.displayName ?? user.id)}
+                  </AvatarFallback>
+                </Avatar>
+              </ProfileLink>
             ))}
           </div>
           <span className="text-[10px] text-muted-foreground">{summary}</span>
