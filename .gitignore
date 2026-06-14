@@ -8,3 +8,4 @@ dist
 apps/reference/ota-bundles/
 apps/reference/test-results/
 packages/toolkit/storybook-static/
+/.wot/

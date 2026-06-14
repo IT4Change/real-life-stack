@@ -93,6 +93,11 @@ jobs:
       - name: Set SHORT_SHA
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
+      # OTA bundles MUST be built with base path "/" — the native app
+      # loads them from capacitor://localhost/ (and the embedded bundle
+      # from `cap sync` is also base "/"). Building them with "/app/"
+      # (the web deployment base) makes every asset 404 after an OTA
+      # reload — a blank screen. The web-of-trust demo gets this right.
       - name: Build OTA bundles
         run: |
           for channel in ios android android-foss; do
@@ -100,9 +105,11 @@ jobs:
             (cd apps/reference/dist && zip -r "../../../bundle-${channel}-${SHORT_SHA}.zip" .)
           done
         env:
-          VITE_BASE_PATH: /app/
+          VITE_BASE_PATH: /
           VITE_UPDATE_SERVER_URL: https://real-life-stack.de
 
+      # The Pages build is served at real-life-stack.de/app/, so it
+      # keeps base "/app/".
       - name: Build reference app (for Pages)
         run: pnpm --filter reference build
         env:
