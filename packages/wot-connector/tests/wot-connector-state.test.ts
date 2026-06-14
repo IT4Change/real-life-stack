@@ -308,3 +308,32 @@ describe("WotConnector.setConfirmationAccepted() - real method regression", () =
     expect(fake.syncConfirmationsFromPersonalDoc).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("WotConnector.deleteStoredIdentity() - real method regression", () => {
+  // Guarantees the biometric-setup rollback: the stored seed is removed directly,
+  // NOT behind logout()'s awaited adapter teardown (replication/ws/outbox disconnect,
+  // deleteYjsPersonalDocDB) — any of which could reject and skip the deletion.
+  it("deletes the stored identity with no adapters present (teardown-independent)", async () => {
+    const del = vi.fn(async () => {})
+    // Deliberately only an identity — no replication/ws/outbox adapters. If the
+    // method routed through teardown, this would not reach the deletion.
+    const fake = { identity: { deleteStoredIdentity: del } }
+
+    await WotConnector.prototype.deleteStoredIdentity.call(fake as any)
+
+    expect(del).toHaveBeenCalledTimes(1)
+  })
+
+  it("propagates so the caller can fall back, even if a later teardown would reject", async () => {
+    // Models the rollback ordering in the flows: deleteStoredIdentity() runs first
+    // and on its own, so a subsequent logout() teardown rejection cannot undo it.
+    const del = vi.fn(async () => {})
+    const fake = { identity: { deleteStoredIdentity: del } }
+
+    await WotConnector.prototype.deleteStoredIdentity.call(fake as any)
+    // A separate, later logout() that throws does not affect the already-done deletion.
+    await Promise.reject(new Error("replication.stop failed")).catch(() => {})
+
+    expect(del).toHaveBeenCalledTimes(1)
+  })
+})
