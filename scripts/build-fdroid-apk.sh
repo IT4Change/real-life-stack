@@ -147,7 +147,22 @@ if [[ "$SIGN" == "1" ]]; then
   KEYSTORE="${FDROID_KEYSTORE:?Set FDROID_KEYSTORE to your keystore path}"
   KEY_ALIAS="${FDROID_KEY_ALIAS:-reallifestack}"
   SIGNED_APK="${APK_PATH%-unsigned.apk}-signed.apk"
-  apksigner sign \
+
+  # apksigner lives in the SDK's build-tools, usually not on PATH. Use it
+  # from PATH if available, else pick the highest installed build-tools.
+  APKSIGNER="$(command -v apksigner || true)"
+  if [[ -z "$APKSIGNER" ]]; then
+    # `|| true` so the failing glob (no match → ls exits non-zero, which
+    # pipefail propagates) doesn't trip errexit here: APKSIGNER must be
+    # allowed to stay empty so the explicit check below prints a clear error.
+    APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
+  fi
+  if [[ -z "$APKSIGNER" || ! -x "$APKSIGNER" ]]; then
+    echo "ERROR: apksigner not found. Install Android build-tools." >&2
+    exit 1
+  fi
+
+  "$APKSIGNER" sign \
     --ks "$KEYSTORE" \
     --ks-key-alias "$KEY_ALIAS" \
     --out "$SIGNED_APK" \
