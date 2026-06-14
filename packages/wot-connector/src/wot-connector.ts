@@ -393,6 +393,17 @@ export class WotConnector extends BaseConnector {
     throw new Error(`Unknown auth method: ${method}`)
   }
 
+  /**
+   * Delete the locally stored identity directly, without the adapter teardown
+   * that logout() runs first. logout() only reaches deleteStoredIdentity() after
+   * several awaited disconnects (replication/ws/outbox, deleteYjsPersonalDocDB) —
+   * any of which could reject and skip it. This guarantees the seed is removed,
+   * so a half-finished biometric setup can be rolled back without lockout risk.
+   */
+  async deleteStoredIdentity(): Promise<void> {
+    await this.identity.deleteStoredIdentity()
+  }
+
   override async logout(): Promise<void> {
     this.closeCurrentHandle()
     this.crossGroupUnsub?.()

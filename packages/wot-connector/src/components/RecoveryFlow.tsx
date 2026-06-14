@@ -65,7 +65,11 @@ export function RecoveryFlow({ connector, onComplete, onBack }: RecoveryFlowProp
       // still throw — so roll back BOTH the keystore entry AND any already-stored
       // identity, else a partial failure strands an identity behind the unseen
       // random passphrase.
+      // deleteStoredIdentity() FIRST and on its own — it must run even if the
+      // best-effort logout() teardown below rejects partway. Then logout() to
+      // tear down any partial adapter/auth state so a retry starts clean.
       await BiometricService.unenroll().catch(() => {})
+      await connector.deleteStoredIdentity().catch(() => {})
       await connector.logout().catch(() => {})
       setLoading(false)
       setStep("passphrase")
