@@ -202,13 +202,23 @@ function ProfilePanelHost({
       modalClassName="sm:max-w-sm"
     >
       {profile && (
-        <ProfilePanelContent
-          mode={isOwn ? "edit" : "view"}
-          profile={profile}
-          contactCount={isOwn ? contactCount : undefined}
-          onSave={onSaveProfile}
-          onClose={onClose}
-        />
+        // Two concrete branches so the discriminated union narrows:
+        // edit carries onSave, view forbids it.
+        isOwn ? (
+          <ProfilePanelContent
+            mode="edit"
+            profile={profile}
+            contactCount={contactCount}
+            onSave={onSaveProfile}
+            onClose={onClose}
+          />
+        ) : (
+          <ProfilePanelContent
+            mode="view"
+            profile={profile}
+            onClose={onClose}
+          />
+        )
       )}
     </AdaptivePanel>
   )
