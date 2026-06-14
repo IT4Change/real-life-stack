@@ -117,7 +117,14 @@ if [[ -z "$ANDROID_SDK" || ! -d "$ANDROID_SDK/platform-tools" ]]; then
 fi
 export ANDROID_HOME="$ANDROID_SDK"
 export ANDROID_SDK_ROOT="$ANDROID_SDK"
-echo "sdk.dir=$ANDROID_SDK" > "$APP_DIR/android/local.properties"
+# Set sdk.dir without clobbering other local properties (ndk.dir, etc.):
+# replace an existing sdk.dir line in place, otherwise append.
+LOCAL_PROPS="$APP_DIR/android/local.properties"
+if [[ -f "$LOCAL_PROPS" ]] && grep -q '^sdk.dir=' "$LOCAL_PROPS"; then
+  sed -i "s|^sdk.dir=.*|sdk.dir=$ANDROID_SDK|" "$LOCAL_PROPS"
+else
+  echo "sdk.dir=$ANDROID_SDK" >> "$LOCAL_PROPS"
+fi
 echo "==> Android SDK: $ANDROID_SDK"
 
 cd "$APP_DIR/android"
