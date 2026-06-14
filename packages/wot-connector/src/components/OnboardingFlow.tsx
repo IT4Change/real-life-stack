@@ -14,8 +14,10 @@ import {
   Label,
   Separator,
 } from "@real-life-stack/toolkit"
-import { Key, Shield, Sparkles, Check, AlertTriangle, Copy, User as UserIcon } from "lucide-react"
+import { Key, Shield, Sparkles, Check, AlertTriangle, User as UserIcon, Fingerprint } from "lucide-react"
 import type { WotConnector } from "../wot-connector.js"
+import { BiometricService } from "../biometric-service.js"
+import { generateRandomPassphrase } from "../random-passphrase.js"
 
 type OnboardingStep = "welcome" | "seed" | "verify" | "profile" | "password" | "complete"
 
@@ -50,6 +52,7 @@ export function OnboardingFlow({ connector, onComplete, onSwitchToRecovery }: On
     { id: "safe", checked: false },
     { id: "understand", checked: false },
   ])
+  const [biometricAvailable, setBiometricAvailable] = useState(false)
 
   // --- Browser history navigation ---
   const goToStep = useCallback((newStep: OnboardingStep) => {
@@ -70,6 +73,11 @@ export function OnboardingFlow({ connector, onComplete, onSwitchToRecovery }: On
     history.replaceState({ onboardingStep: "welcome" }, "")
     window.addEventListener("popstate", handlePopState)
     return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
+
+  // Check biometric availability on mount
+  useEffect(() => {
+    BiometricService.isAvailable().then(setBiometricAvailable)
   }, [])
 
   // --- Actions ---
@@ -103,6 +111,29 @@ export function OnboardingFlow({ connector, onComplete, onSwitchToRecovery }: On
 
   const allChecked = checklistItems.every((item) => item.checked)
 
+  // Biometric protect path: generates random passphrase, stores via biometrics
+  const handleBiometricProtect = async () => {
+    setLoading(true)
+    setError("")
+    try {
+      const randomPassphrase = generateRandomPassphrase()
+      await connector.authenticate("create", {
+        mnemonic: mnemonic.join(" "),
+        passphrase: randomPassphrase,
+        displayName: displayName.trim() || undefined,
+        bio: bio.trim() || undefined,
+      })
+      await BiometricService.enroll(randomPassphrase)
+      goToStep("complete")
+      setTimeout(onComplete, 2000)
+    } catch {
+      // Biometric enrollment failed — fall back to password step
+      setError("")
+      setLoading(false)
+      goToStep("password")
+    }
+  }
+
   const handleFinalize = async () => {
     if (passphrase.length < 8) {
       setError("Mindestens 8 Zeichen")
@@ -121,6 +152,12 @@ export function OnboardingFlow({ connector, onComplete, onSwitchToRecovery }: On
         displayName: displayName.trim() || undefined,
         bio: bio.trim() || undefined,
       })
+      // Also enroll biometric if available (optional, silent on failure)
+      if (biometricAvailable) {
+        try {
+          await BiometricService.enroll(passphrase)
+        } catch { /* biometric enrollment optional */ }
+      }
       goToStep("complete")
       setTimeout(onComplete, 2000)
     } catch (err: any) {
@@ -312,16 +349,38 @@ export function OnboardingFlow({ connector, onComplete, onSwitchToRecovery }: On
                 placeholder="Ein kurzer Satz über dich (optional)"
               />
             </div>
-            <Button className="w-full" onClick={() => goToStep("password")}>
-              Weiter
-            </Button>
-            <button
-              type="button"
-              onClick={() => goToStep("password")}
-              className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Überspringen
-            </button>
+            {biometricAvailable ? (
+              <>
+                <Button
+                  className="w-full flex items-center gap-2"
+                  onClick={handleBiometricProtect}
+                  disabled={loading}
+                >
+                  <Fingerprint className="size-5" />
+                  {loading ? "Richte ein…" : "Mit Biometrie schützen"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => goToStep("password")}
+                  className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Stattdessen Passwort verwenden
+                </button>
+              </>
+            ) : (
+              <>
+                <Button className="w-full" onClick={() => goToStep("password")}>
+                  Weiter
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => goToStep("password")}
+                  className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Überspringen
+                </button>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

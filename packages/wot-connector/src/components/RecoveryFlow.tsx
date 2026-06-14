@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   PassphraseConfirm,
   Button,
@@ -8,8 +8,10 @@ import {
   CardTitle,
   CardDescription,
 } from "@real-life-stack/toolkit"
-import { Key } from "lucide-react"
+import { Key, Fingerprint } from "lucide-react"
 import type { WotConnector } from "../wot-connector.js"
+import { BiometricService } from "../biometric-service.js"
+import { generateRandomPassphrase } from "../random-passphrase.js"
 
 interface RecoveryFlowProps {
   connector: WotConnector
@@ -24,9 +26,35 @@ export function RecoveryFlow({ connector, onComplete, onBack }: RecoveryFlowProp
   const [confirm, setConfirm] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [biometricAvailable, setBiometricAvailable] = useState(false)
+
+  useEffect(() => {
+    BiometricService.isAvailable().then(setBiometricAvailable)
+  }, [])
 
   const words = mnemonic.trim().split(/\s+/)
   const mnemonicValid = words.length === 12 && words.every((w) => w.length > 0)
+
+  // Biometric recovery path: generates random passphrase, stores via biometrics
+  const handleBiometricRecover = async () => {
+    if (!mnemonicValid) return
+    setLoading(true)
+    setError("")
+    try {
+      const randomPassphrase = generateRandomPassphrase()
+      await connector.authenticate("mnemonic", {
+        mnemonic: words.join(" "),
+        passphrase: randomPassphrase,
+      } as any)
+      await BiometricService.enroll(randomPassphrase)
+      onComplete()
+    } catch {
+      // Biometric enrollment failed — fall back to password step
+      setError("")
+      setLoading(false)
+      setStep("passphrase")
+    }
+  }
 
   const handleRecover = async () => {
     if (!mnemonicValid || passphrase.length < 8 || passphrase !== confirm) return
@@ -37,6 +65,12 @@ export function RecoveryFlow({ connector, onComplete, onBack }: RecoveryFlowProp
         mnemonic: words.join(" "),
         passphrase,
       } as any)
+      // Also enroll biometric if available (optional, silent on failure)
+      if (biometricAvailable) {
+        try {
+          await BiometricService.enroll(passphrase)
+        } catch { /* biometric enrollment optional */ }
+      }
       onComplete()
     } catch (err: any) {
       setError(err.message ?? "Wiederherstellung fehlgeschlagen")
@@ -75,13 +109,34 @@ export function RecoveryFlow({ connector, onComplete, onBack }: RecoveryFlowProp
             </p>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button
-            className="w-full"
-            onClick={() => setStep("passphrase")}
-            disabled={!mnemonicValid}
-          >
-            Weiter
-          </Button>
+          {biometricAvailable ? (
+            <>
+              <Button
+                className="w-full flex items-center gap-2"
+                onClick={handleBiometricRecover}
+                disabled={!mnemonicValid || loading}
+              >
+                <Fingerprint className="size-5" />
+                {loading ? "Stellt wieder her…" : "Mit Biometrie wiederherstellen"}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setStep("passphrase")}
+                disabled={!mnemonicValid}
+                className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                Stattdessen Passwort verwenden
+              </button>
+            </>
+          ) : (
+            <Button
+              className="w-full"
+              onClick={() => setStep("passphrase")}
+              disabled={!mnemonicValid}
+            >
+              Weiter
+            </Button>
+          )}
           <div className="text-center">
             <button
               type="button"
