@@ -149,6 +149,10 @@ export function OnboardingFlow({ connector, onComplete, onSwitchToRecovery }: On
       await BiometricService.unenroll().catch(() => {})
       await connector.deleteStoredIdentity().catch(() => {})
       await connector.logout().catch(() => {})
+      // Surface the failure on the password step instead of silently falling
+      // back (the enroll-cancel case above stays silent — that's a deliberate
+      // user choice; this branch is a real create failure).
+      setError("Biometrie-Einrichtung fehlgeschlagen. Bitte mit Passwort fortfahren.")
       setLoading(false)
       goToStep("password")
     }
