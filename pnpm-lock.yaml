@@ -501,6 +501,9 @@ importers:
         specifier: ^18 || ^19
         version: 19.2.3
     devDependencies:
+      '@capacitor/core':
+        specifier: ^8.2.0
+        version: 8.2.0
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.7

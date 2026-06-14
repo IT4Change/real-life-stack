@@ -33,9 +33,11 @@
     "@real-life/adapter-yjs": "^0.1.0"
   },
   "peerDependencies": {
+    "@capacitor/core": "^8.0.0",
     "react": "^18 || ^19"
   },
   "devDependencies": {
+    "@capacitor/core": "^8.2.0",
     "@types/react": "^19.0.0",
     "lucide-react": "^0.468.0",
     "typescript": "~5.7.2",
