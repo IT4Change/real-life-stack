@@ -152,7 +152,10 @@ if [[ "$SIGN" == "1" ]]; then
   # from PATH if available, else pick the highest installed build-tools.
   APKSIGNER="$(command -v apksigner || true)"
   if [[ -z "$APKSIGNER" ]]; then
-    APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
+    # `|| true` so the failing glob (no match → ls exits non-zero, which
+    # pipefail propagates) doesn't trip errexit here: APKSIGNER must be
+    # allowed to stay empty so the explicit check below prints a clear error.
+    APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
   fi
   if [[ -z "$APKSIGNER" || ! -x "$APKSIGNER" ]]; then
     echo "ERROR: apksigner not found. Install Android build-tools." >&2
