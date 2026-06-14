@@ -41,6 +41,9 @@ export class BiometricService {
 
   /** Store the passphrase behind a biometric prompt (opt-in). */
   static async enroll(passphrase: string): Promise<void> {
+    if (!this.isSupported()) {
+      throw new Error("Biometric enrollment is not supported on this platform")
+    }
     await BiometricKeystore.storePassphrase({ passphrase })
   }
 

@@ -183,6 +183,9 @@ public class BiometricKeystorePlugin extends Plugin {
                                     JSObject ret = new JSObject();
                                     ret.put("passphrase", new String(plaintext, "UTF-8"));
                                     call.resolve(ret);
+                                } catch (KeyPermanentlyInvalidatedException e) {
+                                    deleteStoredData();
+                                    call.reject("Biometric data changed — re-enrollment required", "KEY_INVALIDATED");
                                 } catch (Exception e) {
                                     call.reject("Decryption failed: " + e.getMessage());
                                 }

@@ -44,9 +44,8 @@ export function UnlockFlow({ connector, onComplete, onSwitchToRecovery }: Unlock
 
   const finishPasswordError = (err: unknown) => {
     const msg = (err as { message?: string })?.message
-    setError(msg?.includes("decrypt")
-      ? "Falsches Passwort"
-      : (msg ?? "Entsperrung fehlgeschlagen"))
+    const matched = msg ? (msg.includes("passphrase") || msg.includes("decrypt")) : false
+    setError(matched ? "Falsches Passwort" : (msg ?? "Entsperrung fehlgeschlagen"))
   }
 
   const handleBiometricUnlock = async () => {
@@ -123,7 +122,7 @@ export function UnlockFlow({ connector, onComplete, onSwitchToRecovery }: Unlock
   }
 
   // Biometric-first screen (enrolled and not explicitly switched to password).
-  if (bioEnrolled && !usePassword) {
+  if (bioAvailable && bioEnrolled && !usePassword) {
     return (
       <Card>
         <CardHeader className="text-center">
@@ -197,7 +196,7 @@ export function UnlockFlow({ connector, onComplete, onSwitchToRecovery }: Unlock
           </Button>
         </form>
         <div className="flex flex-col items-center gap-2">
-          {bioEnrolled && (
+          {bioAvailable && bioEnrolled && (
             <button
               type="button"
               onClick={() => { setError(""); setUsePassword(false) }}
