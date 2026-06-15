@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState, type TouchEvent } from "react"
 import {
   Briefcase,
   Calendar as CalendarIcon,
@@ -399,6 +399,26 @@ export function CalendarView({
     if (nextMode === "day") setSelectedDate(visibleDate)
   }
 
+  // Horizontal swipe on the calendar body steps the period (prev/next per the
+  // active view mode). A threshold + horizontal-dominance check keeps vertical
+  // scrolling (week/day/list) and day taps from triggering navigation.
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const handleSwipeStart = (e: TouchEvent) => {
+    const t = e.touches[0]
+    swipeStartRef.current = { x: t.clientX, y: t.clientY }
+  }
+  const handleSwipeEnd = (e: TouchEvent) => {
+    const start = swipeStartRef.current
+    swipeStartRef.current = null
+    if (!start) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      movePeriod(dx < 0 ? 1 : -1)
+    }
+  }
+
   return (
     <div className={cn("w-full space-y-3", className)}>
       <FilterBar
@@ -543,7 +563,8 @@ export function CalendarView({
         </div>
       </div>
 
-
+      {/* Swipe left/right anywhere on the calendar body to step the period. */}
+      <div onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
       {viewMode === "month" && (
         <MonthCalendar
           visibleDate={visibleDate}
@@ -592,6 +613,7 @@ export function CalendarView({
           onEventClick={onEventClick}
         />
       )}
+      </div>
       </div>
     </div>
   )
