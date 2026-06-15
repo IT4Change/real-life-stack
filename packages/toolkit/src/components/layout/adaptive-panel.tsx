@@ -31,7 +31,7 @@ export interface AdaptivePanelProps {
   sidebarWidth?: string
   sidebarMinWidth?: string
   sidebarMaxWidth?: string
-  /** Tailwind classes for modal size, e.g. "max-w-2xl max-h-[80vh]" */
+  /** Tailwind classes for modal size, e.g. "max-w-2xl max-h-[80dvh]" */
   modalClassName?: string
   /** Initial drawer height as fraction of viewport (default 0.55) */
   drawerInitialHeight?: number
@@ -531,7 +531,12 @@ export function AdaptivePanel({
         }
       : mode === "drawer"
         ? {
-            height: `${100 - Math.max(0, drawerY)}vh`,
+            // dvh, not vh: on real mobile devices the static vh is the *large*
+            // viewport (system UI hidden), so a vh-sized drawer is taller than
+            // the visible area and its top (e.g. the composer's type selector)
+            // gets clipped off-screen. dvh tracks the visible viewport and
+            // matches the drag math, which already uses window.innerHeight.
+            height: `${100 - Math.max(0, drawerY)}dvh`,
             opacity: drawerOpacity,
             transition: drawerTransition,
           }
@@ -571,7 +576,7 @@ export function AdaptivePanel({
             // Modal styling
             mode === "modal" && cn(
               "relative bg-background rounded-lg border shadow-lg pointer-events-auto",
-              "w-full max-w-lg max-h-[90vh] overflow-hidden",
+              "w-full max-w-lg max-h-[90dvh] overflow-hidden",
               "transition-all duration-200 flex flex-col",
               isOpen ? "opacity-100 scale-100" : "opacity-0 scale-95",
               modalClassName,
