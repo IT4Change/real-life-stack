@@ -407,16 +407,21 @@ export function CalendarView({
         availableTags={availableTags}
         availableTypes={availableTypes}
         leadingActions={
-          <div className="relative">
+          <div className="relative min-w-0 flex-1 sm:flex-none">
             <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Suche…"
               aria-label="Kalender durchsuchen"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              className="h-8 w-40 pl-7 text-xs"
+              className="h-8 w-full pl-7 text-xs sm:w-40"
             />
           </div>
+        }
+        trailingActions={
+          <Button variant="outline" size="sm" className="shrink-0" onClick={goToday}>
+            Heute
+          </Button>
         }
         drawerExtra={
           <>
@@ -490,13 +495,6 @@ export function CalendarView({
           <div className="min-w-0 px-1 sm:min-w-56">
             <h2 className="truncate text-lg font-semibold">{getHeaderLabel(visibleDate, viewMode)}</h2>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={goToday}
-          >
-            Heute
-          </Button>
           <Button
             variant="ghost"
             size="icon-sm"
