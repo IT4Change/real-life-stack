@@ -14,13 +14,15 @@ export interface CreateFabProps {
  * its containing module surface. All four module views use the same
  * FAB so the create entry point is at one consistent screen location.
  *
- * The button positions itself with `fixed`. On mobile it sits a small gap
- * above the `BottomNav` (fixed bottom-0, ~72px tall, `md:hidden`): 5.25rem
- * = 72px nav + ~12px, close to the bar without sticking to it. From `md` up
- * there is no BottomNav, so it drops back to a normal corner offset. The
- * safe-area inset keeps it above the home indicator on notched devices. Use
- * inside a relative or full-screen container; the z-index keeps it above
- * Leaflet panes but below modal sheets / drawers.
+ * The button positions itself with `fixed`. On mobile it sits ~12px above
+ * the `BottomNav` (fixed bottom-0, `md:hidden`): the 5.25rem offset clears
+ * the nav's content height with a small gap, and the added
+ * `env(safe-area-inset-bottom)` mirrors the nav's own safe-area padding so
+ * the gap stays consistent on notched devices (the nav height is not fixed —
+ * it's content + that inset). From `md` up there is no BottomNav, so it
+ * drops back to a normal corner offset. Use inside a relative or full-screen
+ * container; the z-index keeps it above Leaflet panes but below modal sheets
+ * / drawers.
  */
 export function CreateFab({ onClick, label = "Erstellen", className }: CreateFabProps) {
   return (
