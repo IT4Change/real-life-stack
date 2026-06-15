@@ -501,7 +501,7 @@ export function CalendarView({
         }
       />
 
-      <div className="w-full overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm">
+      <div className="-mx-4 sm:mx-0">
       <div className="flex flex-col gap-3 border-b bg-muted/40 p-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
           <Button
