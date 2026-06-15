@@ -206,14 +206,14 @@ export function FeedView({ groupId }: { groupId: string }) {
         availableTags={availableTags}
         availableTypes={FEED_TYPES}
         leadingActions={
-          <div className="relative">
+          <div className="relative min-w-0 flex-1 sm:flex-none">
             <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Suche…"
               aria-label="Feed durchsuchen"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              className="h-8 w-40 pl-7 text-xs"
+              className="h-8 w-full pl-7 text-xs sm:w-40"
             />
           </div>
         }

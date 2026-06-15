@@ -54,7 +54,7 @@ export function WorkspaceSwitcher({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-accent">
+      <DropdownMenuTrigger className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 hover:bg-accent sm:gap-3 sm:px-3">
         {isPersonalActive ? (
           <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
             <Home className="h-4 w-4 text-primary" />
@@ -71,7 +71,9 @@ export function WorkspaceSwitcher({
             <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
           </div>
         )}
-        <span className="hidden sm:inline-block text-lg font-semibold">
+        {/* Name now also shows on mobile, truncated so a long space name can't
+            push the trailing nav actions off-screen (NavbarStart is shrink-0). */}
+        <span className="truncate max-w-[34vw] text-base font-semibold sm:max-w-none sm:text-lg">
           {activeWorkspace ? activeWorkspace.name : "Space wählen"}
         </span>
         <ChevronsUpDown className="h-4 w-4 opacity-50 hidden sm:block" />

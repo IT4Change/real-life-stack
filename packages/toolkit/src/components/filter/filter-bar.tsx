@@ -168,18 +168,40 @@ export function FilterBar({
   }
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-2", className)}>
-      <Button
-        variant="outline"
-        size="sm"
-        className="shrink-0"
-        onClick={openFilter}
-      >
-        <Filter className="h-4 w-4 mr-1.5" />
-        Filter
-      </Button>
+    <div className={cn("flex flex-col gap-2", className)}>
+      {/* Controls — one row that never wraps: the Filter button and the
+          trailing actions keep their size while the leading actions (search)
+          flex to fill the remaining width on mobile, so the trailing buttons
+          can't get pushed onto a second line. */}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={openFilter}
+        >
+          <Filter className="h-4 w-4 mr-1.5" />
+          Filter
+        </Button>
 
-      {leadingActions && <div className="flex items-center gap-2">{leadingActions}</div>}
+        {leadingActions && (
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none">{leadingActions}</div>
+        )}
+
+        {trailingActions && (
+          <div className="ml-auto flex shrink-0 items-center gap-2">{trailingActions}</div>
+        )}
+      </div>
+
+      {/* Active-filter chips on their own row so they wrap freely without
+          crowding the controls. */}
+      {hasAnyChips && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {activeTagChips}
+          {activeTypeChips}
+          {chipsExtra}
+        </div>
+      )}
 
       {/* Fallback own AdaptivePanel — used in Storybook / standalone
           render where no ModulePanelProvider exists. Inside a module
@@ -195,16 +217,6 @@ export function FilterBar({
           {drawerContent}
         </AdaptivePanel>
       )}
-
-      {hasAnyChips && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {activeTagChips}
-          {activeTypeChips}
-          {chipsExtra}
-        </div>
-      )}
-
-      {trailingActions && <div className="ml-auto flex items-center gap-2">{trailingActions}</div>}
     </div>
   )
 }
