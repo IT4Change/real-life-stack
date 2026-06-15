@@ -362,7 +362,10 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         <DebugDashboard open={debugOpen} onClose={() => setDebugOpen(false)} />
       </Suspense>
 
-      <AppShellMain withBottomNav>
+      {/* Map is full-bleed: skip the bottom-nav padding so the map fills the
+          area behind the translucent BottomNav instead of leaving a gap above
+          it. Scrolling modules keep the padding so content clears the nav. */}
+      <AppShellMain withBottomNav={activeModule !== "map"}>
         <ModuleOutlet
           activeWorkspace={activeWorkspace}
           activeModule={activeModule}
