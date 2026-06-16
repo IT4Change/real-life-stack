@@ -55,7 +55,7 @@ const events: Item[] = [
   },
   {
     id: "event-5",
-    type: "project",
+    type: "event",
     createdAt: "2026-05-05T09:00:00.000Z",
     createdBy: "user-2",
     data: {
@@ -79,7 +79,7 @@ const events: Item[] = [
   },
   {
     id: "event-7",
-    type: "offer",
+    type: "event",
     createdAt: "2026-05-07T09:00:00.000Z",
     createdBy: "user-4",
     data: {

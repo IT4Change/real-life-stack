@@ -250,7 +250,11 @@ export interface ProfileItemData {
   needs?: string[]
 }
 
-export type ProfileItem = Item & { type: "profile"; data: ProfileItemData }
+// Canonical type string is "person" — matches the person/v1 vocab and
+// deriveContext (which activates person/v1 on type === "person"). The
+// "Profile" naming describes the data shape, consistent with the UI layer
+// (ProfileLink, ProfileDialog).
+export type ProfileItem = Item & { type: "person"; data: ProfileItemData }
 
 /** Forward and reverse relations for a profile. */
 export interface ProfileRelations {
@@ -262,7 +266,7 @@ export interface ProfileRelations {
 }
 
 export function isProfileItem(item: Item): item is ProfileItem {
-  return item.type === "profile"
+  return item.type === "person"
 }
 
 // ============================================================
@@ -348,4 +352,4 @@ export type KnownPredicate =
   | keyof CommentRelations["forward"]
 
 /** Known item types. Connectors may define additional ones. */
-export type KnownItemType = "task" | "event" | "post" | "place" | "feature" | "profile" | "reaction" | "comment"
+export type KnownItemType = "task" | "event" | "post" | "place" | "feature" | "person" | "reaction" | "comment"

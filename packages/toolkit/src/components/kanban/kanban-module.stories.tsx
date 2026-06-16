@@ -27,7 +27,7 @@ const initialItems: Item[] = [
   },
   {
     id: "project-1",
-    type: "project",
+    type: "task",
     createdAt: new Date().toISOString(),
     createdBy: "user-2",
     data: {

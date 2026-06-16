@@ -492,7 +492,7 @@ export class WotConnector extends BaseConnector {
     })
     return (await this.getMyProfile()) ?? {
       id: user.id,
-      type: "profile",
+      type: "person",
       createdAt: new Date().toISOString(),
       createdBy: user.id,
       data: { name: user.displayName },
@@ -2089,7 +2089,7 @@ export class WotConnector extends BaseConnector {
       const avatar = profile?.avatar ?? undefined
       this.profileObs.set({
         id: did,
-        type: "profile",
+        type: "person",
         createdAt: profile?.createdAt ?? new Date().toISOString(),
         createdBy: did,
         data: {
