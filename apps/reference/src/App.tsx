@@ -24,6 +24,7 @@ import {
   OpenProfileProvider,
   ModulePanelProvider,
   useModulePanel,
+  DebugDashboard,
   ProfilePanelContent,
   type ProfileData,
   ContactsDialog,
@@ -64,10 +65,6 @@ const CONNECTOR_OPTIONS: ConnectorOption[] = [
   { id: "wot", name: "Web of Trust", description: "E2E-verschlüsselt, Multi-Device" },
 ]
 
-const DebugDashboard = lazy(() =>
-  import("@real-life-stack/toolkit").then((m) => ({ default: m.DebugDashboard }))
-)
-
 function RelayStatusBadgeWrapper() {
   const { state, pendingCount } = useRelayStatus()
   const panel = useModulePanel()
@@ -79,11 +76,7 @@ function RelayStatusBadgeWrapper() {
     } else {
       panel.open({
         kind: "debug",
-        content: (
-          <Suspense fallback={null}>
-            <DebugDashboard />
-          </Suspense>
-        ),
+        content: <DebugDashboard />,
       })
     }
   }

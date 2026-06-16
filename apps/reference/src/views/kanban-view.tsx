@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, type DragEvent } from "react"
+import { useState, useMemo, useCallback, useEffect, useRef, type DragEvent } from "react"
 import {
   Layers,
   LayoutList,
@@ -226,8 +226,13 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
   // task-edit state changes, push the TaskEditPanel into the shared
   // panel; on close, clear it. The shared panel's X / drawer-drag /
   // backdrop-click flows through `onClose` back into `handleForceClose`.
+  // Tracks whether WE opened the shared panel, so we never close a detail
+  // another module left open when kanban (re)mounts — the panel now persists
+  // across module switches.
+  const panelOwnedRef = useRef(false)
   useEffect(() => {
     if (panelState.mode === "edit") {
+      panelOwnedRef.current = true
       modulePanel.open({
         kind: "detail",
         content: (
@@ -244,7 +249,8 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
         ),
         onClose: handleForceClosePanel,
       })
-    } else {
+    } else if (panelOwnedRef.current) {
+      panelOwnedRef.current = false
       modulePanel.close()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
