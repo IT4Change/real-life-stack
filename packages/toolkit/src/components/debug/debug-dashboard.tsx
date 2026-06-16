@@ -54,7 +54,11 @@ export function DebugDashboard({ open, onClose }: DebugDashboardProps) {
       open={open}
       onClose={onClose}
       allowedModes={["sidebar", "drawer"]}
-      side="right"
+      // Dev-tooling lives on the LEFT so it never overlaps the right-side
+      // content panel (item detail / composer). Both can be open at once —
+      // you want to watch the app while inspecting — without two same-side
+      // sidebars stacking at the same z-index.
+      side="left"
       sidebarWidth="420px"
       sidebarMinWidth="320px"
       sidebarMaxWidth="70vw"
