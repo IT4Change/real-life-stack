@@ -26,13 +26,12 @@ import {
   type MapMarkerSpec,
 } from "@real-life-stack/toolkit"
 import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
-import { Calendar, MapPin, Search, Sparkles } from "lucide-react"
+import { Calendar, MapPin, Search } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
 
 const MAP_TYPES: FilterTypeOption[] = [
   { id: "event", label: "Events", icon: Calendar },
   { id: "place", label: "Orte", icon: MapPin },
-  { id: "quest", label: "Quests", icon: Sparkles },
 ]
 
 /**

@@ -2,56 +2,28 @@
 
 import { useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
 import {
-  Briefcase,
   Calendar as CalendarIcon,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
   Columns,
   Grid3x3,
-  HandHeart,
   List,
   Plus,
   Search,
-  Sparkles,
 } from "lucide-react"
 import { Button } from "../primitives/button"
 import { Input } from "../primitives/input"
 import { cn } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 import { ItemPreview } from "../preview/item-preview"
-import { ItemTypeBadge, type ItemTypeBadgeConfig } from "../preview/item-type-badge"
+import { ItemTypeBadge } from "../preview/item-type-badge"
 import { ItemTimeRange } from "../preview/item-time-range"
 import { FilterBar } from "../filter/filter-bar"
 import { FilterSection, FilterToggle, FilterMultiSelect } from "../filter/filter-building-blocks"
 import { emptyFilterBarValue, type FilterBarValue, type FilterTypeOption } from "../filter/types"
 import { useFilterableItems } from "../../hooks/use-filterable-items"
 import type { Item } from "@real-life-stack/data-interface"
-
-/**
- * Calendar-specific item types (project, offer, quest) on top of the
- * defaults that ItemTypeBadge already knows (event, task, place,
- * person). Without this override, those types render as `null`, which
- * would be a visible regression vs. the previous EventCard that
- * surfaced a label for every known calendar type.
- */
-const CALENDAR_TYPE_BADGE_CONFIG: Record<string, ItemTypeBadgeConfig> = {
-  project: {
-    icon: Briefcase,
-    label: "Projekt",
-    className: "bg-blue-50 text-blue-700 border-blue-200",
-  },
-  offer: {
-    icon: HandHeart,
-    label: "Angebot",
-    className: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  },
-  quest: {
-    icon: Sparkles,
-    label: "Quest",
-    className: "bg-rose-50 text-rose-700 border-rose-200",
-  },
-}
 
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 const MONTH_NAMES = [
@@ -105,10 +77,7 @@ const VIEW_MODES: Array<{ id: CalendarViewMode; label: string; icon: typeof Cale
 
 const EVENT_TYPE_STYLES: Record<string, string> = {
   event: "bg-violet-600 text-white hover:bg-violet-700",
-  project: "bg-blue-600 text-white hover:bg-blue-700",
-  offer: "bg-emerald-600 text-white hover:bg-emerald-700",
   task: "bg-amber-500 text-amber-950 hover:bg-amber-600",
-  quest: "bg-rose-600 text-white hover:bg-rose-700",
 }
 
 function getInitialDate(value?: Date | string): Date {
@@ -1082,7 +1051,7 @@ function EventCard({ event, onClick }: EventCardProps) {
       author={null}
       onClick={onClick ? () => onClick(event.item) : undefined}
       headerAdornment={
-        <ItemTypeBadge type={event.item.type} config={CALENDAR_TYPE_BADGE_CONFIG} />
+        <ItemTypeBadge type={event.item.type} />
       }
       metaAdornment={<ItemTimeRange item={event.item} locationLabel={event.location} />}
     />
