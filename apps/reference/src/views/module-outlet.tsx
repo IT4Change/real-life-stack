@@ -67,8 +67,11 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
           onItemClose={() => {
             // Guard against the persisted shared panel firing this after the
             // user already left Kanban (would otherwise yank the route back).
-            if (routeRef.current.module === "kanban") {
-              navigate(`/spaces/${routeRef.current.spaceId}/kanban`)
+            // Also require a real spaceId — on a no-access route activeWorkspace
+            // is null, and we must not navigate to /spaces/undefined/kanban.
+            const { module, spaceId } = routeRef.current
+            if (module === "kanban" && spaceId) {
+              navigate(`/spaces/${spaceId}/kanban`)
             }
           }}
         />
