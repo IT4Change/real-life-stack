@@ -62,6 +62,9 @@ const DAY_NAMES = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"]
 const LONG_DAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"]
 const TIME_SLOTS = Array.from({ length: 18 }, (_, index) => index + 6)
 
+/** Min horizontal travel (px) to commit a period swipe — PR spec contract. */
+const SWIPE_COMMIT_PX = 60
+
 export type CalendarViewMode = "month" | "week" | "day" | "list"
 type LocationFilter = "all" | "with" | "without"
 
@@ -419,9 +422,20 @@ export function CalendarView({
     setSwipeDx(x)
   }
   const panelWidth = () => swipeTrackRef.current?.offsetWidth || 1
+  const snapBackToCenter = () => {
+    if (swipeDxRef.current !== 0) {
+      setSwipeAnimating(true)
+      setSwipeOffset(0)
+    }
+  }
 
   const handleSwipeStart = (e: TouchEvent) => {
-    if (swipeBusyRef.current) return
+    // A single finger owns a swipe — ignore multi-touch (pinch/zoom), which
+    // would otherwise record a start point and paginate on release.
+    if (swipeBusyRef.current || e.touches.length !== 1) {
+      swipeStartRef.current = null
+      return
+    }
     const t = e.touches[0]
     swipeStartRef.current = { x: t.clientX, y: t.clientY }
     swipeAxisRef.current = null
@@ -430,12 +444,22 @@ export function CalendarView({
   const handleSwipeMove = (e: TouchEvent) => {
     const start = swipeStartRef.current
     if (!start || swipeBusyRef.current) return
+    if (e.touches.length !== 1) {
+      // A second finger landed mid-drag — abandon the swipe and snap back
+      // without navigating.
+      swipeStartRef.current = null
+      swipeAxisRef.current = null
+      snapBackToCenter()
+      return
+    }
     const t = e.touches[0]
     const dx = t.clientX - start.x
     const dy = t.clientY - start.y
     if (swipeAxisRef.current === null) {
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
-      swipeAxisRef.current = Math.abs(dx) > Math.abs(dy) ? "h" : "v"
+      // Require clear horizontal dominance before we own the gesture, so
+      // diagonal/vertical scrolls stay with the page (PR spec: |dx| > |dy|*1.5).
+      swipeAxisRef.current = Math.abs(dx) > Math.abs(dy) * 1.5 ? "h" : "v"
     }
     if (swipeAxisRef.current === "h") setSwipeOffset(dx)
   }
@@ -447,7 +471,7 @@ export function CalendarView({
     if (!start || !horizontal || swipeBusyRef.current) return
     const dx = swipeDxRef.current
     const width = panelWidth()
-    if (Math.abs(dx) > Math.max(60, width * 0.25)) {
+    if (Math.abs(dx) > SWIPE_COMMIT_PX) {
       const dir: -1 | 1 = dx < 0 ? 1 : -1 // swipe left → next, right → prev
       swipeDirRef.current = dir
       swipeBusyRef.current = true
@@ -456,9 +480,16 @@ export function CalendarView({
     } else if (dx !== 0) {
       // Below threshold → snap back to the current period. (dx === 0 is a tap;
       // nothing to animate, so we leave the track where it rests.)
-      setSwipeAnimating(true)
-      setSwipeOffset(0)
+      snapBackToCenter()
     }
+  }
+  const handleSwipeCancel = () => {
+    // touchcancel (OS/browser interrupts the sequence): abandon the gesture and
+    // snap back — never commit navigation off a cancelled touch.
+    if (swipeBusyRef.current) return // a commit animation already owns the track
+    swipeStartRef.current = null
+    swipeAxisRef.current = null
+    snapBackToCenter()
   }
   const handleSwipeTransitionEnd = (e: TransitionEvent<HTMLDivElement>) => {
     // Only the track's own transform transition counts — ignore transitionend
@@ -700,6 +731,7 @@ export function CalendarView({
             onTouchStart={handleSwipeStart}
             onTouchMove={handleSwipeMove}
             onTouchEnd={handleSwipeEnd}
+            onTouchCancel={handleSwipeCancel}
             onTransitionEnd={handleSwipeTransitionEnd}
             className="flex items-start"
             style={{
