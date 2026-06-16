@@ -75,6 +75,31 @@ Regeln:
 4. Die App Shell ist nicht selbst ein Space Module.
 5. Funktionen wie Profile, Contacts, Verification oder Auth sind App-Shell-Flächen, auch wenn ihre Daten in Space Modules sichtbar werden können.
 
+## Overlay-Flächen (Panels, Dialoge, Notifications)
+
+Overlays folgen einem Drei-Ebenen-Modell. Pro Ebene gibt es höchstens **eine** Fläche; Ebenen dürfen einander überlagern, weil sie sichtbar von anderer Art sind.
+
+| Ebene | Fläche | Form | Inhalt |
+|---|---|---|---|
+| 1 Content-Panel | eine app-weite Instanz | Sidebar (Desktop) ↔ Drawer (Mobile) | Item-Detail, Composer, Filter — Content wird getauscht, nie gestapelt |
+| 2 Dialog | eine Instanz | zentriertes Modal + Backdrop (Desktop) / Sheet (Mobile) | fokussierte Tasks: Kontakte, Verifizieren, Gruppe, Profil |
+| 3 Notification | nicht-destruktiver Hinweis | Banner / Toast | zeitkritische Interrupts: eingehende Verifizierung, Space-Einladung |
+
+Regeln:
+
+1. **Eine Fläche pro Ebene.** Gleichartige Flächen werden nie gestapelt — das verhindert „Panel über Panel" strukturell, nicht per z-index.
+2. **Das Content-Panel ist persistent.** Es bleibt beim Modul-Wechsel offen und hält, was der Nutzer zuletzt geöffnet hat, bis er schließt oder anderen Content öffnet.
+3. **Dialoge überlagern, ersetzen nicht.** Ein abgedunkeltes Modal liest sich als höhere Ebene und erhält den Content darunter. Ein Dialog ist nie eine zweite Sidebar.
+4. **Interrupts stehlen nie den Kontext.** Ebene 3 ersetzt nie Ebene-1/2-Content und nimmt keinen Fokus; der Nutzer öffnet sie bewusst, der Flow landet dann in Ebene 2.
+5. **Verschachtelte Flows pro Ebene laufen über einen Back-Stack** (z.B. Kontakte → Verifizieren → zurück), nie über eine zweite gleichartige Fläche.
+6. Overlays sind **Präsentation, nie Aktivierung** — welche Items ein Modul zeigt, entscheidet Feld-Präsenz (siehe [06-schema-composition.md](06-schema-composition.md)), nie eine Overlay-Fläche.
+
+### Content-Bereich
+
+Der Content-Bereich ist die Fläche unterhalb der Top-Navigation, links einer rechten Sidebar und rechts einer linken Sidebar. Er rückt automatisch ein, wenn eine Sidebar öffnet (die Panel-Fläche publiziert ihre Breite als CSS-Variable, die der Content als Padding konsumiert); sonst ist er eine `flex-1`-Spalte.
+
+Begründung, Alternativen und Realisierungs-Stand: [decisions/0002-ui-panel-overlay-layers.md](decisions/0002-ui-panel-overlay-layers.md).
+
 ## Current Space
 
 Der Current Space ist der aktuell ausgewählte Arbeits-, Sichtbarkeits- und Mitgliedschaftskontext. Im RLS-Code wird er technisch meist als `Group` abgebildet.
