@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom"
-import { Button, ModulePanelProvider, type Workspace } from "@real-life-stack/toolkit"
+import { Button, type Workspace } from "@real-life-stack/toolkit"
 import type { Group } from "@real-life-stack/data-interface"
 import { FeedView } from "./feed-view"
 import { MapView } from "./map-view"
@@ -40,15 +40,12 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
   if (activeModule === "map") {
     // Map fills the entire Space — no container, no padding, no width cap
     return (
-      <ModulePanelProvider>
-        <MapView groupId={activeWorkspace?.id ?? ""} />
-      </ModulePanelProvider>
+      <MapView groupId={activeWorkspace?.id ?? ""} />
     )
   }
 
-  // Kanban brings its own ModulePanelProvider so it can wire pin
-  // state and URL routing through the shared panel; other modules use
-  // the default provider here.
+  // All modules render into the single app-level panel host (App.tsx);
+  // no per-view ModulePanelProvider here anymore.
   const containerClass = `container mx-auto px-4 pt-6 ${activeModule === "kanban" || activeModule === "calendar" ? "max-w-5xl" : "max-w-3xl"}`
 
   if (activeModule === "kanban") {
@@ -66,11 +63,9 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
   }
 
   return (
-    <ModulePanelProvider>
-      <div className={containerClass}>
-        {activeModule === "feed" && <FeedView groupId={activeWorkspace?.id ?? ""} />}
-        {activeModule === "calendar" && <CalendarViewWrapper groupId={activeWorkspace?.id ?? ""} />}
-      </div>
-    </ModulePanelProvider>
+    <div className={containerClass}>
+      {activeModule === "feed" && <FeedView groupId={activeWorkspace?.id ?? ""} />}
+      {activeModule === "calendar" && <CalendarViewWrapper groupId={activeWorkspace?.id ?? ""} />}
+    </div>
   )
 }

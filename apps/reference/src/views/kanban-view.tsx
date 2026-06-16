@@ -13,7 +13,6 @@ import {
   type ContentComposerSubmitData,
   type ContentTypeConfig,
   defaultColumns,
-  ModulePanelProvider,
   useModulePanel,
   ModuleSettingsPlaceholder,
   Button,
@@ -104,20 +103,9 @@ interface KanbanViewProps {
 }
 
 export function KanbanView(props: KanbanViewProps) {
-  // Pinning state lives at the provider level so the AdaptivePanel
-  // surfaces the pin button. Modal mode allowed for very wide displays.
-  const [panelPinned, setPanelPinned] = useState(false)
-  return (
-    <ModulePanelProvider
-      allowedModes={["modal", "sidebar", "drawer"]}
-      sidebarWidth="420px"
-      sidebarMinWidth="300px"
-      pinned={panelPinned}
-      onPinnedChange={setPanelPinned}
-    >
-      <KanbanViewInner {...props} />
-    </ModulePanelProvider>
-  )
+  // Renders into the app-level shared panel (one host for all modules);
+  // pin + mode config now lives on that provider (App.tsx).
+  return <KanbanViewInner {...props} />
 }
 
 function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSelect, onItemClose }: KanbanViewProps) {
