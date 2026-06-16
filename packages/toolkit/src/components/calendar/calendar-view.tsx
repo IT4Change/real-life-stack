@@ -708,9 +708,14 @@ export function CalendarView({
               touchAction: "pan-y",
             }}
           >
-            <div className="w-full shrink-0">{renderPeriod(periodDate(visibleDate, -1))}</div>
+            {/* Only the centred panel is interactive. The off-screen
+                neighbours render full calendars (buttons, cards), so mark them
+                inert + aria-hidden to keep them out of the focus and a11y tree;
+                after a swap they re-render by position, so the middle one is
+                always the live period. */}
+            <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, -1))}</div>
             <div className="w-full shrink-0">{renderPeriod(visibleDate)}</div>
-            <div className="w-full shrink-0">{renderPeriod(periodDate(visibleDate, 1))}</div>
+            <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, 1))}</div>
           </div>
         </div>
       )}
