@@ -453,7 +453,10 @@ export function CalendarView({
       swipePhaseRef.current = "out"
       setSwipeAnimating(true)
       setSwipeOffset(dir === 1 ? -width : width) // slide current period out
-    } else {
+    } else if (dx !== 0) {
+      // Below threshold: snap back. (If dx is already 0 there's nothing to
+      // animate — staying idle avoids a transitionend that never fires and
+      // would otherwise wedge the phase machine.)
       swipePhaseRef.current = "snap"
       setSwipeAnimating(true)
       setSwipeOffset(0)
