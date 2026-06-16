@@ -5,7 +5,8 @@ import type { Item, User } from "@real-life-stack/data-interface"
 import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
 import { RelativeTime } from "../primitives/relative-time"
 import { ProfileLink } from "../profile/profile-link"
-import { cn, getTagColor } from "../../lib/utils"
+import { TagChip } from "../tag/tag-chip"
+import { cn } from "../../lib/utils"
 import { useItemTags } from "../../hooks/use-item-tags"
 
 /**
@@ -196,15 +197,7 @@ export function ItemPreview({
       {tags.length > 0 && (
         <div className={cn("flex flex-wrap gap-1", isCompact ? "px-3 pb-2" : "px-4 pb-3 gap-1.5")}>
           {tags.map((tag) => (
-            <span
-              key={tag}
-              className={cn(
-                "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-                getTagColor(tag),
-              )}
-            >
-              {tag}
-            </span>
+            <TagChip key={tag} tag={tag} />
           ))}
         </div>
       )}

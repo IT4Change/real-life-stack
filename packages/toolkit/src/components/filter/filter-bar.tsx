@@ -1,11 +1,12 @@
 "use client"
 
 import { useMemo, useState, type ReactNode } from "react"
-import { Filter, Tag, Layers } from "lucide-react"
+import { Filter, Layers } from "lucide-react"
 import { Button } from "../primitives/button"
 import { AdaptivePanel } from "../layout/adaptive-panel"
 import { useOptionalModulePanel } from "../module-panel"
 import { cn } from "../../lib/utils"
+import { TagChip } from "../tag/tag-chip"
 import {
   FilterChip,
   FilterMultiSelect,
@@ -107,10 +108,10 @@ export function FilterBar({
   const uniqueTypeIds = useMemo(() => Array.from(new Set(value.types)), [value.types])
 
   const activeTagChips = uniqueTagIds.map((tag) => (
-    <FilterChip
+    <TagChip
       key={`tag-${tag}`}
-      label={tag}
-      icon={<Tag className="h-3 w-3" />}
+      tag={tag}
+      size="md"
       onRemove={() => updateTags(value.tags.filter((t) => t !== tag))}
     />
   ))
@@ -136,12 +137,30 @@ export function FilterBar({
       </div>
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
         <FilterSection label="Tags">
-          <FilterMultiSelect
-            options={tagOptions}
-            value={value.tags}
-            onChange={updateTags}
-            emptyLabel="Keine Tags verfügbar"
-          />
+          {tagOptions.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Keine Tags verfügbar</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {tagOptions.map((opt) => {
+                const isOn = value.tags.includes(opt.id)
+                return (
+                  <TagChip
+                    key={opt.id}
+                    tag={opt.id}
+                    size="md"
+                    selected={isOn}
+                    onToggle={() =>
+                      updateTags(
+                        isOn
+                          ? value.tags.filter((t) => t !== opt.id)
+                          : [...value.tags, opt.id],
+                      )
+                    }
+                  />
+                )
+              })}
+            </div>
+          )}
         </FilterSection>
 
         {typeOptions.length > 0 && (
