@@ -49,7 +49,7 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
   // Kanban brings its own ModulePanelProvider so it can wire pin
   // state and URL routing through the shared panel; other modules use
   // the default provider here.
-  const containerClass = `container mx-auto px-4 pt-6 ${activeModule === "kanban" ? "max-w-5xl" : "max-w-3xl"}`
+  const containerClass = `container mx-auto px-4 pt-6 ${activeModule === "kanban" || activeModule === "calendar" ? "max-w-5xl" : "max-w-3xl"}`
 
   if (activeModule === "kanban") {
     return (

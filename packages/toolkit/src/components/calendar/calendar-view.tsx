@@ -399,23 +399,84 @@ export function CalendarView({
     if (nextMode === "day") setSelectedDate(visibleDate)
   }
 
-  // Horizontal swipe on the calendar body steps the period (prev/next per the
-  // active view mode). A threshold + horizontal-dominance check keeps vertical
-  // scrolling (week/day/list) and day taps from triggering navigation.
+  // Swipe-to-navigate with a slide animation. The track follows the finger
+  // horizontally; on release past the threshold the current period slides out
+  // and the new one slides in from the opposite side (two phases driven by
+  // onTransitionEnd). Below the threshold it snaps back. `touch-action: pan-y`
+  // on the track lets vertical scrolling (week/day/list) through while we own
+  // horizontal gestures; small moves stay below the threshold so taps work.
+  const swipeTrackRef = useRef<HTMLDivElement>(null)
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const swipeAxisRef = useRef<"h" | "v" | null>(null)
+  const swipePhaseRef = useRef<"idle" | "out" | "in" | "snap">("idle")
+  const swipeDirRef = useRef<-1 | 1>(1)
+  const swipeDxRef = useRef(0)
+  const [swipeDx, setSwipeDx] = useState(0)
+  const [swipeAnimating, setSwipeAnimating] = useState(false)
+
+  const setSwipeOffset = (x: number) => {
+    swipeDxRef.current = x
+    setSwipeDx(x)
+  }
+  const trackWidth = () => swipeTrackRef.current?.offsetWidth || 1
+
   const handleSwipeStart = (e: TouchEvent) => {
+    if (swipePhaseRef.current !== "idle") return
     const t = e.touches[0]
     swipeStartRef.current = { x: t.clientX, y: t.clientY }
+    swipeAxisRef.current = null
+    setSwipeAnimating(false)
   }
-  const handleSwipeEnd = (e: TouchEvent) => {
+  const handleSwipeMove = (e: TouchEvent) => {
     const start = swipeStartRef.current
-    swipeStartRef.current = null
-    if (!start) return
-    const t = e.changedTouches[0]
+    if (!start || swipePhaseRef.current !== "idle") return
+    const t = e.touches[0]
     const dx = t.clientX - start.x
     const dy = t.clientY - start.y
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      movePeriod(dx < 0 ? 1 : -1)
+    if (swipeAxisRef.current === null) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      swipeAxisRef.current = Math.abs(dx) > Math.abs(dy) ? "h" : "v"
+    }
+    if (swipeAxisRef.current === "h") setSwipeOffset(dx)
+  }
+  const handleSwipeEnd = () => {
+    const start = swipeStartRef.current
+    swipeStartRef.current = null
+    const horizontal = swipeAxisRef.current === "h"
+    swipeAxisRef.current = null
+    if (!start || !horizontal || swipePhaseRef.current !== "idle") return
+    const dx = swipeDxRef.current
+    const width = trackWidth()
+    if (Math.abs(dx) > Math.max(60, width * 0.25)) {
+      const dir: -1 | 1 = dx < 0 ? 1 : -1 // swipe left → next, right → prev
+      swipeDirRef.current = dir
+      swipePhaseRef.current = "out"
+      setSwipeAnimating(true)
+      setSwipeOffset(dir === 1 ? -width : width) // slide current period out
+    } else {
+      swipePhaseRef.current = "snap"
+      setSwipeAnimating(true)
+      setSwipeOffset(0)
+    }
+  }
+  const handleSwipeTransitionEnd = () => {
+    if (swipePhaseRef.current === "out") {
+      const dir = swipeDirRef.current
+      movePeriod(dir)
+      const width = trackWidth()
+      swipePhaseRef.current = "in"
+      setSwipeAnimating(false)
+      setSwipeOffset(dir === 1 ? width : -width) // place new period off the far side
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          setSwipeAnimating(true)
+          setSwipeOffset(0) // slide the new period in
+        }),
+      )
+    } else if (swipePhaseRef.current === "in" || swipePhaseRef.current === "snap") {
+      swipePhaseRef.current = "idle"
+      setSwipeAnimating(false)
+      setSwipeOffset(0)
     }
   }
 
@@ -564,7 +625,19 @@ export function CalendarView({
       </div>
 
       {/* Swipe left/right anywhere on the calendar body to step the period. */}
-      <div onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
+      <div className={cn((swipeDx !== 0 || swipeAnimating) && "overflow-hidden")}>
+        <div
+          ref={swipeTrackRef}
+          onTouchStart={handleSwipeStart}
+          onTouchMove={handleSwipeMove}
+          onTouchEnd={handleSwipeEnd}
+          onTransitionEnd={handleSwipeTransitionEnd}
+          style={{
+            transform: `translateX(${swipeDx}px)`,
+            transition: swipeAnimating ? "transform 250ms ease-out" : "none",
+            touchAction: "pan-y",
+          }}
+        >
       {viewMode === "month" && (
         <MonthCalendar
           visibleDate={visibleDate}
@@ -613,6 +686,7 @@ export function CalendarView({
           onEventClick={onEventClick}
         />
       )}
+        </div>
       </div>
       </div>
     </div>
