@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState, type TouchEvent } from "react"
+import { useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
 import {
   Briefcase,
   Calendar as CalendarIcon,
@@ -376,11 +376,6 @@ export function CalendarView({
     [filteredEvents],
   )
 
-  const visibleEvents = useMemo(
-    () => getPeriodEvents(filteredEvents, visibleDate, viewMode).sort(compareEvents),
-    [filteredEvents, visibleDate, viewMode],
-  )
-
   function movePeriod(direction: -1 | 1) {
     setVisibleDate((date) => {
       if (viewMode === "day") return addDays(date, direction)
@@ -399,17 +394,22 @@ export function CalendarView({
     if (nextMode === "day") setSelectedDate(visibleDate)
   }
 
-  // Swipe-to-navigate with a slide animation. The track follows the finger
-  // horizontally; on release past the threshold the current period slides out
-  // and the new one slides in from the opposite side (two phases driven by
-  // onTransitionEnd). Below the threshold it snaps back. `touch-action: pan-y`
-  // on the track lets vertical scrolling (week/day/list) through while we own
-  // horizontal gestures; small moves stay below the threshold so taps work.
+  // Swipe-to-navigate as a carousel: the previous and next period are
+  // rendered alongside the current one in a flex track, so the neighbour is
+  // already attached while the finger drags — no empty gap between periods.
+  // The track rests at translateX(-100%) (one panel = the viewport width) to
+  // centre the middle panel; the finger adds a pixel offset. On release past
+  // the threshold the chosen neighbour animates fully into view, then we
+  // commit the period change and recentre with no animation — the swapped
+  // content re-renders into the middle panel at the same on-screen spot, so
+  // the snap is invisible. `touch-action: pan-y` lets vertical scrolling
+  // (week/day/list) through while we own horizontal gestures; small moves
+  // stay below the threshold so taps work.
   const swipeTrackRef = useRef<HTMLDivElement>(null)
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const swipeAxisRef = useRef<"h" | "v" | null>(null)
-  const swipePhaseRef = useRef<"idle" | "out" | "in" | "snap">("idle")
   const swipeDirRef = useRef<-1 | 1>(1)
+  const swipeBusyRef = useRef(false)
   const swipeDxRef = useRef(0)
   const [swipeDx, setSwipeDx] = useState(0)
   const [swipeAnimating, setSwipeAnimating] = useState(false)
@@ -418,10 +418,10 @@ export function CalendarView({
     swipeDxRef.current = x
     setSwipeDx(x)
   }
-  const trackWidth = () => swipeTrackRef.current?.offsetWidth || 1
+  const panelWidth = () => swipeTrackRef.current?.offsetWidth || 1
 
   const handleSwipeStart = (e: TouchEvent) => {
-    if (swipePhaseRef.current !== "idle") return
+    if (swipeBusyRef.current) return
     const t = e.touches[0]
     swipeStartRef.current = { x: t.clientX, y: t.clientY }
     swipeAxisRef.current = null
@@ -429,7 +429,7 @@ export function CalendarView({
   }
   const handleSwipeMove = (e: TouchEvent) => {
     const start = swipeStartRef.current
-    if (!start || swipePhaseRef.current !== "idle") return
+    if (!start || swipeBusyRef.current) return
     const t = e.touches[0]
     const dx = t.clientX - start.x
     const dy = t.clientY - start.y
@@ -444,43 +444,97 @@ export function CalendarView({
     swipeStartRef.current = null
     const horizontal = swipeAxisRef.current === "h"
     swipeAxisRef.current = null
-    if (!start || !horizontal || swipePhaseRef.current !== "idle") return
+    if (!start || !horizontal || swipeBusyRef.current) return
     const dx = swipeDxRef.current
-    const width = trackWidth()
+    const width = panelWidth()
     if (Math.abs(dx) > Math.max(60, width * 0.25)) {
       const dir: -1 | 1 = dx < 0 ? 1 : -1 // swipe left → next, right → prev
       swipeDirRef.current = dir
-      swipePhaseRef.current = "out"
+      swipeBusyRef.current = true
       setSwipeAnimating(true)
-      setSwipeOffset(dir === 1 ? -width : width) // slide current period out
+      setSwipeOffset(dir === 1 ? -width : width) // bring the chosen neighbour fully in
     } else if (dx !== 0) {
-      // Below threshold: snap back. (If dx is already 0 there's nothing to
-      // animate — staying idle avoids a transitionend that never fires and
-      // would otherwise wedge the phase machine.)
-      swipePhaseRef.current = "snap"
+      // Below threshold → snap back to the current period. (dx === 0 is a tap;
+      // nothing to animate, so we leave the track where it rests.)
       setSwipeAnimating(true)
       setSwipeOffset(0)
     }
   }
-  const handleSwipeTransitionEnd = () => {
-    if (swipePhaseRef.current === "out") {
-      const dir = swipeDirRef.current
-      movePeriod(dir)
-      const width = trackWidth()
-      swipePhaseRef.current = "in"
-      setSwipeAnimating(false)
-      setSwipeOffset(dir === 1 ? width : -width) // place new period off the far side
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          setSwipeAnimating(true)
-          setSwipeOffset(0) // slide the new period in
-        }),
-      )
-    } else if (swipePhaseRef.current === "in" || swipePhaseRef.current === "snap") {
-      swipePhaseRef.current = "idle"
-      setSwipeAnimating(false)
-      setSwipeOffset(0)
+  const handleSwipeTransitionEnd = (e: TransitionEvent<HTMLDivElement>) => {
+    // Only the track's own transform transition counts — ignore transitionend
+    // events bubbling up from child hover/colour transitions.
+    if (e.target !== e.currentTarget) return
+    if (!swipeBusyRef.current) {
+      setSwipeAnimating(false) // a snap-back finished
+      return
     }
+    // Neighbour fully in view: commit the period change and recentre without
+    // animation. The new current period re-renders into the middle panel at
+    // the same on-screen position, so there is no visible jump.
+    movePeriod(swipeDirRef.current)
+    setSwipeAnimating(false)
+    setSwipeOffset(0)
+    swipeBusyRef.current = false
+  }
+
+  const periodDate = (date: Date, steps: number) => {
+    if (viewMode === "day") return addDays(date, steps)
+    if (viewMode === "week") return addDays(date, steps * 7)
+    return addMonths(date, steps)
+  }
+
+  const renderPeriod = (date: Date) => {
+    if (viewMode === "month") {
+      return (
+        <MonthCalendar
+          visibleDate={date}
+          selectedDate={selectedDate}
+          today={today}
+          eventsByDay={eventsByDay}
+          onSelectDate={(d) => {
+            setSelectedDate(d)
+            setVisibleDate(d)
+          }}
+          onOpenDay={(d) => {
+            setSelectedDate(d)
+            setVisibleDate(d)
+            setViewMode("day")
+          }}
+          onEventClick={onEventClick}
+        />
+      )
+    }
+    if (viewMode === "week") {
+      return (
+        <WeekCalendar
+          visibleDate={date}
+          eventsByDay={eventsByDay}
+          onSelectDate={(d) => {
+            setSelectedDate(d)
+            setVisibleDate(d)
+            setViewMode("day")
+          }}
+          onEventClick={onEventClick}
+          onCreateEvent={onCreateEvent}
+        />
+      )
+    }
+    if (viewMode === "day") {
+      return (
+        <DayCalendar
+          visibleDate={date}
+          eventsByDay={eventsByDay}
+          onEventClick={onEventClick}
+          onCreateEvent={onCreateEvent}
+        />
+      )
+    }
+    return (
+      <EventList
+        events={getPeriodEvents(filteredEvents, date, viewMode).sort(compareEvents)}
+        onEventClick={onEventClick}
+      />
+    )
   }
 
   return (
@@ -627,68 +681,27 @@ export function CalendarView({
         </div>
       </div>
 
-      {/* Swipe left/right anywhere on the calendar body to step the period. */}
-      <div className={cn((swipeDx !== 0 || swipeAnimating) && "overflow-hidden")}>
+      {/* Swipe left/right to step the period. Previous, current and next are
+          rendered side by side in the track so the neighbour is already
+          attached while dragging — no empty gap (see the carousel handlers
+          above). */}
+      <div className="overflow-hidden">
         <div
           ref={swipeTrackRef}
           onTouchStart={handleSwipeStart}
           onTouchMove={handleSwipeMove}
           onTouchEnd={handleSwipeEnd}
           onTransitionEnd={handleSwipeTransitionEnd}
+          className="flex items-start"
           style={{
-            transform: `translateX(${swipeDx}px)`,
+            transform: `translateX(calc(-100% + ${swipeDx}px))`,
             transition: swipeAnimating ? "transform 250ms ease-out" : "none",
             touchAction: "pan-y",
           }}
         >
-      {viewMode === "month" && (
-        <MonthCalendar
-          visibleDate={visibleDate}
-          selectedDate={selectedDate}
-          today={today}
-          eventsByDay={eventsByDay}
-          onSelectDate={(date) => {
-            setSelectedDate(date)
-            setVisibleDate(date)
-          }}
-          onOpenDay={(date) => {
-            setSelectedDate(date)
-            setVisibleDate(date)
-            setViewMode("day")
-          }}
-          onEventClick={onEventClick}
-        />
-      )}
-
-      {viewMode === "week" && (
-        <WeekCalendar
-          visibleDate={visibleDate}
-          eventsByDay={eventsByDay}
-          onSelectDate={(date) => {
-            setSelectedDate(date)
-            setVisibleDate(date)
-            setViewMode("day")
-          }}
-          onEventClick={onEventClick}
-          onCreateEvent={onCreateEvent}
-        />
-      )}
-
-      {viewMode === "day" && (
-        <DayCalendar
-          visibleDate={visibleDate}
-          eventsByDay={eventsByDay}
-          onEventClick={onEventClick}
-          onCreateEvent={onCreateEvent}
-        />
-      )}
-
-      {viewMode === "list" && (
-        <EventList
-          events={visibleEvents}
-          onEventClick={onEventClick}
-        />
-      )}
+          <div className="w-full shrink-0">{renderPeriod(periodDate(visibleDate, -1))}</div>
+          <div className="w-full shrink-0">{renderPeriod(visibleDate)}</div>
+          <div className="w-full shrink-0">{renderPeriod(periodDate(visibleDate, 1))}</div>
         </div>
       </div>
       </div>
