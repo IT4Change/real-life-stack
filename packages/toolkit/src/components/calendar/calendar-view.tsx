@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
 import {
   Briefcase,
   Calendar as CalendarIcon,
@@ -61,6 +61,9 @@ const MONTH_NAMES = [
 const DAY_NAMES = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"]
 const LONG_DAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"]
 const TIME_SLOTS = Array.from({ length: 18 }, (_, index) => index + 6)
+
+/** Min horizontal travel (px) to commit a period swipe — PR spec contract. */
+const SWIPE_COMMIT_PX = 60
 
 export type CalendarViewMode = "month" | "week" | "day" | "list"
 type LocationFilter = "all" | "with" | "without"
@@ -376,11 +379,6 @@ export function CalendarView({
     [filteredEvents],
   )
 
-  const visibleEvents = useMemo(
-    () => getPeriodEvents(filteredEvents, visibleDate, viewMode).sort(compareEvents),
-    [filteredEvents, visibleDate, viewMode],
-  )
-
   function movePeriod(direction: -1 | 1) {
     setVisibleDate((date) => {
       if (viewMode === "day") return addDays(date, direction)
@@ -397,6 +395,177 @@ export function CalendarView({
   function selectViewMode(nextMode: CalendarViewMode) {
     setViewMode(nextMode)
     if (nextMode === "day") setSelectedDate(visibleDate)
+  }
+
+  // Swipe-to-navigate as a carousel: the previous and next period are
+  // rendered alongside the current one in a flex track, so the neighbour is
+  // already attached while the finger drags — no empty gap between periods.
+  // The track rests at translateX(-100%) (one panel = the viewport width) to
+  // centre the middle panel; the finger adds a pixel offset. On release past
+  // the threshold the chosen neighbour animates fully into view, then we
+  // commit the period change and recentre with no animation — the swapped
+  // content re-renders into the middle panel at the same on-screen spot, so
+  // the snap is invisible. `touch-action: pan-y` lets vertical scrolling
+  // (week/day/list) through while we own horizontal gestures; small moves
+  // stay below the threshold so taps work.
+  const swipeTrackRef = useRef<HTMLDivElement>(null)
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const swipeAxisRef = useRef<"h" | "v" | null>(null)
+  const swipeDirRef = useRef<-1 | 1>(1)
+  const swipeBusyRef = useRef(false)
+  const swipeDxRef = useRef(0)
+  const [swipeDx, setSwipeDx] = useState(0)
+  const [swipeAnimating, setSwipeAnimating] = useState(false)
+
+  const setSwipeOffset = (x: number) => {
+    swipeDxRef.current = x
+    setSwipeDx(x)
+  }
+  const panelWidth = () => swipeTrackRef.current?.offsetWidth || 1
+  const snapBackToCenter = () => {
+    if (swipeDxRef.current !== 0) {
+      setSwipeAnimating(true)
+      setSwipeOffset(0)
+    }
+  }
+
+  const handleSwipeStart = (e: TouchEvent) => {
+    // A single finger owns a swipe — ignore multi-touch (pinch/zoom), which
+    // would otherwise record a start point and paginate on release.
+    if (swipeBusyRef.current || e.touches.length !== 1) {
+      swipeStartRef.current = null
+      return
+    }
+    const t = e.touches[0]
+    swipeStartRef.current = { x: t.clientX, y: t.clientY }
+    swipeAxisRef.current = null
+    setSwipeAnimating(false)
+  }
+  const handleSwipeMove = (e: TouchEvent) => {
+    const start = swipeStartRef.current
+    if (!start || swipeBusyRef.current) return
+    if (e.touches.length !== 1) {
+      // A second finger landed mid-drag — abandon the swipe and snap back
+      // without navigating.
+      swipeStartRef.current = null
+      swipeAxisRef.current = null
+      snapBackToCenter()
+      return
+    }
+    const t = e.touches[0]
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+    if (swipeAxisRef.current === null) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      // Require clear horizontal dominance before we own the gesture, so
+      // diagonal/vertical scrolls stay with the page (PR spec: |dx| > |dy|*1.5).
+      swipeAxisRef.current = Math.abs(dx) > Math.abs(dy) * 1.5 ? "h" : "v"
+    }
+    if (swipeAxisRef.current === "h") setSwipeOffset(dx)
+  }
+  const handleSwipeEnd = () => {
+    const start = swipeStartRef.current
+    swipeStartRef.current = null
+    const horizontal = swipeAxisRef.current === "h"
+    swipeAxisRef.current = null
+    if (!start || !horizontal || swipeBusyRef.current) return
+    const dx = swipeDxRef.current
+    const width = panelWidth()
+    if (Math.abs(dx) > SWIPE_COMMIT_PX) {
+      const dir: -1 | 1 = dx < 0 ? 1 : -1 // swipe left → next, right → prev
+      swipeDirRef.current = dir
+      swipeBusyRef.current = true
+      setSwipeAnimating(true)
+      setSwipeOffset(dir === 1 ? -width : width) // bring the chosen neighbour fully in
+    } else if (dx !== 0) {
+      // Below threshold → snap back to the current period. (dx === 0 is a tap;
+      // nothing to animate, so we leave the track where it rests.)
+      snapBackToCenter()
+    }
+  }
+  const handleSwipeCancel = () => {
+    // touchcancel (OS/browser interrupts the sequence): abandon the gesture and
+    // snap back — never commit navigation off a cancelled touch.
+    if (swipeBusyRef.current) return // a commit animation already owns the track
+    swipeStartRef.current = null
+    swipeAxisRef.current = null
+    snapBackToCenter()
+  }
+  const handleSwipeTransitionEnd = (e: TransitionEvent<HTMLDivElement>) => {
+    // Only the track's own transform transition counts — ignore transitionend
+    // events bubbling up from child hover/colour transitions.
+    if (e.target !== e.currentTarget) return
+    if (!swipeBusyRef.current) {
+      setSwipeAnimating(false) // a snap-back finished
+      return
+    }
+    // Neighbour fully in view: commit the period change and recentre without
+    // animation. The new current period re-renders into the middle panel at
+    // the same on-screen position, so there is no visible jump.
+    movePeriod(swipeDirRef.current)
+    setSwipeAnimating(false)
+    setSwipeOffset(0)
+    swipeBusyRef.current = false
+  }
+
+  const periodDate = (date: Date, steps: number) => {
+    if (viewMode === "day") return addDays(date, steps)
+    if (viewMode === "week") return addDays(date, steps * 7)
+    return addMonths(date, steps)
+  }
+
+  const renderPeriod = (date: Date) => {
+    if (viewMode === "month") {
+      return (
+        <MonthCalendar
+          visibleDate={date}
+          selectedDate={selectedDate}
+          today={today}
+          eventsByDay={eventsByDay}
+          onSelectDate={(d) => {
+            setSelectedDate(d)
+            setVisibleDate(d)
+          }}
+          onOpenDay={(d) => {
+            setSelectedDate(d)
+            setVisibleDate(d)
+            setViewMode("day")
+          }}
+          onEventClick={onEventClick}
+        />
+      )
+    }
+    if (viewMode === "week") {
+      return (
+        <WeekCalendar
+          visibleDate={date}
+          eventsByDay={eventsByDay}
+          onSelectDate={(d) => {
+            setSelectedDate(d)
+            setVisibleDate(d)
+            setViewMode("day")
+          }}
+          onEventClick={onEventClick}
+          onCreateEvent={onCreateEvent}
+        />
+      )
+    }
+    if (viewMode === "day") {
+      return (
+        <DayCalendar
+          visibleDate={date}
+          eventsByDay={eventsByDay}
+          onEventClick={onEventClick}
+          onCreateEvent={onCreateEvent}
+        />
+      )
+    }
+    return (
+      <EventList
+        events={getPeriodEvents(filteredEvents, date, viewMode).sort(compareEvents)}
+        onEventClick={onEventClick}
+      />
+    )
   }
 
   return (
@@ -481,8 +650,8 @@ export function CalendarView({
         }
       />
 
-      <div className="w-full overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm">
-      <div className="flex flex-col gap-3 border-b bg-muted/40 p-4 md:flex-row md:items-center md:justify-between">
+      <div className="-mx-4 sm:mx-0 sm:overflow-hidden sm:rounded-lg sm:border">
+      <div className="flex flex-col gap-3 border-b p-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
@@ -543,54 +712,44 @@ export function CalendarView({
         </div>
       </div>
 
-
-      {viewMode === "month" && (
-        <MonthCalendar
-          visibleDate={visibleDate}
-          selectedDate={selectedDate}
-          today={today}
-          eventsByDay={eventsByDay}
-          onSelectDate={(date) => {
-            setSelectedDate(date)
-            setVisibleDate(date)
-          }}
-          onOpenDay={(date) => {
-            setSelectedDate(date)
-            setVisibleDate(date)
-            setViewMode("day")
-          }}
-          onEventClick={onEventClick}
-        />
-      )}
-
-      {viewMode === "week" && (
-        <WeekCalendar
-          visibleDate={visibleDate}
-          eventsByDay={eventsByDay}
-          onSelectDate={(date) => {
-            setSelectedDate(date)
-            setVisibleDate(date)
-            setViewMode("day")
-          }}
-          onEventClick={onEventClick}
-          onCreateEvent={onCreateEvent}
-        />
-      )}
-
-      {viewMode === "day" && (
-        <DayCalendar
-          visibleDate={visibleDate}
-          eventsByDay={eventsByDay}
-          onEventClick={onEventClick}
-          onCreateEvent={onCreateEvent}
-        />
-      )}
-
-      {viewMode === "list" && (
-        <EventList
-          events={visibleEvents}
-          onEventClick={onEventClick}
-        />
+      {/* The week view scrolls its own grid horizontally (overflow-x-auto,
+          min-w-[760px]) to reach off-screen days, so it stays OUT of the swipe
+          carousel — a horizontal swipe there would fight that inner scroll
+          (touch-action: pan-y on the track would otherwise disable it and the
+          off-screen days become unreachable). Week steps via the ‹ › arrows;
+          the overscroll-to-paginate variant for week is a follow-up. Month/day/
+          list have no horizontal overflow and use the carousel. */}
+      {viewMode === "week" ? (
+        renderPeriod(visibleDate)
+      ) : (
+        // Swipe left/right to step the period. Previous, current and next are
+        // rendered side by side in the track so the neighbour is already
+        // attached while dragging — no empty gap (see the carousel handlers above).
+        <div className="overflow-hidden">
+          <div
+            ref={swipeTrackRef}
+            onTouchStart={handleSwipeStart}
+            onTouchMove={handleSwipeMove}
+            onTouchEnd={handleSwipeEnd}
+            onTouchCancel={handleSwipeCancel}
+            onTransitionEnd={handleSwipeTransitionEnd}
+            className="flex items-start"
+            style={{
+              transform: `translateX(calc(-100% + ${swipeDx}px))`,
+              transition: swipeAnimating ? "transform 250ms ease-out" : "none",
+              touchAction: "pan-y",
+            }}
+          >
+            {/* Only the centred panel is interactive. The off-screen
+                neighbours render full calendars (buttons, cards), so mark them
+                inert + aria-hidden to keep them out of the focus and a11y tree;
+                after a swap they re-render by position, so the middle one is
+                always the live period. */}
+            <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, -1))}</div>
+            <div className="w-full shrink-0">{renderPeriod(visibleDate)}</div>
+            <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, 1))}</div>
+          </div>
+        </div>
       )}
       </div>
     </div>
