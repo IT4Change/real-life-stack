@@ -565,8 +565,8 @@ export function CalendarView({
         }
       />
 
-      <div className="-mx-4 sm:mx-0">
-      <div className="flex flex-col gap-3 border-b bg-muted/40 p-4 md:flex-row md:items-center md:justify-between">
+      <div className="-mx-4 sm:mx-0 sm:overflow-hidden sm:rounded-lg sm:border">
+      <div className="flex flex-col gap-3 border-b p-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
