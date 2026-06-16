@@ -1,5 +1,6 @@
+import { useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { Button, ModulePanelProvider, type Workspace } from "@real-life-stack/toolkit"
+import { Button, type Workspace } from "@real-life-stack/toolkit"
 import type { Group } from "@real-life-stack/data-interface"
 import { FeedView } from "./feed-view"
 import { MapView } from "./map-view"
@@ -27,6 +28,13 @@ export interface ModuleOutletProps {
 export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId, urlItemId }: ModuleOutletProps) {
   const navigate = useNavigate()
 
+  // The app-level panel persists across module switches, so a panel entry's
+  // onClose can fire after its owning module unmounted. Read the live route
+  // via a ref (not the stale render closure) so Kanban's close handler only
+  // syncs the URL while the user is actually still on the Kanban route.
+  const routeRef = useRef({ module: activeModule, spaceId: activeWorkspace?.id })
+  routeRef.current = { module: activeModule, spaceId: activeWorkspace?.id }
+
   if (urlSpaceId && !activeWorkspace) {
     return (
       <div className="container mx-auto px-4 pt-12 max-w-md text-center">
@@ -40,15 +48,12 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
   if (activeModule === "map") {
     // Map fills the entire Space — no container, no padding, no width cap
     return (
-      <ModulePanelProvider>
-        <MapView groupId={activeWorkspace?.id ?? ""} />
-      </ModulePanelProvider>
+      <MapView groupId={activeWorkspace?.id ?? ""} />
     )
   }
 
-  // Kanban brings its own ModulePanelProvider so it can wire pin
-  // state and URL routing through the shared panel; other modules use
-  // the default provider here.
+  // All modules render into the single app-level panel host (App.tsx);
+  // no per-view ModulePanelProvider here anymore.
   const containerClass = `container mx-auto px-4 pt-6 ${activeModule === "kanban" || activeModule === "calendar" ? "max-w-5xl" : "max-w-3xl"}`
 
   if (activeModule === "kanban") {
@@ -59,18 +64,25 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
           groups={groups}
           selectedItemId={urlItemId}
           onItemSelect={(id) => navigate(`/spaces/${activeWorkspace?.id}/${activeModule}/item/${id}`)}
-          onItemClose={() => navigate(`/spaces/${activeWorkspace?.id}/${activeModule}`)}
+          onItemClose={() => {
+            // Guard against the persisted shared panel firing this after the
+            // user already left Kanban (would otherwise yank the route back).
+            // Also require a real spaceId — on a no-access route activeWorkspace
+            // is null, and we must not navigate to /spaces/undefined/kanban.
+            const { module, spaceId } = routeRef.current
+            if (module === "kanban" && spaceId) {
+              navigate(`/spaces/${spaceId}/kanban`)
+            }
+          }}
         />
       </div>
     )
   }
 
   return (
-    <ModulePanelProvider>
-      <div className={containerClass}>
-        {activeModule === "feed" && <FeedView groupId={activeWorkspace?.id ?? ""} />}
-        {activeModule === "calendar" && <CalendarViewWrapper groupId={activeWorkspace?.id ?? ""} />}
-      </div>
-    </ModulePanelProvider>
+    <div className={containerClass}>
+      {activeModule === "feed" && <FeedView groupId={activeWorkspace?.id ?? ""} />}
+      {activeModule === "calendar" && <CalendarViewWrapper groupId={activeWorkspace?.id ?? ""} />}
+    </div>
   )
 }

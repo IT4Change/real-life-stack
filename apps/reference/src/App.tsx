@@ -22,6 +22,9 @@ import {
   GroupDialog,
   AdaptivePanel,
   OpenProfileProvider,
+  ModulePanelProvider,
+  useModulePanel,
+  DebugDashboard,
   ProfilePanelContent,
   type ProfileData,
   ContactsDialog,
@@ -62,17 +65,26 @@ const CONNECTOR_OPTIONS: ConnectorOption[] = [
   { id: "wot", name: "Web of Trust", description: "E2E-verschlüsselt, Multi-Device" },
 ]
 
-const DebugDashboard = lazy(() =>
-  import("@real-life-stack/toolkit").then((m) => ({ default: m.DebugDashboard }))
-)
-
-function RelayStatusBadgeWrapper({ onOpenDebug }: { onOpenDebug: () => void }) {
+function RelayStatusBadgeWrapper() {
   const { state, pendingCount } = useRelayStatus()
+  const panel = useModulePanel()
+  // Debug shares the one app-level panel (content-swap). Toggle: a badge
+  // click opens debug into the panel, or closes it if it's already showing.
+  const toggleDebug = () => {
+    if (panel.current?.kind === "debug") {
+      panel.close()
+    } else {
+      panel.open({
+        kind: "debug",
+        content: <DebugDashboard />,
+      })
+    }
+  }
   return (
     <RelayStatusBadge
       state={state}
       pendingCount={pendingCount}
-      onClick={onOpenDebug}
+      onClick={toggleDebug}
     />
   )
 }
@@ -290,7 +302,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
   const [isDark, setIsDark] = useState(false)
   const supportsMessaging = hasMessaging(connector)
-  const [debugOpen, setDebugOpen] = useState(false)
+  const [panelPinned, setPanelPinned] = useState(false)
 
   const toggleTheme = () => {
     setIsDark(!isDark)
@@ -299,6 +311,14 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
   return (
     <OpenProfileProvider openProfile={openProfile}>
+    <ModulePanelProvider
+      allowedModes={["modal", "sidebar", "drawer"]}
+      sidebarWidth="420px"
+      sidebarMinWidth="300px"
+      sidebarMaxWidth="70vw"
+      pinned={panelPinned}
+      onPinnedChange={setPanelPinned}
+    >
     <AppShell>
       <Navbar>
         <NavbarStart>
@@ -331,7 +351,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
           />
         </NavbarCenter>
         <NavbarEnd>
-          {supportsMessaging && <RelayStatusBadgeWrapper onOpenDebug={() => setDebugOpen(prev => !prev)} />}
+          {supportsMessaging && <RelayStatusBadgeWrapper />}
           <Button
             variant="ghost"
             size="icon"
@@ -357,10 +377,6 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
           />
         </NavbarEnd>
       </Navbar>
-
-      <Suspense fallback={null}>
-        <DebugDashboard open={debugOpen} onClose={() => setDebugOpen(false)} />
-      </Suspense>
 
       {/* Map is full-bleed: skip the bottom-nav padding so the map fills the
           area behind the translucent BottomNav instead of leaving a gap above
@@ -461,6 +477,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         </div>
       )}
     </AppShell>
+    </ModulePanelProvider>
     </OpenProfileProvider>
   )
 }

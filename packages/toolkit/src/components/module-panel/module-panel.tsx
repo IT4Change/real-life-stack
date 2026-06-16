@@ -17,7 +17,7 @@ import { AdaptivePanel, type PanelMode } from "../layout/adaptive-panel"
  * from `filter` to `detail` on item-click — and so existing-open checks
  * stay readable.
  */
-export type ModulePanelKind = "filter" | "detail" | "composer" | "settings" | "custom"
+export type ModulePanelKind = "filter" | "detail" | "composer" | "settings" | "debug" | "custom"
 
 export interface ModulePanelEntry {
   kind: ModulePanelKind

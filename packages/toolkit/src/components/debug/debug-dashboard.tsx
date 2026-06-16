@@ -1,13 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../primitives/tabs"
-import { AdaptivePanel } from "../layout/adaptive-panel"
 import { TraceTimeline, type TraceEntry } from "./trace-timeline"
 import { StoreInspector, type DebugSnapshot } from "./store-inspector"
-
-interface DebugDashboardProps {
-  open: boolean
-  onClose: () => void
-}
 
 function getTraceEntries(): TraceEntry[] {
   if (typeof window === "undefined") return []
@@ -27,11 +21,12 @@ function getPerfSummary(): Record<string, { count: number; avgMs: number; p95Ms:
   return typeof fn === "function" ? fn() : {}
 }
 
-export function DebugDashboard({ open, onClose }: DebugDashboardProps) {
+// Content-only — rendered into the app-level shared module panel (App.tsx
+// opens it via modulePanel.open({ kind: "debug", ... })). No own AdaptivePanel.
+export function DebugDashboard() {
   const [traces, setTraces] = useState<TraceEntry[]>([])
   const [snapshot, setSnapshot] = useState<DebugSnapshot | null>(null)
   const [perfSummary, setPerfSummary] = useState<Record<string, { count: number; avgMs: number; p95Ms: number; maxMs: number }>>({})
-  const [pinned, setPinned] = useState(true)
 
   const refresh = useCallback(() => {
     setTraces(getTraceEntries())
@@ -40,29 +35,16 @@ export function DebugDashboard({ open, onClose }: DebugDashboardProps) {
   }, [])
 
   useEffect(() => {
-    if (!open) return
     refresh()
     const timer = setInterval(refresh, 2000)
     return () => clearInterval(timer)
-  }, [open, refresh])
+  }, [refresh])
 
   const errors = traces.filter((t) => !t.success)
   const relayTraces = traces.filter((t) => t.store === "relay")
 
   return (
-    <AdaptivePanel
-      open={open}
-      onClose={onClose}
-      allowedModes={["sidebar", "drawer"]}
-      side="right"
-      sidebarWidth="420px"
-      sidebarMinWidth="320px"
-      sidebarMaxWidth="70vw"
-      pinned={pinned}
-      onPinnedChange={setPinned}
-      drawerInitialHeight={0.6}
-    >
-      <div className="@container">
+    <div className="@container">
         {/* Stats bar — pr-24 reserves space for AdaptivePanel's absolute top-3 right-3 buttons */}
         <div className="flex items-center gap-3 px-3 pr-24 py-3 border-b border-border text-[10px] text-muted-foreground sticky top-0 bg-background">
           <span className="font-semibold text-xs text-foreground">Debug</span>
@@ -116,7 +98,6 @@ export function DebugDashboard({ open, onClose }: DebugDashboardProps) {
           </TabsContent>
         </Tabs>
       </div>
-    </AdaptivePanel>
   )
 }
 

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, type DragEvent } from "react"
+import { useState, useMemo, useCallback, useEffect, useRef, type DragEvent } from "react"
 import {
   Layers,
   LayoutList,
@@ -13,7 +13,6 @@ import {
   type ContentComposerSubmitData,
   type ContentTypeConfig,
   defaultColumns,
-  ModulePanelProvider,
   useModulePanel,
   ModuleSettingsPlaceholder,
   Button,
@@ -104,20 +103,9 @@ interface KanbanViewProps {
 }
 
 export function KanbanView(props: KanbanViewProps) {
-  // Pinning state lives at the provider level so the AdaptivePanel
-  // surfaces the pin button. Modal mode allowed for very wide displays.
-  const [panelPinned, setPanelPinned] = useState(false)
-  return (
-    <ModulePanelProvider
-      allowedModes={["modal", "sidebar", "drawer"]}
-      sidebarWidth="420px"
-      sidebarMinWidth="300px"
-      pinned={panelPinned}
-      onPinnedChange={setPanelPinned}
-    >
-      <KanbanViewInner {...props} />
-    </ModulePanelProvider>
-  )
+  // Renders into the app-level shared panel (one host for all modules);
+  // pin + mode config now lives on that provider (App.tsx).
+  return <KanbanViewInner {...props} />
 }
 
 function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSelect, onItemClose }: KanbanViewProps) {
@@ -238,8 +226,13 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
   // task-edit state changes, push the TaskEditPanel into the shared
   // panel; on close, clear it. The shared panel's X / drawer-drag /
   // backdrop-click flows through `onClose` back into `handleForceClose`.
+  // Tracks whether WE opened the shared panel, so we never close a detail
+  // another module left open when kanban (re)mounts — the panel now persists
+  // across module switches.
+  const panelOwnedRef = useRef(false)
   useEffect(() => {
     if (panelState.mode === "edit") {
+      panelOwnedRef.current = true
       modulePanel.open({
         kind: "detail",
         content: (
@@ -256,7 +249,8 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
         ),
         onClose: handleForceClosePanel,
       })
-    } else {
+    } else if (panelOwnedRef.current) {
+      panelOwnedRef.current = false
       modulePanel.close()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
