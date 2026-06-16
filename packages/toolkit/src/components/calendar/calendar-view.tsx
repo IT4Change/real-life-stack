@@ -681,29 +681,39 @@ export function CalendarView({
         </div>
       </div>
 
-      {/* Swipe left/right to step the period. Previous, current and next are
-          rendered side by side in the track so the neighbour is already
-          attached while dragging — no empty gap (see the carousel handlers
-          above). */}
-      <div className="overflow-hidden">
-        <div
-          ref={swipeTrackRef}
-          onTouchStart={handleSwipeStart}
-          onTouchMove={handleSwipeMove}
-          onTouchEnd={handleSwipeEnd}
-          onTransitionEnd={handleSwipeTransitionEnd}
-          className="flex items-start"
-          style={{
-            transform: `translateX(calc(-100% + ${swipeDx}px))`,
-            transition: swipeAnimating ? "transform 250ms ease-out" : "none",
-            touchAction: "pan-y",
-          }}
-        >
-          <div className="w-full shrink-0">{renderPeriod(periodDate(visibleDate, -1))}</div>
-          <div className="w-full shrink-0">{renderPeriod(visibleDate)}</div>
-          <div className="w-full shrink-0">{renderPeriod(periodDate(visibleDate, 1))}</div>
+      {/* The week view scrolls its own grid horizontally (overflow-x-auto,
+          min-w-[760px]) to reach off-screen days, so it stays OUT of the swipe
+          carousel — a horizontal swipe there would fight that inner scroll
+          (touch-action: pan-y on the track would otherwise disable it and the
+          off-screen days become unreachable). Week steps via the ‹ › arrows;
+          the overscroll-to-paginate variant for week is a follow-up. Month/day/
+          list have no horizontal overflow and use the carousel. */}
+      {viewMode === "week" ? (
+        renderPeriod(visibleDate)
+      ) : (
+        // Swipe left/right to step the period. Previous, current and next are
+        // rendered side by side in the track so the neighbour is already
+        // attached while dragging — no empty gap (see the carousel handlers above).
+        <div className="overflow-hidden">
+          <div
+            ref={swipeTrackRef}
+            onTouchStart={handleSwipeStart}
+            onTouchMove={handleSwipeMove}
+            onTouchEnd={handleSwipeEnd}
+            onTransitionEnd={handleSwipeTransitionEnd}
+            className="flex items-start"
+            style={{
+              transform: `translateX(calc(-100% + ${swipeDx}px))`,
+              transition: swipeAnimating ? "transform 250ms ease-out" : "none",
+              touchAction: "pan-y",
+            }}
+          >
+            <div className="w-full shrink-0">{renderPeriod(periodDate(visibleDate, -1))}</div>
+            <div className="w-full shrink-0">{renderPeriod(visibleDate)}</div>
+            <div className="w-full shrink-0">{renderPeriod(periodDate(visibleDate, 1))}</div>
+          </div>
         </div>
-      </div>
+      )}
       </div>
     </div>
   )
