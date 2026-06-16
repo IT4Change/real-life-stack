@@ -9,8 +9,6 @@ import {
   ItemTypeBadge,
   ItemTimeRange,
   ReactionBar,
-  Sheet,
-  SheetContent,
   useItems,
   useMembers,
   useCurrentUser,
@@ -99,6 +97,29 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     })
   }, [modulePanel, members, currentUser])
 
+  // Composer opens into the shared module panel (Ebene 1) — sidebar on
+  // desktop, drawer on mobile. (Previously a Radix Sheet that stayed a
+  // sidebar even on phones.) The Feed keeps its own fullscreen-morph shell.
+  const openComposer = useCallback(() => {
+    editor.openCreate()
+    modulePanel.open({
+      kind: "composer",
+      content: (
+        <ContentComposer
+          className="p-4 sm:p-6"
+          contentTypes={calendarContentTypes}
+          onSubmit={async (data) => {
+            const result = await editor.submit(data)
+            if (result) modulePanel.close()
+          }}
+          onCancel={() => modulePanel.close()}
+          showPreview={false}
+        />
+      ),
+      onClose: () => editor.close(),
+    })
+  }, [editor, modulePanel, calendarContentTypes])
+
   return (
     <>
       <ToolkitCalendarView
@@ -107,23 +128,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         onEventClick={openDetail}
       />
 
-      <CreateFab onClick={() => editor.openCreate()} label="Veranstaltung erstellen" />
-
-      <Sheet open={editor.isOpen} onOpenChange={(open) => { if (!open) editor.close() }}>
-        <SheetContent side="right" className="w-full sm:max-w-lg">
-          <ContentComposer
-            className="p-4 sm:p-6"
-            contentTypes={calendarContentTypes}
-            onSubmit={async (data) => {
-              const result = await editor.submit(data)
-              if (result) editor.close()
-            }}
-            onCancel={() => editor.close()}
-            showPreview={false}
-          />
-        </SheetContent>
-      </Sheet>
-
+      <CreateFab onClick={openComposer} label="Veranstaltung erstellen" />
     </>
   )
 }

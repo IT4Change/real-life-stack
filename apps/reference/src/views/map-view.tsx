@@ -19,8 +19,6 @@ import {
   type ItemEditorMapper,
   getTagAccentColor,
   Input,
-  Sheet,
-  SheetContent,
   type FilterBarValue,
   type FilterTypeOption,
   type MapMarkerSpec,
@@ -242,6 +240,29 @@ export function MapView({ groupId }: { groupId: string }) {
     return unsubscribe
   }, [adapter, itemsById, openDetail])
 
+  // Composer opens into the shared module panel (Ebene 1) — sidebar on
+  // desktop, drawer on mobile. (Previously a Radix Sheet that stayed a
+  // sidebar even on phones.) The Feed keeps its own fullscreen-morph shell.
+  const openComposer = useCallback(() => {
+    editor.openCreate()
+    modulePanel.open({
+      kind: "composer",
+      content: (
+        <ContentComposer
+          className="p-4 sm:p-6"
+          contentTypes={mapContentTypes}
+          onSubmit={async (data) => {
+            const result = await editor.submit(data)
+            if (result) modulePanel.close()
+          }}
+          onCancel={() => modulePanel.close()}
+          showPreview={false}
+        />
+      ),
+      onClose: () => editor.close(),
+    })
+  }, [editor, modulePanel, mapContentTypes])
+
   return (
     <div className="relative h-full w-full">
       {/* `isolate` creates a new stacking context so Leaflet's internal
@@ -259,8 +280,8 @@ export function MapView({ groupId }: { groupId: string }) {
           the FilterBar past them so the trigger doesn't hide the minus
           button. The `isolate` on the map container bounds Leaflet's
           internal z-indices, so a low overlay z keeps the FilterBar
-          above the map but still below Sheet/Dialog (z-50) when the
-          detail panel opens. */}
+          above the map but still below the detail/composer panel when it
+          opens. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 py-3 pr-3 pl-16 **:pointer-events-auto">
         <FilterBar
           value={filterBarValue}
@@ -282,23 +303,7 @@ export function MapView({ groupId }: { groupId: string }) {
         />
       </div>
 
-      <CreateFab onClick={() => editor.openCreate()} label="Ort erstellen" />
-
-      <Sheet open={editor.isOpen} onOpenChange={(open) => { if (!open) editor.close() }}>
-        <SheetContent side="right" className="w-full sm:max-w-lg">
-          <ContentComposer
-            className="p-4 sm:p-6"
-            contentTypes={mapContentTypes}
-            onSubmit={async (data) => {
-              const result = await editor.submit(data)
-              if (result) editor.close()
-            }}
-            onCancel={() => editor.close()}
-            showPreview={false}
-          />
-        </SheetContent>
-      </Sheet>
-
+      <CreateFab onClick={openComposer} label="Ort erstellen" />
     </div>
   )
 }
