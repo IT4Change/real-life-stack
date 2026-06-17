@@ -88,9 +88,37 @@ Wenn semantisch unterschiedliche Konzepte denselben Property-Namen tragen würde
 
 ### Die Rolle von `type`
 
-`type` benennt die **Art**, als die ein Item erstellt wurde (`post`, `event`, `task`) — die Intention beim Erstellen. Aus ihr wählt der Composer ein **Template** (Widget-Set beim Erstellen, Karten-Darstellung beim Anzeigen); sie bleibt am Item, damit Module und User sich darauf beziehen können. `type` ist genau eine pro Item; bei mehreren Werten zählt die erste. Pro `type` gehört **ein** Template (Erstellen-Widgets und Anzeige-Karte zusammen); heute als `ContentTypeConfig` je Modul-View definiert — ein kanonisches, modulübergreifend geteiltes Typ-Register ist eine offene Ausbaustufe.
+`type` benennt die **Art**, als die ein Item erstellt wurde (`post`, `event`, `task`) — die Intention beim Erstellen. Aus ihr wählt der Composer ein **Template** (Widget-Set beim Erstellen, Karten-Darstellung beim Anzeigen); sie bleibt am Item, damit Module und User sich darauf beziehen können. `type` ist genau eine pro Item; bei mehreren Werten zählt die erste. Pro `type` gehört **ein** Template (Erstellen-Widgets und Anzeige-Karte zusammen); heute als `ContentTypeConfig` je Modul-View definiert. Die kanonische Typ → Template-Zuordnung und die Regel „ein Template pro Typ" sind in „Kanonisches Typ-/Template-Register" verankert.
 
 `type` darf tragen: die Composer-Vorlage, die Karten-Wahl in aggregierenden Sichten (Feed, Suche) und **User-Filter** („zeig mir nur Veranstaltungen"). Es darf **nicht** die **Modul-Aktivierung** steuern: ob ein Item im Calendar erscheint, entscheidet `data.start`, nie `type` — sonst verschwände ein Task mit Fälligkeitsdatum zu Unrecht. Der Unterschied ist prinzipiell: Modul-Aktivierung ist eine System-Frage und immer feldbasiert; ein User-Filter ist eine Mensch-Frage und darf die Intention nutzen, die nur in `type` steht (ein Task mit Deadline und ein Event tragen beide `start` — „die Veranstaltungen" sind aus Feldern allein nicht herauszufiltern).
+
+## Kanonisches Typ-/Template-Register
+
+Jeder bekannte Item-`type` trägt genau **ein** Template. Ein Template ist das Paar aus Composer-Widget-Set (beim Erstellen) und Karten-Darstellung (beim Anzeigen). Das Register ordnet jedem Typ dieses eine Template zu und ist modulübergreifend geteilt.
+
+### Regeln
+
+1. **Genau ein Template pro Typ.** Pro `type` MUSS es genau ein Template geben. Mehrfach-Templates für denselben Typ sind verboten; Darstellungsvarianten (z.B. kompakte vs. ausführliche Karte, modul-spezifische Widget-Reihenfolge) laufen über **Felder und Widgets innerhalb dieses einen Templates**, nicht über ein zweites Template.
+2. **Scalar lowercase.** Typ-Identifier sind kleingeschriebene Scalars (`person`, `event`, `task`, `place`). Sie matchen den `@context`-Vokabularnamen, wo ein Vokabular existiert (`event` → `event/v1`, `place` → `place/v1`, `task` → `task/v1`, `person` → `person/v1`).
+3. **Default-Widgets über `deriveContext`.** Welche Default-Widgets/Felder ein Template im Composer aktiviert, leitet sich aus `deriveContext(type, data)` ab (Code: `packages/data-interface/src/vocab.ts`). `deriveContext` ist die Funktion, die aus `type` plus vorhandenen Feldern die aktive `@context`-Liste und damit das Feld-Set bestimmt. Ein Template SOLL keine Felder anbieten, die kein aktives Vokabular definiert.
+4. **`base/v1` immer aktiv.** Jedes Template aktiviert mindestens `base/v1` (`title`, `description`), unabhängig vom Typ.
+
+### Quelle der Wahrheit
+
+Die Menge der **bekannten Typen** ist `KnownItemType` (Code: `packages/data-interface/src/item-types.ts`): `task`, `event`, `post`, `place`, `feature`, `person`, `reaction`, `comment`. Connectoren DÜRFEN weitere Typen ergänzen; die Liste ist offen.
+
+Die **Typ → Template-Zuordnung** ist heute dezentral als `ContentTypeConfig` je Modul-View definiert (Code: `packages/toolkit/src/components/composer/content-composer.tsx`, verwendet in `apps/reference/src/views/*-view.tsx`). `ContentTypeConfig` trägt `id` (= der `type`), `defaultWidgets`, `label`, `submitLabel` und weitere Template-Felder. Diese verteilten Definitionen MÜSSEN für denselben `type` dasselbe Template ergeben; pro `id` darf es nur eine kanonische Definition geben, die Views referenzieren statt sie zu duplizieren. Ein zentral geteiltes Register (eine Map `type → ContentTypeConfig`), aus dem alle Views ihre `contentTypes` ziehen, ist die SOLL-Form; die heutige per-View-Duplikation ist eine Übergangsstufe.
+
+### Neuen Typ registrieren
+
+Ein neuer Item-Typ wird so aufgenommen:
+
+1. `type`-Identifier wählen (scalar lowercase) und zu `KnownItemType` hinzufügen.
+2. Falls der Typ ein eigenes Feld-Set braucht: Vokabular unter `https://real-life-stack.org/vocab/{type}/v1` anlegen (siehe „Vocabulary-Registry") und die Aktivierungsregel in `deriveContext` ergänzen.
+3. Genau ein Template (`ContentTypeConfig`) für den Typ definieren, mit `id` gleich dem `type` und `defaultWidgets` passend zu den Feldern der aktiven Vokabulare.
+4. Den Typ im kanonischen Register eintragen, damit alle Views dasselbe Template verwenden.
+
+Ein Typ ohne eigenes Vokabular (z.B. `post`) ist zulässig: er trägt nur `base/v1` und ein Template mit Basis-Widgets.
 
 ## Vocabulary-Registry
 
