@@ -95,6 +95,8 @@ Regeln:
 | Event löschen | `ItemWriter` | Item löschen, wenn die App diese Aktion erlaubt |
 | Teilnahme anzeigen | `RelationCapable` oder `ConfirmationCapable` | Teilnehmer oder bestätigte Teilnahme sichtbar machen |
 
+Der Zeitraum-Wechsel ist in Monat/Tag/Liste auch per horizontalem **Swipe** möglich; die Wochen-Ansicht scrollt horizontal durch die Tage, dort wechselt der Zeitraum über die Pfeile.
+
 Mutationen laufen über Hooks oder Capability-Interfaces. Das Calendar Module darf keine backend-spezifischen Schreibpfade kennen.
 
 ## Cross-Module-Verhalten
