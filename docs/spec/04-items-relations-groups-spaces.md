@@ -139,6 +139,33 @@ Regeln:
 4. Netzwerke, Labels oder White-Label-Kontexte sind nicht automatisch Groups; sie können mehrere Groups oder Spaces umfassen.
 5. Group-Metadaten liegen in `Group.data` und müssen additiv erweiterbar bleiben.
 
+## Space-Metadaten
+
+Space-Metadaten (Name, Image, Modules) liegen in der Y.Doc `_meta`-Map und werden über `updateSpace` bzw. `updateGroup` gesetzt. Code-Referenz: `packages/wot-connector/src/wot-connector.ts`.
+
+### Space-Primärfarbe
+
+Jeder Space hat eine `primaryColor` in der Space-Meta, neben `name`, `image` und `modules`.
+
+Regeln:
+
+1. `_meta.primaryColor` MUSS ein CSS-Farbwert sein (Hex, zum Beispiel `#2563eb`).
+2. Beim Logo-Upload MUSS der Client die dominanteste Farbe des Logos extrahieren und das Ergebnis in `_meta.primaryColor` cachen. Die Extraktion läuft client-seitig genau einmal beim Upload, nicht bei jedem Render und nicht auf jedem Gerät neu.
+3. Ohne Logo MUSS `primaryColor` deterministisch aus der Space-ID abgeleitet werden, analog zu `getTagColor` / `getTagAccentColor` in `packages/toolkit/src/lib/utils.ts`. Die Ableitung MUSS über Geräte und Sessions stabil sein und DARF NICHT echtes Random verwenden.
+4. Wird ein Logo entfernt, SOLL `primaryColor` wieder auf den deterministischen ID-Fallback zurückfallen.
+5. `primaryColor` ist Cache und Default, kein Pflicht-Eingabefeld. Fehlt der Wert, MÜSSEN Leseflächen den deterministischen ID-Fallback berechnen.
+
+### Verwendung der Primärfarbe
+
+Die Primärfarbe ist ein Akzent, keine vollflächige Themefarbe.
+
+Regeln:
+
+1. Navbar- und Workspace-Switcher-Akzent (`Navbar`, `WorkspaceSwitcher` in `packages/toolkit/src/components/layout/`) SOLLEN `primaryColor` als Akzent des aktiven Space nutzen.
+2. Map-Marker KÖNNEN `primaryColor` als Default-Markerfarbe verwenden, wenn kein item- oder tag-spezifischer Akzent greift (Tag-Akzent über `getTagAccentColor` hat Vorrang).
+3. UI-Flächen MÜSSEN ohne `primaryColor` robust bleiben und den deterministischen ID-Fallback verwenden.
+4. Kontraste (Text auf Akzentfläche) MÜSSEN lesbar bleiben; Flächen SOLLEN nicht annehmen, dass `primaryColor` hell oder dunkel ist.
+
 ## Profile
 
 Ein Profil kann als `type: "profile"`-Item erscheinen. Gleichzeitig gibt es `ProfileCapable` für eigenes Profil, öffentliche Profile und Sync.
