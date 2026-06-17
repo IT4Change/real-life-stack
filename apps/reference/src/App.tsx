@@ -259,9 +259,18 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   const { activeContacts, pendingContacts, contacts: allContacts, removeContact, updateContactName, supportsContacts } = useContacts()
   const verification = useVerification()
 
-  // Dialog state
-  const [contactsDialogOpen, setContactsDialogOpen] = useState(false)
-  const [verifyDialogOpen, setVerifyDialogOpen] = useState(false)
+  // Dialog-Ebene (Ebene 2) als Back-Stack: ein verschachtelter Flow
+  // (Kontakte → Verifizieren) legt auf den Stack; nur der oberste Dialog ist
+  // offen, sein Schließen poppt eine Ebene zurück. Verify aus Kontakten heraus
+  // geschlossen → zurück zu Kontakten; direkt geöffnet (Stack der Länge 1) →
+  // einfach zu. Spec: 01-app-composition → Overlay-Flächen, Regel 5.
+  type DialogLayerId = "contacts" | "verify"
+  const [dialogStack, setDialogStack] = useState<DialogLayerId[]>([])
+  const topDialog = dialogStack[dialogStack.length - 1] ?? null
+  const openDialog = (id: DialogLayerId) =>
+    setDialogStack((s) => [...s.filter((x) => x !== id), id])
+  const closeDialog = (id: DialogLayerId) =>
+    setDialogStack((s) => s.filter((x) => x !== id))
   // One id drives the shared profile panel; null = closed. The own
   // profile (id === currentUser.id) opens the editor, any other id a
   // read-only view.
@@ -367,9 +376,9 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
           <UserMenu
             user={userData}
             onProfile={() => { if (currentUser?.id) openProfile(currentUser.id) }}
-            onContacts={supportsContacts ? () => setContactsDialogOpen(true) : undefined}
+            onContacts={supportsContacts ? () => openDialog("contacts") : undefined}
             contactCount={activeContacts.length}
-            onVerify={() => setVerifyDialogOpen(true)}
+            onVerify={() => openDialog("verify")}
             onLogout={isAuthenticatable(connector) ? async () => {
               await connector.logout()
               window.location.reload()
@@ -441,18 +450,18 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
       {/* Contacts Dialog */}
       <ContactsDialog
-        open={contactsDialogOpen}
-        onOpenChange={setContactsDialogOpen}
+        open={topDialog === "contacts"}
+        onOpenChange={(open) => { if (!open) closeDialog("contacts") }}
         activeContacts={activeContacts}
         pendingContacts={pendingContacts}
         onRemove={removeContact}
         onEditName={updateContactName}
-        onVerify={() => { setContactsDialogOpen(false); setVerifyDialogOpen(true) }}
+        onVerify={() => openDialog("verify")}
       />
 
       <VerificationDialog
-        open={verifyDialogOpen}
-        onOpenChange={setVerifyDialogOpen}
+        open={topDialog === "verify"}
+        onOpenChange={(open) => { if (!open) closeDialog("verify") }}
         challenge={verification.challenge}
         peerInfo={verification.peerInfo}
         isProcessing={verification.isProcessing}
@@ -464,7 +473,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
       />
 
       {/* Incoming event dialogs */}
-      <IncomingEventDialogs onCloseVerifyDialog={() => setVerifyDialogOpen(false)} />
+      <IncomingEventDialogs onCloseVerifyDialog={() => closeDialog("verify")} />
 
       {/* Connector FAB — bottom-left, above BottomNav (only with ?dev URL param) */}
       {initialDevMode && (
