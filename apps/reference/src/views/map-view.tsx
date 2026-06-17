@@ -274,12 +274,11 @@ export function MapView({ groupId }: { groupId: string }) {
           pointer-events-none on the layer so the map keeps panning
           between elements; the FilterBar's own interactive children
           opt back in via pointer-events-auto. */}
-      {/* A low overlay z keeps the FilterBar above the map but still below
-          the detail/composer panel when it opens. The MapLibre adapter adds
-          no top-left control, so the bar starts flush at the left edge.
-          (Explicit zoom buttons are intentionally omitted — pinch / scroll
-          zoom — until placement is decided; see PR notes.) */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 py-3 pr-3 pl-3 **:pointer-events-auto">
+      {/* The MapLibre adapter places its zoom control top-left (like the
+          Leaflet adapter did); offset the FilterBar past it so the trigger
+          doesn't hide the minus button. A low overlay z keeps the FilterBar
+          above the map but still below the detail/composer panel when open. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 py-3 pr-3 pl-16 **:pointer-events-auto">
         <FilterBar
           value={filterBarValue}
           onChange={setFilterBarValue}

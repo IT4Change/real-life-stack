@@ -28,6 +28,8 @@ import type {
   Marker as MlMarker,
   MarkerOptions,
   MapMouseEvent,
+  NavigationControl as MlNavigationControl,
+  NavigationControlOptions,
 } from "maplibre-gl"
 import type {
   LngLat,
@@ -53,6 +55,7 @@ const DEFAULT_MARKER_COLOR = "#2563eb"
 type MapLibreModule = {
   Map: new (options: MapOptions) => MlMap
   Marker: new (options?: MarkerOptions) => MlMarker
+  NavigationControl: new (options?: NavigationControlOptions) => MlNavigationControl
 }
 
 // Cached lazy module reference. Populated on first mount(), reused thereafter.
@@ -84,6 +87,11 @@ function buildMarkerElement(color: string): HTMLElement {
   el.style.border = "2px solid #fff"
   el.style.boxShadow = "0 1px 3px rgba(0,0,0,0.35)"
   el.style.cursor = "pointer"
+  // Keyboard-accessible: the marker behaves as a button so non-pointer users
+  // can activate it (a marker click opens the item's detail panel). The
+  // accessible name is set from the label in setMarkers.
+  el.setAttribute("role", "button")
+  el.tabIndex = 0
   return el
 }
 
@@ -113,6 +121,9 @@ export class MapLibreMapAdapter implements MapAdapter {
       zoom: options.zoom,
       attributionControl: { customAttribution: options.attribution },
     })
+
+    // Zoom control top-left, matching the Leaflet adapter's default placement.
+    map.addControl(new maplibre.NavigationControl({ showCompass: false }), "top-left")
 
     // Settle once the map is usable. "load" fires after the style loads and the
     // first frame renders. A fatal style-load failure (404 / CORS / unreachable
@@ -200,9 +211,9 @@ export class MapLibreMapAdapter implements MapAdapter {
       if (existing) {
         existing.setLngLat(spec.position)
         const el = this.markerEls.get(spec.id)
-        // Reconcile label (native hover title) declaratively.
+        // Reconcile label (hover title + accessible name) declaratively.
         if (this.markerLabels.get(spec.id) !== spec.label) {
-          if (el) el.title = spec.label ?? ""
+          if (el) this.applyMarkerLabel(el, spec.label)
           this.markerLabels.set(spec.id, spec.label)
         }
         // Reconcile color in place (no marker recreation, no flicker).
@@ -212,12 +223,23 @@ export class MapLibreMapAdapter implements MapAdapter {
         }
       } else {
         const el = buildMarkerElement(color)
-        if (spec.label !== undefined) el.title = spec.label
+        this.applyMarkerLabel(el, spec.label)
+        const activate = () => {
+          this.markerClickListeners.forEach((cb) => cb(spec.id))
+        }
         el.addEventListener("click", (e) => {
           // Marker elements sit above the canvas, so the map "click" does not
           // fire for marker hits; stopPropagation guards against any bubbling.
           e.stopPropagation()
-          this.markerClickListeners.forEach((cb) => cb(spec.id))
+          activate()
+        })
+        el.addEventListener("keydown", (e) => {
+          // Enter / Space activate the marker, matching native button behavior
+          // (role="button" + tabindex on the element).
+          if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+            e.preventDefault()
+            activate()
+          }
         })
         const marker = new maplibre.Marker({ element: el, anchor: "center" })
         marker.setLngLat(spec.position).addTo(map)
@@ -274,6 +296,12 @@ export class MapLibreMapAdapter implements MapAdapter {
     return () => {
       this.markerClickListeners.delete(callback)
     }
+  }
+
+  /** Set the marker's hover title and accessible name from its label. */
+  private applyMarkerLabel(el: HTMLElement, label: string | undefined): void {
+    el.title = label ?? ""
+    el.setAttribute("aria-label", label ?? "Kartenmarker")
   }
 
   private lngLatTuple(center: { lng: number; lat: number }): LngLat {
