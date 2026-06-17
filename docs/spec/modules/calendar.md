@@ -101,7 +101,7 @@ Mutationen laufen über Hooks oder Capability-Interfaces. Das Calendar Module da
 
 ## Mobile Event-Rendering (Monat + Woche)
 
-Diese Regeln gelten für die mobile Darstellung (kein `md`-Breakpoint) von `MonthView` (`MonthCalendar`) und `WeekView` (`WeekCalendar`). Heute rendert die mobile Monatsansicht Events nur als farbige Punkte ohne Text und ohne eigenen Tap-Handler; die Regeln behandeln das als zu behebenden Zustand.
+Diese Regeln gelten für die mobile Darstellung (kein `md`-Breakpoint) von `MonthView` (`MonthCalendar`) und `WeekView` (`WeekCalendar`). Heute rendert die mobile Monatsansicht Events nur als farbige Punkte ohne Text und ohne eigenen Tap-Handler; zudem gibt es mobil keinen Overflow-Indikator (es werden bis zu vier Punkte via `slice(0, 4)` gezeigt, weitere Events fallen still weg). Die Regeln behandeln das als zu behebenden Zustand.
 
 1. In mobiler Monats- **und** Wochenansicht MÜSSEN Events einzeln per Tap anklickbar sein.
 2. Ein Tap auf ein Event MUSS dieselbe Detail-Route auslösen wie auf Desktop: `onEventClick(item)`, das in der Reference App das geteilte `ItemDetailPanel` im **Ebene-1-Content-Panel** öffnet (`useModulePanel().open({ kind: "detail" })`, siehe [01-app-composition.md](../01-app-composition.md)). Ein Event-Tap DARF KEINEN eigenen Dialog oder eine zweite gleichartige Fläche öffnen.
