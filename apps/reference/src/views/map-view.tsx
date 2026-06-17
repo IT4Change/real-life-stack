@@ -23,7 +23,7 @@ import {
   type FilterTypeOption,
   type MapMarkerSpec,
 } from "@real-life-stack/toolkit"
-import { LeafletMapAdapter } from "@real-life-stack/toolkit/leaflet"
+import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 import { Calendar, MapPin, Search } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
 
@@ -33,24 +33,24 @@ const MAP_TYPES: FilterTypeOption[] = [
 ]
 
 /**
- * Map module — first real version using the LeafletMapAdapter from toolkit.
+ * Map module — vector version using the MapLibreMapAdapter from toolkit.
  *
  * Shows every item in the current space that has `data.position` (GeoJSON
  * Point). This is the cross-module case: a workshop with `type=event` and a
  * `position` appears on both the calendar and the map.
  *
  * Marker click opens the same AdaptivePanel + ItemDetailPanel + ItemPreview
- * stack that Feed / Kanban / Calendar use. A Leaflet popup with the
- * ItemPreview inline (and detail-open as a secondary action) is the
- * obvious alternative — UX discussion is open, see
- * `docs/spec/modules/map.md` § Offene Punkte.
+ * stack that Feed / Kanban / Calendar use. A map popup with the ItemPreview
+ * inline (and detail-open as a secondary action) is the obvious alternative —
+ * UX discussion is open, see `docs/spec/modules/map.md` § Offene Punkte.
  */
 export function MapView({ groupId }: { groupId: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Adapter lives in state so the markers-effect re-runs once `mount()` has
-  // actually resolved. With lazy-loaded leaflet, `mount()` is genuinely async,
-  // and the StrictMode double-mount race is too tight for refs alone.
-  const [adapter, setAdapter] = useState<LeafletMapAdapter | null>(null)
+  // actually resolved. With the lazy-loaded map library, `mount()` is
+  // genuinely async, and the StrictMode double-mount race is too tight for
+  // refs alone.
+  const [adapter, setAdapter] = useState<MapLibreMapAdapter | null>(null)
   // Field-presence filter (spec 06): any item with data.position is
   // map-renderable, regardless of `type`. The Point/coordinates check
   // below is still defensive validation, not the activation criterion.
@@ -142,12 +142,12 @@ export function MapView({ groupId }: { groupId: string }) {
     return { markers: markerList, itemsById: byId }
   }, [filteredItems])
 
-  // Mount the adapter once. Lazy-loaded leaflet means mount() is properly
-  // async, which exposes a classic StrictMode race: both effect passes start
-  // their own mount() in parallel and would race for the same DOM container,
-  // ending in Leaflet's "Map container is already initialized" error.
+  // Mount the adapter once. The lazy-loaded map library means mount() is
+  // properly async, which exposes a classic StrictMode race: both effect
+  // passes start their own mount() in parallel and would race for the same
+  // DOM container.
   //
-  // Robust fix: each effect run gets its own fresh inner div as Leaflet's
+  // Robust fix: each effect run gets its own fresh inner div as the map's
   // container, appended to the stable outer ref. On cleanup we tear down the
   // adapter and remove the inner div, so the second pass gets a pristine
   // container that no previous mount can have claimed.
@@ -160,7 +160,7 @@ export function MapView({ groupId }: { groupId: string }) {
 
     let cancelled = false
     let mounted = false
-    const ad = new LeafletMapAdapter()
+    const ad = new MapLibreMapAdapter()
     ad.mount(inner, {
       center: [13.4, 52.5], // Berlin-ish default; replace with space config later
       zoom: 6,
@@ -175,7 +175,7 @@ export function MapView({ groupId }: { groupId: string }) {
       },
       (err) => {
         // eslint-disable-next-line no-console
-        console.error("LeafletMapAdapter mount failed", err)
+        console.error("MapLibreMapAdapter mount failed", err)
       },
     )
     return () => {
@@ -264,10 +264,9 @@ export function MapView({ groupId }: { groupId: string }) {
 
   return (
     <div className="relative h-full w-full">
-      {/* `isolate` creates a new stacking context so Leaflet's internal
-          z-indices (zoom controls up to 1000, popup panes 700, marker
-          panes 600) stay contained and don't overlay the navbar /
-          workspace switcher / user menu above. */}
+      {/* `isolate` creates a new stacking context so the map library's
+          internal control / popup z-indices stay contained and don't overlay
+          the navbar / workspace switcher / user menu above. */}
       <div ref={containerRef} className="absolute inset-0 isolate" />
 
       {/* FilterBar floats above the map without a wrapper card —
@@ -275,12 +274,10 @@ export function MapView({ groupId }: { groupId: string }) {
           pointer-events-none on the layer so the map keeps panning
           between elements; the FilterBar's own interactive children
           opt back in via pointer-events-auto. */}
-      {/* Leaflet's default zoom controls sit top-left at ~44px; offset
-          the FilterBar past them so the trigger doesn't hide the minus
-          button. The `isolate` on the map container bounds Leaflet's
-          internal z-indices, so a low overlay z keeps the FilterBar
-          above the map but still below the detail/composer panel when it
-          opens. */}
+      {/* The MapLibre adapter places its zoom control top-left (like the
+          Leaflet adapter did); offset the FilterBar past it so the trigger
+          doesn't hide the minus button. A low overlay z keeps the FilterBar
+          above the map but still below the detail/composer panel when open. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 py-3 pr-3 pl-16 **:pointer-events-auto">
         <FilterBar
           value={filterBarValue}

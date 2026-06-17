@@ -25,6 +25,7 @@
     "@real-life-stack/wot-connector": "workspace:*",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
+    "maplibre-gl": "^5.24.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.1"
