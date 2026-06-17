@@ -141,16 +141,21 @@ Regeln:
 
 ## Space-Metadaten
 
-Space-Metadaten (Name, Image, Modules) liegen in der Y.Doc `_meta`-Map und werden über `updateSpace` bzw. `updateGroup` gesetzt. Code-Referenz: `packages/wot-connector/src/wot-connector.ts`.
-
-### Space-Primärfarbe
-
-Jeder Space hat eine `primaryColor` in der Space-Meta, neben `name`, `image` und `modules`.
+Space-Metadaten (Name, Image, Modules) liegen gemäß Regel #5 in `Group.data` (Ausnahme `name`, top-level). `updateGroup` bildet `Group.data.image` und `Group.data.modules` auf die Y.Doc `_meta`-Map des Space ab (via `updateSpace`) und synct sie darüber. Code-Referenz: `packages/wot-connector/src/wot-connector.ts` (`updateGroup`, Lese-Felder `updates.data?.image` / `updates.data?.modules`).
 
 Regeln:
 
-1. `_meta.primaryColor` MUSS ein CSS-Farbwert sein (Hex, zum Beispiel `#2563eb`).
-2. Beim Logo-Upload MUSS der Client die dominanteste Farbe des Logos extrahieren und das Ergebnis in `_meta.primaryColor` cachen. Die Extraktion läuft client-seitig genau einmal beim Upload, nicht bei jedem Render und nicht auf jedem Gerät neu.
+1. Kanonische Quelle der Space-Metadaten ist `Group.data`; `_meta` ist die synchronisierte Projektion für andere Geräte und Leseflächen.
+2. Neue Metadatenfelder MÜSSEN demselben Muster folgen: Wert in `Group.data.<feld>`, Abbildung nach `_meta.<feld>` über `updateGroup`.
+
+### Space-Primärfarbe
+
+Jeder Space hat eine `primaryColor`. Sie lebt analog zu `image` und `modules` in `Group.data.primaryColor` und wird über `updateGroup` nach `_meta.primaryColor` synct.
+
+Regeln:
+
+1. `Group.data.primaryColor` ist die kanonische Quelle; `_meta.primaryColor` ist die synchronisierte Projektion. `primaryColor` MUSS ein Hex-Farbwert der Form `#rrggbb` sein (passend zu `TAG_PALETTE.accent` in `packages/toolkit/src/lib/utils.ts`, zum Beispiel `#2563eb`).
+2. Beim Logo-Upload MUSS der Client die dominanteste Farbe des Logos extrahieren und das Ergebnis in `Group.data.primaryColor` cachen (synct nach `_meta.primaryColor`). Die Extraktion läuft client-seitig genau einmal beim Upload, nicht bei jedem Render und nicht auf jedem Gerät neu.
 3. Ohne Logo MUSS `primaryColor` deterministisch aus der Space-ID abgeleitet werden, analog zu `getTagColor` / `getTagAccentColor` in `packages/toolkit/src/lib/utils.ts`. Die Ableitung MUSS über Geräte und Sessions stabil sein und DARF NICHT echtes Random verwenden.
 4. Wird ein Logo entfernt, SOLL `primaryColor` wieder auf den deterministischen ID-Fallback zurückfallen.
 5. `primaryColor` ist Cache und Default, kein Pflicht-Eingabefeld. Fehlt der Wert, MÜSSEN Leseflächen den deterministischen ID-Fallback berechnen.
