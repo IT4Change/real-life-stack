@@ -27,6 +27,8 @@ Es unterstützt:
 | Primäre Datenbasis | Items |
 | Externe Semantik | optional RLNP/Game/WoT-Projektionen, aber nicht durch Map definiert |
 
+Die Karte rendert **full-bleed** — sie füllt den Space randlos, ohne zentrierten Container und (auf Mobile) ohne BottomNav-Abstand. Andere Module nutzen den zentrierten Container-Füllmodus; siehe [01-app-composition.md → Content-Bereich](../01-app-composition.md).
+
 ## Datenmodell
 
 Das Map Module liest Items im Current Space, die eine geografische Position tragen. Es ist damit **feldbasiert, nicht typbasiert**.

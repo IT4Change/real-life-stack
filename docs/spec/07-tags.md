@@ -108,6 +108,8 @@ Wenn UI einen Tag anzeigt:
 
 Damit funktioniert UI sowohl für freie Strings als auch für strukturierte URN-Tags.
 
+Das Default-Display ist über **alle Flächen identisch** — eine deterministische Palette (`getTagColor`), gerendert durch die geteilte `TagChip`-Komponente (siehe [modules/shared-components.md → TagChip](modules/shared-components.md)). Ein Tag sieht damit auf Posts, im Filter und im Kanban gleich aus. Langfristig gehört diese Palette in die Design-Tokens.
+
 ## Lokation des `tags`-Feldes
 
 Tags leben **top-level am Item**, nicht in `data`:

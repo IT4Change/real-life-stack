@@ -64,7 +64,7 @@ Regeln:
     "https://real-life-stack.org/vocab/event/v1",
     "https://real-life-stack.org/vocab/place/v1"
   ],
-  "type": ["Event"],
+  "type": "event",
   "createdAt": "2026-06-05T14:00:00Z",
   "createdBy": "did:key:z6Mki…",
   "data": {
@@ -88,7 +88,7 @@ Wenn semantisch unterschiedliche Konzepte denselben Property-Namen tragen würde
 
 ### Die Rolle von `type`
 
-`type` benennt die **Art**, als die ein Item erstellt wurde (`post`, `event`, `task`) — die Intention beim Erstellen. Aus ihr wählt der Composer ein **Template** (Widget-Set beim Erstellen, Karten-Darstellung beim Anzeigen); sie bleibt am Item, damit Module und User sich darauf beziehen können. `type` ist genau eine pro Item; bei mehreren Werten zählt die erste.
+`type` benennt die **Art**, als die ein Item erstellt wurde (`post`, `event`, `task`) — die Intention beim Erstellen. Aus ihr wählt der Composer ein **Template** (Widget-Set beim Erstellen, Karten-Darstellung beim Anzeigen); sie bleibt am Item, damit Module und User sich darauf beziehen können. `type` ist genau eine pro Item; bei mehreren Werten zählt die erste. Pro `type` gehört **ein** Template (Erstellen-Widgets und Anzeige-Karte zusammen); heute als `ContentTypeConfig` je Modul-View definiert — ein kanonisches, modulübergreifend geteiltes Typ-Register ist eine offene Ausbaustufe.
 
 `type` darf tragen: die Composer-Vorlage, die Karten-Wahl in aggregierenden Sichten (Feed, Suche) und **User-Filter** („zeig mir nur Veranstaltungen"). Es darf **nicht** die **Modul-Aktivierung** steuern: ob ein Item im Calendar erscheint, entscheidet `data.start`, nie `type` — sonst verschwände ein Task mit Fälligkeitsdatum zu Unrecht. Der Unterschied ist prinzipiell: Modul-Aktivierung ist eine System-Frage und immer feldbasiert; ein User-Filter ist eine Mensch-Frage und darf die Intention nutzen, die nur in `type` steht (ein Task mit Deadline und ein Event tragen beide `start` — „die Veranstaltungen" sind aus Feldern allein nicht herauszufiltern).
 

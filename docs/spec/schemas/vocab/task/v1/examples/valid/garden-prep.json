@@ -4,7 +4,7 @@
     "https://real-life-stack.org/vocab/base/v1",
     "https://real-life-stack.org/vocab/task/v1"
   ],
-  "type": ["Task"],
+  "type": ["task"],
   "createdAt": "2026-06-09T10:00:00Z",
   "createdBy": "anton@real-life.org",
   "data": {

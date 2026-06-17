@@ -4,7 +4,7 @@
     "https://real-life-stack.org/vocab/base/v1",
     "https://real-life-stack.org/vocab/place/v1"
   ],
-  "type": ["Place"],
+  "type": ["place"],
   "createdAt": "2026-06-09T10:00:00Z",
   "createdBy": "user-42",
   "data": {
