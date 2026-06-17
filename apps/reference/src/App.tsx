@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
-import { Routes, Route, useNavigate } from "react-router-dom"
+import { Routes, Route, useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import {
   Plus,
   Sun,
@@ -259,9 +259,66 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   const { activeContacts, pendingContacts, contacts: allContacts, removeContact, updateContactName, supportsContacts } = useContacts()
   const verification = useVerification()
 
-  // Dialog state
-  const [contactsDialogOpen, setContactsDialogOpen] = useState(false)
-  const [verifyDialogOpen, setVerifyDialogOpen] = useState(false)
+  // Dialog-Ebene (Ebene 2) als Back-Stack, an die Browser-History gekoppelt:
+  // der Stack lebt im ?dialog=-Query (Komma-Liste, letztes = oben). Öffnen
+  // pusht einen History-Eintrag; Schließen (X/Esc/Backdrop) und Browser-Zurück
+  // poppen über die History eine Ebene. Verify aus Kontakten heraus → zurück
+  // zu Kontakten; direkt geöffnet → einfach zu. Deep-linkbar + refresh-fest.
+  // Spec: 01-app-composition → Overlay-Flächen, Regel 5.
+  type DialogLayerId = "contacts" | "verify"
+  const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
+  const dialogStack = useMemo<DialogLayerId[]>(() => {
+    const raw = searchParams.get("dialog")?.split(",") ?? []
+    return raw.filter((x): x is DialogLayerId => x === "contacts" || x === "verify")
+  }, [searchParams])
+  const topDialog = dialogStack[dialogStack.length - 1] ?? null
+  const openDialog = (id: DialogLayerId) => {
+    const next = [...dialogStack.filter((x) => x !== id), id]
+    const params = new URLSearchParams(searchParams)
+    params.set("dialog", next.join(","))
+    // Jeden In-App-Push als unseren markieren, damit popDialog ihn sicher
+    // erkennt. Vorhandenen Route-State erhalten.
+    const prev = (typeof location.state === "object" && location.state) || {}
+    setSearchParams(params, { state: { ...prev, rlsDialogPush: true } })
+  }
+  // Schließen poppt eine Ebene. Nur In-App geöffnete Dialoge haben einen
+  // echten History-Eintrag, den navigate(-1) sauber poppt (Browser-Zurück
+  // identisch). Wir markieren diese Pushes mit state.rlsDialogPush.
+  //
+  // location.key taugt NICHT als Detektor: ein replace erzeugt einen neuen
+  // Key, also wäre bei gestapeltem Deep-Link (?dialog=contacts,verify) nur
+  // der erste Close "default", der zweite würde fälschlich navigate(-1)
+  // rausnavigieren. state.rlsDialogPush überlebt das, weil wir es beim
+  // replace-Entfernen NICHT setzen — Deep-Link/Refresh-Einträge bleiben so
+  // dauerhaft "nicht-gepusht" und schließen Ebene für Ebene per replace,
+  // ohne die App zu verlassen.
+  const popDialog = () => {
+    const pushed = (location.state as { rlsDialogPush?: boolean } | null)?.rlsDialogPush
+    if (pushed) {
+      navigate(-1)
+    } else {
+      const next = dialogStack.slice(0, -1)
+      const params = new URLSearchParams(searchParams)
+      if (next.length > 0) params.set("dialog", next.join(","))
+      else params.delete("dialog")
+      setSearchParams(params, { replace: true })
+    }
+  }
+  // Radix-Dialoge (RemoveScroll) setzen `body { pointer-events: none }` und
+  // können es nach gestapeltem Open/Close (Kontakte unter Verify) HÄNGEN
+  // lassen → danach ist die ganze App unklickbar (Erstellen-Button „ohne
+  // Wirkung"). Das AdaptivePanel nutzt einen eigenen Backdrop, kein body-Lock;
+  // sobald also kein Dialog mehr offen ist, body sicher wieder freigeben.
+  useEffect(() => {
+    if (topDialog !== null) return
+    const t = setTimeout(() => {
+      if (document.body.style.pointerEvents === "none") {
+        document.body.style.pointerEvents = ""
+      }
+    }, 0)
+    return () => clearTimeout(t)
+  }, [topDialog])
   // One id drives the shared profile panel; null = closed. The own
   // profile (id === currentUser.id) opens the editor, any other id a
   // read-only view.
@@ -367,9 +424,9 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
           <UserMenu
             user={userData}
             onProfile={() => { if (currentUser?.id) openProfile(currentUser.id) }}
-            onContacts={supportsContacts ? () => setContactsDialogOpen(true) : undefined}
+            onContacts={supportsContacts ? () => openDialog("contacts") : undefined}
             contactCount={activeContacts.length}
-            onVerify={() => setVerifyDialogOpen(true)}
+            onVerify={() => openDialog("verify")}
             onLogout={isAuthenticatable(connector) ? async () => {
               await connector.logout()
               window.location.reload()
@@ -441,18 +498,18 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
       {/* Contacts Dialog */}
       <ContactsDialog
-        open={contactsDialogOpen}
-        onOpenChange={setContactsDialogOpen}
+        open={topDialog === "contacts"}
+        onOpenChange={(open) => { if (!open) popDialog() }}
         activeContacts={activeContacts}
         pendingContacts={pendingContacts}
         onRemove={removeContact}
         onEditName={updateContactName}
-        onVerify={() => { setContactsDialogOpen(false); setVerifyDialogOpen(true) }}
+        onVerify={() => openDialog("verify")}
       />
 
       <VerificationDialog
-        open={verifyDialogOpen}
-        onOpenChange={setVerifyDialogOpen}
+        open={topDialog === "verify"}
+        onOpenChange={(open) => { if (!open) popDialog() }}
         challenge={verification.challenge}
         peerInfo={verification.peerInfo}
         isProcessing={verification.isProcessing}
@@ -464,7 +521,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
       />
 
       {/* Incoming event dialogs */}
-      <IncomingEventDialogs onCloseVerifyDialog={() => setVerifyDialogOpen(false)} />
+      <IncomingEventDialogs onCloseVerifyDialog={() => { if (topDialog === "verify") popDialog() }} />
 
       {/* Connector FAB — bottom-left, above BottomNav (only with ?dev URL param) */}
       {initialDevMode && (
