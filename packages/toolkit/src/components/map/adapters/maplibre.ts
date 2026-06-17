@@ -1,0 +1,282 @@
+/**
+ * MapLibre GL implementation of MapAdapter (vector tiles).
+ *
+ * Spec: docs/spec/modules/map.md → "Karten-Library-Adapter"
+ *
+ * Notes:
+ * - MapLibre uses GeoJSON order `[lng, lat]` natively, so unlike the Leaflet
+ *   adapter this file needs no coordinate translation.
+ * - `tileSource` is interpreted as a **MapLibre style URL**, not a raster tile
+ *   template (MapLibre loads a string `style` as a URL, never as inline JSON).
+ *   The default is the free, key-less OpenFreeMap "liberty" vector style;
+ *   override via MountOptions.
+ * - Consumers must import `maplibre-gl/dist/maplibre-gl.css` themselves (or
+ *   rely on their bundler / app to load it) — required for marker positioning
+ *   and the built-in controls.
+ * - `maplibre-gl` is loaded lazily so it stays an optional peer dependency:
+ *   importing this file does not pull the maplibre bundle, and non-DOM / SSR
+ *   bundles do not break at import time.
+ * - **Type leak avoidance**: the public surface only references `MapAdapter`
+ *   types. Internal MapLibre instances are held as `unknown` and cast where
+ *   used, so the generated `.d.ts` carries no `maplibre-gl` reference and
+ *   consumers without it installed see no TS errors.
+ */
+
+import type {
+  Map as MlMap,
+  MapOptions,
+  Marker as MlMarker,
+  MarkerOptions,
+  MapMouseEvent,
+} from "maplibre-gl"
+import type {
+  LngLat,
+  MapAdapter,
+  MapClickEvent,
+  MapMarkerSpec,
+  MapMountOptions,
+  MapViewPatch,
+  MapViewState,
+  Unsubscribe,
+} from "../adapter"
+
+/** Free, key-less vector style (CORS-enabled). Override via MountOptions.tileSource. */
+const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
+
+/** Marker color used when a MapMarkerSpec carries no color hint. */
+const DEFAULT_MARKER_COLOR = "#2563eb"
+
+// MapLibre's module shape mirrors its namespace. The two constructors we use
+// are typed against the real maplibre-gl option types so the mount/marker calls
+// are validated at compile time; this type is internal and never exported, so
+// no maplibre-gl reference leaks into the generated `.d.ts`.
+type MapLibreModule = {
+  Map: new (options: MapOptions) => MlMap
+  Marker: new (options?: MarkerOptions) => MlMarker
+}
+
+// Cached lazy module reference. Populated on first mount(), reused thereafter.
+let maplibreModule: MapLibreModule | null = null
+
+async function loadMapLibre(): Promise<MapLibreModule> {
+  if (!maplibreModule) {
+    const mod = await import("maplibre-gl")
+    // maplibre-gl ships a default export carrying the namespace surface.
+    maplibreModule = ((mod as { default?: MapLibreModule }).default ??
+      (mod as unknown as MapLibreModule))
+  }
+  return maplibreModule
+}
+
+/**
+ * Build the colored-circle DOM element used as the marker. Mirrors the
+ * Leaflet adapter's DivIcon so both adapters render visually consistent
+ * markers. Color flows through `style.background` (property assignment, not
+ * innerHTML) so there is no HTML-injection surface.
+ */
+function buildMarkerElement(color: string): HTMLElement {
+  const el = document.createElement("div")
+  el.className = "rls-tag-marker"
+  el.style.width = "18px"
+  el.style.height = "18px"
+  el.style.borderRadius = "9999px"
+  el.style.background = color
+  el.style.border = "2px solid #fff"
+  el.style.boxShadow = "0 1px 3px rgba(0,0,0,0.35)"
+  el.style.cursor = "pointer"
+  return el
+}
+
+export class MapLibreMapAdapter implements MapAdapter {
+  // Internal MapLibre handles are held as `unknown` so the generated `.d.ts`
+  // does not reference `maplibre-gl`. Consumers without it installed can
+  // import the toolkit without TS errors.
+  private mapInstance: unknown = null
+  private markers = new Map<string, unknown>()
+  private markerEls = new Map<string, HTMLElement>()
+  private markerLabels = new Map<string, string | undefined>()
+  private markerColors = new Map<string, string | undefined>()
+  private viewListeners = new Set<(view: MapViewState) => void>()
+  private clickListeners = new Set<(event: MapClickEvent) => void>()
+  private markerClickListeners = new Set<(markerId: string) => void>()
+
+  async mount(container: HTMLElement, options: MapMountOptions): Promise<void> {
+    if (this.mapInstance) {
+      throw new Error("MapLibreMapAdapter: already mounted")
+    }
+    const maplibre = await loadMapLibre()
+
+    const map = new maplibre.Map({
+      container,
+      style: options.tileSource ?? DEFAULT_STYLE,
+      center: options.center, // [lng, lat] — GeoJSON order, native to MapLibre
+      zoom: options.zoom,
+      attributionControl: { customAttribution: options.attribution },
+    })
+
+    // Settle once the map is usable. "load" fires after the style loads and the
+    // first frame renders. A fatal style-load failure (404 / CORS / unreachable
+    // tileSource) instead emits "error" and NEVER "load", so awaiting "load"
+    // alone would hang forever. We settle on whichever fires first and remove
+    // both listeners. We resolve (not reject) on "error" so a merely transient
+    // tile error that races ahead of "load" cannot false-fail the mount; the
+    // cause is surfaced via console.warn (our listener consumes MapLibre's own
+    // default logging for that event).
+    await new Promise<void>((resolve) => {
+      if (map.loaded()) {
+        resolve()
+        return
+      }
+      const settle = () => {
+        map.off("load", onLoad)
+        map.off("error", onError)
+        resolve()
+      }
+      const onLoad = () => settle()
+      const onError = (e: { error?: Error }) => {
+        // eslint-disable-next-line no-console
+        console.warn("MapLibreMapAdapter: error during initial load", e?.error ?? e)
+        settle()
+      }
+      map.on("load", onLoad)
+      map.on("error", onError)
+    })
+
+    map.on("moveend", () => {
+      const view = this.getView()
+      this.viewListeners.forEach((cb) => cb(view))
+    })
+
+    map.on("click", (event: MapMouseEvent) => {
+      const evt: MapClickEvent = {
+        position: [event.lngLat.lng, event.lngLat.lat],
+        originalEvent: event,
+      }
+      this.clickListeners.forEach((cb) => cb(evt))
+    })
+
+    this.mapInstance = map
+  }
+
+  async unmount(): Promise<void> {
+    const map = this.mapInstance as MlMap | null
+    if (!map) return
+    ;(this.markers as Map<string, MlMarker>).forEach((m) => m.remove())
+    this.markers.clear()
+    this.markerEls.clear()
+    this.markerLabels.clear()
+    this.markerColors.clear()
+    map.remove()
+    this.mapInstance = null
+    this.viewListeners.clear()
+    this.clickListeners.clear()
+    this.markerClickListeners.clear()
+  }
+
+  setMarkers(markers: MapMarkerSpec[]): void {
+    const map = this.mapInstance as MlMap | null
+    const maplibre = maplibreModule
+    if (!map || !maplibre) {
+      throw new Error("MapLibreMapAdapter: setMarkers called before mount")
+    }
+    const typedMarkers = this.markers as Map<string, MlMarker>
+    const next = new Map<string, MapMarkerSpec>(markers.map((m) => [m.id, m]))
+
+    // Remove markers that no longer exist
+    for (const [id, marker] of typedMarkers) {
+      if (!next.has(id)) {
+        marker.remove()
+        typedMarkers.delete(id)
+        this.markerEls.delete(id)
+        this.markerLabels.delete(id)
+        this.markerColors.delete(id)
+      }
+    }
+
+    // Add or update remaining
+    for (const spec of markers) {
+      const color = spec.color ?? DEFAULT_MARKER_COLOR
+      const existing = typedMarkers.get(spec.id)
+      if (existing) {
+        existing.setLngLat(spec.position)
+        const el = this.markerEls.get(spec.id)
+        // Reconcile label (native hover title) declaratively.
+        if (this.markerLabels.get(spec.id) !== spec.label) {
+          if (el) el.title = spec.label ?? ""
+          this.markerLabels.set(spec.id, spec.label)
+        }
+        // Reconcile color in place (no marker recreation, no flicker).
+        if (this.markerColors.get(spec.id) !== spec.color) {
+          if (el) el.style.background = color
+          this.markerColors.set(spec.id, spec.color)
+        }
+      } else {
+        const el = buildMarkerElement(color)
+        if (spec.label !== undefined) el.title = spec.label
+        el.addEventListener("click", (e) => {
+          // Marker elements sit above the canvas, so the map "click" does not
+          // fire for marker hits; stopPropagation guards against any bubbling.
+          e.stopPropagation()
+          this.markerClickListeners.forEach((cb) => cb(spec.id))
+        })
+        const marker = new maplibre.Marker({ element: el, anchor: "center" })
+        marker.setLngLat(spec.position).addTo(map)
+        typedMarkers.set(spec.id, marker)
+        this.markerEls.set(spec.id, el)
+        this.markerLabels.set(spec.id, spec.label)
+        this.markerColors.set(spec.id, spec.color)
+      }
+    }
+  }
+
+  setView(view: MapViewPatch): void {
+    const map = this.mapInstance as MlMap | null
+    if (!map) return
+    const center = view.center ?? this.lngLatTuple(map.getCenter())
+    const zoom = view.zoom ?? map.getZoom()
+    map.jumpTo({ center, zoom })
+  }
+
+  getView(): MapViewState {
+    const map = this.mapInstance as MlMap | null
+    if (!map) {
+      throw new Error("MapLibreMapAdapter: getView called before mount")
+    }
+    const bounds = map.getBounds()
+    return {
+      center: this.lngLatTuple(map.getCenter()),
+      zoom: map.getZoom(),
+      bounds: {
+        north: bounds.getNorth(),
+        east: bounds.getEast(),
+        south: bounds.getSouth(),
+        west: bounds.getWest(),
+      },
+    }
+  }
+
+  observeView(callback: (view: MapViewState) => void): Unsubscribe {
+    this.viewListeners.add(callback)
+    return () => {
+      this.viewListeners.delete(callback)
+    }
+  }
+
+  observeClicks(callback: (event: MapClickEvent) => void): Unsubscribe {
+    this.clickListeners.add(callback)
+    return () => {
+      this.clickListeners.delete(callback)
+    }
+  }
+
+  observeMarkerClicks(callback: (markerId: string) => void): Unsubscribe {
+    this.markerClickListeners.add(callback)
+    return () => {
+      this.markerClickListeners.delete(callback)
+    }
+  }
+
+  private lngLatTuple(center: { lng: number; lat: number }): LngLat {
+    return [center.lng, center.lat]
+  }
+}

@@ -25,6 +25,7 @@ export default defineConfig({
       entry: {
         index: resolve(__dirname, 'src/index.ts'),
         leaflet: resolve(__dirname, 'src/leaflet.ts'),
+        maplibre: resolve(__dirname, 'src/maplibre.ts'),
       },
       formats: ['es'],
       // Force flat `<name>.js` filenames so the paths in package.json's
@@ -36,7 +37,7 @@ export default defineConfig({
       // dependency loaded dynamically by the map adapter; bundling it here
       // would defeat the optional-peer/lazy-load intent and bloat the toolkit
       // output for consumers that never use the map.
-      external: ['react', 'react-dom', 'react/jsx-runtime', 'leaflet'],
+      external: ['react', 'react-dom', 'react/jsx-runtime', 'leaflet', 'maplibre-gl'],
       onwarn(warning, warn) {
         // Suppress "use client" directive warnings from shadcn/ui + Radix UI
         if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return
