@@ -85,7 +85,15 @@ export function ComposerHostProvider({
             requestMapPick={startPick}
             onSubmit={async (data) => {
               const result = await editorRef.current.submit(data)
-              if (result) modulePanel.close()
+              if (result) {
+                modulePanel.close()
+                return
+              }
+              // submit() swallows the connector error into editor.error (React
+              // state, not readable synchronously here) and returns null. For
+              // these mappers a null result always means a real failure (they
+              // never abort), so signal it so the composer shows its error.
+              throw new Error("Speichern fehlgeschlagen. Bitte erneut versuchen.")
             }}
             onCancel={() => modulePanel.close()}
           />

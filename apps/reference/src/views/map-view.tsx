@@ -33,6 +33,10 @@ const MAP_TYPES: FilterTypeOption[] = [
   { id: "place", label: "Orte", icon: MapPin },
 ]
 
+// Provisional location-pick marker (visually distinct from item markers).
+const PICK_MARKER_ID = "__rls_pick__"
+const PICK_MARKER_COLOR = "#ef4444"
+
 /**
  * Map module — vector version using the MapLibreMapAdapter from toolkit.
  *
@@ -117,6 +121,7 @@ export function MapView({ groupId }: { groupId: string }) {
 
   const { openComposer: openCreateComposer } = useComposerHost()
   const { isPicking, applyPick, cancelPick } = useLocationPick()
+  const [pickPos, setPickPos] = useState<{ lat: number; lng: number } | null>(null)
 
   // Build the markers and an id → item lookup in one pass — marker
   // clicks come back with just the id, and we need the full item to
@@ -189,8 +194,13 @@ export function MapView({ groupId }: { groupId: string }) {
 
   // Push markers to the adapter once it is mounted, and on every change.
   useEffect(() => {
-    adapter?.setMarkers(markers)
-  }, [adapter, markers])
+    if (!adapter) return
+    const provisional: MapMarkerSpec[] =
+      isPicking && pickPos
+        ? [{ id: PICK_MARKER_ID, position: [pickPos.lng, pickPos.lat], color: PICK_MARKER_COLOR }]
+        : []
+    adapter.setMarkers([...markers, ...provisional])
+  }, [adapter, markers, isPicking, pickPos])
 
   const resolveAuthor = useCallback(
     (createdBy: string): User | undefined => {
@@ -235,29 +245,42 @@ export function MapView({ groupId }: { groupId: string }) {
     const unsubscribe = adapter.observeMarkerClicks((markerId) => {
       const item = itemsById.get(markerId)
       if (isPicking) {
-        // Picking directly on an existing marker snaps the position to it
-        // (the marker element swallows the map click, so handle it here).
+        // Picking directly on an existing marker snaps the provisional pick to
+        // it (the marker element swallows the map click, so handle it here).
         const pos = item?.data.position as { coordinates?: number[] } | undefined
         if (pos?.coordinates && pos.coordinates.length >= 2) {
           const [lng, lat] = pos.coordinates
-          if (typeof lng === "number" && typeof lat === "number") applyPick({ lat, lng })
+          if (typeof lng === "number" && typeof lat === "number") setPickPos({ lat, lng })
         }
         return
       }
       if (item) openDetail(item)
     })
     return unsubscribe
-  }, [adapter, itemsById, openDetail, isPicking, applyPick])
+  }, [adapter, itemsById, openDetail, isPicking])
 
-  // While picking, any map click sets the position and returns to the origin.
+  // While picking, a map click places a provisional marker (rendered + centered
+  // by the effects below) instead of committing immediately — the user sees the
+  // spot and confirms via the banner's "Übernehmen".
   useEffect(() => {
     if (!adapter || !isPicking) return
     const unsubscribe = adapter.observeClicks((e) => {
       const [lng, lat] = e.position
-      applyPick({ lat, lng })
+      setPickPos({ lat, lng })
     })
     return unsubscribe
-  }, [adapter, isPicking, applyPick])
+  }, [adapter, isPicking])
+
+  // Recenter on the provisional pick so it is clearly visible.
+  useEffect(() => {
+    if (!adapter || !pickPos) return
+    adapter.setView({ center: [pickPos.lng, pickPos.lat] })
+  }, [adapter, pickPos])
+
+  // Drop the provisional pick when picking ends.
+  useEffect(() => {
+    if (!isPicking) setPickPos(null)
+  }, [isPicking])
 
   // Composer opens via the app-level host, so its save path survives the
   // round-trip to location picking. The Feed keeps its own fullscreen shell.
@@ -277,9 +300,18 @@ export function MapView({ groupId }: { groupId: string }) {
           the map is reachable; this banner is the pick affordance + cancel. */}
       {isPicking && (
         <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center p-3">
-          <div className="pointer-events-auto flex items-center gap-3 rounded-full border bg-background/95 px-4 py-2 text-sm shadow-md backdrop-blur">
-            <MapPin className="h-4 w-4 text-primary" />
-            <span>Tippe auf die Karte, um die Position zu setzen.</span>
+          <div className="pointer-events-auto flex items-center gap-2 rounded-full border bg-background/95 px-3 py-2 text-sm shadow-md backdrop-blur">
+            <MapPin className="h-4 w-4 shrink-0 text-primary" />
+            <span>
+              {pickPos
+                ? "Position gewählt — übernehmen?"
+                : "Tippe auf die Karte, um die Position zu setzen."}
+            </span>
+            {pickPos && (
+              <Button size="sm" className="h-7 px-2 text-xs" onClick={() => applyPick(pickPos)}>
+                Übernehmen
+              </Button>
+            )}
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={cancelPick}>
               Abbrechen
             </Button>

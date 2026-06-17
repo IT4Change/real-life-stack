@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronDown, Globe, Lock, Trash2, X } from "lucide-react"
+import { ChevronDown, Globe, Loader2, Lock, Trash2, X } from "lucide-react"
 import { Button } from "@/components/primitives/button"
 import {
   DropdownMenu,
@@ -135,7 +135,7 @@ export interface ContentComposerProps {
   initialContentType?: string
   mode?: string
   initialData?: Partial<WidgetData>
-  onSubmit: (data: ContentComposerSubmitData) => void
+  onSubmit: (data: ContentComposerSubmitData) => void | Promise<void>
   onCancel?: () => void
   onDelete?: () => void
   editMode?: boolean
@@ -392,13 +392,20 @@ export function ContentComposer({
   // Submit
   const canSubmit = !!(data.title?.trim() || data.text?.trim() || (data.media && data.media.length > 0))
 
-  const handleSubmit = () => {
-    if (!canSubmit) return
-    onSubmit({
-      contentType: selectedType,
-      isPublic,
-      data,
-    })
+  const [submitting, setSubmitting] = React.useState(false)
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
+
+  const handleSubmit = async () => {
+    if (!canSubmit || submitting) return
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      await onSubmit({ contentType: selectedType, isPublic, data })
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Speichern fehlgeschlagen.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   // Submit label
@@ -640,6 +647,11 @@ export function ContentComposer({
         </div>
       )}
 
+      {submitError && (
+        <p className="pt-1 text-xs text-destructive" role="alert">
+          {submitError}
+        </p>
+      )}
       {/* Footer: actions (hidden in liveUpdate mode) */}
       {!liveUpdate && <div className="flex items-center justify-between pt-1">
         <div className="flex items-center gap-2">
@@ -681,10 +693,13 @@ export function ContentComposer({
                 type="button"
                 size="sm"
                 onClick={handleSubmit}
-                disabled={!canSubmit}
+                disabled={!canSubmit || submitting}
+                aria-busy={submitting}
                 className="gap-1.5 rounded-r-none"
               >
-                {isPublic ? (
+                {submitting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                ) : isPublic ? (
                   <Globe className="h-3.5 w-3.5" />
                 ) : (
                   <Lock className="h-3.5 w-3.5" />
@@ -716,7 +731,8 @@ export function ContentComposer({
               </DropdownMenu>
             </div>
           ) : (
-            <Button type="button" size="sm" onClick={handleSubmit} disabled={!canSubmit}>
+            <Button type="button" size="sm" onClick={handleSubmit} disabled={!canSubmit || submitting} aria-busy={submitting}>
+              {submitting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
               {submitLabel}
             </Button>
           )}
