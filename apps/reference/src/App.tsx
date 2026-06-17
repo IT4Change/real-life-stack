@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
-import { Routes, Route, useNavigate, useSearchParams } from "react-router-dom"
+import { Routes, Route, useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import {
   Plus,
   Sun,
@@ -267,6 +267,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   // Spec: 01-app-composition → Overlay-Flächen, Regel 5.
   type DialogLayerId = "contacts" | "verify"
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
   const dialogStack = useMemo<DialogLayerId[]>(() => {
     const raw = searchParams.get("dialog")?.split(",") ?? []
     return raw.filter((x): x is DialogLayerId => x === "contacts" || x === "verify")
@@ -278,9 +279,23 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     params.set("dialog", next.join(","))
     setSearchParams(params)
   }
-  // Schließen = History-Pop (symmetrisch zum Push beim Öffnen); Browser-Zurück
-  // macht dasselbe. Nur der oberste Dialog ist offen, also poppt das genau ihn.
-  const popDialog = () => navigate(-1)
+  // Schließen poppt eine Ebene. In-App geöffnete Dialoge haben einen History-
+  // Push, also poppt `navigate(-1)` sauber (Browser-Zurück macht dasselbe).
+  // ABER bei einem direkt geöffneten / neu geladenen `?dialog=`-URL gibt es
+  // keinen In-App-Eintrag davor (location.key === "default") — dann würde
+  // navigate(-1) aus der App rausnavigieren. In dem Fall den obersten Dialog
+  // per replace aus dem Query entfernen, damit „deep-linkbar + refresh-fest" hält.
+  const popDialog = () => {
+    if (location.key === "default") {
+      const next = dialogStack.slice(0, -1)
+      const params = new URLSearchParams(searchParams)
+      if (next.length > 0) params.set("dialog", next.join(","))
+      else params.delete("dialog")
+      setSearchParams(params, { replace: true })
+    } else {
+      navigate(-1)
+    }
+  }
   // Radix-Dialoge (RemoveScroll) setzen `body { pointer-events: none }` und
   // können es nach gestapeltem Open/Close (Kontakte unter Verify) HÄNGEN
   // lassen → danach ist die ganze App unklickbar (Erstellen-Button „ohne
@@ -497,7 +512,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
       />
 
       {/* Incoming event dialogs */}
-      <IncomingEventDialogs onCloseVerifyDialog={() => { if (topDialog === "verify") navigate(-1) }} />
+      <IncomingEventDialogs onCloseVerifyDialog={() => { if (topDialog === "verify") popDialog() }} />
 
       {/* Connector FAB — bottom-left, above BottomNav (only with ?dev URL param) */}
       {initialDevMode && (
