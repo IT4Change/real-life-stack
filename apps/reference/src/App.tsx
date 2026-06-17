@@ -281,6 +281,20 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   // Schließen = History-Pop (symmetrisch zum Push beim Öffnen); Browser-Zurück
   // macht dasselbe. Nur der oberste Dialog ist offen, also poppt das genau ihn.
   const popDialog = () => navigate(-1)
+  // Radix-Dialoge (RemoveScroll) setzen `body { pointer-events: none }` und
+  // können es nach gestapeltem Open/Close (Kontakte unter Verify) HÄNGEN
+  // lassen → danach ist die ganze App unklickbar (Erstellen-Button „ohne
+  // Wirkung"). Das AdaptivePanel nutzt einen eigenen Backdrop, kein body-Lock;
+  // sobald also kein Dialog mehr offen ist, body sicher wieder freigeben.
+  useEffect(() => {
+    if (topDialog !== null) return
+    const t = setTimeout(() => {
+      if (document.body.style.pointerEvents === "none") {
+        document.body.style.pointerEvents = ""
+      }
+    }, 0)
+    return () => clearTimeout(t)
+  }, [topDialog])
   // One id drives the shared profile panel; null = closed. The own
   // profile (id === currentUser.id) opens the editor, any other id a
   // read-only view.
