@@ -1,4 +1,4 @@
-export { useIsMobile } from "./use-mobile"
+export { useIsMobile, useIsCompact } from "./use-mobile"
 
 // Connector
 export { ConnectorProvider, useConnector } from "./connector-context"

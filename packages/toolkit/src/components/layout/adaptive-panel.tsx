@@ -9,6 +9,7 @@ import {
   type CSSProperties,
 } from "react"
 import { cn } from "../../lib/utils"
+import { useIsCompact } from "../../hooks/use-mobile"
 import { X, Maximize2, PanelRight, GripHorizontal, Pin, PinOff } from "lucide-react"
 
 export type PanelMode = "modal" | "sidebar" | "drawer"
@@ -53,27 +54,11 @@ export interface AdaptivePanelProps {
 }
 
 const VELOCITY_THRESHOLD = 0.15
-const DRAWER_BREAKPOINT = 1024
-
 function parsePx(value: string): number {
   if (value.endsWith("px")) return parseFloat(value)
   if (value.endsWith("vw")) return (parseFloat(value) / 100) * window.innerWidth
   if (value.endsWith("rem")) return parseFloat(value) * 16
   return parseFloat(value)
-}
-
-function useIsCompact() {
-  const [isCompact, setIsCompact] = useState<boolean | undefined>(undefined)
-
-  useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${DRAWER_BREAKPOINT - 1}px)`)
-    const onChange = () => setIsCompact(window.innerWidth < DRAWER_BREAKPOINT)
-    mql.addEventListener("change", onChange)
-    setIsCompact(window.innerWidth < DRAWER_BREAKPOINT)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
-
-  return !!isCompact
 }
 
 function resolveMode(

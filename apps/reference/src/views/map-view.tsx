@@ -4,6 +4,7 @@ import {
   useMembers,
   useCurrentUser,
   useModulePanel,
+  useIsCompact,
   type ContentTypeConfig,
   ItemDetailPanel,
   ItemPreview,
@@ -122,6 +123,9 @@ export function MapView({ groupId }: { groupId: string }) {
   const { openComposer: openCreateComposer } = useComposerHost()
   const { isPicking, updatePick, confirmPick, cancelPick } = useLocationPick()
   const [pickPos, setPickPos] = useState<{ lat: number; lng: number } | null>(null)
+  // "Fertig" (return the composer) is only needed when the composer is hidden,
+  // i.e. as a drawer on compact screens. On desktop the sidebar stays visible.
+  const isCompact = useIsCompact()
 
   // Build the markers and an id → item lookup in one pass — marker
   // clicks come back with just the id, and we need the full item to
@@ -303,12 +307,12 @@ export function MapView({ groupId }: { groupId: string }) {
             <MapPin className="h-4 w-4 shrink-0 text-primary" />
             <span>
               {pickPos
-                ? "Position gewählt — übernehmen?"
+                ? "Position gewählt."
                 : "Tippe auf die Karte, um die Position zu setzen."}
             </span>
-            {pickPos && (
+            {isCompact && pickPos && (
               <Button size="sm" className="h-7 px-2 text-xs" onClick={confirmPick}>
-                Übernehmen
+                Fertig
               </Button>
             )}
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={cancelPick}>

@@ -32,7 +32,8 @@ export interface LocationPickValue {
   startPick: (handlers: PickHandlers) => void
   /** A map click during picking: commit the position immediately (stays in picking mode). */
   updatePick: (pos: LatLng) => void
-  /** Finish picking and return to the origin module; the committed position stays. */
+  /** Finish picking and stay on the map; the committed position is kept (used to
+   *  un-suspend the composer on mobile). */
   confirmPick: () => void
   /** Abort picking: restore the pre-pick position and return to the origin module. */
   cancelPick: () => void
@@ -88,7 +89,10 @@ export function LocationPickProvider({
     handlersRef.current?.onPick(pos)
   }, [])
 
-  const confirmPick = useCallback(() => endPick({ restore: false, navigate: true }), [endPick])
+  // "Done": keep the picked position and stay on the map (un-suspends the
+  // composer on mobile).
+  const confirmPick = useCallback(() => endPick({ restore: false, navigate: false }), [endPick])
+  // "Cancel": restore the pre-pick position and return to the origin module.
   const cancelPick = useCallback(() => endPick({ restore: true, navigate: true }), [endPick])
 
   // Couple picking to Map-module presence: once we have reached the Map, if the
