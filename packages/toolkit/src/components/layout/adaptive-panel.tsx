@@ -561,8 +561,14 @@ export function AdaptivePanel({
       <div
         className={cn(
           mode === "modal" && "fixed inset-0 z-[60] flex items-center justify-center p-4 pointer-events-none",
+          // top MUSS die obere Safe-Area einrechnen: #root hat padding-top:
+          // env(safe-area-inset-top), die Navbar (h-14) sitzt also bei
+          // y = inset, ihr unteres Ende bei inset + 56px. Ein fixes top-14
+          // (nur 56px, viewport-relativ) liesse die Sidebar den unteren
+          // Navbar-Streifen ueberdecken (auf Geraeten mit Notch fast die ganze
+          // Navbar -> User-Menue liegt hinter dem Panel).
           mode === "sidebar" && cn(
-            "fixed top-14 bottom-0 bg-background shadow-xl flex overflow-hidden z-55",
+            "fixed top-[calc(3.5rem+env(safe-area-inset-top))] bottom-0 bg-background shadow-xl flex overflow-hidden z-55",
             isLeft ? "left-0" : "right-0",
           ),
           mode === "drawer" && "fixed inset-x-0 bottom-0 z-[60] pointer-events-auto",
