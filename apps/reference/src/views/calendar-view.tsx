@@ -9,6 +9,8 @@ import {
   ItemTypeBadge,
   ItemTimeRange,
   ReactionBar,
+  LocationPickerMap,
+  nominatimGeocode,
   useItems,
   useMembers,
   useCurrentUser,
@@ -16,7 +18,11 @@ import {
   useModulePanel,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
+import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 import type { Item, User } from "@real-life-stack/data-interface"
+
+// Stable factory so the inline location-picker map mounts once (not per render).
+const createMapPickerAdapter = () => new MapLibreMapAdapter()
 
 export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // Calendar activates on data.start (event/v1). Cross-context items
@@ -114,6 +120,14 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
           }}
           onCancel={() => modulePanel.close()}
           showPreview={false}
+          geocode={nominatimGeocode}
+          renderLocationMap={(slot) => (
+            <LocationPickerMap
+              createAdapter={createMapPickerAdapter}
+              position={slot.position}
+              onPositionChange={slot.onPositionChange}
+            />
+          )}
         />
       ),
       onClose: () => editor.close(),

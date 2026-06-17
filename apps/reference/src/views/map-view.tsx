@@ -18,6 +18,8 @@ import {
   useItemEditor,
   type ItemEditorMapper,
   getTagAccentColor,
+  LocationPickerMap,
+  nominatimGeocode,
   Input,
   type FilterBarValue,
   type FilterTypeOption,
@@ -31,6 +33,9 @@ const MAP_TYPES: FilterTypeOption[] = [
   { id: "event", label: "Events", icon: Calendar },
   { id: "place", label: "Orte", icon: MapPin },
 ]
+
+// Stable factory so the inline location-picker map mounts once (not per render).
+const createMapPickerAdapter = () => new MapLibreMapAdapter()
 
 /**
  * Map module — vector version using the MapLibreMapAdapter from toolkit.
@@ -256,6 +261,14 @@ export function MapView({ groupId }: { groupId: string }) {
           }}
           onCancel={() => modulePanel.close()}
           showPreview={false}
+          geocode={nominatimGeocode}
+          renderLocationMap={(slot) => (
+            <LocationPickerMap
+              createAdapter={createMapPickerAdapter}
+              position={slot.position}
+              onPositionChange={slot.onPositionChange}
+            />
+          )}
         />
       ),
       onClose: () => editor.close(),

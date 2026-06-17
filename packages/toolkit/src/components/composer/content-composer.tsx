@@ -16,6 +16,7 @@ import { TitleWidget } from "./widgets/title-widget"
 import { TextWidget } from "./widgets/text-widget"
 import { DateWidget } from "./widgets/date-widget"
 import { LocationWidget } from "./widgets/location-widget"
+import type { Geocoder } from "@/lib/geocode"
 import { MediaWidget } from "./widgets/media-widget"
 import { PeopleWidget, type PersonOption } from "./widgets/people-widget"
 export type { PersonOption } from "./widgets/people-widget"
@@ -143,6 +144,8 @@ export interface ContentComposerProps {
     onPositionChange: (pos: { lat: number; lng: number }) => void
     onConfirm: () => void
   }) => React.ReactNode
+  /** Address geocoder injected into the location widget (debounced suggestions). */
+  geocode?: Geocoder
   /** Structured people options: stores IDs, displays names. Takes precedence over peopleSuggestions. */
   peopleOptions?: PersonOption[]
   /** Simple string suggestions (legacy). Ignored when `peopleOptions` is provided. */
@@ -211,6 +214,7 @@ export function ContentComposer({
   onDelete,
   editMode: editModeProp,
   renderLocationMap,
+  geocode,
   peopleOptions,
   peopleSuggestions,
   tagSuggestions,
@@ -564,6 +568,7 @@ export function ContentComposer({
                       }}
                       label={widgetLabel}
                       renderMap={renderLocationMap}
+                      geocode={geocode}
                     />
                   )}
                   {widgetId === "status" &&
