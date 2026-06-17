@@ -53,6 +53,9 @@ export function LocationWidget({
   const [activeIndex, setActiveIndex] = React.useState(-1)
   const [failed, setFailed] = React.useState(false)
   const blurTimer = React.useRef<number | null>(null)
+  // Tracks which search owns the loading spinner, so an aborted older search
+  // can neither reset a newer one nor leave the spinner hanging.
+  const loadingControllerRef = React.useRef<AbortController | null>(null)
   const listId = React.useId()
 
   React.useEffect(() => {
@@ -68,6 +71,7 @@ export function LocationWidget({
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
       setLoading(true)
+      loadingControllerRef.current = controller
       geocode(q, { signal: controller.signal })
         .then((hits) => {
           if (controller.signal.aborted) return
@@ -83,7 +87,10 @@ export function LocationWidget({
           setFailed(true)
         })
         .finally(() => {
-          if (!controller.signal.aborted) setLoading(false)
+          // Only the latest search clears the spinner: an aborted older search
+          // must not reset a newer one, and an abort with no successor must not
+          // leave it hanging.
+          if (loadingControllerRef.current === controller) setLoading(false)
         })
     }, GEOCODE_DEBOUNCE_MS)
     return () => {

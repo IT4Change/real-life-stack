@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   type ReactNode,
@@ -68,6 +69,14 @@ export function ComposerHostProvider({
   isPickingRef.current = isPicking
   const confirmPickRef = useRef(confirmPick)
   confirmPickRef.current = confirmPick
+
+  // If the composer is replaced by other panel content (or closed) while a pick
+  // is in flight, the entry's onClose does not fire on a content-swap — so end
+  // the pick here to avoid a stuck state (composer suspended / map stuck in
+  // pick mode).
+  useEffect(() => {
+    if (isPicking && modulePanel.current?.kind !== "composer") confirmPick()
+  }, [isPicking, modulePanel, confirmPick])
 
   const openComposer = useCallback(
     (config: OpenComposerConfig) => {

@@ -67,12 +67,20 @@ export function LocationPickProvider({
   moduleRef.current = currentModule
 
   const endPick = useCallback((opts: { restore: boolean; navigate: boolean }) => {
-    if (opts.restore) handlersRef.current?.onCancel?.()
+    const handlers = handlersRef.current
     const origin = originRef.current
+    // Clear state first, so a throwing onCancel can't leave picking stuck.
     handlersRef.current = null
     originRef.current = null
     reachedMapRef.current = false
     setIsPicking(false)
+    if (opts.restore) {
+      try {
+        handlers?.onCancel?.()
+      } catch {
+        /* ignore restore failures */
+      }
+    }
     // Return via replace, so the Map detour does not linger in history.
     if (opts.navigate && origin && origin !== "map") navRef.current(origin, { replace: true })
   }, [])

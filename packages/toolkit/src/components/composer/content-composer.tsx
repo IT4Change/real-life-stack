@@ -308,11 +308,11 @@ export function ContentComposer({
         prev.media !== data.media
       if (isTextOnly && !hasNonTextChange) {
         const timer = setTimeout(() => {
-          onSubmit({ contentType: selectedType, isPublic, data })
+          void Promise.resolve(onSubmit({ contentType: selectedType, isPublic, data })).catch(() => {})
         }, 300)
         return () => clearTimeout(timer)
       }
-      onSubmit({ contentType: selectedType, isPublic, data })
+      void Promise.resolve(onSubmit({ contentType: selectedType, isPublic, data })).catch(() => {})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, liveUpdate])
@@ -585,8 +585,12 @@ export function ContentComposer({
                                       .catch(() => {})
                                   }
                                 },
-                                onCancel: () =>
-                                  updateMany({ position: originalPosition, address: originalAddress }),
+                                onCancel: () => {
+                                  // Abort a pending reverse-geocode so its late
+                                  // result can't overwrite the restored address.
+                                  reverseAbortRef.current?.abort()
+                                  updateMany({ position: originalPosition, address: originalAddress })
+                                },
                               })
                             }
                           : undefined
