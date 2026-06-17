@@ -79,11 +79,17 @@ Regeln:
 
 Overlays folgen einem Drei-Ebenen-Modell. Pro Ebene gibt es höchstens **eine** Fläche; Ebenen dürfen einander überlagern, weil sie sichtbar von anderer Art sind.
 
-| Ebene | Fläche | Form | Inhalt |
-|---|---|---|---|
-| 1 Content-Panel | eine app-weite Instanz | Sidebar (Desktop) ↔ Drawer (Mobile) | Item-Detail, Composer, Filter — Content wird getauscht, nie gestapelt |
-| 2 Dialog | eine Instanz | zentriertes Modal + Backdrop (Desktop) / Sheet (Mobile) | fokussierte Tasks: Kontakte, Verifizieren, Gruppe, Profil |
-| 3 Notification | nicht-destruktiver Hinweis | Banner / Toast | zeitkritische Interrupts: eingehende Verifizierung, Space-Einladung |
+Persistente App-Chrome (Navbar, BottomNav) ist keine Overlay-Ebene, sondern der Rahmen, in dem die Ebenen leben. Ihre direkt geöffneten Menüs, Popovers und Tooltips bilden eine eigene, oberste Schicht (siehe Regel 7 und die z-Index-Spalte).
+
+Die z-Index-Spalte nennt die heute im Code vergebenen Werte (`packages/toolkit/src/components/primitives/` und `layout/`). Normativ ist die **Reihenfolge**: Chrome unter den Overlay-Ebenen, Ebene 1 unter Ebene 2, Chrome-Menüs oben.
+
+| Ebene | Fläche | Form | z-Index | Inhalt |
+|---|---|---|---|---|
+| Chrome (Rahmen) | Navbar, BottomNav | persistente Leisten | `z-40` | Navigation, Space Switcher, User Menu; lebt unter den Overlay-Ebenen |
+| 1 Content-Panel | eine app-weite Instanz | Sidebar (Desktop) ↔ Drawer (Mobile) | `z-55` | Item-Detail, Composer, Filter — Content wird getauscht, nie gestapelt |
+| 2 Dialog | eine Instanz | zentriertes Modal + Backdrop (Desktop) / Sheet (Mobile) | `z-60`/`z-65` | fokussierte Tasks: Kontakte, Verifizieren, Gruppe, Profil |
+| 3 Notification | nicht-destruktiver Hinweis | Banner / Toast | über Ebene 2 | zeitkritische Interrupts: eingehende Verifizierung, Space-Einladung |
+| Chrome-Menü / Popover / Tooltip | portalisiert, an Chrome-Trigger gebunden | Dropdown, Popover, Tooltip | `z-70` | User Menu, Tooltips, Status-Popovers; portalisiert, nie im `z-40`-Kontext eingesperrt |
 
 Regeln:
 
@@ -93,6 +99,29 @@ Regeln:
 4. **Interrupts stehlen nie den Kontext.** Ebene 3 ersetzt nie Ebene-1/2-Content und nimmt keinen Fokus; der Nutzer öffnet sie bewusst, der Flow landet dann in Ebene 2.
 5. **Verschachtelte Flows pro Ebene laufen über einen Back-Stack** (z.B. Kontakte → Verifizieren → zurück), nie über eine zweite gleichartige Fläche.
 6. Overlays sind **Präsentation, nie Aktivierung** — welche Items ein Modul zeigt, entscheidet Feld-Präsenz (siehe [06-schema-composition.md](06-schema-composition.md)), nie eine Overlay-Fläche.
+7. **Persistente Chrome bleibt erreichbar.** Navbar, BottomNav und ihre direkt geöffneten Menüs, Popovers und Tooltips MÜSSEN über bzw. erreichbar neben den Ebene-1-Content-Panels bleiben. Ein Chrome-Menü (z.B. das User Menu) MUSS portalisiert auf der obersten Schicht (`z-70`) liegen und DARF NICHT im `z-40`-Stacking-Context der Navbar eingesperrt werden, sonst öffnet es hinter einem `z-55`-Content-Panel.
+8. **Folge-Inhalt stapelt nicht in derselben Ebene.** Innerhalb einer Ebene wird KEINE zweite gleichartige Fläche geöffnet. Ein aus einer Fläche aufgerufener Folge-Inhalt MUSS entweder den Inhalt derselben Fläche per Back-Stack tauschen (Regel 5) ODER auf eine andere Ebene wechseln (Ebene-1-Content-Panel). Ein Profil, das aus der Kontaktliste (Ebene 2) geöffnet wird, DARF NICHT als zweiter Dialog über dem Kontakte-Dialog erscheinen.
+9. **Ebene-Wechsel ist explizit.** Wechselt ein Flow von Ebene 2 in ein Ebene-1-Content-Panel (oder umgekehrt), SOLL die Ausgangsfläche geschlossen oder sichtbar zurückgesetzt werden, damit nie zwei fokussierte Flächen denselben Kontext beanspruchen.
+
+### Ebene 3: Interrupt-Notifications
+
+Ebene 3 trägt eingehende, zeitkritische Events, die nicht aus einer Nutzer-Aktion stammen: Counter-Verification, Space-Invite, Mutual-Verification (im Code `incoming-verification`, `incoming-space-invite`, `mutual-verification`, siehe `use-incoming-events`).
+
+Regeln:
+
+1. Ein eingehendes Event MUSS nicht-destruktiv erscheinen: als Hinweis, Toast oder Banner. Es DARF NICHT automatisch ein Modal öffnen, das den laufenden Kontext (Ebene 1 oder Ebene 2) ersetzt oder den Fokus zieht.
+2. Der Nutzer entscheidet, wann er reagiert. Erst seine Aktion auf der Notification öffnet den zugehörigen Flow in Ebene 2 (z.B. Verifizieren-Dialog).
+3. Ebene 3 ist abgegrenzt von Ebene 1 (persistenter, vom Nutzer geöffneter Content) und Ebene 2 (vom Nutzer gestartete, fokussierte Tasks): Ebene 3 ist System-initiiert und passiv, bis der Nutzer sie aufgreift.
+4. Mehrere gleichzeitige Events SOLLEN als Liste oder gestapelte Hinweise innerhalb der einen Notification-Fläche erscheinen, nicht als mehrere konkurrierende Modals.
+
+### ARIA-Konventionen
+
+Overlay-Flächen folgen den WAI-ARIA Authoring Practices (APG). Nur Verweis und wichtigste Pflichten:
+
+1. **Dialoge** (Ebene 2) folgen dem APG-Pattern *Dialog (Modal)*: `role="dialog"` mit `aria-modal="true"`, Fokus beim Öffnen in den Dialog, Fokus-Trap, Esc schließt, Fokus-Rückgabe zum auslösenden Element.
+2. **Chrome-Menüs** (User Menu, Aktionsmenüs) folgen *Menu* und *Menu Button*: `aria-haspopup`, Pfeiltasten-Navigation, Esc schließt und gibt den Fokus an den Trigger zurück.
+3. **Tooltips** folgen *Tooltip*: per Hover und Fokus erreichbar, Esc blendet aus, kein Fokus-Fang.
+4. Diese Pflichten sind in den Radix-basierten Primitives `Dialog`, `DropdownMenu` und `Tooltip` (`packages/toolkit/src/components/primitives/`) bereits umgesetzt; Overlays SOLLEN diese Primitives nutzen, statt das Verhalten neu zu bauen.
 
 ### Content-Bereich
 
