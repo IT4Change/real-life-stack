@@ -61,8 +61,9 @@ interface ContentComposerProps {
   defaultPublic?: boolean
   liveUpdate?: boolean
   className?: string
-  // Weitere optionale Props (peopleOptions, tagSuggestions, renderLocationMap,
-  // renderPreview, …) siehe `packages/toolkit/src/components/composer/content-composer.tsx`.
+  // Weitere optionale Props (peopleOptions, tagSuggestions, geocode,
+  // reverseGeocode, requestMapPick, renderPreview, …) siehe
+  // `packages/toolkit/src/components/composer/content-composer.tsx`.
 }
 
 interface ContentComposerSubmitData {
@@ -82,25 +83,26 @@ interface ContentComposerSubmitData {
 
 #### Location-Widget (`location`)
 
-**Zweck:** Geo-Eingabe für verortete Items. Das `location`-Widget (`LocationWidget`, im `WIDGET_ORDER` zwischen `date` und `people`) bietet einen `Vor-Ort`-Modus mit zwei Eingabewegen plus einen `Online`-Modus für reine Meeting-Links.
+**Zweck:** Einen **physischen Ort** für verortete Items setzen. Das `location`-Widget (`LocationWidget`, im `WIDGET_ORDER` zwischen `date` und `people`) hat genau diesen einen Zweck. Online-/Meeting-Links sind kein Ort und gehören nicht hierher (ggf. eigenes Feld/Widget).
 
-**Eingabemodi (Vor-Ort):**
+**Zwei Eingabewege:**
 
-- **(a) Adresse → Geocoding → Position:** Freitext-Adresse im Adress-`Input`; ein Geocoding-Schritt löst die Adresse zu Koordinaten auf und setzt `data.position`. Dieser Schritt ist im Toolkit (`packages/toolkit`) noch zu implementieren, beschreibt also den Zielzustand, nicht den Ist-Zustand (eine ältere Geocoding-Variante existiert nur im Prototyp-Widget `apps/prototype/src/components/widgets/LocationWidget.tsx`). Der Geocoding-Provider ist austauschbar; Referenz ist Nominatim/OSM. Der Provider ist nicht normativ festgelegt und gehört nicht ins Widget, sondern wird wie der Karten-Adapter injiziert.
-- **(b) Position auf der Karte wählen:** Der Caller reicht über `renderLocationMap` eine Karten-Fläche in den `renderMap`-Slot des Widgets. Klick auf die Karte setzt die Position. Diese Fläche nutzt denselben Karten-Adapter wie das Map Module, über `MapAdapter.observeClicks` → `MapClickEvent.position` ([map.md → Adapter-Vertrag](map.md)). Koordinaten sind im Adapter-API durchgängig `[lng, lat]`.
+- **(a) Adresse → Geocoding → Position:** Freitext-Adresse im Adress-`Input`. Ein injizierter Geocoder löst die Eingabe debounced auf (ab wenigen Zeichen; die vorherige Anfrage wird abgebrochen) und zeigt Vorschläge; die Auswahl setzt `data.position` und übernimmt den Adresstext. Die Vorschlagsliste ist eine zugängliche Combobox (`role="combobox"`/`listbox`/`option`, Pfeiltasten/Enter/Escape). Der Geocoding-Provider ist nicht normativ festgelegt und wird — wie der Karten-Adapter — injiziert; Referenz ist Nominatim/OSM (öffentliche Instanz nur Dev/Demo, produktiv self-hosted/identifiziert).
+- **(b) Position auf der Karte wählen:** Neben dem Adressfeld steht ein kompakter Button (in einer Zeile); beim Klick ruft das Widget einen vom Caller bereitgestellten `onPickOnMap`-Callback auf. Gepickt wird auf der **großen Karte des Map Module**, nicht in einer Inline-Minikarte: die App wechselt ins Map-Modul, ein Klick auf die Karte übernimmt die Position sofort (`MapAdapter.observeClicks` → `MapClickEvent.position`, durchgängig `[lng, lat]`), anschließend füllt ein Reverse-Geocoding das Adressfeld. Nach dem Picken bleibt man auf der Karte.
+
+**App-Realisierung des Map-Picks (Referenz-App, nicht Widget-Sache):** Damit der Speichern-Pfad den Modulwechsel übersteht, liegen Editor + `ContentComposer` app-weit über dem Modul-Outlet (Composer-Host). Das geteilte Content-Panel ([01-app-composition.md → Overlay-Flächen](../01-app-composition.md)) bleibt beim Modulwechsel offen; auf kompakten Screens (Drawer) tritt es während des Pickens beiseite und kommt per „Fertig" zurück, auf Desktop bleibt die Sidebar sichtbar (kein Extra-Schritt, direkt „Erstellen"). „Abbrechen" stellt die vorherige Position wieder her und kehrt ins Ursprungsmodul zurück. Das Widget selbst kennt nur `onPickOnMap` und den injizierten Geocoder.
 
 **Daten-Vertrag (geschriebene Felder):**
 
 - `data.position` MUSS ein GeoJSON `Point` sein (`pointFromLatLng(lat, lng)` aus `lib/geo`), konform zu [place/v1](../schemas/vocab/place/v1/schema.json). Beide Eingabewege (a) und (b) schreiben in dasselbe Feld.
-- `data.address` SOLL den menschlichen Adresstext halten, wenn vorhanden.
+- `data.address` SOLL den menschlichen Adresstext halten (aus Geocoding-Auswahl oder Reverse-Geocoding).
 - `data.locationName` KANN einen benannten Ort halten (z.B. „Markthalle 7").
-- Im `Online`-Modus wird statt der Geo-Felder `data.meetingLink` geschrieben; `position`, `address`, `locationName` werden geleert. Der `ContentComposer` setzt diese Verzweigung über `updateMany(...)` um, nicht das Widget selbst.
 
-**Auslieferung (Anton-Entscheidung):** Adress-Geocoding (a) und Map-Pick (b) werden GEMEINSAM mit dem MapLibre-Adapter (`MapLibreMapAdapter`, geplant (Backlog A1), [map.md → Bereitgestellte Adapter](map.md)) ausgeliefert. Heute ist im Code nur `LeafletMapAdapter` implementiert; der `MapLibreMapAdapter` und der Geocoding-Schritt sind noch zu liefern (Zielzustand). Ohne bereitgestellten Karten-Adapter bleibt nur der Adress-Freitext nutzbar; das Widget MUSS dann ohne `renderMap`-Slot und ohne Geocoding funktionieren (Adresse als reiner Text, kein `data.position`).
+**Auslieferung:** Adress-Geocoding (a) und Map-Pick (b) sind zusammen mit dem `MapLibreMapAdapter` (Vektorkarte, [map.md → Bereitgestellte Adapter](map.md)) implementiert. Ohne bereitgestellten Geocoder/Karten-Adapter funktioniert das Widget weiter als reiner Adress-Freitext (kein `data.position`, kein Pick-Button).
 
 **Welche Typen das Widget anbieten:** Das Widget gehört in `contentTypes[].defaultWidgets` jedes Typs mit Ortsbezug — primär `place` (Position ist Pflichtfeld), sowie `event` mit Ort. Die Auswahl leitet sich aus Typ/Template ab; der `ContentComposer` rendert `location` nur, wenn der Typ es in `defaultWidgets` führt oder der Nutzer es manuell zuschaltet.
 
-**Spec:** [map.md → Adapter-Vertrag](map.md), [place/v1](../schemas/vocab/place/v1/schema.json)
+**Spec:** [map.md → Adapter-Vertrag](map.md), [01-app-composition.md → Overlay-Flächen](../01-app-composition.md), [place/v1](../schemas/vocab/place/v1/schema.json)
 
 ### `ItemDetailPanel`
 
