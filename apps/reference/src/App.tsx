@@ -277,23 +277,32 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     const next = [...dialogStack.filter((x) => x !== id), id]
     const params = new URLSearchParams(searchParams)
     params.set("dialog", next.join(","))
-    setSearchParams(params)
+    // Jeden In-App-Push als unseren markieren, damit popDialog ihn sicher
+    // erkennt. Vorhandenen Route-State erhalten.
+    const prev = (typeof location.state === "object" && location.state) || {}
+    setSearchParams(params, { state: { ...prev, rlsDialogPush: true } })
   }
-  // Schließen poppt eine Ebene. In-App geöffnete Dialoge haben einen History-
-  // Push, also poppt `navigate(-1)` sauber (Browser-Zurück macht dasselbe).
-  // ABER bei einem direkt geöffneten / neu geladenen `?dialog=`-URL gibt es
-  // keinen In-App-Eintrag davor (location.key === "default") — dann würde
-  // navigate(-1) aus der App rausnavigieren. In dem Fall den obersten Dialog
-  // per replace aus dem Query entfernen, damit „deep-linkbar + refresh-fest" hält.
+  // Schließen poppt eine Ebene. Nur In-App geöffnete Dialoge haben einen
+  // echten History-Eintrag, den navigate(-1) sauber poppt (Browser-Zurück
+  // identisch). Wir markieren diese Pushes mit state.rlsDialogPush.
+  //
+  // location.key taugt NICHT als Detektor: ein replace erzeugt einen neuen
+  // Key, also wäre bei gestapeltem Deep-Link (?dialog=contacts,verify) nur
+  // der erste Close "default", der zweite würde fälschlich navigate(-1)
+  // rausnavigieren. state.rlsDialogPush überlebt das, weil wir es beim
+  // replace-Entfernen NICHT setzen — Deep-Link/Refresh-Einträge bleiben so
+  // dauerhaft "nicht-gepusht" und schließen Ebene für Ebene per replace,
+  // ohne die App zu verlassen.
   const popDialog = () => {
-    if (location.key === "default") {
+    const pushed = (location.state as { rlsDialogPush?: boolean } | null)?.rlsDialogPush
+    if (pushed) {
+      navigate(-1)
+    } else {
       const next = dialogStack.slice(0, -1)
       const params = new URLSearchParams(searchParams)
       if (next.length > 0) params.set("dialog", next.join(","))
       else params.delete("dialog")
       setSearchParams(params, { replace: true })
-    } else {
-      navigate(-1)
     }
   }
   // Radix-Dialoge (RemoveScroll) setzen `body { pointer-events: none }` und
