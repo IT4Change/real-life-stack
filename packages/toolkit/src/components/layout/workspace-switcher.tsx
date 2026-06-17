@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { ChevronsUpDown, Home, Plus, Settings } from "lucide-react"
 
 import {
@@ -41,6 +42,10 @@ export function WorkspaceSwitcher({
   onCreateWorkspace,
   onEditWorkspace,
 }: WorkspaceSwitcherProps) {
+  // Controlled so the gear (edit) button can close the menu before opening the
+  // group dialog — otherwise the menu stays open and overlaps the dialog.
+  const [open, setOpen] = useState(false)
+
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -55,7 +60,7 @@ export function WorkspaceSwitcher({
   const isPersonalActive = activeWorkspace?.scope === "overview"
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 hover:bg-accent sm:gap-3 sm:px-3">
         {isPersonalActive ? (
           <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -116,6 +121,7 @@ export function WorkspaceSwitcher({
                 className="rounded p-0.5 opacity-50 hover:opacity-100! hover:bg-accent shrink-0"
                 onClick={(e) => {
                   e.stopPropagation()
+                  setOpen(false)
                   onEditWorkspace(workspace)
                 }}
               >
