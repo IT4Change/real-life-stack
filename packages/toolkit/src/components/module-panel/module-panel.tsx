@@ -48,6 +48,9 @@ export interface ModulePanelProviderProps {
   /** Optional pinning state — surfaces the AdaptivePanel pin button. */
   pinned?: boolean
   onPinnedChange?: (pinned: boolean) => void
+  /** Hide the panel without unmounting (keeps composer state) — e.g. while
+   *  the user picks a location on the underlying map. */
+  suspended?: boolean
 }
 
 /**
@@ -68,6 +71,7 @@ export function ModulePanelProvider({
   sidebarMaxWidth,
   pinned,
   onPinnedChange,
+  suspended,
 }: ModulePanelProviderProps) {
   const [current, setCurrent] = useState<ModulePanelEntry | null>(null)
   // Hold a ref to the current entry's `onClose` so an explicit close()
@@ -107,6 +111,7 @@ export function ModulePanelProvider({
         sidebarMaxWidth={sidebarMaxWidth}
         pinned={pinned}
         onPinnedChange={onPinnedChange}
+        suspended={suspended}
       >
         {current?.content ?? null}
       </AdaptivePanel>

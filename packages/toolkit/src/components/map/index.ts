@@ -23,7 +23,3 @@ export type {
   MapAdapter,
   Unsubscribe,
 } from "./adapter"
-
-// Library-agnostic picker map (takes a MapAdapter factory; no concrete adapter).
-export { LocationPickerMap } from "./location-picker-map"
-export type { LocationPickerMapProps } from "./location-picker-map"

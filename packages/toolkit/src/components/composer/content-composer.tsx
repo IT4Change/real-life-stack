@@ -16,7 +16,7 @@ import { TitleWidget } from "./widgets/title-widget"
 import { TextWidget } from "./widgets/text-widget"
 import { DateWidget } from "./widgets/date-widget"
 import { LocationWidget } from "./widgets/location-widget"
-import type { Geocoder } from "@/lib/geocode"
+import type { Geocoder, ReverseGeocoder } from "@/lib/geocode"
 import { MediaWidget } from "./widgets/media-widget"
 import { PeopleWidget, type PersonOption } from "./widgets/people-widget"
 export type { PersonOption } from "./widgets/people-widget"
@@ -139,13 +139,16 @@ export interface ContentComposerProps {
   onCancel?: () => void
   onDelete?: () => void
   editMode?: boolean
-  renderLocationMap?: (props: {
-    position: { lat: number; lng: number } | null
-    onPositionChange: (pos: { lat: number; lng: number }) => void
-    onConfirm: () => void
-  }) => React.ReactNode
+  /**
+   * Hand off to an app-level map picker. Called with a callback that receives
+   * the picked position; the composer writes it to `data.position`. The
+   * location widget shows a "pick on map" button when this is provided.
+   */
+  requestMapPick?: (onPicked: (pos: { lat: number; lng: number }) => void) => void
   /** Address geocoder injected into the location widget (debounced suggestions). */
   geocode?: Geocoder
+  /** Reverse geocoder: fills the address field after a map pick. */
+  reverseGeocode?: ReverseGeocoder
   /** Structured people options: stores IDs, displays names. Takes precedence over peopleSuggestions. */
   peopleOptions?: PersonOption[]
   /** Simple string suggestions (legacy). Ignored when `peopleOptions` is provided. */
@@ -213,8 +216,9 @@ export function ContentComposer({
   onCancel,
   onDelete,
   editMode: editModeProp,
-  renderLocationMap,
+  requestMapPick,
   geocode,
+  reverseGeocode,
   peopleOptions,
   peopleSuggestions,
   tagSuggestions,
@@ -534,41 +538,34 @@ export function ContentComposer({
                     <LocationWidget
                       value={{
                         address: data.address,
-                        link: data.meetingLink,
                         position: data.position ? latLngFromPoint(data.position) ?? undefined : undefined,
-                        isOnline:
-                          data.meetingLink !== undefined &&
-                          data.address === undefined &&
-                          data.position === undefined,
                       }}
                       onChange={(v) => {
-                        // LocationWidget owns a Vor-Ort/Online toggle on
-                        // `v.isOnline`. The two modes write into different
-                        // spec fields, so the toggle is honoured by branching
-                        // here and clearing the other mode's fields. Without
-                        // this branch the toggle has no visible effect: the
-                        // derived `isOnline` flag we pass into `value` would
-                        // recompute to the previous mode on the next render.
-                        if (v.isOnline) {
-                          updateMany({
-                            address: undefined,
-                            position: undefined,
-                            locationName: undefined,
-                            meetingLink: v.link || undefined,
-                          })
-                        } else {
-                          updateMany({
-                            address: v.address || undefined,
-                            position: v.position
-                              ? pointFromLatLng(v.position.lat, v.position.lng)
-                              : undefined,
-                            meetingLink: undefined,
-                          })
-                        }
+                        updateMany({
+                          address: v.address || undefined,
+                          position: v.position
+                            ? pointFromLatLng(v.position.lat, v.position.lng)
+                            : undefined,
+                        })
                       }}
                       label={widgetLabel}
-                      renderMap={renderLocationMap}
                       geocode={geocode}
+                      onPickOnMap={
+                        requestMapPick
+                          ? () =>
+                              requestMapPick((pos) => {
+                                updateMany({ position: pointFromLatLng(pos.lat, pos.lng) })
+                                // Reverse-geocode the picked point to fill the address.
+                                if (reverseGeocode) {
+                                  reverseGeocode(pos)
+                                    .then((label) => {
+                                      if (label) updateMany({ address: label })
+                                    })
+                                    .catch(() => {})
+                                }
+                              })
+                          : undefined
+                      }
                     />
                   )}
                   {widgetId === "status" &&

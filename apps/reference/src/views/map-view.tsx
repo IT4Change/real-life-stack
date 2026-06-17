@@ -4,7 +4,6 @@ import {
   useMembers,
   useCurrentUser,
   useModulePanel,
-  ContentComposer,
   type ContentTypeConfig,
   ItemDetailPanel,
   ItemPreview,
@@ -15,11 +14,9 @@ import {
   FilterBar,
   emptyFilterBarValue,
   useFilterableItems,
-  useItemEditor,
   type ItemEditorMapper,
   getTagAccentColor,
-  LocationPickerMap,
-  nominatimGeocode,
+  Button,
   Input,
   type FilterBarValue,
   type FilterTypeOption,
@@ -28,14 +25,13 @@ import {
 import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 import { Calendar, MapPin, Search } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
+import { useComposerHost } from "../composer-host"
+import { useLocationPick } from "../location-pick"
 
 const MAP_TYPES: FilterTypeOption[] = [
   { id: "event", label: "Events", icon: Calendar },
   { id: "place", label: "Orte", icon: MapPin },
 ]
-
-// Stable factory so the inline location-picker map mounts once (not per render).
-const createMapPickerAdapter = () => new MapLibreMapAdapter()
 
 /**
  * Map module — vector version using the MapLibreMapAdapter from toolkit.
@@ -119,10 +115,8 @@ export function MapView({ groupId }: { groupId: string }) {
     }
   }, [])
 
-  const editor = useItemEditor({
-    currentUserId: currentUser?.id,
-    mapSubmission,
-  })
+  const { openComposer: openCreateComposer } = useComposerHost()
+  const { isPicking, applyPick, cancelPick } = useLocationPick()
 
   // Build the markers and an id → item lookup in one pass — marker
   // clicks come back with just the id, and we need the full item to
@@ -234,46 +228,42 @@ export function MapView({ groupId }: { groupId: string }) {
 
   // Wire marker clicks to the shared module panel. The adapter's
   // subscriber returns an unsubscribe — clean up so we don't leak
-  // callbacks across remounts.
+  // callbacks across remounts. While picking a location, marker clicks
+  // are ignored: a click should set the position, not open a detail.
   useEffect(() => {
     if (!adapter) return
     const unsubscribe = adapter.observeMarkerClicks((markerId) => {
       const item = itemsById.get(markerId)
+      if (isPicking) {
+        // Picking directly on an existing marker snaps the position to it
+        // (the marker element swallows the map click, so handle it here).
+        const pos = item?.data.position as { coordinates?: number[] } | undefined
+        if (pos?.coordinates && pos.coordinates.length >= 2) {
+          const [lng, lat] = pos.coordinates
+          if (typeof lng === "number" && typeof lat === "number") applyPick({ lat, lng })
+        }
+        return
+      }
       if (item) openDetail(item)
     })
     return unsubscribe
-  }, [adapter, itemsById, openDetail])
+  }, [adapter, itemsById, openDetail, isPicking, applyPick])
 
-  // Composer opens into the shared module panel (Ebene 1) — sidebar on
-  // desktop, drawer on mobile. (Previously a Radix Sheet that stayed a
-  // sidebar even on phones.) The Feed keeps its own fullscreen-morph shell.
-  const openComposer = useCallback(() => {
-    editor.openCreate()
-    modulePanel.open({
-      kind: "composer",
-      content: (
-        <ContentComposer
-          className="p-4 sm:p-6"
-          contentTypes={mapContentTypes}
-          onSubmit={async (data) => {
-            const result = await editor.submit(data)
-            if (result) modulePanel.close()
-          }}
-          onCancel={() => modulePanel.close()}
-          showPreview={false}
-          geocode={nominatimGeocode}
-          renderLocationMap={(slot) => (
-            <LocationPickerMap
-              createAdapter={createMapPickerAdapter}
-              position={slot.position}
-              onPositionChange={slot.onPositionChange}
-            />
-          )}
-        />
-      ),
-      onClose: () => editor.close(),
+  // While picking, any map click sets the position and returns to the origin.
+  useEffect(() => {
+    if (!adapter || !isPicking) return
+    const unsubscribe = adapter.observeClicks((e) => {
+      const [lng, lat] = e.position
+      applyPick({ lat, lng })
     })
-  }, [editor, modulePanel, mapContentTypes])
+    return unsubscribe
+  }, [adapter, isPicking, applyPick])
+
+  // Composer opens via the app-level host, so its save path survives the
+  // round-trip to location picking. The Feed keeps its own fullscreen shell.
+  const openComposer = useCallback(() => {
+    openCreateComposer({ contentTypes: mapContentTypes, mapper: mapSubmission })
+  }, [openCreateComposer, mapContentTypes, mapSubmission])
 
   return (
     <div className="relative h-full w-full">
@@ -281,6 +271,21 @@ export function MapView({ groupId }: { groupId: string }) {
           internal control / popup z-indices stay contained and don't overlay
           the navbar / workspace switcher / user menu above. */}
       <div ref={containerRef} className="absolute inset-0 isolate" />
+
+      {/* Location-pick banner: shown while a composer hands off position
+          picking to this map. On mobile the composer drawer is suspended so
+          the map is reachable; this banner is the pick affordance + cancel. */}
+      {isPicking && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center p-3">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-full border bg-background/95 px-4 py-2 text-sm shadow-md backdrop-blur">
+            <MapPin className="h-4 w-4 text-primary" />
+            <span>Tippe auf die Karte, um die Position zu setzen.</span>
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={cancelPick}>
+              Abbrechen
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* FilterBar floats above the map without a wrapper card —
           the trigger button + active chips sit directly on the map.
@@ -312,7 +317,8 @@ export function MapView({ groupId }: { groupId: string }) {
         />
       </div>
 
-      <CreateFab onClick={openComposer} label="Ort erstellen" />
+      {/* Hidden while picking: the map click sets a position, not a new item. */}
+      {!isPicking && <CreateFab onClick={openComposer} label="Ort erstellen" />}
     </div>
   )
 }

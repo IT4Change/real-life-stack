@@ -51,7 +51,7 @@ export interface WorkspaceRouting {
   /** Navigate to a workspace, keeping the module if the target offers it. */
   handleWorkspaceChange: (workspace: Workspace) => void
   /** Navigate to a module within the active workspace. */
-  handleModuleChange: (moduleId: string) => void
+  handleModuleChange: (moduleId: string, opts?: { replace?: boolean }) => void
 }
 
 /**
@@ -156,9 +156,9 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     navigate(`/spaces/${workspace.id}/${mod}`)
   }, [groups, activeModule, navigate])
 
-  const handleModuleChange = useCallback((moduleId: string) => {
+  const handleModuleChange = useCallback((moduleId: string, opts?: { replace?: boolean }) => {
     if (activeWorkspace) {
-      navigate(`/spaces/${activeWorkspace.id}/${moduleId}`)
+      navigate(`/spaces/${activeWorkspace.id}/${moduleId}`, opts?.replace ? { replace: true } : undefined)
     }
   }, [activeWorkspace, navigate])
 

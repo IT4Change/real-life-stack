@@ -42,6 +42,13 @@ export interface AdaptivePanelProps {
   onPinnedChange?: (pinned: boolean) => void
   onModeChange?: (mode: PanelMode) => void
   onSidebarResize?: (width: number) => void
+  /**
+   * Temporarily hide the panel without unmounting it (content + state stay
+   * alive), so a non-sidebar panel can step aside — e.g. while the user picks
+   * a location on the underlying map. No effect in sidebar mode (it does not
+   * cover the content area).
+   */
+  suspended?: boolean
   className?: string
 }
 
@@ -139,6 +146,7 @@ export function AdaptivePanel({
   onPinnedChange,
   onModeChange,
   onSidebarResize,
+  suspended = false,
   className,
 }: AdaptivePanelProps) {
   const isCompact = useIsCompact()
@@ -491,16 +499,18 @@ export function AdaptivePanel({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [open, onClose, pinned])
 
-  // Lock body scroll when modal or (unpinned) drawer is open
+  // Lock body scroll when modal or (unpinned) drawer is open — but not while
+  // suspended, so the underlying map (e.g. during location picking) behaves
+  // normally.
   useEffect(() => {
-    if (open && (mode === "modal" || (mode === "drawer" && !pinned))) {
+    if (!suspended && open && (mode === "modal" || (mode === "drawer" && !pinned))) {
       const prev = document.body.style.overflow
       document.body.style.overflow = "hidden"
       return () => {
         document.body.style.overflow = prev
       }
     }
-  }, [open, mode, pinned])
+  }, [open, mode, pinned, suspended])
 
   if (!visible && !open) return null
 
@@ -551,7 +561,8 @@ export function AdaptivePanel({
             "fixed inset-0 z-[60] bg-black/50 transition-opacity duration-200",
             mode === "modal"
               ? (isOpen ? "opacity-100" : "opacity-0")
-              : (isOpen && drawerY < 90 ? "opacity-100" : "opacity-0 pointer-events-none")
+              : (isOpen && drawerY < 90 ? "opacity-100" : "opacity-0 pointer-events-none"),
+            suspended && "invisible pointer-events-none",
           )}
           onClick={onClose}
         />
@@ -566,6 +577,7 @@ export function AdaptivePanel({
             isLeft ? "left-0" : "right-0",
           ),
           mode === "drawer" && "fixed inset-x-0 bottom-0 z-[60] pointer-events-auto",
+          suspended && mode !== "sidebar" && "invisible pointer-events-none",
         )}
         style={mode === "sidebar" ? outerStyle : undefined}
       >

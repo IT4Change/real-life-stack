@@ -81,3 +81,49 @@ export function createNominatimGeocoder(
  * identified instance.
  */
 export const nominatimGeocode: Geocoder = createNominatimGeocoder()
+
+/** Resolve a coordinate to a human-readable address label, or null. */
+export type ReverseGeocoder = (
+  pos: { lat: number; lng: number },
+  options?: { signal?: AbortSignal },
+) => Promise<string | null>
+
+export interface NominatimReverseOptions {
+  /** Reverse endpoint. Defaults to the public OSM Nominatim instance. */
+  endpoint?: string
+  /** `accept-language` value, e.g. "de". Omitted → server default. */
+  language?: string
+}
+
+const DEFAULT_REVERSE_ENDPOINT = "https://nominatim.openstreetmap.org/reverse"
+
+/**
+ * Build a {@link ReverseGeocoder} backed by a Nominatim instance. Returns the
+ * `display_name` for the coordinate, or null if none.
+ */
+export function createNominatimReverseGeocoder(
+  options: NominatimReverseOptions = {},
+): ReverseGeocoder {
+  const { endpoint = DEFAULT_REVERSE_ENDPOINT, language } = options
+  return async (pos, opts) => {
+    const params = new URLSearchParams({
+      lat: String(pos.lat),
+      lon: String(pos.lng),
+      format: "jsonv2",
+    })
+    if (language) params.set("accept-language", language)
+    const res = await fetch(`${endpoint}?${params.toString()}`, {
+      signal: opts?.signal,
+      headers: { Accept: "application/json" },
+    })
+    if (!res.ok) throw new Error(`Reverse geocoding failed: ${res.status}`)
+    const data = (await res.json()) as { display_name?: string }
+    return data.display_name ?? null
+  }
+}
+
+/**
+ * Ready-to-use reverse geocoder against the **public OSM instance** (dev/demo
+ * only; see {@link nominatimGeocode}).
+ */
+export const nominatimReverseGeocode: ReverseGeocoder = createNominatimReverseGeocoder()

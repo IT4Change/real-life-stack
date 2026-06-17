@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Globe, Loader2, MapPin } from "lucide-react"
+import { Loader2, MapPin } from "lucide-react"
 import { Input } from "@/components/primitives/input"
 import { Button } from "@/components/primitives/button"
 import { cn } from "@/lib/utils"
@@ -9,8 +9,6 @@ import type { Geocoder, GeocodeResult } from "@/lib/geocode"
 
 interface LocationData {
   address?: string
-  link?: string
-  isOnline?: boolean
   position?: { lat: number; lng: number }
 }
 
@@ -24,11 +22,12 @@ interface LocationWidgetProps {
    * stays free text (no position from the address).
    */
   geocode?: Geocoder
-  renderMap?: (props: {
-    position: { lat: number; lng: number } | null
-    onPositionChange: (pos: { lat: number; lng: number }) => void
-    onConfirm: () => void
-  }) => React.ReactNode
+  /**
+   * When provided, shows a compact "pick on map" button next to the address
+   * input. The app-level picker writes the chosen position back through the
+   * parent (the composer's `updateMany`); this widget only triggers it.
+   */
+  onPickOnMap?: () => void
 }
 
 const GEOCODE_DEBOUNCE_MS = 500
@@ -39,13 +38,12 @@ export function LocationWidget({
   onChange,
   label,
   geocode,
-  renderMap,
+  onPickOnMap,
 }: LocationWidgetProps) {
-  const isOnline = value.isOnline ?? false
   const address = value.address ?? ""
 
   // Geocoding is driven by what the user actually *types*, not by every
-  // external `address` change. So opening an editor with a prefilled address
+  // external `address` change — so opening an editor with a prefilled address
   // does not auto-search, and picking a suggestion (which sets address = label)
   // does not re-search. `null` means "no pending user query".
   const [userQuery, setUserQuery] = React.useState<string | null>(null)
@@ -58,7 +56,7 @@ export function LocationWidget({
   const listId = React.useId()
 
   React.useEffect(() => {
-    if (!geocode || isOnline || userQuery === null) return
+    if (!geocode || userQuery === null) return
     const q = userQuery.trim()
     if (q.length < GEOCODE_MIN_CHARS) {
       setResults([])
@@ -92,7 +90,7 @@ export function LocationWidget({
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [userQuery, geocode, isOnline])
+  }, [userQuery, geocode])
 
   // Clear a pending blur-close timer on unmount.
   React.useEffect(
@@ -138,114 +136,83 @@ export function LocationWidget({
   return (
     <div className="space-y-2">
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      {/* Online/Offline Toggle */}
       <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant={!isOnline ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onChange({ ...value, isOnline: false })}
-          className="h-7 gap-1 px-2 text-xs"
-        >
-          <MapPin className="h-3 w-3" />
-          Vor Ort
-        </Button>
-        <Button
-          type="button"
-          variant={isOnline ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onChange({ ...value, isOnline: true })}
-          className="h-7 gap-1 px-2 text-xs"
-        >
-          <Globe className="h-3 w-3" />
-          Online
-        </Button>
-      </div>
-      {/* Input field */}
-      {isOnline ? (
-        <Input
-          value={value.link || ""}
-          onChange={(e) => onChange({ ...value, link: e.target.value })}
-          placeholder="Meeting-Link (z.B. https://meet.example.com/...)"
-          type="url"
-          className="text-sm"
-        />
-      ) : (
-        <>
-          <div className="relative">
-            <Input
-              value={address}
-              onChange={(e) => {
-                onChange({ ...value, address: e.target.value })
-                setUserQuery(e.target.value)
-              }}
-              onFocus={() => {
-                if (results.length > 0) setOpen(true)
-              }}
-              onBlur={closeSoon}
-              onKeyDown={onInputKeyDown}
-              placeholder="Adresse eingeben..."
-              className="text-sm"
-              autoComplete="off"
-              role="combobox"
-              aria-expanded={open}
-              aria-controls={listId}
-              aria-autocomplete="list"
-              aria-activedescendant={
-                open && activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined
-              }
-            />
-            {loading && (
-              <Loader2 className="absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
-            )}
-            {open && results.length > 0 && (
-              <ul
-                id={listId}
-                role="listbox"
-                className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md"
-              >
-                {results.map((r, i) => (
-                  <li
-                    key={`${r.lat},${r.lng},${i}`}
-                    id={`${listId}-opt-${i}`}
-                    role="option"
-                    aria-selected={i === activeIndex}
+        <div className="relative flex-1">
+          <Input
+            value={address}
+            onChange={(e) => {
+              onChange({ ...value, address: e.target.value })
+              setUserQuery(e.target.value)
+            }}
+            onFocus={() => {
+              if (results.length > 0) setOpen(true)
+            }}
+            onBlur={closeSoon}
+            onKeyDown={onInputKeyDown}
+            placeholder="Adresse eingeben..."
+            className="text-sm"
+            autoComplete="off"
+            role="combobox"
+            aria-expanded={open}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-activedescendant={
+              open && activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined
+            }
+          />
+          {loading && (
+            <Loader2 className="absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
+          )}
+          {open && results.length > 0 && (
+            <ul
+              id={listId}
+              role="listbox"
+              className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md"
+            >
+              {results.map((r, i) => (
+                <li
+                  key={`${r.lat},${r.lng},${i}`}
+                  id={`${listId}-opt-${i}`}
+                  role="option"
+                  aria-selected={i === activeIndex}
+                >
+                  <button
+                    type="button"
+                    // Keep the input focused so onBlur does not close the list
+                    // before the click lands.
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => selectResult(r)}
+                    onMouseEnter={() => setActiveIndex(i)}
+                    className={cn(
+                      "block w-full px-2 py-1.5 text-left hover:bg-accent",
+                      i === activeIndex && "bg-accent",
+                    )}
                   >
-                    <button
-                      type="button"
-                      // Keep the input focused so onBlur does not close the list
-                      // before the click lands.
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => selectResult(r)}
-                      onMouseEnter={() => setActiveIndex(i)}
-                      className={cn(
-                        "block w-full px-2 py-1.5 text-left hover:bg-accent",
-                        i === activeIndex && "bg-accent",
-                      )}
-                    >
-                      {r.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          {failed && !loading && (
-            <p className="px-1 text-[11px] text-muted-foreground">
-              Adresssuche gerade nicht verfügbar.
-            </p>
+                    {r.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
-          {/* Map slot */}
-          {renderMap && (
-            <div className="mt-2 overflow-hidden rounded-md border">
-              {renderMap({
-                position: value.position || null,
-                onPositionChange: (pos) => onChange({ ...value, position: pos }),
-                onConfirm: () => {},
-              })}
-            </div>
-          )}
-        </>
+        </div>
+        {onPickOnMap && (
+          <Button
+            type="button"
+            variant={value.position ? "default" : "outline"}
+            size="icon"
+            onClick={onPickOnMap}
+            className="h-9 w-9 shrink-0"
+            aria-label={value.position ? "Position auf Karte ändern" : "Position auf Karte wählen"}
+            title={value.position ? "Position auf Karte ändern" : "Position auf Karte wählen"}
+          >
+            <MapPin className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+      {failed && !loading && (
+        <p className="px-1 text-[11px] text-muted-foreground">
+          Adresssuche gerade nicht verfügbar.
+        </p>
       )}
     </div>
   )
