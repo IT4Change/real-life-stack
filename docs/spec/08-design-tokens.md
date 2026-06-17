@@ -13,12 +13,12 @@ Heutige Verankerung im Code: die semantischen Farb-, Radius-, Schatten- und Typo
 Tokens sind in drei Ebenen organisiert. Die Spec schreibt die Ebenen-Trennung vor, nicht jeden Einzelwert.
 
 1. **Primitive Tokens** (Roh-Werte): konkrete Farben, Längen, Zeiten ohne Bedeutungszuweisung, z.B. ein OKLCH-Tripel oder `300ms`. Sie SOLLEN nicht direkt in UI-Komponenten referenziert werden.
-2. **Semantische Tokens** (Rollen): benannte Rollen, die auf Primitive verweisen, z.B. `--primary`, `--background`, `--border`, `--shadow-card`. UI referenziert MUSS bevorzugt diese Ebene.
-3. **Komponenten-Tokens** (optional): komponenten-lokale Ableitungen, z.B. `--sidebar-primary`, `--adaptive-panel-margin-right`. Sie SOLLEN auf semantische Tokens zurückführen, wo eine Rolle existiert.
+2. **Semantische Tokens** (Rollen): benannte Rollen, die auf Primitive verweisen, z.B. `--primary`, `--background`, `--border`, `--shadow-card`. UI MUSS bevorzugt diese Ebene referenzieren.
+3. **Komponenten-Tokens** (optional): komponenten-lokale Ableitungen, z.B. `--sidebar-primary` oder `--adaptive-panel-margin-right` (zur Laufzeit von `AdaptivePanel` publiziert, kein statisches `:root`-Token). Sie SOLLEN auf semantische Tokens zurückführen, wo eine Rolle existiert.
 
 Regeln:
 
-1. Eine Fläche referenziert MUSS die höchste passende Ebene (semantisch vor primitiv).
+1. Eine Fläche MUSS die höchste passende Ebene referenzieren (semantisch vor primitiv).
 2. Ein neuer Wert, der eine bestehende Rolle hat, MUSS das vorhandene semantische Token nutzen statt eines neuen Primitivs.
 3. Dark Mode ist eine Neuzuordnung der semantischen Tokens (`.dark`-Override), keine zweite Komponenten-Logik.
 
@@ -43,7 +43,7 @@ Verankerung: `TAG_PALETTE` in `packages/toolkit/src/lib/utils.ts`. Jeder Palette
 Regeln:
 
 1. Das Default-Tag-Display MUSS aus dieser Palette stammen; die Zuordnung String → Eintrag ist deterministisch und stabil.
-2. Tailwind-Flächen nutzen MUSS `getTagColor`, Nicht-Tailwind-Flächen (Leaflet, Canvas, Inline-SVG) `getTagAccentColor` aus demselben Paletten-Eintrag, damit ein Tag farblich überall gleich erscheint.
+2. Tailwind-Flächen MÜSSEN `getTagColor` nutzen, Nicht-Tailwind-Flächen (Leaflet, Canvas, Inline-SVG) `getTagAccentColor` aus demselben Paletten-Eintrag, damit ein Tag farblich überall gleich erscheint.
 3. Chip-Variante (`getTagColor`) und Accent-Variante (`getTagAccentColor`) MÜSSEN denselben Index treffen; ein zusätzlicher Paletten-Eintrag wird in beiden Varianten gepflegt.
 4. Die Reihenfolge bestehender Einträge SOLL stabil bleiben (Reihenfolge bestimmt die Hash-Zuordnung; Umsortieren ändert die Farbe bestehender Tags).
 
@@ -90,13 +90,13 @@ Die zentrale Bewegungs-Konvention ist `300ms ease-out` (`motion-panel` + `ease-o
 - die App-Shell rückt ihren Content ein (`transition-[padding] duration-300 ease-out`),
 - das `AdaptivePanel` passt seine Breite an (`width 300ms ease-out`).
 
-Alle drei lesen dieselbe `--adaptive-panel-margin-right`-CSS-Variable als Ziel-Inset. Diese gemeinsame Dauer/Easing MUSS erhalten bleiben, damit FAB, Content und Panel synchron laufen (kein Auseinanderdriften der Bewegung).
+Alle drei lesen dieselbe `--adaptive-panel-margin-right`-CSS-Variable als Ziel-Inset (zur Laufzeit von `AdaptivePanel` publiziert). Diese gemeinsame Dauer/Easing MUSS erhalten bleiben, damit FAB, Content und Panel synchron laufen (kein Auseinanderdriften der Bewegung).
 
 Regeln:
 
 1. Neue Panel-/Inset-bezogene Übergänge SOLLEN `motion-panel` + `ease-out` nutzen.
 2. Während eines Live-Resizes wird die Transition ausgesetzt (`in-[.adaptive-panel-resizing]:transition-none` bzw. `isResizing`), damit das Ziehen nicht hinterherläuft. Diese Aussetzung MUSS bei Resize-Interaktionen erhalten bleiben.
-3. `prefers-reduced-motion` SOLL respektiert werden: Bewegungs-Tokens auf 0 reduzieren, semantische Farb-/Layout-Tokens bleiben unverändert.
+3. `prefers-reduced-motion` SOLL respektiert werden: Bewegungs-Tokens auf 0 reduzieren, semantische Farb-/Layout-Tokens bleiben unverändert. (Noch offen: im Code aktuell nicht umgesetzt, hier als Soll-Zustand benannt.)
 
 ## Referenz-Methodik
 
