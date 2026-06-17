@@ -76,6 +76,8 @@ interface ContentComposerSubmitData {
 
 **Edit vs. Create:** Der Composer entscheidet via `editMode ?? !!onDelete` — explizit gesetzter `editMode` gewinnt; ansonsten signalisiert das Vorhandensein von `onDelete` Edit-Modus (Delete-Button erscheint, Submit-Label wechselt zu „Speichern"). Caller ohne beides sind im Create-Modus.
 
+**Präsentation je Modul (Hülle):** Die `ContentComposer`-Form ist geteilt; *wie* sie eingeblendet wird, wählt das Modul — es gibt mehrere Hüllen, nicht eine für alle. Heute: **Fullscreen-Morph** (Feed, `FeedComposerTrigger`) und **Content-Panel** (Calendar/Map/Kanban, [Ebene 1](../01-app-composition.md): Sidebar auf Desktop / Drawer auf Mobile). Vereinheitlicht wird nur, was tatsächlich falsch liegt (z.B. ein Composer, der auf Mobile fälschlich Sidebar bleibt), nicht per Brechstange alles gleichgemacht.
+
 **Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
 
 ### `ItemDetailPanel`
@@ -288,11 +290,30 @@ Caller löst die User-Objekte auf (typischerweise aus `assignedTo`-Relations + M
 
 **Code:** `packages/toolkit/src/components/preview/item-{type-badge,meta-row,comment-count,assignees}.tsx`.
 
+### `TagChip`
+
+**Zweck:** Einheitliche Tag-Darstellung über *alle* Flächen — Post-/Preview-Cards, Filter-Picker und aktive Filter-Chips. Eine Quelle, damit ein Tag überall gleich aussieht.
+
+```ts
+interface TagChipProps {
+  tag: string
+  size?: "sm" | "md"
+  selected?: boolean      // Toggle-Modus (Filter-Picker)
+  onToggle?: () => void
+  onRemove?: () => void   // entfernbarer Modus (aktiver Filter-Chip)
+  className?: string
+}
+```
+
+**Prinzip:** Tags tragen **eine deterministische Farb-Palette** (`getTagColor`), über alle Flächen identisch (Posts, Filter, Kanban). Drei Modi: statisch (Post), Toggle (Filter-Picker — selektiert volle Deckkraft, sonst gedimmt; die Tag-Farbe bleibt immer sichtbar) und entfernbar (aktiver Filter-Chip mit ✕). Die Palette gehört langfristig in die Design-Tokens; bis dahin liefert sie `getTagColor` (Spec [07-tags.md](../07-tags.md)).
+
+**Code:** `packages/toolkit/src/components/tag/tag-chip.tsx`.
+
 ### `FilterBar`
 
-**Zweck:** Shared Filter-UI für jedes *Space Module*. Hält Tags und Item-Type als Common-Filter, exponiert zwei Slots (`chipsExtra`, `drawerExtra`) für Modul-spezifische Filter, plus exportierte Building-Blocks (`FilterChip`, `FilterMultiSelect`, `FilterToggle`, `FilterSection`) für eine einheitliche Optik.
+**Zweck:** Shared Filter-UI für jedes *Space Module*. Hält Tags und Item-Type als Common-Filter, exponiert zwei Slots (`chipsExtra`, `drawerExtra`) für Modul-spezifische Filter, plus exportierte Building-Blocks (`FilterChip`, `FilterMultiSelect`, `FilterToggle`, `FilterSection`) für eine einheitliche Optik. Tag-Filter (Picker + aktive Chips) nutzen `TagChip` — farbig, dieselbe Palette wie auf Posts; Typen nutzen die generischen Building-Blocks.
 
-**Layout-Pattern (Anton + Sebastian-konsens 11.06.2026, revidiert nach Sebastian-Sync 12.06.2026):** sticky Active-Filter-Chip-Row über dem Modul-Inhalt; ein „Filter"-Button öffnet ein `AdaptivePanel` (sidebar auf Desktop, drawer auf Mobile) mit allen Optionen. Aktive Filter bleiben immer sichtbar, das Panel ist nur für die Auswahl. Das `AdaptivePanel` wird bewusst auch für den Filter genutzt — Sebastian-Konsistenz mit Detail-Panel und Composer-Sheet.
+**Layout-Pattern (Anton + Sebastian-Konsens 11.06.2026, revidiert 12.06.2026):** Eine **Controls-Zeile** (Filter-Button + Suche in `leadingActions` + `trailingActions`) bricht nie um; die **aktiven Filter-Chips** liegen in einer eigenen Zeile darunter und wrappen frei. Ein „Filter"-Button öffnet die Auswahl im geteilten Content-Panel (`ModulePanel`, Sidebar auf Desktop / Drawer auf Mobile). Aktive Filter bleiben immer sichtbar; das Panel ist nur für die Auswahl — bewusst dasselbe Panel wie Detail und Composer.
 
 ```ts
 interface FilterBarProps {
@@ -341,22 +362,24 @@ interface CreateFabProps {
 }
 ```
 
-**Positionierung:** `fixed bottom-6 right-6 z-30` mit `pb-[env(safe-area-inset-bottom)]`. Z-Index sitzt bewusst unter `AdaptivePanel` (z-55) und unter Modal-Sheets (z-50/60), damit ein offenes Detail-Panel den FAB sauber überdeckt.
+**Positionierung:** `fixed` unten-rechts, mit Safe-Area- und BottomNav-Abstand auf Mobile. Der rechte Rand **folgt dem Panel-Inset**: öffnet eine rechte Sidebar, wandert der FAB um deren Breite nach links — er liest dieselbe `--adaptive-panel-margin-right`-CSS-Variable, die der Content fürs Einrücken nutzt, und sitzt so **neben** dem Panel statt darunter.
 
-**Beziehung zu `useItemEditor`:** Der FAB ist nur das visuelle Trigger-Element. Der Caller wired `onClick={() => editor.openCreate()}` und rendert das Composer-Sheet selbst — meist mit einer `Sheet` + `ContentComposer`-Kombination, deren `onSubmit` `await editor.submit(data)` aufruft und auf Erfolg `editor.close()` triggert. Dieses Pattern verhindert Mehrfach-Submits durch wiederholtes Klicken auf „Erstellen".
+**Beziehung zu `useItemEditor`:** Der FAB ist nur das visuelle Trigger-Element. Der Caller wired `onClick` so, dass der Composer in die passende **Hülle** öffnet (siehe `ContentComposer` → Präsentation je Modul): Calendar/Map/Kanban über das Content-Panel (`useModulePanel().open({ kind: "composer", … })`), Feed über den `FeedComposerTrigger`. `onSubmit` ruft `await editor.submit(data)` und schließt auf Erfolg — das verhindert Mehrfach-Submits durch wiederholtes Klicken.
 
-**Feed-Sonderfall:** Feed hat zusätzlich den `FeedComposerTrigger` (input-pill, morpht in Fullscreen-Composer) als primären Create-Entry. Der FAB ist dort heute kein zweiter Trigger — offene Frage für UX-Polish, ob Feed für Konsistenz auch einen FAB bekommen soll.
+**Feed-Sonderfall:** Feed nutzt den `FeedComposerTrigger` (input-pill, morpht in Fullscreen-Composer) als primären Create-Entry — bewusst eine eigene Composer-Hülle, kein FAB.
 
 **Code:** `packages/toolkit/src/components/create-fab/`.
 
 ### `ModulePanel` + `ModuleSettingsPlaceholder`
 
-`ModulePanelProvider` stellt **eine** `AdaptivePanel`-Instanz pro Modul-Surface bereit; alle Overlay-Inhalte (Filter, Detail, Composer, Einstellungen) öffnen über `useModulePanel().open({ kind, content, onClose? })` in dieselbe Instanz statt sich zu stapeln (Sebastian-Konsens 12.06.2026). Content swappt in place — Filter offen + Item-Klick ersetzt den Filter durch das Detail. `onClose` feuert nur beim echten Schließen (X / Backdrop / Drawer-Drag), nicht beim Content-Swap.
+`ModulePanelProvider` stellt **eine app-weite** `AdaptivePanel`-Instanz bereit (Sidebar auf Desktop, Drawer auf Mobile). Alle Overlay-Inhalte (Filter, Detail, Composer, Einstellungen, Debug) öffnen über `useModulePanel().open({ kind, content, onClose? })` in dieselbe Instanz statt sich zu stapeln (Sebastian-Konsens 12.06.2026: ein Panel, Content-Swap statt Stapeln). Content swappt in place — Filter offen + Item-Klick ersetzt den Filter durch das Detail. Das Panel **bleibt beim Modul-Wechsel offen** (persistente Fläche, nicht modulgebunden). `onClose` feuert nur beim echten Schließen (X / Backdrop / Drawer-Drag), nicht beim Content-Swap. Dies ist **Ebene 1** des Overlay-Modells, siehe [01-app-composition.md → Overlay-Flächen](../01-app-composition.md).
 
 ```ts
-type ModulePanelKind = "filter" | "detail" | "composer" | "settings" | "custom"
+type ModulePanelKind = "filter" | "detail" | "composer" | "settings" | "debug" | "custom"
 interface ModulePanelEntry { kind: ModulePanelKind; content: ReactNode; onClose?: () => void }
 ```
+
+**Mobile-Höhen:** Drawer und Modal bemessen ihre Höhe in dynamischen Viewport-Einheiten (`dvh`), nicht `vh`, damit die ein-/ausfahrende Browser-Toolbar die Fläche nicht abschneidet.
 
 **Moduleinstellungen:** jedes Modul bekommt einen Zahnrad-Button (`Settings2`) in `trailingActions`, der `kind: "settings"` ins Panel öffnet. `ModuleSettingsPlaceholder` ist der geteilte Platzhalter, bis echte Settings pro Modul existieren — er reserviert Entry-Point und Fläche (`moduleLabel` + optionale `plannedItems`-Liste). Kanban nutzt ihn heute statt des früheren funktionslosen „Spalten bearbeiten"-Buttons; „Spalten bearbeiten" wird später ein Settings-Eintrag.
 
