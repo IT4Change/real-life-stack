@@ -38,6 +38,35 @@ export function getTagAccentColor(tag: string): string {
   return paletteEntry(tag).accent
 }
 
+const HEX6 = /^#[0-9a-fA-F]{6}$/
+
+/**
+ * The accent color for a space. Returns the cached `primaryColor` when it is a
+ * valid `#rrggbb` value, otherwise a deterministic color derived from the
+ * space id (same palette as tags; stable across devices and sessions, never
+ * random). Read surfaces use this so they stay robust when `primaryColor` is
+ * absent. Spec: docs/spec/04-items-relations-groups-spaces.md → Space-Primärfarbe.
+ */
+export function getSpacePrimaryColor(id: string, explicit?: string | null): string {
+  if (explicit && HEX6.test(explicit)) return explicit
+  return paletteEntry(id).accent
+}
+
+/**
+ * Readable text color (`#000000` / `#ffffff`) for text on a colored accent
+ * surface, chosen by perceived luminance so it works for light and dark
+ * accents alike.
+ */
+export function getReadableTextColor(hex: string): string {
+  if (!HEX6.test(hex)) return "#ffffff"
+  const n = parseInt(hex.slice(1), 16)
+  const r = (n >> 16) & 255
+  const g = (n >> 8) & 255
+  const b = n & 255
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.6 ? "#000000" : "#ffffff"
+}
+
 /**
  * Resolve a possibly app-rooted asset URL against Vite's `BASE_URL`.
  *

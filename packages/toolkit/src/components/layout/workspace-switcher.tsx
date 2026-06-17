@@ -17,6 +17,8 @@ export interface Workspace {
   name: string
   avatar?: string
   scope?: string
+  /** Cached accent color (`#rrggbb`); falls back to a deterministic id color. */
+  primaryColor?: string
 }
 
 interface WorkspaceSwitcherProps {

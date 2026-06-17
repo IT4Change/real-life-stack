@@ -24,7 +24,7 @@ import { get, set, del, createStore } from "idb-keyval"
  * — a re-seed throws away anything created locally, which is fine for
  * the local-only dev/test connector.
  */
-export const SEED_VERSION = 1
+export const SEED_VERSION = 2
 
 interface StoredState {
   items: Item[]

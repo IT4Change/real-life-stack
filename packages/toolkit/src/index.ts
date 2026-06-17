@@ -1,5 +1,5 @@
 // Utilities
-export { cn, getTagColor, getTagAccentColor, resolveAssetUrl } from "./lib/utils"
+export { cn, getTagColor, getTagAccentColor, getSpacePrimaryColor, getReadableTextColor, resolveAssetUrl } from "./lib/utils"
 export { applyItemListFilter, type ItemListFilter } from "./lib/item-filter"
 export {
   createNominatimGeocoder,
