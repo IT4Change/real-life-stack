@@ -120,7 +120,7 @@ export function MapView({ groupId }: { groupId: string }) {
   }, [])
 
   const { openComposer: openCreateComposer } = useComposerHost()
-  const { isPicking, applyPick, cancelPick } = useLocationPick()
+  const { isPicking, updatePick, confirmPick, cancelPick } = useLocationPick()
   const [pickPos, setPickPos] = useState<{ lat: number; lng: number } | null>(null)
 
   // Build the markers and an id → item lookup in one pass — marker
@@ -245,37 +245,36 @@ export function MapView({ groupId }: { groupId: string }) {
     const unsubscribe = adapter.observeMarkerClicks((markerId) => {
       const item = itemsById.get(markerId)
       if (isPicking) {
-        // Picking directly on an existing marker snaps the provisional pick to
-        // it (the marker element swallows the map click, so handle it here).
+        // Picking directly on an existing marker snaps the pick to it (the
+        // marker element swallows the map click, so handle it here).
         const pos = item?.data.position as { coordinates?: number[] } | undefined
         if (pos?.coordinates && pos.coordinates.length >= 2) {
           const [lng, lat] = pos.coordinates
-          if (typeof lng === "number" && typeof lat === "number") setPickPos({ lat, lng })
+          if (typeof lng === "number" && typeof lat === "number") {
+            updatePick({ lat, lng })
+            setPickPos({ lat, lng })
+          }
         }
         return
       }
       if (item) openDetail(item)
     })
     return unsubscribe
-  }, [adapter, itemsById, openDetail, isPicking])
+  }, [adapter, itemsById, openDetail, isPicking, updatePick])
 
-  // While picking, a map click places a provisional marker (rendered + centered
-  // by the effects below) instead of committing immediately — the user sees the
-  // spot and confirms via the banner's "Übernehmen".
+  // While picking, a map click commits the position immediately (so "Erstellen"
+  // always has it) and drops the marker where clicked. No recenter: the click
+  // is already in the visible area, so this avoids jumps and a marker landing
+  // under the composer sidebar.
   useEffect(() => {
     if (!adapter || !isPicking) return
     const unsubscribe = adapter.observeClicks((e) => {
       const [lng, lat] = e.position
+      updatePick({ lat, lng })
       setPickPos({ lat, lng })
     })
     return unsubscribe
-  }, [adapter, isPicking])
-
-  // Recenter on the provisional pick so it is clearly visible.
-  useEffect(() => {
-    if (!adapter || !pickPos) return
-    adapter.setView({ center: [pickPos.lng, pickPos.lat] })
-  }, [adapter, pickPos])
+  }, [adapter, isPicking, updatePick])
 
   // Drop the provisional pick when picking ends.
   useEffect(() => {
@@ -308,7 +307,7 @@ export function MapView({ groupId }: { groupId: string }) {
                 : "Tippe auf die Karte, um die Position zu setzen."}
             </span>
             {pickPos && (
-              <Button size="sm" className="h-7 px-2 text-xs" onClick={() => applyPick(pickPos)}>
+              <Button size="sm" className="h-7 px-2 text-xs" onClick={confirmPick}>
                 Übernehmen
               </Button>
             )}

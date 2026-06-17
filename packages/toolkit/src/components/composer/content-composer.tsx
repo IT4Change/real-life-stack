@@ -140,11 +140,15 @@ export interface ContentComposerProps {
   onDelete?: () => void
   editMode?: boolean
   /**
-   * Hand off to an app-level map picker. Called with a callback that receives
-   * the picked position; the composer writes it to `data.position`. The
-   * location widget shows a "pick on map" button when this is provided.
+   * Hand off to an app-level map picker. The composer passes pick handlers: the
+   * picker commits each picked position via `onPick` and restores the pre-pick
+   * position via `onCancel`. The location widget shows a "pick on map" button
+   * when this is provided.
    */
-  requestMapPick?: (onPicked: (pos: { lat: number; lng: number }) => void) => void
+  requestMapPick?: (handlers: {
+    onPick: (pos: { lat: number; lng: number }) => void
+    onCancel?: () => void
+  }) => void
   /** Address geocoder injected into the location widget (debounced suggestions). */
   geocode?: Geocoder
   /** Reverse geocoder: fills the address field after a map pick. */
@@ -249,6 +253,8 @@ export function ContentComposer({
   )
   const [isPublic, setIsPublic] = React.useState(defaultPublic)
   const [isPreviewing, setIsPreviewing] = React.useState(false)
+  // Aborts the previous reverse-geocode when the user re-picks on the map.
+  const reverseAbortRef = React.useRef<AbortController | null>(null)
 
   // Current content type config
   const currentConfig = contentTypes.find((t) => t.id === selectedType) || contentTypes[0]
@@ -559,18 +565,30 @@ export function ContentComposer({
                       geocode={geocode}
                       onPickOnMap={
                         requestMapPick
-                          ? () =>
-                              requestMapPick((pos) => {
-                                updateMany({ position: pointFromLatLng(pos.lat, pos.lng) })
-                                // Reverse-geocode the picked point to fill the address.
-                                if (reverseGeocode) {
-                                  reverseGeocode(pos)
-                                    .then((label) => {
-                                      if (label) updateMany({ address: label })
-                                    })
-                                    .catch(() => {})
-                                }
+                          ? () => {
+                              const originalPosition = data.position
+                              const originalAddress = data.address
+                              requestMapPick({
+                                onPick: (pos) => {
+                                  updateMany({ position: pointFromLatLng(pos.lat, pos.lng) })
+                                  // Reverse-geocode (aborting the previous one) to fill the address.
+                                  if (reverseGeocode) {
+                                    reverseAbortRef.current?.abort()
+                                    const controller = new AbortController()
+                                    reverseAbortRef.current = controller
+                                    reverseGeocode(pos, { signal: controller.signal })
+                                      .then((label) => {
+                                        if (label && !controller.signal.aborted) {
+                                          updateMany({ address: label })
+                                        }
+                                      })
+                                      .catch(() => {})
+                                  }
+                                },
+                                onCancel: () =>
+                                  updateMany({ position: originalPosition, address: originalAddress }),
                               })
+                            }
                           : undefined
                       }
                     />

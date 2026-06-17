@@ -50,7 +50,7 @@ export function ComposerHostProvider({
   currentUserId?: string
 }) {
   const modulePanel = useModulePanel()
-  const { startPick, cancelPick, isPicking } = useLocationPick()
+  const { startPick, confirmPick, isPicking } = useLocationPick()
   const mapperRef = useRef<ItemEditorMapper>(() => null)
   const mapSubmission = useCallback<ItemEditorMapper>(
     (submission, ctx) => mapperRef.current(submission, ctx),
@@ -66,8 +66,8 @@ export function ComposerHostProvider({
   editorRef.current = editor
   const isPickingRef = useRef(isPicking)
   isPickingRef.current = isPicking
-  const cancelPickRef = useRef(cancelPick)
-  cancelPickRef.current = cancelPick
+  const confirmPickRef = useRef(confirmPick)
+  confirmPickRef.current = confirmPick
 
   const openComposer = useCallback(
     (config: OpenComposerConfig) => {
@@ -101,7 +101,7 @@ export function ComposerHostProvider({
         onClose: () => {
           editorRef.current.close()
           // Closing the composer also ends any in-flight map pick.
-          if (isPickingRef.current) cancelPickRef.current()
+          if (isPickingRef.current) confirmPickRef.current()
         },
       })
     },

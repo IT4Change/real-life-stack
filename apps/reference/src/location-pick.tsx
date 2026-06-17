@@ -14,18 +14,27 @@ export interface LatLng {
   lng: number
 }
 
+export interface PickHandlers {
+  /** Commit the picked position to the composer (called on each map click). */
+  onPick: (pos: LatLng) => void
+  /** Restore the pre-pick position when the user aborts. */
+  onCancel?: () => void
+}
+
 export interface LocationPickValue {
   /** True while the user is picking a position on the map. */
   isPicking: boolean
   /**
    * Start picking: remembers the current module, switches to the Map module,
-   * and arms `onPicked` to receive the chosen position. The composer that
-   * called this stays open in the persistent panel across the module switch.
+   * and arms the handlers. The composer that called this stays open in the
+   * persistent panel across the module switch.
    */
-  startPick: (onPicked: (pos: LatLng) => void) => void
-  /** A map click during picking: writes the position back and returns to the origin module. */
-  applyPick: (pos: LatLng) => void
-  /** Abort picking and return to the origin module without writing a position. */
+  startPick: (handlers: PickHandlers) => void
+  /** A map click during picking: commit the position immediately (stays in picking mode). */
+  updatePick: (pos: LatLng) => void
+  /** Finish picking and return to the origin module; the committed position stays. */
+  confirmPick: () => void
+  /** Abort picking: restore the pre-pick position and return to the origin module. */
   cancelPick: () => void
 }
 
@@ -47,7 +56,7 @@ export function LocationPickProvider({
   currentModule: string
 }) {
   const [isPicking, setIsPicking] = useState(false)
-  const onPickedRef = useRef<((pos: LatLng) => void) | null>(null)
+  const handlersRef = useRef<PickHandlers | null>(null)
   const originRef = useRef<string | null>(null)
   const reachedMapRef = useRef(false)
   // Refs so the callbacks stay stable regardless of re-renders.
@@ -56,57 +65,48 @@ export function LocationPickProvider({
   const moduleRef = useRef(currentModule)
   moduleRef.current = currentModule
 
-  // Clear picking state without navigating (the user already moved, or the
-  // caller navigates separately in finish()).
-  const reset = useCallback(() => {
-    onPickedRef.current = null
+  const endPick = useCallback((opts: { restore: boolean; navigate: boolean }) => {
+    if (opts.restore) handlersRef.current?.onCancel?.()
+    const origin = originRef.current
+    handlersRef.current = null
     originRef.current = null
     reachedMapRef.current = false
     setIsPicking(false)
+    // Return via replace, so the Map detour does not linger in history.
+    if (opts.navigate && origin && origin !== "map") navRef.current(origin, { replace: true })
   }, [])
 
-  // Finish picking and return to the origin module (replace, so the Map detour
-  // does not linger in history).
-  const finish = useCallback(() => {
-    const origin = originRef.current
-    reset()
-    if (origin && origin !== "map") navRef.current(origin, { replace: true })
-  }, [reset])
-
-  const startPick = useCallback((onPicked: (pos: LatLng) => void) => {
-    onPickedRef.current = onPicked
+  const startPick = useCallback((handlers: PickHandlers) => {
+    handlersRef.current = handlers
     originRef.current = moduleRef.current
     reachedMapRef.current = false
     setIsPicking(true)
     if (moduleRef.current !== "map") navRef.current("map")
   }, [])
 
-  const applyPick = useCallback(
-    (pos: LatLng) => {
-      onPickedRef.current?.(pos)
-      finish()
-    },
-    [finish],
-  )
+  const updatePick = useCallback((pos: LatLng) => {
+    handlersRef.current?.onPick(pos)
+  }, [])
 
-  const cancelPick = useCallback(() => finish(), [finish])
+  const confirmPick = useCallback(() => endPick({ restore: false, navigate: true }), [endPick])
+  const cancelPick = useCallback(() => endPick({ restore: true, navigate: true }), [endPick])
 
   // Couple picking to Map-module presence: once we have reached the Map, if the
-  // user navigates away (tab / bottom-nav / browser-back) mid-pick, abort so
-  // the composer is not left suspended and unreachable. Only clear here — the
-  // user already navigated; applyPick/cancelPick handle the deliberate return.
+  // user navigates away (tab / bottom-nav / browser-back) mid-pick, abort and
+  // restore the pre-pick position so the composer is not left suspended and
+  // unreachable. Only clear here — the user already navigated.
   useEffect(() => {
     if (!isPicking) return
     if (currentModule === "map") {
       reachedMapRef.current = true
     } else if (reachedMapRef.current) {
-      reset()
+      endPick({ restore: true, navigate: false })
     }
-  }, [isPicking, currentModule, reset])
+  }, [isPicking, currentModule, endPick])
 
   const value = useMemo<LocationPickValue>(
-    () => ({ isPicking, startPick, applyPick, cancelPick }),
-    [isPicking, startPick, applyPick, cancelPick],
+    () => ({ isPicking, startPick, updatePick, confirmPick, cancelPick }),
+    [isPicking, startPick, updatePick, confirmPick, cancelPick],
   )
 
   return <LocationPickContext.Provider value={value}>{children}</LocationPickContext.Provider>
