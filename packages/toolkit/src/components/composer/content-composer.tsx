@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronDown, Globe, Lock, Trash2, X } from "lucide-react"
+import { ChevronDown, Globe, Loader2, Lock, Trash2, X } from "lucide-react"
 import { Button } from "@/components/primitives/button"
 import {
   DropdownMenu,
@@ -16,6 +16,7 @@ import { TitleWidget } from "./widgets/title-widget"
 import { TextWidget } from "./widgets/text-widget"
 import { DateWidget } from "./widgets/date-widget"
 import { LocationWidget } from "./widgets/location-widget"
+import type { Geocoder, ReverseGeocoder } from "@/lib/geocode"
 import { MediaWidget } from "./widgets/media-widget"
 import { PeopleWidget, type PersonOption } from "./widgets/people-widget"
 export type { PersonOption } from "./widgets/people-widget"
@@ -134,15 +135,24 @@ export interface ContentComposerProps {
   initialContentType?: string
   mode?: string
   initialData?: Partial<WidgetData>
-  onSubmit: (data: ContentComposerSubmitData) => void
+  onSubmit: (data: ContentComposerSubmitData) => void | Promise<void>
   onCancel?: () => void
   onDelete?: () => void
   editMode?: boolean
-  renderLocationMap?: (props: {
-    position: { lat: number; lng: number } | null
-    onPositionChange: (pos: { lat: number; lng: number }) => void
-    onConfirm: () => void
-  }) => React.ReactNode
+  /**
+   * Hand off to an app-level map picker. The composer passes pick handlers: the
+   * picker commits each picked position via `onPick` and restores the pre-pick
+   * position via `onCancel`. The location widget shows a "pick on map" button
+   * when this is provided.
+   */
+  requestMapPick?: (handlers: {
+    onPick: (pos: { lat: number; lng: number }) => void
+    onCancel?: () => void
+  }) => void
+  /** Address geocoder injected into the location widget (debounced suggestions). */
+  geocode?: Geocoder
+  /** Reverse geocoder: fills the address field after a map pick. */
+  reverseGeocode?: ReverseGeocoder
   /** Structured people options: stores IDs, displays names. Takes precedence over peopleSuggestions. */
   peopleOptions?: PersonOption[]
   /** Simple string suggestions (legacy). Ignored when `peopleOptions` is provided. */
@@ -210,7 +220,9 @@ export function ContentComposer({
   onCancel,
   onDelete,
   editMode: editModeProp,
-  renderLocationMap,
+  requestMapPick,
+  geocode,
+  reverseGeocode,
   peopleOptions,
   peopleSuggestions,
   tagSuggestions,
@@ -241,6 +253,8 @@ export function ContentComposer({
   )
   const [isPublic, setIsPublic] = React.useState(defaultPublic)
   const [isPreviewing, setIsPreviewing] = React.useState(false)
+  // Aborts the previous reverse-geocode when the user re-picks on the map.
+  const reverseAbortRef = React.useRef<AbortController | null>(null)
 
   // Current content type config
   const currentConfig = contentTypes.find((t) => t.id === selectedType) || contentTypes[0]
@@ -294,11 +308,11 @@ export function ContentComposer({
         prev.media !== data.media
       if (isTextOnly && !hasNonTextChange) {
         const timer = setTimeout(() => {
-          onSubmit({ contentType: selectedType, isPublic, data })
+          void Promise.resolve(onSubmit({ contentType: selectedType, isPublic, data })).catch(() => {})
         }, 300)
         return () => clearTimeout(timer)
       }
-      onSubmit({ contentType: selectedType, isPublic, data })
+      void Promise.resolve(onSubmit({ contentType: selectedType, isPublic, data })).catch(() => {})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, liveUpdate])
@@ -384,13 +398,20 @@ export function ContentComposer({
   // Submit
   const canSubmit = !!(data.title?.trim() || data.text?.trim() || (data.media && data.media.length > 0))
 
-  const handleSubmit = () => {
-    if (!canSubmit) return
-    onSubmit({
-      contentType: selectedType,
-      isPublic,
-      data,
-    })
+  const [submitting, setSubmitting] = React.useState(false)
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
+
+  const handleSubmit = async () => {
+    if (!canSubmit || submitting) return
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      await onSubmit({ contentType: selectedType, isPublic, data })
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Speichern fehlgeschlagen.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   // Submit label
@@ -530,40 +551,50 @@ export function ContentComposer({
                     <LocationWidget
                       value={{
                         address: data.address,
-                        link: data.meetingLink,
                         position: data.position ? latLngFromPoint(data.position) ?? undefined : undefined,
-                        isOnline:
-                          data.meetingLink !== undefined &&
-                          data.address === undefined &&
-                          data.position === undefined,
                       }}
                       onChange={(v) => {
-                        // LocationWidget owns a Vor-Ort/Online toggle on
-                        // `v.isOnline`. The two modes write into different
-                        // spec fields, so the toggle is honoured by branching
-                        // here and clearing the other mode's fields. Without
-                        // this branch the toggle has no visible effect: the
-                        // derived `isOnline` flag we pass into `value` would
-                        // recompute to the previous mode on the next render.
-                        if (v.isOnline) {
-                          updateMany({
-                            address: undefined,
-                            position: undefined,
-                            locationName: undefined,
-                            meetingLink: v.link || undefined,
-                          })
-                        } else {
-                          updateMany({
-                            address: v.address || undefined,
-                            position: v.position
-                              ? pointFromLatLng(v.position.lat, v.position.lng)
-                              : undefined,
-                            meetingLink: undefined,
-                          })
-                        }
+                        updateMany({
+                          address: v.address || undefined,
+                          position: v.position
+                            ? pointFromLatLng(v.position.lat, v.position.lng)
+                            : undefined,
+                        })
                       }}
                       label={widgetLabel}
-                      renderMap={renderLocationMap}
+                      geocode={geocode}
+                      onPickOnMap={
+                        requestMapPick
+                          ? () => {
+                              const originalPosition = data.position
+                              const originalAddress = data.address
+                              requestMapPick({
+                                onPick: (pos) => {
+                                  updateMany({ position: pointFromLatLng(pos.lat, pos.lng) })
+                                  // Reverse-geocode (aborting the previous one) to fill the address.
+                                  if (reverseGeocode) {
+                                    reverseAbortRef.current?.abort()
+                                    const controller = new AbortController()
+                                    reverseAbortRef.current = controller
+                                    reverseGeocode(pos, { signal: controller.signal })
+                                      .then((label) => {
+                                        if (label && !controller.signal.aborted) {
+                                          updateMany({ address: label })
+                                        }
+                                      })
+                                      .catch(() => {})
+                                  }
+                                },
+                                onCancel: () => {
+                                  // Abort a pending reverse-geocode so its late
+                                  // result can't overwrite the restored address.
+                                  reverseAbortRef.current?.abort()
+                                  updateMany({ position: originalPosition, address: originalAddress })
+                                },
+                              })
+                            }
+                          : undefined
+                      }
                     />
                   )}
                   {widgetId === "status" &&
@@ -638,6 +669,11 @@ export function ContentComposer({
         </div>
       )}
 
+      {submitError && (
+        <p className="pt-1 text-xs text-destructive" role="alert">
+          {submitError}
+        </p>
+      )}
       {/* Footer: actions (hidden in liveUpdate mode) */}
       {!liveUpdate && <div className="flex items-center justify-between pt-1">
         <div className="flex items-center gap-2">
@@ -679,10 +715,13 @@ export function ContentComposer({
                 type="button"
                 size="sm"
                 onClick={handleSubmit}
-                disabled={!canSubmit}
+                disabled={!canSubmit || submitting}
+                aria-busy={submitting}
                 className="gap-1.5 rounded-r-none"
               >
-                {isPublic ? (
+                {submitting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                ) : isPublic ? (
                   <Globe className="h-3.5 w-3.5" />
                 ) : (
                   <Lock className="h-3.5 w-3.5" />
@@ -714,7 +753,8 @@ export function ContentComposer({
               </DropdownMenu>
             </div>
           ) : (
-            <Button type="button" size="sm" onClick={handleSubmit} disabled={!canSubmit}>
+            <Button type="button" size="sm" onClick={handleSubmit} disabled={!canSubmit || submitting} aria-busy={submitting}>
+              {submitting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
               {submitLabel}
             </Button>
           )}

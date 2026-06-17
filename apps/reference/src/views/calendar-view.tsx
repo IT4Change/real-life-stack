@@ -1,7 +1,6 @@
 import { useCallback, useMemo } from "react"
 import {
   CalendarView as ToolkitCalendarView,
-  ContentComposer,
   CreateFab,
   type ContentTypeConfig,
   ItemDetailPanel,
@@ -12,11 +11,11 @@ import {
   useItems,
   useMembers,
   useCurrentUser,
-  useItemEditor,
   useModulePanel,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
+import { useComposerHost } from "../composer-host"
 
 export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // Calendar activates on data.start (event/v1). Cross-context items
@@ -57,10 +56,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     }
   }, [])
 
-  const editor = useItemEditor({
-    currentUserId: currentUser?.id,
-    mapSubmission,
-  })
+  const { openComposer: openCreateComposer } = useComposerHost()
 
   // Resolve event author for the detail-panel ItemPreview. Calendar
   // list cards themselves render with `author={null}` (the date group
@@ -97,28 +93,12 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     })
   }, [modulePanel, members, currentUser])
 
-  // Composer opens into the shared module panel (Ebene 1) — sidebar on
-  // desktop, drawer on mobile. (Previously a Radix Sheet that stayed a
-  // sidebar even on phones.) The Feed keeps its own fullscreen-morph shell.
+  // Composer opens via the app-level host, so its save path survives a switch
+  // to the Map module for location picking. The Feed keeps its own
+  // fullscreen-morph shell.
   const openComposer = useCallback(() => {
-    editor.openCreate()
-    modulePanel.open({
-      kind: "composer",
-      content: (
-        <ContentComposer
-          className="p-4 sm:p-6"
-          contentTypes={calendarContentTypes}
-          onSubmit={async (data) => {
-            const result = await editor.submit(data)
-            if (result) modulePanel.close()
-          }}
-          onCancel={() => modulePanel.close()}
-          showPreview={false}
-        />
-      ),
-      onClose: () => editor.close(),
-    })
-  }, [editor, modulePanel, calendarContentTypes])
+    openCreateComposer({ contentTypes: calendarContentTypes, mapper: mapSubmission })
+  }, [openCreateComposer, calendarContentTypes, mapSubmission])
 
   return (
     <>

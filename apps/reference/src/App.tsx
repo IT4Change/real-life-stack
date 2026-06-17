@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense, type ReactNode } from "react"
 import { Routes, Route, useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import {
   Plus,
@@ -58,6 +58,38 @@ import { MockConnector } from "@real-life-stack/mock-connector"
 import { LocalConnector } from "@real-life-stack/local-connector"
 import { ModuleOutlet } from "./views/module-outlet"
 import { useWorkspaceRouting, STORAGE_KEY_GROUP } from "./hooks/use-workspace-routing"
+import { LocationPickProvider, useLocationPick } from "./location-pick"
+import { ComposerHostProvider } from "./composer-host"
+
+/**
+ * Renders the single app-level ModulePanel and suspends it (hidden, kept
+ * mounted) while the user picks a location on the map — so the drawer steps
+ * aside on mobile. Lives inside LocationPickProvider to read `isPicking`.
+ */
+function ModulePanelHost({
+  pinned,
+  onPinnedChange,
+  children,
+}: {
+  pinned: boolean
+  onPinnedChange: (pinned: boolean) => void
+  children: ReactNode
+}) {
+  const { isPicking } = useLocationPick()
+  return (
+    <ModulePanelProvider
+      allowedModes={["modal", "sidebar", "drawer"]}
+      sidebarWidth="420px"
+      sidebarMinWidth="300px"
+      sidebarMaxWidth="70vw"
+      pinned={pinned}
+      onPinnedChange={onPinnedChange}
+      suspended={isPicking}
+    >
+      {children}
+    </ModulePanelProvider>
+  )
+}
 
 const CONNECTOR_OPTIONS: ConnectorOption[] = [
   { id: "mock", name: "Mock", description: "In-Memory, kein Speichern" },
@@ -368,14 +400,9 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
   return (
     <OpenProfileProvider openProfile={openProfile}>
-    <ModulePanelProvider
-      allowedModes={["modal", "sidebar", "drawer"]}
-      sidebarWidth="420px"
-      sidebarMinWidth="300px"
-      sidebarMaxWidth="70vw"
-      pinned={panelPinned}
-      onPinnedChange={setPanelPinned}
-    >
+    <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
+    <ModulePanelHost pinned={panelPinned} onPinnedChange={setPanelPinned}>
+    <ComposerHostProvider currentUserId={currentUser?.id}>
     <AppShell>
       <Navbar>
         <NavbarStart>
@@ -534,7 +561,9 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         </div>
       )}
     </AppShell>
-    </ModulePanelProvider>
+    </ComposerHostProvider>
+    </ModulePanelHost>
+    </LocationPickProvider>
     </OpenProfileProvider>
   )
 }
