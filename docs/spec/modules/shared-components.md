@@ -51,7 +51,7 @@ interface ContentComposerProps {
   /** Alias für initialContentType, wenn die UI mit einem festen Modus arbeitet. */
   mode?: string
   initialData?: Partial<WidgetData>
-  onSubmit: (data: ContentComposerSubmitData) => void
+  onSubmit: (data: ContentComposerSubmitData) => void | Promise<void>
   onCancel?: () => void
   onDelete?: () => void
   /** Expliziter Override; sonst `editMode ?? !!onDelete`. */
@@ -61,8 +61,9 @@ interface ContentComposerProps {
   defaultPublic?: boolean
   liveUpdate?: boolean
   className?: string
-  // Weitere optionale Props (peopleOptions, tagSuggestions, renderLocationMap,
-  // renderPreview, …) siehe `packages/toolkit/src/components/composer/content-composer.tsx`.
+  // Weitere optionale Props (peopleOptions, tagSuggestions, geocode,
+  // reverseGeocode, requestMapPick, renderPreview, …) siehe
+  // `packages/toolkit/src/components/composer/content-composer.tsx`.
 }
 
 interface ContentComposerSubmitData {
@@ -79,6 +80,29 @@ interface ContentComposerSubmitData {
 **Präsentation je Modul (Hülle):** Die `ContentComposer`-Form ist geteilt; *wie* sie eingeblendet wird, wählt das Modul — es gibt mehrere Hüllen, nicht eine für alle. Heute: **Fullscreen-Morph** (Feed, `FeedComposerTrigger`) und **Content-Panel** (Calendar/Map/Kanban, [Ebene 1](../01-app-composition.md): Sidebar auf Desktop / Drawer auf Mobile). Vereinheitlicht wird nur, was tatsächlich falsch liegt (z.B. ein Composer, der auf Mobile fälschlich Sidebar bleibt), nicht per Brechstange alles gleichgemacht.
 
 **Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
+
+#### Location-Widget (`location`)
+
+**Zweck:** Einen **physischen Ort** für verortete Items setzen. Das `location`-Widget (`LocationWidget`, im `WIDGET_ORDER` zwischen `date` und `people`) hat genau diesen einen Zweck. Online-/Meeting-Links sind kein Ort und gehören nicht hierher (ggf. eigenes Feld/Widget).
+
+**Zwei Eingabewege:**
+
+- **(a) Adresse → Geocoding → Position:** Freitext-Adresse im Adress-`Input`. Ein injizierter Geocoder löst die Eingabe debounced auf (ab wenigen Zeichen; die vorherige Anfrage wird abgebrochen) und zeigt Vorschläge; die Auswahl setzt `data.position` und übernimmt den Adresstext. Die Vorschlagsliste ist eine zugängliche Combobox (`role="combobox"`/`listbox`/`option`, Pfeiltasten/Enter/Escape). Der Geocoding-Provider ist nicht normativ festgelegt und wird — wie der Karten-Adapter — injiziert; Referenz ist Nominatim/OSM (öffentliche Instanz nur Dev/Demo, produktiv self-hosted/identifiziert).
+- **(b) Position auf der Karte wählen:** Neben dem Adressfeld steht ein kompakter Button (in einer Zeile); beim Klick ruft das Widget einen vom Caller bereitgestellten `onPickOnMap`-Callback auf. Gepickt wird auf der **großen Karte des Map Module**, nicht in einer Inline-Minikarte: die App wechselt ins Map-Modul, ein Klick auf die Karte übernimmt die Position sofort (`MapAdapter.observeClicks` → `MapClickEvent.position`, durchgängig `[lng, lat]`), anschließend füllt ein Reverse-Geocoding das Adressfeld. Nach dem Picken bleibt man auf der Karte.
+
+**App-Realisierung des Map-Picks (Referenz-App, nicht Widget-Sache):** Damit der Speichern-Pfad den Modulwechsel übersteht, liegen Editor + `ContentComposer` app-weit über dem Modul-Outlet (Composer-Host). Das geteilte Content-Panel ([01-app-composition.md → Overlay-Flächen](../01-app-composition.md)) bleibt beim Modulwechsel offen; auf kompakten Screens (Drawer) tritt es während des Pickens beiseite und kommt per „Fertig" zurück, auf Desktop bleibt die Sidebar sichtbar (kein Extra-Schritt, direkt „Erstellen"). „Abbrechen" stellt die vorherige Position wieder her und kehrt ins Ursprungsmodul zurück. Das Widget selbst kennt nur `onPickOnMap` und den injizierten Geocoder.
+
+**Daten-Vertrag (geschriebene Felder):**
+
+- `data.position` MUSS ein GeoJSON `Point` sein (`pointFromLatLng(lat, lng)` aus `lib/geo`), konform zu [place/v1](../schemas/vocab/place/v1/schema.json). Beide Eingabewege (a) und (b) schreiben in dasselbe Feld.
+- `data.address` SOLL den menschlichen Adresstext halten (aus Geocoding-Auswahl oder Reverse-Geocoding).
+- `data.locationName` KANN einen benannten Ort halten (z.B. „Markthalle 7").
+
+**Auslieferung:** Adress-Geocoding (a) und Map-Pick (b) sind zusammen mit dem `MapLibreMapAdapter` (Vektorkarte, [map.md → Bereitgestellte Adapter](map.md)) implementiert. Ohne bereitgestellten Geocoder/Karten-Adapter funktioniert das Widget weiter als reiner Adress-Freitext (kein `data.position`, kein Pick-Button).
+
+**Welche Typen das Widget anbieten:** Das Widget gehört in `contentTypes[].defaultWidgets` jedes Typs mit Ortsbezug — primär `place` (Position ist Pflichtfeld), sowie `event` mit Ort. Die Auswahl leitet sich aus Typ/Template ab; der `ContentComposer` rendert `location` nur, wenn der Typ es in `defaultWidgets` führt oder der Nutzer es manuell zuschaltet.
+
+**Spec:** [map.md → Adapter-Vertrag](map.md), [01-app-composition.md → Overlay-Flächen](../01-app-composition.md), [place/v1](../schemas/vocab/place/v1/schema.json)
 
 ### `ItemDetailPanel`
 
@@ -340,13 +364,23 @@ interface FilterTypeOption {
 }
 ```
 
-**Controlled component:** der Filter-Wert lebt im Caller (View-State); View-spezifische Persistierung (URL params, localStorage) bleibt Caller-Job.
+**Controlled component:** der Filter-Wert lebt im Caller; das KANN View-State sein oder ein app-weiter, modulübergreifend geteilter Store (siehe „Modul-übergreifender Filter-State" unten). View-spezifische Persistierung (URL params, localStorage) bleibt Caller-Job.
 
 **Modul-spezifische Filter:** in den Slots `chipsExtra` (Active-Chip-Row) und `drawerExtra` (Auswahl-Drawer) zusammensetzen aus den exportierten Building-Blocks (`FilterSection` + `FilterMultiSelect` / `FilterToggle`). Damit sehen Modul-Extras automatisch konsistent mit den Common-Filtern aus.
 
 **Suche:** gehört in `leadingActions`, direkt neben den Filter-Button (Sebastian-Konsens 12.06.2026: Filter und Suche gehören visuell zusammen). `trailingActions` bleibt für rechtsbündige Modul-Aktionen (Spalten-Editor, View-Mode-Toggle).
 
 **Hook:** `useFilterableItems(items, value)` wendet die `FilterBarValue` clientseitig an. `applyFilterBarValue(items, value)` ist als pure Funktion exportiert (Tests, non-React-Caller). Server-seitige Optimierung (Lift `tags` in `ItemFilter.hasTag`) ist bewusst nicht hier — `data-interface` Concern, siehe [02-data-interface.md](../02-data-interface.md).
+
+**Modul-übergreifender Filter-State (geteilter Caller):** Die `FilterBar` bleibt ein Controlled Component; *wo* der `value` gehalten wird, bestimmt der Caller. Der Caller KANN ein **app-weiter** Store sein statt View-State. Dann teilen sich Feed, Kanban, Calendar und Map **einen** `FilterBarValue`, und ein gesetzter Tag-/Typ-Filter wirkt nach dem Modul-Wechsel unverändert weiter (ein in Feed gesetzter Tag filtert ohne Zutun auch Kanban, Calendar und Map).
+
+Regeln:
+
+1. Der geteilte State SOLL **neben dem persistenten Content-Panel** leben (App-Shell-Ebene, [01-app-composition.md → Overlay-Flächen Ebene 1](../01-app-composition.md)). Er ist app-weit und nicht modulgebunden, analog dazu, dass das Content-Panel beim Modul-Wechsel offen bleibt.
+2. Geteilt wird der gemeinsame `FilterBarValue` (`tags`, `types`). Modul-spezifische Extras (`chipsExtra`/`drawerExtra`, z.B. Map-`bounds` oder Kanban-View-Toggle) bleiben beim jeweiligen Modul und werden NICHT app-weit geteilt.
+3. Die `FilterBar` selbst ist die **geteilte Fläche**: jedes Modul rendert dieselbe `FilterBar` gegen denselben `value`/`onChange`. Tag-Filter nutzen durchgängig `TagChip` mit `getTagColor`, sodass ein Tag in Picker, aktiven Chips und auf den Cards modulübergreifend identisch eingefärbt ist (siehe [`TagChip`](#tagchip), [07-tags.md](../07-tags.md)).
+4. Typen sind modulabhängig: ein in Feed gesetzter `types`-Filter KANN in einem Modul ohne diesen Typ zu einer leeren Auswahl führen. Das ist erwartet; die `availableTypes` jedes Moduls bestimmen, welche Typ-Chips dort sichtbar/abwählbar sind. Der geteilte `tags`-Filter ist davon unberührt.
+5. View-spezifische Persistierung (URL params, localStorage) bleibt Caller-Job; ein app-weiter Store ist eine Caller-Wahl, kein Toolkit-Zwang. `emptyFilterBarValue` ist der Initialwert.
 
 **Code:** `packages/toolkit/src/components/filter/`. Stories: `filter-bar.stories.tsx` zeigt Default, Pre-Selected, Kanban-Toggle-Extras, Calendar-Location-Extras, Empty-State.
 
