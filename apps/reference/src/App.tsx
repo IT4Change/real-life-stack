@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
-import { Routes, Route, useNavigate } from "react-router-dom"
+import { Routes, Route, useNavigate, useSearchParams } from "react-router-dom"
 import {
   Plus,
   Sun,
@@ -259,18 +259,28 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   const { activeContacts, pendingContacts, contacts: allContacts, removeContact, updateContactName, supportsContacts } = useContacts()
   const verification = useVerification()
 
-  // Dialog-Ebene (Ebene 2) als Back-Stack: ein verschachtelter Flow
-  // (Kontakte → Verifizieren) legt auf den Stack; nur der oberste Dialog ist
-  // offen, sein Schließen poppt eine Ebene zurück. Verify aus Kontakten heraus
-  // geschlossen → zurück zu Kontakten; direkt geöffnet (Stack der Länge 1) →
-  // einfach zu. Spec: 01-app-composition → Overlay-Flächen, Regel 5.
+  // Dialog-Ebene (Ebene 2) als Back-Stack, an die Browser-History gekoppelt:
+  // der Stack lebt im ?dialog=-Query (Komma-Liste, letztes = oben). Öffnen
+  // pusht einen History-Eintrag; Schließen (X/Esc/Backdrop) und Browser-Zurück
+  // poppen über die History eine Ebene. Verify aus Kontakten heraus → zurück
+  // zu Kontakten; direkt geöffnet → einfach zu. Deep-linkbar + refresh-fest.
+  // Spec: 01-app-composition → Overlay-Flächen, Regel 5.
   type DialogLayerId = "contacts" | "verify"
-  const [dialogStack, setDialogStack] = useState<DialogLayerId[]>([])
+  const [searchParams, setSearchParams] = useSearchParams()
+  const dialogStack = useMemo<DialogLayerId[]>(() => {
+    const raw = searchParams.get("dialog")?.split(",") ?? []
+    return raw.filter((x): x is DialogLayerId => x === "contacts" || x === "verify")
+  }, [searchParams])
   const topDialog = dialogStack[dialogStack.length - 1] ?? null
-  const openDialog = (id: DialogLayerId) =>
-    setDialogStack((s) => [...s.filter((x) => x !== id), id])
-  const closeDialog = (id: DialogLayerId) =>
-    setDialogStack((s) => s.filter((x) => x !== id))
+  const openDialog = (id: DialogLayerId) => {
+    const next = [...dialogStack.filter((x) => x !== id), id]
+    const params = new URLSearchParams(searchParams)
+    params.set("dialog", next.join(","))
+    setSearchParams(params)
+  }
+  // Schließen = History-Pop (symmetrisch zum Push beim Öffnen); Browser-Zurück
+  // macht dasselbe. Nur der oberste Dialog ist offen, also poppt das genau ihn.
+  const popDialog = () => navigate(-1)
   // One id drives the shared profile panel; null = closed. The own
   // profile (id === currentUser.id) opens the editor, any other id a
   // read-only view.
@@ -451,7 +461,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
       {/* Contacts Dialog */}
       <ContactsDialog
         open={topDialog === "contacts"}
-        onOpenChange={(open) => { if (!open) closeDialog("contacts") }}
+        onOpenChange={(open) => { if (!open) popDialog() }}
         activeContacts={activeContacts}
         pendingContacts={pendingContacts}
         onRemove={removeContact}
@@ -461,7 +471,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
       <VerificationDialog
         open={topDialog === "verify"}
-        onOpenChange={(open) => { if (!open) closeDialog("verify") }}
+        onOpenChange={(open) => { if (!open) popDialog() }}
         challenge={verification.challenge}
         peerInfo={verification.peerInfo}
         isProcessing={verification.isProcessing}
@@ -473,7 +483,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
       />
 
       {/* Incoming event dialogs */}
-      <IncomingEventDialogs onCloseVerifyDialog={() => closeDialog("verify")} />
+      <IncomingEventDialogs onCloseVerifyDialog={() => { if (topDialog === "verify") navigate(-1) }} />
 
       {/* Connector FAB — bottom-left, above BottomNav (only with ?dev URL param) */}
       {initialDevMode && (
