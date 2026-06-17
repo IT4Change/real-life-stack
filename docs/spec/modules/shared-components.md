@@ -51,7 +51,7 @@ interface ContentComposerProps {
   /** Alias für initialContentType, wenn die UI mit einem festen Modus arbeitet. */
   mode?: string
   initialData?: Partial<WidgetData>
-  onSubmit: (data: ContentComposerSubmitData) => void
+  onSubmit: (data: ContentComposerSubmitData) => void | Promise<void>
   onCancel?: () => void
   onDelete?: () => void
   /** Expliziter Override; sonst `editMode ?? !!onDelete`. */
