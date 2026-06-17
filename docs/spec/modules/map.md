@@ -190,7 +190,7 @@ Der obige Block ist illustrativ. Die **normative** Contract-Quelle ist `packages
 Adapter werden über dedizierte Subpath-Entries des Toolkits bereitgestellt, damit Consumer ohne den jeweiligen Adapter dessen Library nicht bündeln müssen:
 
 - `LeafletMapAdapter` — vorhanden, importiert via `@real-life-stack/toolkit/leaflet`; Raster-Tiles (OSM-Default), geringe Komplexität
-- `MapLibreMapAdapter` — geplant, analog via `@real-life-stack/toolkit/maplibre`; Vektorkarte (MapLibre GL), performant bei vielen Markern, Custom-Styling
+- `MapLibreMapAdapter` — implementiert, via `@real-life-stack/toolkit/maplibre`; Vektorkarte (MapLibre GL), performant bei vielen Markern, Custom-Styling
 
 Weitere Adapter (Google, OpenLayers, MapboxGL) sind möglich, sind aber nicht Teil von v0.1.
 
@@ -202,7 +202,7 @@ Der reale Contract lebt in `packages/toolkit/src/components/map/adapter.ts` und 
 
 Regeln:
 
-1. Beide Adapter implementieren `MapAdapter` identisch. `MapView` (bzw. die Reference-`MapView` in `apps/reference/src/views/map-view.tsx`) konsumiert ausschließlich `MapAdapter`-Typen aus dem Toolkit-Barrel `@real-life-stack/toolkit`; konkrete Adapter werden über dedizierte Subpath-Entries geladen (heute `@real-life-stack/toolkit/leaflet`, künftig analog `@real-life-stack/toolkit/maplibre`).
+1. Beide Adapter implementieren `MapAdapter` identisch. `MapView` (bzw. die Reference-`MapView` in `apps/reference/src/views/map-view.tsx`) konsumiert ausschließlich `MapAdapter`-Typen aus dem Toolkit-Barrel `@real-life-stack/toolkit`; konkrete Adapter werden über dedizierte Subpath-Entries geladen (`@real-life-stack/toolkit/leaflet` und `@real-life-stack/toolkit/maplibre`).
 2. Die Auswahl Raster vs. Vektor ist eine reine Adapter-Substitution: dieselben Marker (`setMarkers`), dieselben Viewport-Operationen (`setView`/`getView`/`observeView`), dieselben Click-Pfade (`observeClicks`/`observeMarkerClicks`). Modul- und UI-Code dürfen nicht zwischen Raster- und Vektor-Adapter unterscheiden.
 3. Koordinaten bleiben durchgängig `[lng, lat]` (GeoJSON, Typ `LngLat`). MapLibre GL nutzt intern bereits `[lng, lat]`; Leaflet nutzt `[lat, lng]` und übersetzt im Adapter. Diese Übersetzung ist Adapter-Detail und nie sichtbar im Contract.
 
