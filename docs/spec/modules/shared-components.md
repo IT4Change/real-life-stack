@@ -86,7 +86,7 @@ interface ContentComposerSubmitData {
 
 **Eingabemodi (Vor-Ort):**
 
-- **(a) Adresse → Geocoding → Position:** Freitext-Adresse im Adress-`Input`; ein Geocoding-Schritt löst die Adresse zu Koordinaten auf und setzt `data.position`. Der Geocoding-Provider ist austauschbar; Referenz ist Nominatim/OSM. Der Provider ist nicht normativ festgelegt und gehört nicht ins Widget, sondern wird wie der Karten-Adapter injiziert.
+- **(a) Adresse → Geocoding → Position:** Freitext-Adresse im Adress-`Input`; ein Geocoding-Schritt löst die Adresse zu Koordinaten auf und setzt `data.position`. Dieser Schritt ist im Toolkit (`packages/toolkit`) noch zu implementieren, beschreibt also den Zielzustand, nicht den Ist-Zustand (eine ältere Geocoding-Variante existiert nur im Prototyp-Widget `apps/prototype/src/components/widgets/LocationWidget.tsx`). Der Geocoding-Provider ist austauschbar; Referenz ist Nominatim/OSM. Der Provider ist nicht normativ festgelegt und gehört nicht ins Widget, sondern wird wie der Karten-Adapter injiziert.
 - **(b) Position auf der Karte wählen:** Der Caller reicht über `renderLocationMap` eine Karten-Fläche in den `renderMap`-Slot des Widgets. Klick auf die Karte setzt die Position. Diese Fläche nutzt denselben Karten-Adapter wie das Map Module, über `MapAdapter.observeClicks` → `MapClickEvent.position` ([map.md → Adapter-Vertrag](map.md)). Koordinaten sind im Adapter-API durchgängig `[lng, lat]`.
 
 **Daten-Vertrag (geschriebene Felder):**
@@ -96,7 +96,7 @@ interface ContentComposerSubmitData {
 - `data.locationName` KANN einen benannten Ort halten (z.B. „Markthalle 7").
 - Im `Online`-Modus wird statt der Geo-Felder `data.meetingLink` geschrieben; `position`, `address`, `locationName` werden geleert. Der `ContentComposer` setzt diese Verzweigung über `updateMany(...)` um, nicht das Widget selbst.
 
-**Auslieferung (Anton-Entscheidung):** Adress-Geocoding (a) und Map-Pick (b) werden GEMEINSAM mit dem MapLibre-Adapter (`MapLibreMapAdapter`, [map.md → Bereitgestellte Adapter](map.md)) ausgeliefert. Ohne bereitgestellten Karten-Adapter bleibt nur der Adress-Freitext nutzbar; das Widget MUSS dann ohne `renderMap`-Slot und ohne Geocoding funktionieren (Adresse als reiner Text, kein `data.position`).
+**Auslieferung (Anton-Entscheidung):** Adress-Geocoding (a) und Map-Pick (b) werden GEMEINSAM mit dem MapLibre-Adapter (`MapLibreMapAdapter`, geplant (Backlog A1), [map.md → Bereitgestellte Adapter](map.md)) ausgeliefert. Heute ist im Code nur `LeafletMapAdapter` implementiert; der `MapLibreMapAdapter` und der Geocoding-Schritt sind noch zu liefern (Zielzustand). Ohne bereitgestellten Karten-Adapter bleibt nur der Adress-Freitext nutzbar; das Widget MUSS dann ohne `renderMap`-Slot und ohne Geocoding funktionieren (Adresse als reiner Text, kein `data.position`).
 
 **Welche Typen das Widget anbieten:** Das Widget gehört in `contentTypes[].defaultWidgets` jedes Typs mit Ortsbezug — primär `place` (Position ist Pflichtfeld), sowie `event` mit Ort. Die Auswahl leitet sich aus Typ/Template ab; der `ContentComposer` rendert `location` nur, wenn der Typ es in `defaultWidgets` führt oder der Nutzer es manuell zuschaltet.
 
