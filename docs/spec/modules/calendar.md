@@ -99,6 +99,29 @@ Der Zeitraum-Wechsel ist in Monat/Tag/Liste auch per horizontalem **Swipe** mög
 
 Mutationen laufen über Hooks oder Capability-Interfaces. Das Calendar Module darf keine backend-spezifischen Schreibpfade kennen.
 
+## Mobile Event-Rendering (Monat + Woche)
+
+Diese Regeln gelten für die mobile Darstellung (kein `md`-Breakpoint) von `MonthView` (`MonthCalendar`) und `WeekView` (`WeekCalendar`). Heute rendert die mobile Monatsansicht Events nur als farbige Punkte ohne Text und ohne eigenen Tap-Handler; die Regeln behandeln das als zu behebenden Zustand.
+
+1. In mobiler Monats- **und** Wochenansicht MÜSSEN Events einzeln per Tap anklickbar sein.
+2. Ein Tap auf ein Event MUSS dieselbe Detail-Route auslösen wie auf Desktop: `onEventClick(item)`, das in der Reference App das geteilte `ItemDetailPanel` im **Ebene-1-Content-Panel** öffnet (`useModulePanel().open({ kind: "detail" })`, siehe [01-app-composition.md](../01-app-composition.md)). Ein Event-Tap DARF KEINEN eigenen Dialog oder eine zweite gleichartige Fläche öffnen.
+3. Ein mobiles Event-Element MUSS mindestens den Titel-Anfang zeigen (Titel-Truncate über eine Zeile). Eine reine Punkt- oder farblose Pill-Darstellung ohne Text erfüllt diese Regel nicht.
+4. Bei mehr als der pro Tag darstellbaren Anzahl SOLL ein `+N weitere`-Element den Tag öffnen (mobil bevorzugt die Tagesansicht), analog zum Desktop-Verhalten der Monatsansicht.
+5. Das Tap-Target SOLL mindestens etwa 44px in der Höhe der Touch-Trefferfläche erreichen; die sichtbare Event-Pill SOLL mindestens 24px hoch sein. Liegt die sichtbare Höhe darunter, SOLL die Trefferfläche über Padding auf das Mindestmaß vergrößert werden.
+6. Die Event-Pill (`EventPill`) bleibt die geteilte Darstellung; Mobil unterscheidet sich nur in Dichte und Truncate, nicht in einem eigenen Komponenten-Pfad. Typ-Farbe und Uhrzeit-Präfix folgen derselben Logik wie Desktop.
+
+## Wochen-Overscroll-Paging (geplant, KANN)
+
+Die Wochenansicht scrollt ihr Tagesraster horizontal (`overflow-x-auto`, `min-w-[760px]`), um abseits liegende Tage zu erreichen. Deshalb ist sie aus dem Swipe-Karussell der Zeitraum-Navigation (Monat/Tag/Liste, eingeführt mit #72) ausgenommen: Ein horizontaler Swipe dort würde mit dem inneren Scroll kollidieren, und `touch-action: pan-y` auf der Karussell-Spur würde diesen Scroll abschalten. Die Woche wechselt den Zeitraum heute nur über die Pfeile (`‹ ›`).
+
+Als KANN-Erweiterung ist Overscroll-to-Paginate für die Woche vorgesehen, damit horizontales Scrollen **und** Wochenwechsel auf derselben Geste koexistieren:
+
+1. Am linken bzw. rechten Ende des horizontalen Scrollbereichs KANN ein fortgesetztes Ziehen über das Scroll-Ende hinaus die Woche um eine Woche zurück bzw. vor blättern (Overscroll-to-Paginate).
+2. Solange das Tagesraster noch in Scrollrichtung scrollbar ist, MUSS die Geste der inneren Horizontal-Scroll-Position gehören; ein Wochenwechsel DARF erst auslösen, wenn der Scroll das Ende erreicht hat und zusätzlicher Overscroll-Weg über eine Schwelle hinaus zurückgelegt wurde.
+3. Die Schwelle SOLL der Karussell-Konvention folgen (heute `SWIPE_COMMIT_PX`, ~60px Overscroll-Weg über das Scroll-Ende hinaus), damit sich Wochen- und Monatswechsel gleich anfühlen.
+4. Gesten-Abgrenzung zum Monats-Karussell: Die Woche bleibt aus dem bestehenden Drei-Panel-Swipe-Karussell ausgenommen; das Paging entsteht ausschließlich aus dem Overscroll des eigenen Scrollcontainers, nicht aus einer parallel laufenden `pan-y`-Spur. Die vertikale Achse (Scroll durch die Stunden-Slots) bleibt frei.
+5. Diese Erweiterung ist KEINE sofortige MUSS-Regel. Bis sie umgesetzt ist, bleibt der Wochenwechsel über die Pfeile die normative Pflichtinteraktion.
+
 ## Cross-Module-Verhalten
 
 Das Calendar Module darf Items aus anderen Space Modules anzeigen oder dorthin öffnen, ohne deren Semantik zu besitzen.
