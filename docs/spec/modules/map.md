@@ -250,8 +250,8 @@ Das Map Module leitet aus jedem map-fähigen Item ein `MapMarkerSpec` ab. Welche
 | `id` | `Item.id` | Stabile Marker-Identität; Grundlage des Click→Item-Lookups. |
 | `label` | `data.title` (Fallback `Item.id`) | Marker-Label / Tooltip. |
 | `color` | `getTagAccentColor(tags[0])` | Farbe aus dem ersten Tag (deterministische Palette). Fehlt ein Tag, bleibt `color` undefiniert und der Adapter nutzt seinen Default-Pin. **Später** SOLL die Space-`primaryColor` als Farbquelle bzw. Fallback dienen, sobald Spaces eine Primärfarbe tragen. |
-| `icon` | `data.icon` (optional) | Icon-Hint; Auflösung zu konkreter Glyphe ist Sache der Marker-Library, nicht des Mappings. |
-| Form / Cluster-Zugehörigkeit | Item-Typ bzw. Tags; Cluster aus Marker-Dichte | Form-/Cluster-Auswahl trifft die Marker-Library aus den übergebenen Primitiven; das Mapping liefert nur die Hints (`color`, `icon`, ggf. `type`). |
+| `icon` | `data.icon` (optional) | Icon-Hint; Auflösung zu konkreter Glyphe ist Sache der Marker-Library, nicht des Mappings. Vorwärts-Vertrag: heute noch nicht emittiert/konsumiert (die reale `MapView` emittiert nur `id`/`position`/`label`/`color`, der Leaflet-Adapter `buildMarkerIcon` nutzt nur `color`), analog zur `primaryColor`-Behandlung. |
+| Form / Cluster-Zugehörigkeit | Item-Typ bzw. Tags; Cluster aus Marker-Dichte | Form-/Cluster-Auswahl trifft die Marker-Library aus den übergebenen Primitiven; das Mapping liefert nur die Hints (`color`, `icon`). |
 
 Regeln:
 
