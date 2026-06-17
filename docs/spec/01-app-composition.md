@@ -105,7 +105,9 @@ Regeln:
 
 ### Ebene 3: Interrupt-Notifications
 
-Ebene 3 trägt eingehende, zeitkritische Events, die nicht aus einer Nutzer-Aktion stammen: Counter-Verification, Space-Invite, Mutual-Verification (im Code `incoming-verification`, `incoming-space-invite`, `mutual-verification`, siehe `use-incoming-events`).
+Ebene 3 trägt eingehende, zeitkritische Events, die nicht aus einer Nutzer-Aktion stammen: Counter-Verification, Space-Invite, Mutual-Verification (im Code `incoming-verification`, `space-invite`, `mutual-verification`, siehe `packages/toolkit/src/hooks/use-incoming-events.tsx`).
+
+Diese Subsektion beschreibt das **Ziel-Verhalten**. Bekannte Divergenz zum heutigen Ist-Zustand: `apps/reference/src/App.tsx` rendert die Events aktuell als echte modale Radix-Dialoge (`IncomingVerificationDialog`, `IncomingSpaceInviteDialog`, `MutualVerificationDialog` via `open={!!...}`); eine Toast- oder Banner-Fläche existiert im Toolkit noch nicht.
 
 Regeln:
 
