@@ -98,7 +98,16 @@ Regeln:
 
 Der Content-Bereich ist die Fläche unterhalb der Top-Navigation, links einer rechten Sidebar und rechts einer linken Sidebar. Er rückt automatisch ein, wenn eine Sidebar öffnet (die Panel-Fläche publiziert ihre Breite als CSS-Variable, die der Content als Padding konsumiert); sonst ist er eine `flex-1`-Spalte.
 
-Begründung, Alternativen und Realisierungs-Stand: [decisions/0002-ui-panel-overlay-layers.md](decisions/0002-ui-panel-overlay-layers.md).
+Module wählen einen **Füllmodus** im Content-Bereich: *full-bleed* (füllt die Fläche randlos, z.B. Map) oder *zentrierter Container* (Standard, z.B. Feed, Calendar, Kanban). Full-bleed räumt auf Mobile auch unter die BottomNav.
+
+### Verworfene Alternativen
+
+Festgehalten, damit sie nicht neu aufgemacht werden:
+
+- **Panel-Provider pro View:** jedes Modul mountete sein eigenes Panel, Debug/Profil separat — verursachte die gleichseitige Überlagerung und verlor die modulübergreifende Persistenz.
+- **Debug nach links:** links ist für ein späteres Nav-Menü reserviert, und eine nicht-modale Dev-Sidebar neben dem Content ist dasselbe Anti-Pattern; das eine rechte Panel zu teilen ist sauberer.
+- **Reines Flex-Row mit Sidebars als Flex-Children:** der Mobile-Drawer/Modal kann kein Flex-Child sein, also bräuchte es trotzdem die Overlay-Ausnahme; das CSS-Var-Inset liefert denselben Content-Bereich (inkl. links).
+- **Dialoge als `AdaptivePanel`s / ein Stack für alles:** Dialoge sind immer zentrierte Modals (nie Sidebar/Drawer); und Interrupts in das eine Panel zu falten ließe ein System-Event den Nutzer-Kontext verdrängen.
 
 ## Current Space
 
