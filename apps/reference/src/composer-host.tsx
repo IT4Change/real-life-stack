@@ -72,6 +72,10 @@ export function ComposerHostProvider({
   isPickingRef.current = isPicking
   const confirmPickRef = useRef(confirmPick)
   confirmPickRef.current = confirmPick
+  // Bumped per open() so the ContentComposer remounts with fresh initialData
+  // (a different prefilled date). Stable across module switches (open() isn't
+  // re-called there), so the map-pick "frozen composer" flow keeps working.
+  const composerKeyRef = useRef(0)
 
   // If the composer is replaced by other panel content (or closed) while a pick
   // is in flight, the entry's onClose does not fire on a content-swap — so end
@@ -85,10 +89,12 @@ export function ComposerHostProvider({
     (config: OpenComposerConfig) => {
       mapperRef.current = config.mapper
       editorRef.current.openCreate()
+      composerKeyRef.current += 1
       modulePanel.open({
         kind: "composer",
         content: (
           <ContentComposer
+            key={composerKeyRef.current}
             className={config.className ?? "p-4 sm:p-6"}
             contentTypes={config.contentTypes}
             initialData={config.initialData}
