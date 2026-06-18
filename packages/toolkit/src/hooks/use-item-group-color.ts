@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react"
-import { hasItemGroups, type Item } from "@real-life-stack/data-interface"
+import { hasItemGroups, type Group, type Item } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 import { useGroups } from "./use-groups"
 import { getSpacePrimaryColor } from "../lib/utils"
@@ -35,5 +35,25 @@ export function useItemGroupColorResolver(activeGroupId?: string): (item: Item) 
       return groupColorById.get(originId) ?? getSpacePrimaryColor(originId, null)
     },
     [connector, groupColorById, activeGroupId],
+  )
+}
+
+/**
+ * Returns a resolver `(item) => Group | undefined` for the group an item was
+ * created in (its origin group), via the connector's `ItemGroupCapable`. Used to
+ * show an item's origin group (e.g. {@link ItemGroupBadge}) in aggregate views.
+ */
+export function useItemGroupResolver(): (item: Item) => Group | undefined {
+  const connector = useConnector()
+  const { data: groups } = useGroups()
+
+  const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups])
+
+  return useCallback(
+    (item: Item) => {
+      const originId = hasItemGroups(connector) ? connector.getItemGroupId(item.id) : null
+      return originId ? groupById.get(originId) : undefined
+    },
+    [connector, groupById],
   )
 }

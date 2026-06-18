@@ -7,6 +7,7 @@ import {
   ReactionBar,
   ItemPreview,
   ItemTypeBadge,
+  ItemGroupBadge,
   ItemMetaRow,
   ItemCommentCount,
   FeedComposerTrigger,
@@ -20,6 +21,7 @@ import {
   useCurrentUser,
   useItemEditor,
   useItemGroupColorResolver,
+  useItemGroupResolver,
   getActivePanelGlow,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
@@ -86,9 +88,10 @@ export function FeedView({ groupId }: { groupId: string }) {
   // Detail panel — shared single panel via ModulePanelProvider
   const modulePanel = useModulePanel()
   // Active-item glow uses the colour of each item's origin group.
-  const resolveItemGroupColor = useItemGroupColorResolver(
-    groupId === "__overview__" ? undefined : groupId,
-  )
+  const isOverview = groupId === "__overview__"
+  const resolveItemGroupColor = useItemGroupColorResolver(isOverview ? undefined : groupId)
+  // Origin group per item — only surfaced as a badge in the aggregate view.
+  const resolveItemGroup = useItemGroupResolver()
   const openDetail = useCallback((item: Item) => {
     modulePanel.open({
       kind: "detail",
@@ -251,18 +254,28 @@ export function FeedView({ groupId }: { groupId: string }) {
 
       {/* Feed items */}
       <div className="space-y-4">
-        {filteredFeedItems.map((item) => (
-          <ItemPreview
-            key={item.id}
-            item={item}
-            author={resolveAuthor(item.createdBy)}
-            style={modulePanel.current?.itemId === item.id ? getActivePanelGlow(resolveItemGroupColor(item)) : undefined}
-            onClick={() => openDetail(item)}
-            headerAdornment={<ItemTypeBadge type={item.type} />}
-            metaAdornment={<ItemMetaRow item={item} />}
-            footerAdornment={renderFeedFooter(item, () => openDetail(item))}
-          />
-        ))}
+        {filteredFeedItems.map((item) => {
+          // In the aggregate view, show which group an item comes from — a chip
+          // next to the type badge (analogous to it). Omitted inside a single group.
+          const group = isOverview ? resolveItemGroup(item) : undefined
+          return (
+            <ItemPreview
+              key={item.id}
+              item={item}
+              author={resolveAuthor(item.createdBy)}
+              style={modulePanel.current?.itemId === item.id ? getActivePanelGlow(resolveItemGroupColor(item)) : undefined}
+              onClick={() => openDetail(item)}
+              headerAdornment={
+                <>
+                  <ItemTypeBadge type={item.type} />
+                  {group && <ItemGroupBadge name={group.name} color={resolveItemGroupColor(item)} />}
+                </>
+              }
+              metaAdornment={<ItemMetaRow item={item} />}
+              footerAdornment={renderFeedFooter(item, () => openDetail(item))}
+            />
+          )
+        })}
       </div>
 
     </div>
