@@ -1,6 +1,6 @@
 "use client"
 
-import type { KeyboardEvent, ReactNode } from "react"
+import type { CSSProperties, KeyboardEvent, ReactNode } from "react"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
 import { RelativeTime } from "../primitives/relative-time"
@@ -78,6 +78,8 @@ export interface ItemPreviewProps {
    */
   density?: ItemPreviewDensity
   className?: string
+  /** Inline style on the card root — e.g. the active-item glow (box-shadow). */
+  style?: CSSProperties
 }
 
 function getInitials(name: string): string {
@@ -100,6 +102,7 @@ export function ItemPreview({
   footerAdornment,
   density = "comfortable",
   className,
+  style,
 }: ItemPreviewProps) {
   const data = item.data as Record<string, unknown>
   const title = typeof data.title === "string" ? data.title : undefined
@@ -140,6 +143,7 @@ export function ItemPreview({
           "cursor-pointer hover:border-primary/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         className,
       )}
+      style={style}
       onClick={onClick}
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}

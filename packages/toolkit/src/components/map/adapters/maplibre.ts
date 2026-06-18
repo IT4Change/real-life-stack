@@ -78,7 +78,22 @@ async function loadMapLibre(): Promise<MapLibreModule> {
 function appearanceKey(spec: MapMarkerSpec): string {
   // iconRegistryVersion() so a registerIcon() that redefines an icon invalidates
   // cached markers using it (the spec key alone wouldn't change).
-  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${spec.selected ? 1 : 0}|${iconRegistryVersion()}`
+  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${spec.selected ? 1 : 0}|${spec.glowColor ?? ""}|${iconRegistryVersion()}`
+}
+
+/** Base drop shadow under every pin. */
+const MARKER_BASE_SHADOW = "drop-shadow(0 2px 3px rgba(0,0,0,0.5))"
+
+/**
+ * The element's CSS filter: the base shadow, plus a soft colour glow when the
+ * marker is selected (its item open in the shared panel) — the map analogue of
+ * the cards' active-item glow. Two stacked colour drop-shadows form the halo.
+ */
+function markerFilter(spec: MapMarkerSpec): string {
+  if (spec.selected && spec.glowColor) {
+    return `${MARKER_BASE_SHADOW} drop-shadow(0 0 3px ${spec.glowColor}) drop-shadow(0 0 6px ${spec.glowColor})`
+  }
+  return MARKER_BASE_SHADOW
 }
 
 /** The marker's pin as an SVG `data:` URL (see markerDataUrl — no injection surface). */
@@ -107,7 +122,8 @@ function buildMarkerElement(spec: MapMarkerSpec): HTMLImageElement {
   // Drop shadow inline (not only via the .rls-marker-shadow class) so it applies
   // even if maplibre touches the element's className. CSS filter follows the
   // pin's alpha; reliable for <img>-embedded SVG (an in-SVG feDropShadow is not).
-  el.style.filter = "drop-shadow(0 2px 3px rgba(0,0,0,0.5))"
+  // Includes the selected glow when applicable.
+  el.style.filter = markerFilter(spec)
   // Keyboard-accessible: the marker behaves as a button so non-pointer users
   // can activate it (a marker click opens the item's detail panel). The
   // accessible name is set from the label in setMarkers.
@@ -239,7 +255,11 @@ export class MapLibreMapAdapter implements MapAdapter {
         // Reconcile appearance in place (no marker recreation, no flicker).
         const key = appearanceKey(spec)
         if (this.markerAppearance.get(spec.id) !== key) {
-          if (el) el.src = markerSrc(spec)
+          if (el) {
+            el.src = markerSrc(spec)
+            // Selection toggles the colour glow — refresh the element filter too.
+            el.style.filter = markerFilter(spec)
+          }
           this.markerAppearance.set(spec.id, key)
         }
       } else {

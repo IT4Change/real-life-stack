@@ -13,7 +13,7 @@ import {
 } from "lucide-react"
 import { Button } from "../primitives/button"
 import { Input } from "../primitives/input"
-import { cn, getItemColor, getReadableTextColor } from "../../lib/utils"
+import { cn, getItemColor, getReadableTextColor, getActivePanelGlow } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 import { ItemPreview } from "../preview/item-preview"
 import { ItemTypeBadge } from "../preview/item-type-badge"
@@ -1082,7 +1082,8 @@ interface EventPillProps {
 function EventPill({ event, compact = false, onClick }: EventPillProps) {
   const resolveGroupColor = useContext(CalendarGroupColorContext)
   const activeItemId = useContext(CalendarActiveItemContext)
-  const color = getItemColor(event.item, { groupColor: resolveGroupColor(event.item) })
+  const groupColor = resolveGroupColor(event.item)
+  const color = getItemColor(event.item, { groupColor })
   const isActive = activeItemId === event.item.id
   return (
     <button
@@ -1093,13 +1094,13 @@ function EventPill({ event, compact = false, onClick }: EventPillProps) {
         clickEvent.stopPropagation()
         onClick?.(event.item)
       }}
-      style={{ backgroundColor: color, color: getReadableTextColor(color) }}
-      className={cn(
-        "block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium transition-opacity hover:opacity-90",
-        // Highlight the item currently open in the shared panel. A foreground-
-        // coloured ring with an offset reads as "selected" on any pill colour.
-        isActive && "ring-2 ring-foreground ring-offset-1 ring-offset-background",
-      )}
+      style={{
+        backgroundColor: color,
+        color: getReadableTextColor(color),
+        // Soft glow in the group colour for the item open in the shared panel.
+        ...(isActive ? getActivePanelGlow(groupColor) : null),
+      }}
+      className="block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium transition-opacity hover:opacity-90"
     >
       {compact
         ? event.allDay
@@ -1117,6 +1118,8 @@ interface EventCardProps {
 
 function EventCard({ event, onClick }: EventCardProps) {
   const activeItemId = useContext(CalendarActiveItemContext)
+  const resolveGroupColor = useContext(CalendarGroupColorContext)
+  const isActive = activeItemId === event.item.id
   // The calendar list-view card uses ItemPreview with `author={null}`
   // (the date group header above already carries the temporal context),
   // a TypeBadge in the header slot, and `ItemTimeRange` in the meta
@@ -1132,7 +1135,7 @@ function EventCard({ event, onClick }: EventCardProps) {
     <ItemPreview
       item={event.item}
       author={null}
-      className={cn(activeItemId === event.item.id && "ring-2 ring-primary")}
+      style={isActive ? getActivePanelGlow(resolveGroupColor(event.item)) : undefined}
       onClick={onClick ? () => onClick(event.item) : undefined}
       headerAdornment={
         <ItemTypeBadge type={event.item.type} />

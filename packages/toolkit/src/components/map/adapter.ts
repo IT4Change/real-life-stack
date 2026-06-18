@@ -52,8 +52,10 @@ export interface MapMarkerSpec {
   color?: string
   /** Pin shape. Defaults to `"circle"`. */
   shape?: MarkerShape
-  /** Whether the marker is selected (renders a contrast outline). */
+  /** Whether the marker is selected — the item is open in the shared panel. */
   selected?: boolean
+  /** Colour of the selected glow (usually the item's origin-group colour). */
+  glowColor?: string
 }
 
 export interface MapViewState {

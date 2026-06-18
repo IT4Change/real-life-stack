@@ -17,9 +17,7 @@ import {
   useFilterableItems,
   type ItemEditorMapper,
   getItemColor,
-  getSpacePrimaryColor,
-  useGroups,
-  useConnector,
+  useItemGroupColorResolver,
   Button,
   Input,
   type FilterBarValue,
@@ -28,7 +26,7 @@ import {
 } from "@real-life-stack/toolkit"
 import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 import { Calendar, MapPin, Search } from "lucide-react"
-import { hasItemGroups, type Item, type User } from "@real-life-stack/data-interface"
+import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useLocationPick } from "../location-pick"
 
@@ -69,23 +67,12 @@ export function MapView({ groupId }: { groupId: string }) {
   // in from other spaces still resolve to their User.
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
-  const { data: groups } = useGroups()
-  const connector = useConnector()
-  // Per-group fallback colours, keyed by group id. The unified item-colour
-  // resolver (custom → first tag → group) falls back to the colour of the group
-  // an item was *created* in — so the aggregate ("Mein Netzwerk") view shows each
-  // marker in its origin group's colour. Shared logic with the calendar.
-  const groupColorById = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const g of groups) {
-      map.set(g.id, getSpacePrimaryColor(g.id, (g.data?.primaryColor as string | undefined) ?? null))
-    }
-    return map
-  }, [groups])
-  const resolveItemGroupColor = useCallback((item: Item) => {
-    const originId = (hasItemGroups(connector) ? connector.getItemGroupId(item.id) : null) ?? groupId
-    return groupColorById.get(originId) ?? getSpacePrimaryColor(originId, null)
-  }, [connector, groupColorById, groupId])
+  // Marker colour falls back to the colour of the group an item was *created* in
+  // (origin group) — so the aggregate ("Mein Netzwerk") view shows each marker in
+  // its origin group's colour. Shared resolver, also used for the active glow.
+  const resolveItemGroupColor = useItemGroupColorResolver(
+    groupId === "__overview__" ? undefined : groupId,
+  )
 
   const modulePanel = useModulePanel()
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
@@ -170,8 +157,10 @@ export function MapView({ groupId }: { groupId: string }) {
         // Glyph: an explicit item icon, else the first tag's name (which resolves
         // to a curated icon when it matches, e.g. "cafe"); unknown → a dot.
         icon: (item.data.icon as string | undefined) ?? firstTag,
-        // Highlight the marker whose item is open in the shared panel.
+        // Highlight the marker whose item is open in the shared panel — a soft
+        // glow in the item's origin-group colour (analogous to the cards).
         selected: item.id === activeItemId,
+        glowColor: resolveItemGroupColor(item),
       })
       byId.set(item.id, item)
     }

@@ -19,7 +19,8 @@ import {
   useMembers,
   useCurrentUser,
   useItemEditor,
-  cn,
+  useItemGroupColorResolver,
+  getActivePanelGlow,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import { Calendar, FileText, Search } from "lucide-react"
@@ -84,6 +85,10 @@ export function FeedView({ groupId }: { groupId: string }) {
 
   // Detail panel — shared single panel via ModulePanelProvider
   const modulePanel = useModulePanel()
+  // Active-item glow uses the colour of each item's origin group.
+  const resolveItemGroupColor = useItemGroupColorResolver(
+    groupId === "__overview__" ? undefined : groupId,
+  )
   const openDetail = useCallback((item: Item) => {
     modulePanel.open({
       kind: "detail",
@@ -251,7 +256,7 @@ export function FeedView({ groupId }: { groupId: string }) {
             key={item.id}
             item={item}
             author={resolveAuthor(item.createdBy)}
-            className={cn(modulePanel.current?.itemId === item.id && "ring-2 ring-primary")}
+            style={modulePanel.current?.itemId === item.id ? getActivePanelGlow(resolveItemGroupColor(item)) : undefined}
             onClick={() => openDetail(item)}
             headerAdornment={<ItemTypeBadge type={item.type} />}
             metaAdornment={<ItemMetaRow item={item} />}

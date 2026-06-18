@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react"
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -50,6 +51,18 @@ const HEX6 = /^#[0-9a-fA-F]{6}$/
 export function getSpacePrimaryColor(id: string, explicit?: string | null): string {
   if (explicit && HEX6.test(explicit)) return explicit
   return paletteEntry(id).accent
+}
+
+/**
+ * Soft "glow" for the item currently open in the shared panel, in the colour of
+ * its (origin) group. A thin colour edge keeps it defined on busy backgrounds;
+ * the blurred halo does the highlighting without a hard, heavy ring. `color`
+ * must be a `#rrggbb` value (e.g. from `getSpacePrimaryColor`); the 2-digit
+ * alpha suffixes make the 8-digit `#rrggbbaa` form.
+ */
+export function getActivePanelGlow(color: string): CSSProperties {
+  if (!HEX6.test(color)) return {}
+  return { boxShadow: `0 0 0 1px ${color}, 0 0 8px 2px ${color}80` }
 }
 
 /**
