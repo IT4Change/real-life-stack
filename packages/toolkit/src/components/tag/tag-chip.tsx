@@ -1,10 +1,17 @@
 "use client"
 
 import { X } from "lucide-react"
-import { cn, getTagColor } from "../../lib/utils"
+import { cn, getTagColor, getTagAccentColor } from "../../lib/utils"
+import { getIcon, iconToDataUrl } from "../../lib/icons/icon-registry"
 
 export interface TagChipProps {
   tag: string
+  /**
+   * Optional icon shown before the label — a curated icon name (e.g. a
+   * Tag-Item's `icon`). Resolved via the shared registry, so a tag and its map
+   * markers use the same glyph. Unknown names render no icon.
+   */
+  icon?: string
   /** Visual size. `sm` matches post/preview cards, `md` the filter UI. */
   size?: "sm" | "md"
   /**
@@ -29,20 +36,35 @@ const SIZES = {
  * Shared tag chip — one source of truth for how a tag looks everywhere:
  * post/preview cards, the filter picker and active filter chips. Keeps the
  * deterministic `getTagColor` palette consistent across all surfaces (the
- * filter used to ignore it and render muted/primary chips instead).
+ * filter used to ignore it and render muted/primary chips instead). An optional
+ * `icon` renders a small glyph (shared with the marker layer via the icon
+ * registry) before the label.
  *
  * Three modes, picked by props:
  * - static (default): a plain coloured label.
  * - toggle (`onToggle`): a pressable option for the filter picker.
  * - removable (`onRemove`): a coloured chip with a ✕ for active filters.
  */
-export function TagChip({ tag, size = "sm", selected, onToggle, onRemove, className }: TagChipProps) {
+export function TagChip({ tag, icon, size = "sm", selected, onToggle, onRemove, className }: TagChipProps) {
   const base = cn(
     "inline-flex items-center gap-1 rounded-full font-medium",
     SIZES[size],
     getTagColor(tag),
     className,
   )
+
+  // Render the glyph as a sandboxed <img> (data URL), never inline SVG: a
+  // registered/custom icon's body may be untrusted, and an <img>-embedded SVG
+  // never executes scripts or event handlers. Coloured to the chip's tag accent.
+  const glyph = icon ? getIcon(icon) : undefined
+  const glyphEl = glyph ? (
+    <img
+      src={iconToDataUrl(glyph, getTagAccentColor(tag))}
+      alt=""
+      aria-hidden="true"
+      className={cn("shrink-0", size === "sm" ? "h-2.5 w-2.5" : "h-3 w-3")}
+    />
+  ) : null
 
   if (onToggle) {
     return (
@@ -58,6 +80,7 @@ export function TagChip({ tag, size = "sm", selected, onToggle, onRemove, classN
             : "opacity-50 hover:opacity-80",
         )}
       >
+        {glyphEl}
         {tag}
       </button>
     )
@@ -66,6 +89,7 @@ export function TagChip({ tag, size = "sm", selected, onToggle, onRemove, classN
   if (onRemove) {
     return (
       <span className={base}>
+        {glyphEl}
         {tag}
         <button
           type="button"
@@ -82,5 +106,10 @@ export function TagChip({ tag, size = "sm", selected, onToggle, onRemove, classN
     )
   }
 
-  return <span className={base}>{tag}</span>
+  return (
+    <span className={base}>
+      {glyphEl}
+      {tag}
+    </span>
+  )
 }

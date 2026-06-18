@@ -23,3 +23,17 @@ export type {
   MapAdapter,
   Unsubscribe,
 } from "./adapter"
+
+// Marker rendering is library-agnostic (pure SVG), so it lives in the barrel
+// alongside the contract — both adapters render markers through it.
+export {
+  renderMarkerSvg,
+  markerDataUrl,
+  MARKER_SHAPES,
+  DEFAULT_SHAPE,
+  PIN_ANCHOR,
+  PIN_SIZE,
+  PIN_VIEWBOX,
+  type RenderMarkerOptions,
+  type MarkerShape,
+} from "./markers"
