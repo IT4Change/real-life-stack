@@ -501,6 +501,7 @@ export function CalendarView({
             setViewMode("day")
           }}
           onEventClick={onEventClick}
+          onCreateEvent={onCreateEvent}
         />
       )
     }
@@ -733,6 +734,7 @@ interface MonthCalendarProps {
   onSelectDate: (date: Date) => void
   onOpenDay: (date: Date) => void
   onEventClick?: (event: Item) => void
+  onCreateEvent?: (date: Date) => void
 }
 
 function MonthCalendar({
@@ -743,6 +745,7 @@ function MonthCalendar({
   onSelectDate,
   onOpenDay,
   onEventClick,
+  onCreateEvent,
 }: MonthCalendarProps) {
   const days = useMemo(
     () => buildCalendarDays(
@@ -769,7 +772,7 @@ function MonthCalendar({
           <div
             key={day.key}
             className={cn(
-              "group min-h-20 border-b border-r p-1.5 text-left align-top transition-colors sm:min-h-28 lg:min-h-32",
+              "group flex min-h-20 flex-col border-b border-r p-1.5 text-left align-top transition-colors sm:min-h-28 lg:min-h-32",
               !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
               day.isCurrentMonth && "hover:bg-muted/50",
               day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
@@ -836,6 +839,16 @@ function MonthCalendar({
                 </button>
               )}
             </div>
+
+            {onCreateEvent && day.isCurrentMonth && (
+              <button
+                type="button"
+                aria-label="Event an diesem Tag erstellen"
+                onClick={() => onCreateEvent(day.date)}
+                tabIndex={-1}
+                className="mt-0.5 min-h-4 flex-1 rounded transition-colors hover:bg-primary/5"
+              />
+            )}
           </div>
         ))}
       </div>
