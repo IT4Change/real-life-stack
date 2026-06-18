@@ -634,7 +634,7 @@ export function CalendarView({
       />
 
       <div className="-mx-4 sm:mx-0 sm:overflow-hidden sm:rounded-lg sm:border">
-      <div className="flex flex-col gap-2 border-b p-3 sm:gap-3 sm:p-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 border-b p-3 sm:gap-4 sm:p-4 md:flex-row md:items-center md:justify-between">
         {/* Title between the two arrows, hugging the text (no reserved width, so
             no floating gap). Centred on mobile to sit balanced above the
             full-width view switcher, left-aligned on desktop. The view switcher
