@@ -815,13 +815,26 @@ function MonthCalendar({
               )}
             </div>
 
-            <div className="mt-2 flex flex-wrap gap-1 md:hidden">
-              {day.events.slice(0, 4).map((event) => (
-                <span
+            <div className="mt-1 space-y-0.5 md:hidden">
+              {day.events.slice(0, 2).map((event) => (
+                <EventPill
                   key={event.item.id}
-                  className={cn("h-1.5 w-1.5 rounded-full", getEventTypeClass(event.item.type))}
+                  event={event}
+                  onClick={onEventClick}
                 />
               ))}
+              {day.events.length > 2 && (
+                <button
+                  type="button"
+                  onClick={(clickEvent) => {
+                    clickEvent.stopPropagation()
+                    onOpenDay(day.date)
+                  }}
+                  className="w-full rounded px-1 py-0.5 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                >
+                  +{day.events.length - 2} weitere
+                </button>
+              )}
             </div>
           </div>
         ))}
