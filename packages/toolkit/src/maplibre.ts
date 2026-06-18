@@ -9,4 +9,4 @@
  * the vector map do not pull maplibre-gl into their dependency graph or bundle.
  */
 
-export { MapLibreMapAdapter } from "./components/map/adapters/maplibre"
+export { MapLibreMapAdapter, prefetchMapLibre } from "./components/map/adapters/maplibre"
