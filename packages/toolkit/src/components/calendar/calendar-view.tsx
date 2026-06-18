@@ -634,8 +634,13 @@ export function CalendarView({
       />
 
       <div className="-mx-4 sm:mx-0 sm:overflow-hidden sm:rounded-lg sm:border">
-      <div className="flex flex-col gap-3 border-b p-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2 border-b p-3 sm:gap-3 sm:p-4 md:flex-row md:items-center md:justify-between">
+        {/* Title between the two arrows, hugging the text (no reserved width, so
+            no floating gap). Centred on mobile to sit balanced above the
+            full-width view switcher, left-aligned on desktop. The view switcher
+            may shift slightly on desktop when the label width changes between
+            views — an acceptable trade for a header that doesn't stand apart. */}
+        <div className="flex items-center justify-center gap-0.5 md:justify-start">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -644,9 +649,9 @@ export function CalendarView({
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="min-w-0 px-1 sm:min-w-56">
-            <h2 className="truncate text-lg font-semibold">{getHeaderLabel(visibleDate, viewMode)}</h2>
-          </div>
+          <h2 className="min-w-0 truncate px-1 text-center text-base font-semibold sm:text-lg">
+            {getHeaderLabel(visibleDate, viewMode)}
+          </h2>
           <Button
             variant="ghost"
             size="icon-sm"
