@@ -92,6 +92,14 @@ export interface MapAdapter {
   unmount(): Promise<void>
 
   /**
+   * Recompute the map size after its container changed size or was re-shown
+   * (e.g. a kept-alive map revealed again after `display:none`). No-op before
+   * mount. Optional so existing/external adapters stay source-compatible;
+   * callers MUST treat it as possibly-absent (`adapter.resize?.()`).
+   */
+  resize?(): void
+
+  /**
    * Declarative marker set. The adapter computes the diff (add / remove /
    * update) against its current set, so callers can pass the full intended
    * marker list every render.

@@ -74,6 +74,18 @@ async function loadMapLibre(): Promise<MapLibreModule> {
   return maplibreModule
 }
 
+/**
+ * Warm the map's cold-start cost off the critical path: trigger the lazy
+ * maplibre-gl import (downloads + parses the ~1 MB chunk and runs its module
+ * init) and prefetch the default style JSON into the HTTP cache. No map / WebGL
+ * is created, so it is safe (and cheap) to call once on app idle — the first
+ * map open is then noticeably faster. Best-effort; all errors are swallowed.
+ */
+export async function prefetchMapLibre(styleUrl: string = DEFAULT_STYLE): Promise<void> {
+  await loadMapLibre().catch(() => {})
+  await fetch(styleUrl, { mode: "cors" }).then((r) => r.ok && r.json()).catch(() => {})
+}
+
 /** A stable key for a marker's appearance, so we only re-render the SVG when it changes. */
 function appearanceKey(spec: MapMarkerSpec): string {
   // iconRegistryVersion() so a registerIcon() that redefines an icon invalidates
@@ -291,6 +303,10 @@ export class MapLibreMapAdapter implements MapAdapter {
         this.markerAppearance.set(spec.id, appearanceKey(spec))
       }
     }
+  }
+
+  resize(): void {
+    ;(this.mapInstance as MlMap | null)?.resize()
   }
 
   setView(view: MapViewPatch): void {
