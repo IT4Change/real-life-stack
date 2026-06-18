@@ -4,6 +4,8 @@ import { Newspaper, Map as MapIcon, Calendar, Columns3 } from "lucide-react"
 import {
   useConnector,
   useGroups,
+  getSpacePrimaryColor,
+  getReadableTextColor,
   type Workspace,
   type Module,
 } from "@real-life-stack/toolkit"
@@ -79,6 +81,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
         name: g.name,
         avatar: g.data?.image as string | undefined ?? (g.data?.avatar ? `${basePath}${g.data.avatar}` : undefined),
         scope: g.data?.scope as string | undefined,
+        primaryColor: g.data?.primaryColor as string | undefined,
       })),
     ],
     [groups, basePath]
@@ -147,6 +150,44 @@ export function useWorkspaceRouting(): WorkspaceRouting {
       .map((id) => ({ id, label: MODULE_LABELS[id] ?? id, icon: MODULE_ICONS[id] })),
     [groupModuleIds.join(",")] // eslint-disable-line react-hooks/exhaustive-deps
   )
+
+  // Re-theme the app's primary color to the active space's identity color, so
+  // every space has its own visual identity (buttons, focus rings, active
+  // sidebar items, hover tints). Set on <html> so portaled content (dialogs,
+  // dropdowns) re-themes too. The overview ("Mein Netzwerk") and the no-access
+  // state keep the default brand color.
+  useEffect(() => {
+    const root = document.documentElement
+    const PRIMARY_VARS = [
+      "--primary", "--primary-foreground", "--ring",
+      "--accent", "--accent-foreground",
+      "--sidebar-primary", "--sidebar-primary-foreground", "--sidebar-ring",
+      "--sidebar-accent", "--sidebar-accent-foreground",
+    ]
+    if (activeWorkspace && !isOverview) {
+      const c = getSpacePrimaryColor(activeWorkspace.id, activeWorkspace.primaryColor)
+      const fg = getReadableTextColor(c)
+      const tint = `color-mix(in srgb, ${c} 14%, transparent)`
+      root.style.setProperty("--primary", c)
+      root.style.setProperty("--primary-foreground", fg)
+      root.style.setProperty("--ring", c)
+      root.style.setProperty("--accent", tint)
+      // Text on the faint tinted accent surface must stay readable in both
+      // light and dark mode — the surface is only a 14% tint of `c`, so the
+      // raw space color (esp. a dark one in dark mode) would be unreadable.
+      // `.dark` lives on <html> (App.tsx), so var(--foreground) resolves to
+      // the active mode's foreground on this same element.
+      root.style.setProperty("--accent-foreground", "var(--foreground)")
+      root.style.setProperty("--sidebar-primary", c)
+      root.style.setProperty("--sidebar-primary-foreground", fg)
+      root.style.setProperty("--sidebar-ring", c)
+      root.style.setProperty("--sidebar-accent", tint)
+      root.style.setProperty("--sidebar-accent-foreground", "var(--sidebar-foreground)")
+    } else {
+      PRIMARY_VARS.forEach((v) => root.style.removeProperty(v))
+    }
+    return () => PRIMARY_VARS.forEach((v) => root.style.removeProperty(v))
+  }, [activeWorkspace?.id, activeWorkspace?.primaryColor, isOverview])
 
   // When switching workspace, navigate to URL
   const handleWorkspaceChange = useCallback((workspace: Workspace) => {

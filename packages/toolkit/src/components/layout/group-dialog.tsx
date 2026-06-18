@@ -138,10 +138,16 @@ export function GroupDialog({
     if (!file || !isEdit) return
     if (!file.type.startsWith("image/")) return
     try {
-      const { resizeImage } = await import("../../lib/image-utils")
+      const { resizeImage, dominantColor } = await import("../../lib/image-utils")
       const dataUrl = await resizeImage(file, 200, 0.8)
       setGroupImage(dataUrl)
-      void onUpdateGroup(mode.group.id, { data: { ...mode.group.data, image: dataUrl } })
+      // Cache the logo's dominant color as the space accent (once, here). On a
+      // grayscale logo dominantColor returns null -> clear it so reads fall
+      // back to the deterministic id color.
+      const primaryColor = await dominantColor(dataUrl).catch(() => null)
+      void onUpdateGroup(mode.group.id, {
+        data: { ...mode.group.data, image: dataUrl, primaryColor: primaryColor ?? undefined },
+      })
     } catch {
       setError("Bild konnte nicht verarbeitet werden")
     }
@@ -151,7 +157,8 @@ export function GroupDialog({
   const handleImageRemove = () => {
     if (!isEdit) return
     setGroupImage("")
-    void onUpdateGroup(mode.group.id, { data: { ...mode.group.data, image: "" } })
+    // Drop the cached accent too, so it falls back to the deterministic id color.
+    void onUpdateGroup(mode.group.id, { data: { ...mode.group.data, image: "", primaryColor: undefined } })
   }
 
   const handleLeave = async () => {

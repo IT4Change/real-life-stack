@@ -5,6 +5,7 @@
     "data": {
       "scope": "group",
       "description": "Modulare Community-App mit austauschbarem Backend",
+      "primaryColor": "#e87520",
       "avatar": "rls-logo.svg",
       "access": "invite-member",
       "modules": ["kanban", "feed", "calendar"],
@@ -18,6 +19,7 @@
     "data": {
       "scope": "group",
       "description": "Persönliche Zeitgutscheine als alternative Währung",
+      "primaryColor": "#2d5a3d",
       "avatar": "money-printer-logo.svg",
       "access": "invite-member",
       "modules": ["kanban", "feed", "calendar"],
@@ -31,6 +33,7 @@
     "data": {
       "scope": "group",
       "description": "Dezentrales Identitäts- und Vertrauensnetzwerk",
+      "primaryColor": "#2563eb",
       "avatar": "wot-logo.svg",
       "access": "invite-member",
       "modules": ["kanban", "feed", "calendar"],
@@ -44,6 +47,7 @@
     "data": {
       "scope": "group",
       "description": "Unser Garten in der Nachbarschaft",
+      "primaryColor": "#7cb342",
       "access": "open",
       "modules": ["kanban", "feed", "calendar", "map"],
       "roles": ["admin", "member"],
