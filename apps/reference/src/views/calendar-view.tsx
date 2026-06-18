@@ -11,7 +11,9 @@ import {
   useItems,
   useMembers,
   useCurrentUser,
+  useGroups,
   useModulePanel,
+  getSpacePrimaryColor,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
@@ -26,6 +28,12 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // from other spaces still resolve to their User.
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
+  const { data: groups } = useGroups()
+
+  // Group/space colour = the fallback in the unified item-colour resolver
+  // (custom → first tag → group). Matches the map markers.
+  const activeGroup = groups.find((g) => g.id === groupId)
+  const groupColor = getSpacePrimaryColor(groupId, (activeGroup?.data?.primaryColor as string | undefined) ?? null)
 
   const modulePanel = useModulePanel()
 
@@ -105,6 +113,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
       <ToolkitCalendarView
         events={events}
         currentUserId={currentUser?.id}
+        groupColor={groupColor}
         onEventClick={openDetail}
       />
 

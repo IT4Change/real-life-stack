@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
+import { createContext, useContext, useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
 import {
   Calendar as CalendarIcon,
   CalendarDays,
@@ -14,7 +14,7 @@ import {
 } from "lucide-react"
 import { Button } from "../primitives/button"
 import { Input } from "../primitives/input"
-import { cn } from "../../lib/utils"
+import { cn, getItemColor, getReadableTextColor } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 import { ItemPreview } from "../preview/item-preview"
 import { ItemTypeBadge } from "../preview/item-type-badge"
@@ -33,6 +33,10 @@ const MONTH_NAMES = [
 const DAY_NAMES = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"]
 const LONG_DAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"]
 const TIME_SLOTS = Array.from({ length: 18 }, (_, index) => index + 6)
+
+/** Active group/space color, so every EventPill resolves item colors the same
+ *  way (custom → tag → group) without threading the colour through each view. */
+const CalendarGroupColorContext = createContext<string>("#2563eb")
 
 /** Min horizontal travel (px) to commit a period swipe — PR spec contract. */
 const SWIPE_COMMIT_PX = 60
@@ -74,11 +78,6 @@ const VIEW_MODES: Array<{ id: CalendarViewMode; label: string; icon: typeof Cale
   { id: "day", label: "Tag", icon: CalendarIcon },
   { id: "list", label: "Liste", icon: List },
 ]
-
-const EVENT_TYPE_STYLES: Record<string, string> = {
-  event: "bg-violet-600 text-white hover:bg-violet-700",
-  task: "bg-amber-500 text-amber-950 hover:bg-amber-600",
-}
 
 function getInitialDate(value?: Date | string): Date {
   if (!value) return new Date()
@@ -251,10 +250,6 @@ function getHeaderLabel(date: Date, viewMode: CalendarViewMode): string {
   return `${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`
 }
 
-function getEventTypeClass(type: string): string {
-  return EVENT_TYPE_STYLES[type] ?? "bg-primary text-primary-foreground hover:bg-primary/90"
-}
-
 function getTypeLabel(type: string): string {
   const labels: Record<string, string> = {
     event: "Events",
@@ -279,6 +274,8 @@ export interface CalendarViewProps {
   initialDate?: Date | string
   initialViewMode?: CalendarViewMode
   currentUserId?: string
+  /** Active group/space colour — the group fallback in the item-colour resolver. */
+  groupColor?: string
   onEventClick?: (event: Item) => void
   onCreateEvent?: (date: Date) => void
   className?: string
@@ -289,6 +286,7 @@ export function CalendarView({
   initialDate,
   initialViewMode = "month",
   currentUserId,
+  groupColor = "#2563eb",
   onEventClick,
   onCreateEvent,
   className,
@@ -539,6 +537,7 @@ export function CalendarView({
   }
 
   return (
+    <CalendarGroupColorContext.Provider value={groupColor}>
     <div className={cn("w-full space-y-3", className)}>
       <FilterBar
         value={filterBarValue}
@@ -723,6 +722,7 @@ export function CalendarView({
       )}
       </div>
     </div>
+    </CalendarGroupColorContext.Provider>
   )
 }
 
@@ -1032,6 +1032,8 @@ interface EventPillProps {
 }
 
 function EventPill({ event, compact = false, onClick }: EventPillProps) {
+  const groupColor = useContext(CalendarGroupColorContext)
+  const color = getItemColor(event.item, { groupColor })
   return (
     <button
       type="button"
@@ -1040,10 +1042,8 @@ function EventPill({ event, compact = false, onClick }: EventPillProps) {
         clickEvent.stopPropagation()
         onClick?.(event.item)
       }}
-      className={cn(
-        "block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium transition-colors",
-        getEventTypeClass(event.item.type),
-      )}
+      style={{ backgroundColor: color, color: getReadableTextColor(color) }}
+      className="block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium transition-opacity hover:opacity-90"
     >
       {compact
         ? event.allDay
