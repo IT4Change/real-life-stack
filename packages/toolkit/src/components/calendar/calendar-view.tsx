@@ -41,6 +41,10 @@ const TIME_SLOTS = Array.from({ length: 18 }, (_, index) => index + 6)
 type GroupColorResolver = (item: Item) => string
 const CalendarGroupColorContext = createContext<GroupColorResolver>(() => "#2563eb")
 
+/** Id of the item currently open in the shared panel, so its pill/card is
+ *  highlighted across the calendar (and stays in sync with map/feed/kanban). */
+const CalendarActiveItemContext = createContext<string | undefined>(undefined)
+
 /** Min horizontal travel (px) to commit a period swipe — PR spec contract. */
 const SWIPE_COMMIT_PX = 60
 /** Week grid template: a narrow time gutter + 7 equal day columns that shrink to
@@ -286,6 +290,8 @@ export interface CalendarViewProps {
   /** Per-item group fallback colour (origin group). Takes precedence over `groupColor`;
    *  lets the aggregate view colour each item by the group it was created in. */
   resolveItemGroupColor?: (item: Item) => string
+  /** Id of the item currently open in the shared panel — its pill/card is highlighted. */
+  activeItemId?: string
   onEventClick?: (event: Item) => void
   onCreateEvent?: (date: Date) => void
   className?: string
@@ -298,6 +304,7 @@ export function CalendarView({
   currentUserId,
   groupColor = "#2563eb",
   resolveItemGroupColor,
+  activeItemId,
   onEventClick,
   onCreateEvent,
   className,
@@ -552,6 +559,7 @@ export function CalendarView({
 
   return (
     <CalendarGroupColorContext.Provider value={resolveGroupColor}>
+    <CalendarActiveItemContext.Provider value={activeItemId}>
     <div className={cn("w-full space-y-3", className)}>
       <FilterBar
         value={filterBarValue}
@@ -721,6 +729,7 @@ export function CalendarView({
       </div>
       </div>
     </div>
+    </CalendarActiveItemContext.Provider>
     </CalendarGroupColorContext.Provider>
   )
 }
@@ -1072,17 +1081,25 @@ interface EventPillProps {
 
 function EventPill({ event, compact = false, onClick }: EventPillProps) {
   const resolveGroupColor = useContext(CalendarGroupColorContext)
+  const activeItemId = useContext(CalendarActiveItemContext)
   const color = getItemColor(event.item, { groupColor: resolveGroupColor(event.item) })
+  const isActive = activeItemId === event.item.id
   return (
     <button
       type="button"
       title={event.title}
+      aria-current={isActive ? "true" : undefined}
       onClick={(clickEvent) => {
         clickEvent.stopPropagation()
         onClick?.(event.item)
       }}
       style={{ backgroundColor: color, color: getReadableTextColor(color) }}
-      className="block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium transition-opacity hover:opacity-90"
+      className={cn(
+        "block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium transition-opacity hover:opacity-90",
+        // Highlight the item currently open in the shared panel. A foreground-
+        // coloured ring with an offset reads as "selected" on any pill colour.
+        isActive && "ring-2 ring-foreground ring-offset-1 ring-offset-background",
+      )}
     >
       {compact
         ? event.allDay
@@ -1099,6 +1116,7 @@ interface EventCardProps {
 }
 
 function EventCard({ event, onClick }: EventCardProps) {
+  const activeItemId = useContext(CalendarActiveItemContext)
   // The calendar list-view card uses ItemPreview with `author={null}`
   // (the date group header above already carries the temporal context),
   // a TypeBadge in the header slot, and `ItemTimeRange` in the meta
@@ -1114,6 +1132,7 @@ function EventCard({ event, onClick }: EventCardProps) {
     <ItemPreview
       item={event.item}
       author={null}
+      className={cn(activeItemId === event.item.id && "ring-2 ring-primary")}
       onClick={onClick ? () => onClick(event.item) : undefined}
       headerAdornment={
         <ItemTypeBadge type={event.item.type} />

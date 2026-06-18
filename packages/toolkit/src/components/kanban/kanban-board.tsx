@@ -31,6 +31,8 @@ export interface KanbanBoardProps {
   users?: User[]
   onMoveItem?: (itemId: string, newStatus: string, position: number) => void
   onItemClick?: (item: Item) => void
+  /** Id of the item currently open in the shared panel — its card is highlighted. */
+  activeItemId?: string
   /** Called when an item not belonging to this board is dropped onto it */
   onExternalDrop?: (itemId: string, newStatus: string, position: number) => void
 }
@@ -51,12 +53,13 @@ interface KanbanCardProps {
   item: Item
   users?: User[]
   isDragged: boolean
+  active?: boolean
   onDragStart: (e: DragEvent, itemId: string) => void
   onDragEnd?: () => void
   onClick?: (item: Item) => void
 }
 
-function KanbanCard({ item, users, isDragged, onDragStart, onDragEnd, onClick }: KanbanCardProps) {
+function KanbanCard({ item, users, isDragged, active, onDragStart, onDragEnd, onClick }: KanbanCardProps) {
   const assigneeIds = getAssigneeIds(item)
   const userMap = new Map((users ?? []).map((u) => [u.id, u]))
   const assignees = assigneeIds.map((id) => userMap.get(id)).filter((u): u is User => u != null)
@@ -90,6 +93,7 @@ function KanbanCard({ item, users, isDragged, onDragStart, onDragEnd, onClick }:
         item={displayItem}
         author={null}
         density="compact"
+        className={cn(active && "ring-2 ring-primary")}
         onClick={onClick ? () => onClick(item) : undefined}
         footerAdornment={
           showFooter ? (
@@ -125,6 +129,7 @@ export function KanbanBoard({
   users,
   onMoveItem,
   onItemClick,
+  activeItemId,
   onExternalDrop,
 }: KanbanBoardProps) {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
@@ -427,6 +432,7 @@ export function KanbanBoard({
                       item={item}
                       users={users}
                       isDragged={draggedItemId === item.id}
+                      active={activeItemId === item.id}
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       onClick={onItemClick}

@@ -103,6 +103,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   const openDetail = useCallback((event: Item) => {
     modulePanel.open({
       kind: "detail",
+      itemId: event.id,
       content: (
         <ItemDetailPanel
           itemId={event.id}
@@ -156,6 +157,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         events={events}
         currentUserId={currentUser?.id}
         resolveItemGroupColor={resolveItemGroupColor}
+        activeItemId={modulePanel.current?.itemId}
         onEventClick={openDetail}
         onCreateEvent={openComposerAt}
       />

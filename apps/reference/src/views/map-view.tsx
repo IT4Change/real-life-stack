@@ -147,6 +147,9 @@ export function MapView({ groupId }: { groupId: string }) {
   // i.e. as a drawer on compact screens. On desktop the sidebar stays visible.
   const isCompact = useIsCompact()
 
+  // Id of the item open in the shared panel → its marker is highlighted.
+  const activeItemId = modulePanel.current?.itemId
+
   // Build the markers and an id → item lookup in one pass — marker
   // clicks come back with just the id, and we need the full item to
   // open the detail panel.
@@ -167,11 +170,13 @@ export function MapView({ groupId }: { groupId: string }) {
         // Glyph: an explicit item icon, else the first tag's name (which resolves
         // to a curated icon when it matches, e.g. "cafe"); unknown → a dot.
         icon: (item.data.icon as string | undefined) ?? firstTag,
+        // Highlight the marker whose item is open in the shared panel.
+        selected: item.id === activeItemId,
       })
       byId.set(item.id, item)
     }
     return { markers: markerList, itemsById: byId }
-  }, [filteredItems, resolveItemGroupColor])
+  }, [filteredItems, resolveItemGroupColor, activeItemId])
 
   // Mount the adapter once. The lazy-loaded map library means mount() is
   // properly async, which exposes a classic StrictMode race: both effect
@@ -242,6 +247,7 @@ export function MapView({ groupId }: { groupId: string }) {
   const openDetail = useCallback((item: Item) => {
     modulePanel.open({
       kind: "detail",
+      itemId: item.id,
       content: (
         <ItemDetailPanel
           itemId={item.id}

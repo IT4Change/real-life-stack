@@ -22,6 +22,13 @@ export type ModulePanelKind = "filter" | "detail" | "composer" | "settings" | "d
 export interface ModulePanelEntry {
   kind: ModulePanelKind
   content: ReactNode
+  /**
+   * The item this panel is about, if any (e.g. the item id of an open detail
+   * view). Lets every module highlight the element that is currently open in
+   * the shared panel — map marker, calendar pill, feed/kanban card — by
+   * comparing against `useModulePanel().current?.itemId`.
+   */
+  itemId?: string
   /** Optional caller hook for when this entry is replaced or closed. */
   onClose?: () => void
 }

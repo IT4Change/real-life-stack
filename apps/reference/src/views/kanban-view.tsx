@@ -235,6 +235,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
       panelOwnedRef.current = true
       modulePanel.open({
         kind: "detail",
+        itemId: panelState.item.id,
         content: (
           <TaskEditPanel
             item={panelState.item}
@@ -566,6 +567,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
                     users={members}
                     onMoveItem={handleMoveItem}
                     onItemClick={handleItemClick}
+                    activeItemId={modulePanel.current?.itemId}
                     onExternalDrop={externalDropHandlers.get(group.id)}
                   />
                 )}
@@ -592,6 +594,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
                   users={members}
                   onMoveItem={handleMoveItem}
                   onItemClick={handleItemClick}
+                  activeItemId={modulePanel.current?.itemId}
                 />
               )}
             </div>
@@ -603,6 +606,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
           users={members}
           onMoveItem={handleMoveItem}
           onItemClick={handleItemClick}
+          activeItemId={modulePanel.current?.itemId}
         />
       )}
 

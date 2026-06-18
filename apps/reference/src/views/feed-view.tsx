@@ -19,6 +19,7 @@ import {
   useMembers,
   useCurrentUser,
   useItemEditor,
+  cn,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import { Calendar, FileText, Search } from "lucide-react"
@@ -86,6 +87,7 @@ export function FeedView({ groupId }: { groupId: string }) {
   const openDetail = useCallback((item: Item) => {
     modulePanel.open({
       kind: "detail",
+      itemId: item.id,
       content: (
         <ItemDetailPanel
           itemId={item.id}
@@ -249,6 +251,7 @@ export function FeedView({ groupId }: { groupId: string }) {
             key={item.id}
             item={item}
             author={resolveAuthor(item.createdBy)}
+            className={cn(modulePanel.current?.itemId === item.id && "ring-2 ring-primary")}
             onClick={() => openDetail(item)}
             headerAdornment={<ItemTypeBadge type={item.type} />}
             metaAdornment={<ItemMetaRow item={item} />}
