@@ -13,10 +13,11 @@ import {
   useCurrentUser,
   useGroups,
   useModulePanel,
+  useConnector,
   getSpacePrimaryColor,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
-import type { Item, User } from "@real-life-stack/data-interface"
+import { hasItemGroups, type Item, type User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 
 const pad2 = (n: number) => String(n).padStart(2, "0")
@@ -39,11 +40,23 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
   const { data: groups } = useGroups()
+  const connector = useConnector()
 
-  // Group/space colour = the fallback in the unified item-colour resolver
-  // (custom → first tag → group). Matches the map markers.
-  const activeGroup = groups.find((g) => g.id === groupId)
-  const groupColor = getSpacePrimaryColor(groupId, (activeGroup?.data?.primaryColor as string | undefined) ?? null)
+  // Per-group fallback colours, keyed by group id. The unified item-colour
+  // resolver (custom → first tag → group) falls back to the colour of the group
+  // an item was *created* in — so the aggregate ("Mein Netzwerk") view shows each
+  // item in its origin group's colour instead of one active-group colour.
+  const groupColorById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const g of groups) {
+      map.set(g.id, getSpacePrimaryColor(g.id, (g.data?.primaryColor as string | undefined) ?? null))
+    }
+    return map
+  }, [groups])
+  const resolveItemGroupColor = useCallback((item: Item) => {
+    const originId = (hasItemGroups(connector) ? connector.getItemGroupId(item.id) : null) ?? groupId
+    return groupColorById.get(originId) ?? getSpacePrimaryColor(originId, null)
+  }, [connector, groupColorById, groupId])
 
   const modulePanel = useModulePanel()
 
@@ -142,7 +155,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
       <ToolkitCalendarView
         events={events}
         currentUserId={currentUser?.id}
-        groupColor={groupColor}
+        resolveItemGroupColor={resolveItemGroupColor}
         onEventClick={openDetail}
         onCreateEvent={openComposerAt}
       />

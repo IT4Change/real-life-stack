@@ -33,9 +33,13 @@ const DAY_NAMES = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"]
 const LONG_DAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"]
 const TIME_SLOTS = Array.from({ length: 18 }, (_, index) => index + 6)
 
-/** Active group/space color, so every EventPill resolves item colors the same
- *  way (custom → tag → group) without threading the colour through each view. */
-const CalendarGroupColorContext = createContext<string>("#2563eb")
+/** Resolves the group/space fallback colour for a given item, so every EventPill
+ *  uses the same custom → tag → group logic without threading colour through each
+ *  view. The resolver lets each item fall back to the colour of the group it was
+ *  created in (origin group), which is what makes the aggregate ("Mein Netzwerk")
+ *  view show per-group colours instead of one active-group colour. */
+type GroupColorResolver = (item: Item) => string
+const CalendarGroupColorContext = createContext<GroupColorResolver>(() => "#2563eb")
 
 /** Min horizontal travel (px) to commit a period swipe — PR spec contract. */
 const SWIPE_COMMIT_PX = 60
@@ -277,8 +281,11 @@ export interface CalendarViewProps {
   initialDate?: Date | string
   initialViewMode?: CalendarViewMode
   currentUserId?: string
-  /** Active group/space colour — the group fallback in the item-colour resolver. */
+  /** Active group/space colour — the group fallback when no per-item resolver is given. */
   groupColor?: string
+  /** Per-item group fallback colour (origin group). Takes precedence over `groupColor`;
+   *  lets the aggregate view colour each item by the group it was created in. */
+  resolveItemGroupColor?: (item: Item) => string
   onEventClick?: (event: Item) => void
   onCreateEvent?: (date: Date) => void
   className?: string
@@ -290,6 +297,7 @@ export function CalendarView({
   initialViewMode = "month",
   currentUserId,
   groupColor = "#2563eb",
+  resolveItemGroupColor,
   onEventClick,
   onCreateEvent,
   className,
@@ -540,8 +548,10 @@ export function CalendarView({
     )
   }
 
+  const resolveGroupColor = resolveItemGroupColor ?? (() => groupColor)
+
   return (
-    <CalendarGroupColorContext.Provider value={groupColor}>
+    <CalendarGroupColorContext.Provider value={resolveGroupColor}>
     <div className={cn("w-full space-y-3", className)}>
       <FilterBar
         value={filterBarValue}
@@ -1056,8 +1066,8 @@ interface EventPillProps {
 }
 
 function EventPill({ event, compact = false, onClick }: EventPillProps) {
-  const groupColor = useContext(CalendarGroupColorContext)
-  const color = getItemColor(event.item, { groupColor })
+  const resolveGroupColor = useContext(CalendarGroupColorContext)
+  const color = getItemColor(event.item, { groupColor: resolveGroupColor(event.item) })
   return (
     <button
       type="button"
