@@ -172,12 +172,17 @@ export function useWorkspaceRouting(): WorkspaceRouting {
       root.style.setProperty("--primary-foreground", fg)
       root.style.setProperty("--ring", c)
       root.style.setProperty("--accent", tint)
-      root.style.setProperty("--accent-foreground", c)
+      // Text on the faint tinted accent surface must stay readable in both
+      // light and dark mode — the surface is only a 14% tint of `c`, so the
+      // raw space color (esp. a dark one in dark mode) would be unreadable.
+      // `.dark` lives on <html> (App.tsx), so var(--foreground) resolves to
+      // the active mode's foreground on this same element.
+      root.style.setProperty("--accent-foreground", "var(--foreground)")
       root.style.setProperty("--sidebar-primary", c)
       root.style.setProperty("--sidebar-primary-foreground", fg)
       root.style.setProperty("--sidebar-ring", c)
       root.style.setProperty("--sidebar-accent", tint)
-      root.style.setProperty("--sidebar-accent-foreground", c)
+      root.style.setProperty("--sidebar-accent-foreground", "var(--sidebar-foreground)")
     } else {
       PRIMARY_VARS.forEach((v) => root.style.removeProperty(v))
     }
