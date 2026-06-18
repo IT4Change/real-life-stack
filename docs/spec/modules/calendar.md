@@ -95,9 +95,45 @@ Regeln:
 | Event löschen | `ItemWriter` | Item löschen, wenn die App diese Aktion erlaubt |
 | Teilnahme anzeigen | `RelationCapable` oder `ConfirmationCapable` | Teilnehmer oder bestätigte Teilnahme sichtbar machen |
 
-Der Zeitraum-Wechsel ist in Monat/Tag/Liste auch per horizontalem **Swipe** möglich; die Wochen-Ansicht scrollt horizontal durch die Tage, dort wechselt der Zeitraum über die Pfeile.
+Der Zeitraum-Wechsel ist in allen Ansichten (Monat/Woche/Tag/Liste) auch per horizontalem **Swipe** möglich. Die Wochen-Ansicht zeigt alle sieben Tage gleichzeitig ohne horizontalen Scroll und wechselt darum über dasselbe Swipe-Karussell wie die übrigen Ansichten.
 
 Mutationen laufen über Hooks oder Capability-Interfaces. Das Calendar Module darf keine backend-spezifischen Schreibpfade kennen.
+
+## Mobile Event-Rendering (Monat + Woche)
+
+Diese Regeln gelten für die mobile Darstellung (kein `md`-Breakpoint) von `MonthView` (`MonthCalendar`) und `WeekView` (`WeekCalendar`). Heute rendert die mobile Monatsansicht Events nur als farbige Punkte ohne Text und ohne eigenen Tap-Handler; zudem gibt es mobil keinen Overflow-Indikator (es werden bis zu vier Punkte via `slice(0, 4)` gezeigt, weitere Events fallen still weg). Die Regeln behandeln das als zu behebenden Zustand.
+
+1. In mobiler Monats- **und** Wochenansicht MÜSSEN Events einzeln per Tap anklickbar sein.
+2. Ein Tap auf ein Event MUSS dieselbe Detail-Route auslösen wie auf Desktop: `onEventClick(item)`, das in der Reference App das geteilte `ItemDetailPanel` im **Ebene-1-Content-Panel** öffnet (`useModulePanel().open({ kind: "detail" })`, siehe [01-app-composition.md](../01-app-composition.md)). Ein Event-Tap DARF KEINEN eigenen Dialog oder eine zweite gleichartige Fläche öffnen.
+3. Ein mobiles Event-Element MUSS mindestens den Titel-Anfang zeigen (Titel-Truncate über eine Zeile). Eine reine Punkt- oder farblose Pill-Darstellung ohne Text erfüllt diese Regel nicht.
+4. Bei mehr als der pro Tag darstellbaren Anzahl SOLL ein `+N weitere`-Element den Tag öffnen (mobil bevorzugt die Tagesansicht), analog zum Desktop-Verhalten der Monatsansicht.
+5. Das Tap-Target SOLL mindestens etwa 44px in der Höhe der Touch-Trefferfläche erreichen; die sichtbare Event-Pill SOLL mindestens 24px hoch sein. Liegt die sichtbare Höhe darunter, SOLL die Trefferfläche über Padding auf das Mindestmaß vergrößert werden.
+6. Die Event-Pill (`EventPill`) bleibt die geteilte Darstellung; Mobil unterscheidet sich nur in Dichte und Truncate, nicht in einem eigenen Komponenten-Pfad. Die Pill-Farbe folgt der einheitlichen Item-Farblogik (siehe unten). In der Wochenansicht steht die Uhrzeit bereits in der Zeit-Spalte, darum zeigt die Pill dort nur den Titel — identisch zu den Monats-Pills; ein Uhrzeit-Präfix entfällt.
+
+## Wochenansicht ohne horizontalen Scroll
+
+Die Wochenansicht zeigt alle sieben Tagesspalten gleichzeitig auf dem Bildschirm, ohne horizontalen Scroll. Eine schmale Zeit-Spalte plus sieben gleich breite, schrumpfende Tagesspalten (`minmax(0,1fr)`) teilen sich die verfügbare Breite — analog zur Monatsansicht.
+
+1. Die Wochenansicht DARF KEIN eigenes horizontales Scroll-Raster (`overflow-x-auto` + feste Mindestbreite) verwenden; die sieben Tage MÜSSEN sich die Viewport-Breite teilen.
+2. Weil kein innerer Horizontal-Scroll mehr mit der Geste konkurriert, nimmt die Woche am selben **Swipe-Karussell** der Zeitraum-Navigation teil wie Monat/Tag/Liste (Drei-Panel-Swipe, eingeführt mit #72, Schwelle `SWIPE_COMMIT_PX`). Ein horizontaler Swipe blättert die Woche um eine Woche vor/zurück.
+3. Die vertikale Achse (Scroll durch die Stunden-Slots) bleibt frei; die Gesten-Abgrenzung folgt der Karussell-Konvention (`touch-action: pan-y`, Achsen-Erkennung über die horizontale Dominanz).
+4. Die Pfeil-Navigation (`‹ ›`) bleibt als gleichwertige Alternative erhalten.
+
+## Ganztägige und mehrtägige Events in der Wochenansicht
+
+Ganztägige Events (Quelle ohne Uhrzeit, bare `YYYY-MM-DD`) und mehrtägige Events liegen im Zeitraster unterhalb des ersten Stunden-Slots und wären dort unsichtbar. Sie werden darum als spannende Leisten über dem Zeitraster gezeigt (Thunderbird-Stil).
+
+1. Über dem Stunden-Raster der Woche MUSS eine eigene Ganztags-Zeile stehen, sobald mindestens ein ganztägiges oder mehrtägiges Event die sichtbare Woche überlappt.
+2. Ein Event-Balken MUSS über die Tagesspalten spannen, die es innerhalb der Woche abdeckt (Start- bis End-Spalte, an den Wochenrändern abgeschnitten).
+3. Die Balken nutzen dieselbe `EventPill`-Darstellung und dieselbe Item-Farblogik wie die übrigen Events.
+
+## Item-Farblogik (modulübergreifend)
+
+Kalender-Pills und Map-Marker leiten ihre Farbe nach derselben Präzedenz ab (`getItemColor`):
+
+1. **Custom** — eine explizite Item-Farbe (`data.color`, Hex) hat Vorrang.
+2. **Erster Tag** — sonst die Akzentfarbe des ersten Tags des Items.
+3. **Ursprungsgruppe** — sonst die Primärfarbe der Gruppe, in der das Item erstellt wurde, NICHT der aktuell aktiven Gruppe. In aggregierten Ansichten (z. B. „Mein Netzwerk") MUSS die Farbe so die Herkunftsgruppe des Items signalisieren.
 
 ## Cross-Module-Verhalten
 
