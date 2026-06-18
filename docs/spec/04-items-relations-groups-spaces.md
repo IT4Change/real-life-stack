@@ -150,12 +150,12 @@ Regeln:
 
 ### Space-Primärfarbe
 
-Jeder Space hat eine `primaryColor`. Sie lebt analog zu `image` und `modules` in `Group.data.primaryColor` und wird über `updateGroup` nach `_meta.primaryColor` synct.
+Jeder Space hat eine `primaryColor` — ein weiteres Space-Metadatenfeld nach obigem Muster: Wert in `Group.data.primaryColor`, Spiegelung nach `_meta.primaryColor` über `updateGroup` (wie `image` / `modules`).
 
 Regeln:
 
 1. `Group.data.primaryColor` ist die kanonische Quelle; `_meta.primaryColor` ist die synchronisierte Projektion. `primaryColor` MUSS ein Hex-Farbwert der Form `#rrggbb` sein (passend zu `TAG_PALETTE.accent` in `packages/toolkit/src/lib/utils.ts`, zum Beispiel `#2563eb`).
-2. Beim Logo-Upload MUSS der Client die dominanteste Farbe des Logos extrahieren und das Ergebnis in `Group.data.primaryColor` cachen (synct nach `_meta.primaryColor`). Die Extraktion läuft client-seitig genau einmal beim Upload, nicht bei jedem Render und nicht auf jedem Gerät neu.
+2. Beim Logo-Upload MUSS der Client die dominanteste Farbe des Logos extrahieren und das Ergebnis in `Group.data.primaryColor` cachen. Die Extraktion läuft client-seitig genau einmal beim Upload, nicht bei jedem Render und nicht auf jedem Gerät neu.
 3. Ohne Logo MUSS `primaryColor` deterministisch aus der Space-ID abgeleitet werden, analog zu `getTagColor` / `getTagAccentColor` in `packages/toolkit/src/lib/utils.ts`. Die Ableitung MUSS über Geräte und Sessions stabil sein und DARF NICHT echtes Random verwenden.
 4. Wird ein Logo entfernt, SOLL `primaryColor` wieder auf den deterministischen ID-Fallback zurückfallen.
 5. `primaryColor` ist Cache und Default, kein Pflicht-Eingabefeld. Fehlt der Wert, MÜSSEN Leseflächen den deterministischen ID-Fallback berechnen.
