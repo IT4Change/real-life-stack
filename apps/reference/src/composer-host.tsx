@@ -16,6 +16,7 @@ import {
   type ContentTypeConfig,
   type ItemEditorMapper,
   type WidgetData,
+  type ContentComposerHandle,
 } from "@real-life-stack/toolkit"
 import { useLocationPick } from "./location-pick"
 
@@ -31,6 +32,8 @@ export interface OpenComposerConfig {
 interface ComposerHostValue {
   /** Open a create composer in the shared panel. */
   openComposer: (config: OpenComposerConfig) => void
+  /** Patch the currently-open composer's data (e.g. update only its date), keeping the rest. */
+  patchData: (patch: Partial<WidgetData>) => void
 }
 
 const ComposerHostContext = createContext<ComposerHostValue | null>(null)
@@ -76,6 +79,9 @@ export function ComposerHostProvider({
   // (a different prefilled date). Stable across module switches (open() isn't
   // re-called there), so the map-pick "frozen composer" flow keeps working.
   const composerKeyRef = useRef(0)
+  // Live handle to the mounted composer, so the host can patch its data (e.g. the
+  // date) without remounting — set by the composer's own mount effect.
+  const composerApiRef = useRef<ContentComposerHandle | null>(null)
 
   // If the composer is replaced by other panel content (or closed) while a pick
   // is in flight, the entry's onClose does not fire on a content-swap — so end
@@ -95,6 +101,7 @@ export function ComposerHostProvider({
         content: (
           <ContentComposer
             key={composerKeyRef.current}
+            apiRef={composerApiRef}
             className={config.className ?? "p-4 sm:p-6"}
             contentTypes={config.contentTypes}
             initialData={config.initialData}
@@ -127,7 +134,11 @@ export function ComposerHostProvider({
     [modulePanel, startPick],
   )
 
-  const value = useMemo<ComposerHostValue>(() => ({ openComposer }), [openComposer])
+  const patchData = useCallback((patch: Partial<WidgetData>) => {
+    composerApiRef.current?.patchData(patch)
+  }, [])
+
+  const value = useMemo<ComposerHostValue>(() => ({ openComposer, patchData }), [openComposer, patchData])
   return <ComposerHostContext.Provider value={value}>{children}</ComposerHostContext.Provider>
 }
 

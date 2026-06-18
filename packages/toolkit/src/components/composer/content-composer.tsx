@@ -130,11 +130,18 @@ export interface ContentComposerSubmitData {
   data: WidgetData
 }
 
+export interface ContentComposerHandle {
+  /** Merge a patch into the composer's widget data (e.g. update only `start`). */
+  patchData: (patch: Partial<WidgetData>) => void
+}
+
 export interface ContentComposerProps {
   contentTypes: ContentTypeConfig[]
   initialContentType?: string
   mode?: string
   initialData?: Partial<WidgetData>
+  /** Imperative handle, set on mount — lets the host patch the open composer (e.g. its date) without remounting. */
+  apiRef?: React.MutableRefObject<ContentComposerHandle | null>
   onSubmit: (data: ContentComposerSubmitData) => void | Promise<void>
   onCancel?: () => void
   onDelete?: () => void
@@ -216,6 +223,7 @@ export function ContentComposer({
   initialContentType,
   mode,
   initialData,
+  apiRef,
   onSubmit,
   onCancel,
   onDelete,
@@ -248,6 +256,16 @@ export function ContentComposer({
     ...DEFAULT_DATA,
     ...initialData,
   }))
+  // Imperative handle so the host can patch the open composer without remounting
+  // it — e.g. update only `start` when another calendar date is clicked, keeping
+  // already-entered content intact.
+  React.useEffect(() => {
+    if (!apiRef) return
+    apiRef.current = { patchData: (patch) => setData((d) => ({ ...d, ...patch })) }
+    return () => {
+      apiRef.current = null
+    }
+  }, [apiRef])
   const [manualWidgets, setManualWidgets] = React.useState<Set<string>>(
     () => new Set(),
   )

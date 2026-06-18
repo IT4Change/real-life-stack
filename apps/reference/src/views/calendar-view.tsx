@@ -74,7 +74,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     }
   }, [])
 
-  const { openComposer: openCreateComposer } = useComposerHost()
+  const { openComposer: openCreateComposer, patchData: patchComposerData } = useComposerHost()
 
   // Resolve event author for the detail-panel ItemPreview. Calendar
   // list cards themselves render with `author={null}` (the date group
@@ -123,12 +123,19 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // shown until the user sets one; a time-slot click (week/day) keeps its hour.
   const openComposerAt = useCallback((date: Date) => {
     const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0
-    openCreateComposer({
-      contentTypes: calendarContentTypes,
-      mapper: mapSubmission,
-      initialData: { start: hasTime ? toLocalDatetime(date) : toLocalDate(date) },
-    })
-  }, [openCreateComposer, calendarContentTypes, mapSubmission])
+    const start = hasTime ? toLocalDatetime(date) : toLocalDate(date)
+    // Composer already open (user may be typing) → change only the date, keep the
+    // rest. Otherwise open a fresh composer prefilled with the clicked date.
+    if (modulePanel.current?.kind === "composer") {
+      patchComposerData({ start })
+    } else {
+      openCreateComposer({
+        contentTypes: calendarContentTypes,
+        mapper: mapSubmission,
+        initialData: { start },
+      })
+    }
+  }, [openCreateComposer, patchComposerData, modulePanel, calendarContentTypes, mapSubmission])
 
   return (
     <>
