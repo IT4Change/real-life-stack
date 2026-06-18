@@ -232,13 +232,13 @@ Regeln:
 
 ## Item→Marker-Mapping
 
-Das Map Module besitzt **nicht** das Marker-Rendering. Es besitzt nur das **Mapping von Item nach `MapMarkerSpec`**. Die visuellen Marker-Primitive (Pin-Formen, Icons, Cluster-Glyphen) liefert eine externe, framework-unabhängige Marker-Library.
+Das Map Module besitzt **nicht** das Marker-Rendering. Es besitzt nur das **Mapping von Item nach `MapMarkerSpec`**. Die visuellen Marker-Primitive (Pin-Formen, Icons) liefert eine **engine-agnostische Marker-Schicht**.
 
-### Externe Marker-Library
+### Marker-Primitive (engine-agnostisch)
 
-1. Die Marker-Library wird als **eigenes Repository** unter `real-life-org` geführt, framework-unabhängig und **ohne RLS-Import** (sie kennt weder Toolkit noch Data-Interface). Sie ist aus den Utopia-Map-Markern abzuleiten.
-2. RLS hält ausschließlich das Mapping `Item → MapMarkerSpec`. Die Library ist die Quelle der Marker-Primitive; konkrete Implementierungsdetails der Library gehören **nicht** in diese Spec.
-3. Adapter (Leaflet, MapLibre) konsumieren die `MapMarkerSpec`-Felder und delegieren das eigentliche Zeichnen an die Marker-Library bzw. an library-eigene Render-Mittel. Das Map Module sieht weder Library- noch Adapter-Rendering-Details.
+1. Die Marker-Primitive — Pin-Shapes (`circle`/`square`), die geteilte Icon-Registry und `renderMarkerSvg` / `markerDataUrl` — leben framework-unabhängig im Toolkit (`packages/toolkit/src/components/map/markers/`, `packages/toolkit/src/lib/icons/`), abgeleitet aus den Utopia-Map-Markern. Eine spätere Extraktion in ein eigenes `real-life-org`-Repo ist geplant, sobald stabil (vgl. A2).
+2. RLS hält das Mapping `Item → MapMarkerSpec`. Die Marker-Schicht ist die Quelle der Primitive; deren Implementierungsdetails gehören **nicht** in diese Spec.
+3. Adapter (Leaflet, MapLibre) rendern den Marker als SVG-`data:`-URL (`markerDataUrl`) und mounten ihn (Leaflet `icon({ iconUrl })`, MapLibre `<img>`). Das Map Module sieht weder Renderer- noch Adapter-Details.
 
 ### Mapping-Vertrag
 
@@ -250,12 +250,12 @@ Das Map Module leitet aus jedem map-fähigen Item ein `MapMarkerSpec` ab. Welche
 | `id` | `Item.id` | Stabile Marker-Identität; Grundlage des Click→Item-Lookups. |
 | `label` | `data.title` (Fallback `Item.id`) | Marker-Label / Tooltip. |
 | `color` | `getTagAccentColor(tags[0])` | Farbe aus dem ersten Tag (deterministische Palette). Fehlt ein Tag, KÖNNEN Marker die Space-`primaryColor` als Default verwenden (Tag-Akzent hat Vorrang; siehe `04-items-relations-groups-spaces.md` → Space-Primärfarbe); andernfalls nutzt der Adapter seinen Default-Pin. |
-| `icon` | `data.icon` (optional) | Icon-Hint; Auflösung zu konkreter Glyphe ist Sache der Marker-Library, nicht des Mappings. Vorwärts-Vertrag: heute noch nicht emittiert/konsumiert (die reale `MapView` emittiert nur `id`/`position`/`label`/`color`, der Leaflet-Adapter `buildMarkerIcon` nutzt nur `color`), analog zur `primaryColor`-Behandlung. |
-| Form / Cluster-Zugehörigkeit | Item-Typ bzw. Tags; Cluster aus Marker-Dichte | Form-/Cluster-Auswahl trifft die Marker-Library aus den übergebenen Primitiven; das Mapping liefert nur die Hints (`color`, `icon`). |
+| `icon` | `data.icon` (optional), sonst erster Tag-Name | Glyph-Hint; aufgelöst über die geteilte Icon-Registry (kuratierter Name \| inline-SVG \| Emoji), Fallback Dot. **Aktiv** emittiert (`MapView`) und konsumiert (beide Adapter rendern den Pin via `renderMarkerSvg`). |
+| `shape` / `selected` | optional | Pin-Form (`circle`/`square`, Default `circle`) und Auswahl-Zustand; vom Marker-Renderer gezeichnet. Clustering bleibt v0.1-extern (Adapter-intern, aus Marker-Dichte). |
 
 Regeln:
 
-1. Das Mapping ist **getrennt vom Marker-Rendering**. RLS produziert `MapMarkerSpec`, die externe Library rendert daraus den sichtbaren Marker. Form, Farbverlauf, Schatten, Cluster-Darstellung sind Library-Sache.
+1. Das Mapping ist **getrennt vom Marker-Rendering**. RLS produziert `MapMarkerSpec`; der engine-agnostische Marker-Renderer (`renderMarkerSvg`) erzeugt daraus den sichtbaren Pin (Form, Glyph, Schatten). Cluster-Darstellung bleibt Adapter-Sache.
 2. Farbe kommt heute aus `getTagAccentColor(tags[0])` (CSS-Color-Accent der geteilten Tag-Palette, vgl. `packages/toolkit/src/lib/utils.ts`). `getTagColor` (Tailwind-Chip-Klassen) ist hier **nicht** zu verwenden, da Marker keine Tailwind-Flächen sind.
 3. Die Position kommt ausschließlich aus `data.position`. Es gibt keinen Alias-Mechanismus (siehe Datenmodell-Regel 6).
 4. Das Mapping DARF keine library- oder adapter-spezifischen Typen produzieren; sein einziger Output-Typ ist `MapMarkerSpec` aus dem Adapter-Contract.
