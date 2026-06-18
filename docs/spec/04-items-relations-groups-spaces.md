@@ -162,14 +162,15 @@ Regeln:
 
 ### Verwendung der Primärfarbe
 
-Die Primärfarbe ist ein Akzent, keine vollflächige Themefarbe.
+Solange ein Space aktiv ist, ist seine `primaryColor` die Primär-/Akzentfarbe der App und gibt jedem Space eine eigene visuelle Identität.
 
 Regeln:
 
-1. Navbar- und Workspace-Switcher-Akzent (`Navbar`, `WorkspaceSwitcher` in `packages/toolkit/src/components/layout/`) SOLLEN `primaryColor` als Akzent des aktiven Space nutzen.
-2. Map-Marker KÖNNEN `primaryColor` als Default-Markerfarbe verwenden, wenn kein item- oder tag-spezifischer Akzent greift (Tag-Akzent über `getTagAccentColor` hat Vorrang).
-3. UI-Flächen MÜSSEN ohne `primaryColor` robust bleiben und den deterministischen ID-Fallback verwenden.
-4. Kontraste (Text auf Akzentfläche) MÜSSEN lesbar bleiben; Flächen SOLLEN nicht annehmen, dass `primaryColor` hell oder dunkel ist.
+1. Während ein Space aktiv ist, SOLL `primaryColor` die Primär-/Akzent-Tokens der App speisen (Primär-Buttons, Fokus-Ringe, aktive Navigations- und Sidebar-Items, Hover-Tints). Sie SOLL am App-Root gesetzt werden, sodass auch portalte Flächen (Dialoge, Dropdowns) sie übernehmen. Hintergrund-, Karten- und Vordergrundflächen bleiben unberührt — `primaryColor` ist ein Akzent, keine vollflächige Themefarbe.
+2. Ist kein Space aktiv (Overview „Mein Netzwerk", No-Access), SOLL die Standard-Markenfarbe gelten.
+3. Map-Marker KÖNNEN `primaryColor` als Default-Markerfarbe verwenden, wenn kein item- oder tag-spezifischer Akzent greift (Tag-Akzent über `getTagAccentColor` hat Vorrang).
+4. UI-Flächen MÜSSEN ohne `primaryColor` robust bleiben und den deterministischen ID-Fallback verwenden.
+5. Kontraste (Text/Icon auf Akzentfläche) MÜSSEN lesbar bleiben; Flächen SOLLEN nicht annehmen, dass `primaryColor` hell oder dunkel ist.
 
 ## Profile
 
