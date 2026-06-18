@@ -29,6 +29,11 @@ export interface ModulePanelEntry {
    * comparing against `useModulePanel().current?.itemId`.
    */
   itemId?: string
+  /**
+   * Show the dimming backdrop behind the panel (drawer/modal). Default `true`.
+   * The map detail sets this `false` so the map below stays visible and pannable.
+   */
+  backdrop?: boolean
   /** Optional caller hook for when this entry is replaced or closed. */
   onClose?: () => void
 }
@@ -119,6 +124,7 @@ export function ModulePanelProvider({
         pinned={pinned}
         onPinnedChange={onPinnedChange}
         suspended={suspended}
+        backdrop={current?.backdrop ?? true}
       >
         {current?.content ?? null}
       </AdaptivePanel>

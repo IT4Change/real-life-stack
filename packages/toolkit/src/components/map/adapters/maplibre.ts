@@ -301,6 +301,20 @@ export class MapLibreMapAdapter implements MapAdapter {
     map.jumpTo({ center, zoom })
   }
 
+  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean }): void {
+    const map = this.mapInstance as MlMap | null
+    if (!map) return
+    const bottomInset = options?.bottomInset ?? 0
+    // Offset the target up by half the obscured strip so it ends up centred in
+    // the visible map area above a bottom sheet. Negative y = up (maplibre uses
+    // a per-move `offset` so no persistent camera padding is left behind).
+    map.easeTo({
+      center,
+      offset: [0, -bottomInset / 2],
+      duration: options?.animate === false ? 0 : 500,
+    })
+  }
+
   getView(): MapViewState {
     const map = this.mapInstance as MlMap | null
     if (!map) {

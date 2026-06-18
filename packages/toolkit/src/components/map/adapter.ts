@@ -105,6 +105,13 @@ export interface MapAdapter {
    */
   setView(view: MapViewPatch): void
 
+  /**
+   * Pan so `center` ends up centred in the viewport area NOT covered by a
+   * bottom inset (in CSS pixels) — e.g. the strip of map above a bottom sheet.
+   * `bottomInset` 0 centres normally. Animated unless `animate` is `false`.
+   */
+  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean }): void
+
   /** Current viewport. */
   getView(): MapViewState
 

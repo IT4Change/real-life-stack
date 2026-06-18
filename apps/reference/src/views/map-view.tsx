@@ -51,6 +51,11 @@ const PICK_MARKER_COLOR = "#ef4444"
  * inline (and detail-open as a secondary action) is the obvious alternative —
  * UX discussion is open, see `docs/spec/modules/map.md` § Offene Punkte.
  */
+/** Mobile detail sheet height as a fraction of the viewport — mirrors the
+ *  AdaptivePanel drawer default (`drawerInitialHeight`), so we can pan a tapped
+ *  marker into the strip of map left visible above the sheet. */
+const MAP_SHEET_FRACTION = 0.55
+
 export function MapView({ groupId }: { groupId: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Adapter lives in state so the markers-effect re-runs once `mount()` has
@@ -237,6 +242,8 @@ export function MapView({ groupId }: { groupId: string }) {
     modulePanel.open({
       kind: "detail",
       itemId: item.id,
+      // No dimming backdrop on the map — the map below stays visible and pannable.
+      backdrop: false,
       content: (
         <ItemDetailPanel
           itemId={item.id}
@@ -256,7 +263,19 @@ export function MapView({ groupId }: { groupId: string }) {
         </ItemDetailPanel>
       ),
     })
-  }, [modulePanel, resolveAuthor])
+    // On mobile the detail sheet slides up over the lower part of the map. Pan
+    // so the tapped marker stays visible, centred in the strip above the sheet.
+    if (isCompact && adapter) {
+      const pos = item.data.position as { coordinates?: number[] } | undefined
+      const coords = pos?.coordinates
+      if (coords && typeof coords[0] === "number" && typeof coords[1] === "number") {
+        adapter.focusOn([coords[0], coords[1]], {
+          bottomInset: window.innerHeight * MAP_SHEET_FRACTION,
+          animate: true,
+        })
+      }
+    }
+  }, [modulePanel, resolveAuthor, isCompact, adapter])
 
   // Wire marker clicks to the shared module panel. The adapter's
   // subscriber returns an unsubscribe — clean up so we don't leak

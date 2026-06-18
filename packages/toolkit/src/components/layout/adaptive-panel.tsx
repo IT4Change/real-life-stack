@@ -50,6 +50,12 @@ export interface AdaptivePanelProps {
    * cover the content area).
    */
   suspended?: boolean
+  /**
+   * Show the dimming backdrop behind modal / unpinned drawer. Default `true`.
+   * Set `false` so the panel floats over still-interactive content — e.g. the
+   * map detail sheet, where the map below stays visible and pannable.
+   */
+  backdrop?: boolean
   className?: string
 }
 
@@ -132,6 +138,7 @@ export function AdaptivePanel({
   onModeChange,
   onSidebarResize,
   suspended = false,
+  backdrop = true,
   className,
 }: AdaptivePanelProps) {
   const isCompact = useIsCompact()
@@ -539,8 +546,8 @@ export function AdaptivePanel({
 
   return (
     <>
-      {/* Backdrop — modal and unpinned drawer */}
-      {(mode === "modal" || (mode === "drawer" && !pinned)) && (
+      {/* Backdrop — modal and unpinned drawer (unless disabled via `backdrop`) */}
+      {backdrop && (mode === "modal" || (mode === "drawer" && !pinned)) && (
         <div
           className={cn(
             "fixed inset-0 z-[60] bg-black/50 transition-opacity duration-200",
