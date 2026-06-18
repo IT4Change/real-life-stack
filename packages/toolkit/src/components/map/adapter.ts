@@ -52,8 +52,10 @@ export interface MapMarkerSpec {
   color?: string
   /** Pin shape. Defaults to `"circle"`. */
   shape?: MarkerShape
-  /** Whether the marker is selected (renders a contrast outline). */
+  /** Whether the marker is selected — the item is open in the shared panel. */
   selected?: boolean
+  /** Colour of the selected glow (usually the item's origin-group colour). */
+  glowColor?: string
 }
 
 export interface MapViewState {
@@ -102,6 +104,13 @@ export interface MapAdapter {
    * viewport, not an input. Use `center` + `zoom` to position the map.
    */
   setView(view: MapViewPatch): void
+
+  /**
+   * Pan so `center` ends up centred in the viewport area NOT covered by a
+   * bottom inset (in CSS pixels) — e.g. the strip of map above a bottom sheet.
+   * `bottomInset` 0 centres normally. Animated unless `animate` is `false`.
+   */
+  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean }): void
 
   /** Current viewport. */
   getView(): MapViewState

@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, type DragEvent } from "react"
 import type { Item, User, Relation } from "@real-life-stack/data-interface"
 import { Card, CardContent, CardHeader, CardTitle } from "../primitives/card"
-import { cn } from "../../lib/utils"
+import { cn, getActivePanelGlow } from "../../lib/utils"
 import { ItemPreview } from "../preview/item-preview"
 import { ItemAssignees } from "../preview/item-assignees"
 import { ItemCommentCount } from "../preview/item-comment-count"
@@ -31,6 +31,10 @@ export interface KanbanBoardProps {
   users?: User[]
   onMoveItem?: (itemId: string, newStatus: string, position: number) => void
   onItemClick?: (item: Item) => void
+  /** Id of the item currently open in the shared panel — its card is highlighted. */
+  activeItemId?: string
+  /** Colour for the active-item glow per item (usually its origin-group colour). */
+  resolveItemGroupColor?: (item: Item) => string
   /** Called when an item not belonging to this board is dropped onto it */
   onExternalDrop?: (itemId: string, newStatus: string, position: number) => void
 }
@@ -51,12 +55,15 @@ interface KanbanCardProps {
   item: Item
   users?: User[]
   isDragged: boolean
+  active?: boolean
+  /** Colour of the active glow when this card's item is open in the panel. */
+  glowColor?: string
   onDragStart: (e: DragEvent, itemId: string) => void
   onDragEnd?: () => void
   onClick?: (item: Item) => void
 }
 
-function KanbanCard({ item, users, isDragged, onDragStart, onDragEnd, onClick }: KanbanCardProps) {
+function KanbanCard({ item, users, isDragged, active, glowColor, onDragStart, onDragEnd, onClick }: KanbanCardProps) {
   const assigneeIds = getAssigneeIds(item)
   const userMap = new Map((users ?? []).map((u) => [u.id, u]))
   const assignees = assigneeIds.map((id) => userMap.get(id)).filter((u): u is User => u != null)
@@ -90,6 +97,7 @@ function KanbanCard({ item, users, isDragged, onDragStart, onDragEnd, onClick }:
         item={displayItem}
         author={null}
         density="compact"
+        style={active && glowColor ? getActivePanelGlow(glowColor) : undefined}
         onClick={onClick ? () => onClick(item) : undefined}
         footerAdornment={
           showFooter ? (
@@ -125,6 +133,8 @@ export function KanbanBoard({
   users,
   onMoveItem,
   onItemClick,
+  activeItemId,
+  resolveItemGroupColor,
   onExternalDrop,
 }: KanbanBoardProps) {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
@@ -427,6 +437,8 @@ export function KanbanBoard({
                       item={item}
                       users={users}
                       isDragged={draggedItemId === item.id}
+                      active={activeItemId === item.id}
+                      glowColor={resolveItemGroupColor?.(item)}
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       onClick={onItemClick}

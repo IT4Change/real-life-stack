@@ -36,6 +36,7 @@ import {
   useCurrentUser,
   useConnector,
   useItemEditor,
+  useItemGroupColorResolver,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import { Input } from "@real-life-stack/toolkit"
@@ -110,6 +111,10 @@ export function KanbanView(props: KanbanViewProps) {
 
 function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSelect, onItemClose }: KanbanViewProps) {
   const connector = useConnector()
+  // Active-item glow uses the colour of each card's origin group.
+  const resolveItemGroupColor = useItemGroupColorResolver(
+    activeWorkspaceId === "__overview__" ? undefined : (activeWorkspaceId ?? undefined),
+  )
   // Kanban activates on data.status (task/v1). After the PR-1a status
   // migration only tasks carry this field, so no event/place leakage.
   const { data: tasks } = useItems({ hasField: ["status"] })
@@ -235,6 +240,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
       panelOwnedRef.current = true
       modulePanel.open({
         kind: "detail",
+        itemId: panelState.item.id,
         content: (
           <TaskEditPanel
             item={panelState.item}
@@ -566,6 +572,8 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
                     users={members}
                     onMoveItem={handleMoveItem}
                     onItemClick={handleItemClick}
+                    activeItemId={modulePanel.current?.itemId}
+                    resolveItemGroupColor={resolveItemGroupColor}
                     onExternalDrop={externalDropHandlers.get(group.id)}
                   />
                 )}
@@ -592,6 +600,8 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
                   users={members}
                   onMoveItem={handleMoveItem}
                   onItemClick={handleItemClick}
+                  activeItemId={modulePanel.current?.itemId}
+                  resolveItemGroupColor={resolveItemGroupColor}
                 />
               )}
             </div>
@@ -603,6 +613,8 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
           users={members}
           onMoveItem={handleMoveItem}
           onItemClick={handleItemClick}
+          activeItemId={modulePanel.current?.itemId}
+          resolveItemGroupColor={resolveItemGroupColor}
         />
       )}
 

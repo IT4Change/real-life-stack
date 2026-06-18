@@ -22,6 +22,18 @@ export type ModulePanelKind = "filter" | "detail" | "composer" | "settings" | "d
 export interface ModulePanelEntry {
   kind: ModulePanelKind
   content: ReactNode
+  /**
+   * The item this panel is about, if any (e.g. the item id of an open detail
+   * view). Lets every module highlight the element that is currently open in
+   * the shared panel — map marker, calendar pill, feed/kanban card — by
+   * comparing against `useModulePanel().current?.itemId`.
+   */
+  itemId?: string
+  /**
+   * Show the dimming backdrop behind the panel (drawer/modal). Default `true`.
+   * The map detail sets this `false` so the map below stays visible and pannable.
+   */
+  backdrop?: boolean
   /** Optional caller hook for when this entry is replaced or closed. */
   onClose?: () => void
 }
@@ -112,6 +124,7 @@ export function ModulePanelProvider({
         pinned={pinned}
         onPinnedChange={onPinnedChange}
         suspended={suspended}
+        backdrop={current?.backdrop ?? true}
       >
         {current?.content ?? null}
       </AdaptivePanel>

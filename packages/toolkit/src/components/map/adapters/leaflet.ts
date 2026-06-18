@@ -91,13 +91,29 @@ function buildMarkerIcon(leaflet: typeof L, spec: MapMarkerSpec): L.Icon {
       color: spec.color ?? DEFAULT_MARKER_COLOR,
       icon: spec.icon,
       shape: spec.shape,
-      selected: spec.selected,
     }),
     iconSize: [PIN_SIZE.width, PIN_SIZE.height],
     iconAnchor: [PIN_ANCHOR.x, PIN_ANCHOR.y],
     tooltipAnchor: [0, -PIN_ANCHOR.y],
     className: "rls-marker-shadow",
   })
+}
+
+/**
+ * Inline `filter` for the marker's icon element: the base shadow (same as the
+ * `.rls-marker-shadow` class) plus a soft colour glow when the marker is
+ * selected — the Leaflet counterpart to the MapLibre adapter's `markerFilter`
+ * (alpha 0x80 ≈ 50%). Empty when not selected, so the class shadow applies.
+ */
+function selectedGlowFilter(spec: MapMarkerSpec): string {
+  if (!spec.selected || !spec.glowColor) return ""
+  return `drop-shadow(0 2px 3px rgba(0,0,0,0.5)) drop-shadow(0 0 3px ${spec.glowColor}80) drop-shadow(0 0 6px ${spec.glowColor}80)`
+}
+
+/** Apply {@link selectedGlowFilter} to a marker's rendered icon element. */
+function applyMarkerGlow(marker: L.Marker, spec: MapMarkerSpec): void {
+  const el = (marker as unknown as { _icon?: HTMLElement })._icon
+  if (el) el.style.filter = selectedGlowFilter(spec)
 }
 
 export class LeafletMapAdapter implements MapAdapter {
@@ -212,6 +228,9 @@ export class LeafletMapAdapter implements MapAdapter {
           existing.setIcon(buildMarkerIcon(leaflet, spec))
           this.markerAppearance.set(spec.id, key)
         }
+        // Selection glow lives on the icon element (a CSS filter), not the SVG —
+        // re-apply on every reconcile so selecting/deselecting updates it.
+        applyMarkerGlow(existing, spec)
       } else {
         const marker = leaflet.marker(latlng, {
           title: spec.label,
@@ -222,6 +241,7 @@ export class LeafletMapAdapter implements MapAdapter {
           this.markerClickListeners.forEach((cb) => cb(spec.id))
         })
         marker.addTo(map)
+        applyMarkerGlow(marker, spec)
         typedMarkers.set(spec.id, marker)
         this.markerLabels.set(spec.id, spec.label)
         this.markerAppearance.set(spec.id, appearanceKey(spec))
@@ -236,6 +256,18 @@ export class LeafletMapAdapter implements MapAdapter {
     const center = view.center ? toLatLngTuple(view.center) : current
     const zoom = view.zoom ?? map.getZoom()
     map.setView(center, zoom)
+  }
+
+  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean }): void {
+    const map = this.mapInstance as L.Map | null
+    if (!map) return
+    const animate = options?.animate !== false
+    // Centre the target, then shift the view up by half the obscured strip so it
+    // sits centred in the visible area above a bottom sheet (panBy +y moves the
+    // map content up, i.e. the target rises on screen).
+    map.panTo(toLatLngTuple(center), { animate })
+    const bottomInset = options?.bottomInset ?? 0
+    if (bottomInset) map.panBy([0, bottomInset / 2], { animate })
   }
 
   getView(): MapViewState {

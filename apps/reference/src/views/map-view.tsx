@@ -17,9 +17,7 @@ import {
   useFilterableItems,
   type ItemEditorMapper,
   getItemColor,
-  getSpacePrimaryColor,
-  useGroups,
-  useConnector,
+  useItemGroupColorResolver,
   Button,
   Input,
   type FilterBarValue,
@@ -28,7 +26,7 @@ import {
 } from "@real-life-stack/toolkit"
 import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 import { Calendar, MapPin, Search } from "lucide-react"
-import { hasItemGroups, type Item, type User } from "@real-life-stack/data-interface"
+import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useLocationPick } from "../location-pick"
 
@@ -53,6 +51,11 @@ const PICK_MARKER_COLOR = "#ef4444"
  * inline (and detail-open as a secondary action) is the obvious alternative —
  * UX discussion is open, see `docs/spec/modules/map.md` § Offene Punkte.
  */
+/** Mobile detail sheet height as a fraction of the viewport — mirrors the
+ *  AdaptivePanel drawer default (`drawerInitialHeight`), so we can pan a tapped
+ *  marker into the strip of map left visible above the sheet. */
+const MAP_SHEET_FRACTION = 0.55
+
 export function MapView({ groupId }: { groupId: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Adapter lives in state so the markers-effect re-runs once `mount()` has
@@ -69,23 +72,12 @@ export function MapView({ groupId }: { groupId: string }) {
   // in from other spaces still resolve to their User.
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
-  const { data: groups } = useGroups()
-  const connector = useConnector()
-  // Per-group fallback colours, keyed by group id. The unified item-colour
-  // resolver (custom → first tag → group) falls back to the colour of the group
-  // an item was *created* in — so the aggregate ("Mein Netzwerk") view shows each
-  // marker in its origin group's colour. Shared logic with the calendar.
-  const groupColorById = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const g of groups) {
-      map.set(g.id, getSpacePrimaryColor(g.id, (g.data?.primaryColor as string | undefined) ?? null))
-    }
-    return map
-  }, [groups])
-  const resolveItemGroupColor = useCallback((item: Item) => {
-    const originId = (hasItemGroups(connector) ? connector.getItemGroupId(item.id) : null) ?? groupId
-    return groupColorById.get(originId) ?? getSpacePrimaryColor(originId, null)
-  }, [connector, groupColorById, groupId])
+  // Marker colour falls back to the colour of the group an item was *created* in
+  // (origin group) — so the aggregate ("Mein Netzwerk") view shows each marker in
+  // its origin group's colour. Shared resolver, also used for the active glow.
+  const resolveItemGroupColor = useItemGroupColorResolver(
+    groupId === "__overview__" ? undefined : groupId,
+  )
 
   const modulePanel = useModulePanel()
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
@@ -147,6 +139,9 @@ export function MapView({ groupId }: { groupId: string }) {
   // i.e. as a drawer on compact screens. On desktop the sidebar stays visible.
   const isCompact = useIsCompact()
 
+  // Id of the item open in the shared panel → its marker is highlighted.
+  const activeItemId = modulePanel.current?.itemId
+
   // Build the markers and an id → item lookup in one pass — marker
   // clicks come back with just the id, and we need the full item to
   // open the detail panel.
@@ -167,11 +162,15 @@ export function MapView({ groupId }: { groupId: string }) {
         // Glyph: an explicit item icon, else the first tag's name (which resolves
         // to a curated icon when it matches, e.g. "cafe"); unknown → a dot.
         icon: (item.data.icon as string | undefined) ?? firstTag,
+        // Highlight the marker whose item is open in the shared panel — a soft
+        // glow in the item's origin-group colour (analogous to the cards).
+        selected: item.id === activeItemId,
+        glowColor: resolveItemGroupColor(item),
       })
       byId.set(item.id, item)
     }
     return { markers: markerList, itemsById: byId }
-  }, [filteredItems, resolveItemGroupColor])
+  }, [filteredItems, resolveItemGroupColor, activeItemId])
 
   // Mount the adapter once. The lazy-loaded map library means mount() is
   // properly async, which exposes a classic StrictMode race: both effect
@@ -242,6 +241,9 @@ export function MapView({ groupId }: { groupId: string }) {
   const openDetail = useCallback((item: Item) => {
     modulePanel.open({
       kind: "detail",
+      itemId: item.id,
+      // No dimming backdrop on the map — the map below stays visible and pannable.
+      backdrop: false,
       content: (
         <ItemDetailPanel
           itemId={item.id}
@@ -261,7 +263,19 @@ export function MapView({ groupId }: { groupId: string }) {
         </ItemDetailPanel>
       ),
     })
-  }, [modulePanel, resolveAuthor])
+    // On mobile the detail sheet slides up over the lower part of the map. Pan
+    // so the tapped marker stays visible, centred in the strip above the sheet.
+    if (isCompact && adapter) {
+      const pos = item.data.position as { coordinates?: number[] } | undefined
+      const coords = pos?.coordinates
+      if (coords && typeof coords[0] === "number" && typeof coords[1] === "number") {
+        adapter.focusOn([coords[0], coords[1]], {
+          bottomInset: window.innerHeight * MAP_SHEET_FRACTION,
+          animate: true,
+        })
+      }
+    }
+  }, [modulePanel, resolveAuthor, isCompact, adapter])
 
   // Wire marker clicks to the shared module panel. The adapter's
   // subscriber returns an unsubscribe — clean up so we don't leak

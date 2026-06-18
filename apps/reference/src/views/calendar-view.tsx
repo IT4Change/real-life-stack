@@ -11,13 +11,11 @@ import {
   useItems,
   useMembers,
   useCurrentUser,
-  useGroups,
   useModulePanel,
-  useConnector,
-  getSpacePrimaryColor,
+  useItemGroupColorResolver,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
-import { hasItemGroups, type Item, type User } from "@real-life-stack/data-interface"
+import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 
 const pad2 = (n: number) => String(n).padStart(2, "0")
@@ -39,24 +37,13 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // from other spaces still resolve to their User.
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
-  const { data: groups } = useGroups()
-  const connector = useConnector()
 
-  // Per-group fallback colours, keyed by group id. The unified item-colour
-  // resolver (custom → first tag → group) falls back to the colour of the group
-  // an item was *created* in — so the aggregate ("Mein Netzwerk") view shows each
-  // item in its origin group's colour instead of one active-group colour.
-  const groupColorById = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const g of groups) {
-      map.set(g.id, getSpacePrimaryColor(g.id, (g.data?.primaryColor as string | undefined) ?? null))
-    }
-    return map
-  }, [groups])
-  const resolveItemGroupColor = useCallback((item: Item) => {
-    const originId = (hasItemGroups(connector) ? connector.getItemGroupId(item.id) : null) ?? groupId
-    return groupColorById.get(originId) ?? getSpacePrimaryColor(originId, null)
-  }, [connector, groupColorById, groupId])
+  // Item colour falls back to the colour of the group an item was *created* in
+  // (origin group) — so the aggregate ("Mein Netzwerk") view shows each item in
+  // its origin group's colour. Shared resolver, also used for the active glow.
+  const resolveItemGroupColor = useItemGroupColorResolver(
+    groupId === "__overview__" ? undefined : groupId,
+  )
 
   const modulePanel = useModulePanel()
 
@@ -103,6 +90,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   const openDetail = useCallback((event: Item) => {
     modulePanel.open({
       kind: "detail",
+      itemId: event.id,
       content: (
         <ItemDetailPanel
           itemId={event.id}
@@ -156,6 +144,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         events={events}
         currentUserId={currentUser?.id}
         resolveItemGroupColor={resolveItemGroupColor}
+        activeItemId={modulePanel.current?.itemId}
         onEventClick={openDetail}
         onCreateEvent={openComposerAt}
       />
