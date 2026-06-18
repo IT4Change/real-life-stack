@@ -19,6 +19,12 @@ import {
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 
+/** Format a Date as a local `datetime-local` string (YYYY-MM-DDTHH:mm) for the composer's date widget. */
+function toLocalDatetime(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // Calendar activates on data.start (event/v1). Cross-context items
   // (e.g. an event with a place) appear here too.
@@ -108,6 +114,15 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     openCreateComposer({ contentTypes: calendarContentTypes, mapper: mapSubmission })
   }, [openCreateComposer, calendarContentTypes, mapSubmission])
 
+  // Click on an empty day/slot → composer prefilled with that date/time.
+  const openComposerAt = useCallback((date: Date) => {
+    openCreateComposer({
+      contentTypes: calendarContentTypes,
+      mapper: mapSubmission,
+      initialData: { start: toLocalDatetime(date) },
+    })
+  }, [openCreateComposer, calendarContentTypes, mapSubmission])
+
   return (
     <>
       <ToolkitCalendarView
@@ -115,6 +130,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         currentUserId={currentUser?.id}
         groupColor={groupColor}
         onEventClick={openDetail}
+        onCreateEvent={openComposerAt}
       />
 
       <CreateFab onClick={openComposer} label="Veranstaltung erstellen" />

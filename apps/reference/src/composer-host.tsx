@@ -15,6 +15,7 @@ import {
   useModulePanel,
   type ContentTypeConfig,
   type ItemEditorMapper,
+  type WidgetData,
 } from "@real-life-stack/toolkit"
 import { useLocationPick } from "./location-pick"
 
@@ -22,6 +23,8 @@ export interface OpenComposerConfig {
   contentTypes: ContentTypeConfig[]
   /** Field mapping from composer submission → item payload (per module). */
   mapper: ItemEditorMapper
+  /** Prefill the composer's widget data — e.g. a clicked calendar date as `start`. */
+  initialData?: Partial<WidgetData>
   className?: string
 }
 
@@ -88,6 +91,7 @@ export function ComposerHostProvider({
           <ContentComposer
             className={config.className ?? "p-4 sm:p-6"}
             contentTypes={config.contentTypes}
+            initialData={config.initialData}
             showPreview={false}
             geocode={nominatimGeocode}
             reverseGeocode={nominatimReverseGeocode}
