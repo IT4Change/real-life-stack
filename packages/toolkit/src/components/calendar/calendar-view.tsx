@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
+import { createContext, useContext, useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
 import {
   Calendar as CalendarIcon,
   CalendarDays,
@@ -9,12 +9,11 @@ import {
   Columns,
   Grid3x3,
   List,
-  Plus,
   Search,
 } from "lucide-react"
 import { Button } from "../primitives/button"
 import { Input } from "../primitives/input"
-import { cn } from "../../lib/utils"
+import { cn, getItemColor, getReadableTextColor } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 import { ItemPreview } from "../preview/item-preview"
 import { ItemTypeBadge } from "../preview/item-type-badge"
@@ -34,8 +33,20 @@ const DAY_NAMES = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"]
 const LONG_DAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"]
 const TIME_SLOTS = Array.from({ length: 18 }, (_, index) => index + 6)
 
+/** Resolves the group/space fallback colour for a given item, so every EventPill
+ *  uses the same custom → tag → group logic without threading colour through each
+ *  view. The resolver lets each item fall back to the colour of the group it was
+ *  created in (origin group), which is what makes the aggregate ("Mein Netzwerk")
+ *  view show per-group colours instead of one active-group colour. */
+type GroupColorResolver = (item: Item) => string
+const CalendarGroupColorContext = createContext<GroupColorResolver>(() => "#2563eb")
+
 /** Min horizontal travel (px) to commit a period swipe — PR spec contract. */
 const SWIPE_COMMIT_PX = 60
+/** Week grid template: a narrow time gutter + 7 equal day columns that shrink to
+ *  fit the viewport (no horizontal scroll), so the week paginates via the same
+ *  swipe carousel as month/day instead of an inner scroll. */
+const WEEK_COLS = "grid-cols-[3.25rem_repeat(7,minmax(0,1fr))]"
 
 export type CalendarViewMode = "month" | "week" | "day" | "list"
 type LocationFilter = "all" | "with" | "without"
@@ -74,11 +85,6 @@ const VIEW_MODES: Array<{ id: CalendarViewMode; label: string; icon: typeof Cale
   { id: "day", label: "Tag", icon: CalendarIcon },
   { id: "list", label: "Liste", icon: List },
 ]
-
-const EVENT_TYPE_STYLES: Record<string, string> = {
-  event: "bg-violet-600 text-white hover:bg-violet-700",
-  task: "bg-amber-500 text-amber-950 hover:bg-amber-600",
-}
 
 function getInitialDate(value?: Date | string): Date {
   if (!value) return new Date()
@@ -251,10 +257,6 @@ function getHeaderLabel(date: Date, viewMode: CalendarViewMode): string {
   return `${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`
 }
 
-function getEventTypeClass(type: string): string {
-  return EVENT_TYPE_STYLES[type] ?? "bg-primary text-primary-foreground hover:bg-primary/90"
-}
-
 function getTypeLabel(type: string): string {
   const labels: Record<string, string> = {
     event: "Events",
@@ -279,6 +281,11 @@ export interface CalendarViewProps {
   initialDate?: Date | string
   initialViewMode?: CalendarViewMode
   currentUserId?: string
+  /** Active group/space colour — the group fallback when no per-item resolver is given. */
+  groupColor?: string
+  /** Per-item group fallback colour (origin group). Takes precedence over `groupColor`;
+   *  lets the aggregate view colour each item by the group it was created in. */
+  resolveItemGroupColor?: (item: Item) => string
   onEventClick?: (event: Item) => void
   onCreateEvent?: (date: Date) => void
   className?: string
@@ -289,6 +296,8 @@ export function CalendarView({
   initialDate,
   initialViewMode = "month",
   currentUserId,
+  groupColor = "#2563eb",
+  resolveItemGroupColor,
   onEventClick,
   onCreateEvent,
   className,
@@ -501,6 +510,7 @@ export function CalendarView({
             setViewMode("day")
           }}
           onEventClick={onEventClick}
+          onCreateEvent={onCreateEvent}
         />
       )
     }
@@ -509,6 +519,7 @@ export function CalendarView({
         <WeekCalendar
           visibleDate={date}
           eventsByDay={eventsByDay}
+          events={filteredEvents}
           onSelectDate={(d) => {
             setSelectedDate(d)
             setVisibleDate(d)
@@ -537,7 +548,10 @@ export function CalendarView({
     )
   }
 
+  const resolveGroupColor = resolveItemGroupColor ?? (() => groupColor)
+
   return (
+    <CalendarGroupColorContext.Provider value={resolveGroupColor}>
     <div className={cn("w-full space-y-3", className)}>
       <FilterBar
         value={filterBarValue}
@@ -620,8 +634,13 @@ export function CalendarView({
       />
 
       <div className="-mx-4 sm:mx-0 sm:overflow-hidden sm:rounded-lg sm:border">
-      <div className="flex flex-col gap-3 border-b p-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3 border-b p-3 sm:gap-4 sm:p-4 md:flex-row md:items-center md:justify-between">
+        {/* Title between the two arrows, hugging the text (no reserved width, so
+            no floating gap). Centred on mobile to sit balanced above the
+            full-width view switcher, left-aligned on desktop. The view switcher
+            may shift slightly on desktop when the label width changes between
+            views — an acceptable trade for a header that doesn't stand apart. */}
+        <div className="flex items-center justify-center gap-0.5 md:justify-start">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -630,9 +649,9 @@ export function CalendarView({
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="min-w-0 px-1 sm:min-w-56">
-            <h2 className="truncate text-lg font-semibold">{getHeaderLabel(visibleDate, viewMode)}</h2>
-          </div>
+          <h2 className="min-w-0 truncate px-1 text-center text-base font-semibold sm:text-lg">
+            {getHeaderLabel(visibleDate, viewMode)}
+          </h2>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -668,60 +687,41 @@ export function CalendarView({
               )
             })}
           </div>
-
-          {onCreateEvent && (
-            <Button
-              size="icon-sm"
-              aria-label="Event erstellen"
-              onClick={() => onCreateEvent(selectedDate)}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          )}
         </div>
       </div>
 
-      {/* The week view scrolls its own grid horizontally (overflow-x-auto,
-          min-w-[760px]) to reach off-screen days, so it stays OUT of the swipe
-          carousel — a horizontal swipe there would fight that inner scroll
-          (touch-action: pan-y on the track would otherwise disable it and the
-          off-screen days become unreachable). Week steps via the ‹ › arrows;
-          the overscroll-to-paginate variant for week is a follow-up. Month/day/
-          list have no horizontal overflow and use the carousel. */}
-      {viewMode === "week" ? (
-        renderPeriod(visibleDate)
-      ) : (
-        // Swipe left/right to step the period. Previous, current and next are
-        // rendered side by side in the track so the neighbour is already
-        // attached while dragging — no empty gap (see the carousel handlers above).
-        <div className="overflow-hidden">
-          <div
-            ref={swipeTrackRef}
-            onTouchStart={handleSwipeStart}
-            onTouchMove={handleSwipeMove}
-            onTouchEnd={handleSwipeEnd}
-            onTouchCancel={handleSwipeCancel}
-            onTransitionEnd={handleSwipeTransitionEnd}
-            className="flex items-start"
-            style={{
-              transform: `translateX(calc(-100% + ${swipeDx}px))`,
-              transition: swipeAnimating ? "transform 250ms ease-out" : "none",
-              touchAction: "pan-y",
-            }}
-          >
-            {/* Only the centred panel is interactive. The off-screen
-                neighbours render full calendars (buttons, cards), so mark them
-                inert + aria-hidden to keep them out of the focus and a11y tree;
-                after a swap they re-render by position, so the middle one is
-                always the live period. */}
-            <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, -1))}</div>
-            <div className="w-full shrink-0">{renderPeriod(visibleDate)}</div>
-            <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, 1))}</div>
-          </div>
+      {/* Swipe left/right to step the period — all views, week included now
+          that it fits 7 columns without horizontal scroll. Previous, current
+          and next render side by side in the track so the neighbour is already
+          attached while dragging — no empty gap (see the carousel handlers above). */}
+      <div className="overflow-hidden">
+        <div
+          ref={swipeTrackRef}
+          onTouchStart={handleSwipeStart}
+          onTouchMove={handleSwipeMove}
+          onTouchEnd={handleSwipeEnd}
+          onTouchCancel={handleSwipeCancel}
+          onTransitionEnd={handleSwipeTransitionEnd}
+          className="flex items-start"
+          style={{
+            transform: `translateX(calc(-100% + ${swipeDx}px))`,
+            transition: swipeAnimating ? "transform 250ms ease-out" : "none",
+            touchAction: "pan-y",
+          }}
+        >
+          {/* Only the centred panel is interactive. The off-screen neighbours
+              render full calendars (buttons, cards), so mark them inert +
+              aria-hidden to keep them out of the focus and a11y tree; after a
+              swap they re-render by position, so the middle one is always the
+              live period. */}
+          <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, -1))}</div>
+          <div className="w-full shrink-0">{renderPeriod(visibleDate)}</div>
+          <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, 1))}</div>
         </div>
-      )}
+      </div>
       </div>
     </div>
+    </CalendarGroupColorContext.Provider>
   )
 }
 
@@ -733,6 +733,7 @@ interface MonthCalendarProps {
   onSelectDate: (date: Date) => void
   onOpenDay: (date: Date) => void
   onEventClick?: (event: Item) => void
+  onCreateEvent?: (date: Date) => void
 }
 
 function MonthCalendar({
@@ -743,6 +744,7 @@ function MonthCalendar({
   onSelectDate,
   onOpenDay,
   onEventClick,
+  onCreateEvent,
 }: MonthCalendarProps) {
   const days = useMemo(
     () => buildCalendarDays(
@@ -769,7 +771,7 @@ function MonthCalendar({
           <div
             key={day.key}
             className={cn(
-              "group min-h-20 border-b border-r p-1.5 text-left align-top transition-colors sm:min-h-28 lg:min-h-32",
+              "group flex min-h-20 flex-col border-b border-r p-1.5 text-left align-top transition-colors sm:min-h-28 lg:min-h-32",
               !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
               day.isCurrentMonth && "hover:bg-muted/50",
               day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
@@ -815,14 +817,37 @@ function MonthCalendar({
               )}
             </div>
 
-            <div className="mt-2 flex flex-wrap gap-1 md:hidden">
-              {day.events.slice(0, 4).map((event) => (
-                <span
+            <div className="mt-1 space-y-0.5 md:hidden">
+              {day.events.slice(0, 2).map((event) => (
+                <EventPill
                   key={event.item.id}
-                  className={cn("h-1.5 w-1.5 rounded-full", getEventTypeClass(event.item.type))}
+                  event={event}
+                  onClick={onEventClick}
                 />
               ))}
+              {day.events.length > 2 && (
+                <button
+                  type="button"
+                  onClick={(clickEvent) => {
+                    clickEvent.stopPropagation()
+                    onOpenDay(day.date)
+                  }}
+                  className="w-full rounded px-1 py-0.5 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                >
+                  +{day.events.length - 2} weitere
+                </button>
+              )}
             </div>
+
+            {onCreateEvent && day.isCurrentMonth && (
+              <button
+                type="button"
+                aria-label="Event an diesem Tag erstellen"
+                onClick={() => onCreateEvent(day.date)}
+                tabIndex={-1}
+                className="mt-0.5 min-h-4 flex-1 rounded transition-colors hover:bg-primary/5"
+              />
+            )}
           </div>
         ))}
       </div>
@@ -833,6 +858,8 @@ function MonthCalendar({
 interface WeekCalendarProps {
   visibleDate: Date
   eventsByDay: Map<string, CalendarEvent[]>
+  /** Full filtered list — needed for all-day/multi-day spanning across the week. */
+  events: CalendarEvent[]
   onSelectDate: (date: Date) => void
   onEventClick?: (event: Item) => void
   onCreateEvent?: (date: Date) => void
@@ -841,65 +868,103 @@ interface WeekCalendarProps {
 function WeekCalendar({
   visibleDate,
   eventsByDay,
+  events,
   onSelectDate,
   onEventClick,
   onCreateEvent,
 }: WeekCalendarProps) {
   const weekStart = startOfWeek(visibleDate)
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index))
+  const weekEnd = addDays(weekStart, 6)
+
+  // All-day / multi-day events overlapping the visible week, as spanning bars
+  // (Thunderbird-style). They are invisible in the timed grid (start at local
+  // midnight, below the 06:00 first slot), so this row is where they appear.
+  const dayIndex = (d: Date) =>
+    Math.max(0, Math.min(6, Math.round((atStartOfDay(d).getTime() - weekStart.getTime()) / 86_400_000)))
+  const allDayBars = events
+    .filter((e) => e.allDay && atStartOfDay(e.start) <= weekEnd && atStartOfDay(e.end ?? e.start) >= weekStart)
+    .sort(compareEvents)
+    .map((e) => {
+      const startCol = dayIndex(e.start)
+      const endCol = dayIndex(e.end ?? e.start)
+      return { event: e, startCol, span: endCol - startCol + 1 }
+    })
 
   return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[760px]">
-        <div className="grid grid-cols-[72px_repeat(7,minmax(96px,1fr))] border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
-          <div className="px-2 py-2 text-center">Zeit</div>
-          {weekDays.map((day) => (
-            <button
-              key={day.toISOString()}
-              type="button"
-              onClick={() => onSelectDate(day)}
-              className="px-2 py-2 text-center hover:bg-muted"
-            >
-              <span>{DAY_NAMES[day.getDay()]}</span>
-              <span className="ml-1 text-foreground">{day.getDate()}</span>
-            </button>
-          ))}
-        </div>
+    <div>
+      <div className={cn("grid border-b bg-muted/30 text-[11px] font-semibold text-muted-foreground", WEEK_COLS)}>
+        <div className="px-1 py-2 text-center">Zeit</div>
+        {weekDays.map((day) => (
+          <button
+            key={day.toISOString()}
+            type="button"
+            onClick={() => onSelectDate(day)}
+            className="px-1 py-2 text-center hover:bg-muted"
+          >
+            <span>{DAY_NAMES[day.getDay()]}</span>
+            <span className="ml-1 text-foreground">{day.getDate()}</span>
+          </button>
+        ))}
+      </div>
 
-        <div className="grid grid-cols-[72px_repeat(7,minmax(96px,1fr))]">
-          {TIME_SLOTS.map((hour) => (
-            <div key={hour} className="contents">
-              <div className="border-b border-r bg-muted/20 px-2 py-3 text-right text-xs text-muted-foreground">
-                {String(hour).padStart(2, "0")}:00
-              </div>
-              {weekDays.map((day) => {
-                const slotEvents = getEventsForDay(eventsByDay, day).filter((event) => event.start.getHours() === hour)
-                const canCreateInSlot = slotEvents.length === 0 && onCreateEvent
-                const SlotElement = canCreateInSlot ? "button" : "div"
-                return (
-                  <SlotElement
-                    key={`${day.toISOString()}-${hour}`}
-                    {...(canCreateInSlot
-                      ? { type: "button" as const, onClick: () => onCreateEvent(withTime(day, hour)) }
-                      : {})}
-                    className="min-h-16 border-b border-r p-1 text-left transition-colors hover:bg-muted/40"
-                  >
-                    <div className="space-y-1">
-                      {slotEvents.map((event) => (
-                        <EventPill
-                          key={event.item.id}
-                          event={event}
-                          compact
-                          onClick={onEventClick}
-                        />
-                      ))}
-                    </div>
-                  </SlotElement>
-                )
-              })}
+      {allDayBars.length > 0 && (
+        <div
+          className={cn("grid gap-y-0.5 border-b bg-background py-0.5", WEEK_COLS)}
+          style={{ gridTemplateRows: `repeat(${allDayBars.length}, minmax(22px, auto))` }}
+        >
+          <div
+            className="flex items-center justify-center border-r bg-muted/20 px-0.5 text-center text-[9px] leading-tight text-muted-foreground"
+            style={{ gridColumn: 1, gridRow: `1 / ${allDayBars.length + 1}` }}
+          >
+            Ganztägig
+          </div>
+          {allDayBars.map(({ event, startCol, span }, index) => (
+            <div
+              key={event.item.id}
+              className="px-0.5"
+              style={{ gridColumn: `${startCol + 2} / span ${span}`, gridRow: index + 1 }}
+            >
+              <EventPill event={event} onClick={onEventClick} />
             </div>
           ))}
         </div>
+      )}
+
+      <div className={cn("grid", WEEK_COLS)}>
+        {TIME_SLOTS.map((hour) => (
+          <div key={hour} className="contents">
+            <div className="border-b border-r bg-muted/20 px-1 py-3 text-right text-[10px] text-muted-foreground">
+              {String(hour).padStart(2, "0")}:00
+            </div>
+            {weekDays.map((day) => {
+              const slotEvents = getEventsForDay(eventsByDay, day).filter((event) => event.start.getHours() === hour)
+              const canCreateInSlot = slotEvents.length === 0 && onCreateEvent
+              const SlotElement = canCreateInSlot ? "button" : "div"
+              return (
+                <SlotElement
+                  key={`${day.toISOString()}-${hour}`}
+                  {...(canCreateInSlot
+                    ? { type: "button" as const, onClick: () => onCreateEvent(withTime(day, hour)) }
+                    : {})}
+                  className="min-h-16 border-b border-r p-0.5 text-left transition-colors hover:bg-muted/40"
+                >
+                  <div className="space-y-1">
+                    {slotEvents.map((event) => (
+                      // No `compact`: the hour is already in the time gutter, so
+                      // the pill shows just the title — identical to the month pills.
+                      <EventPill
+                        key={event.item.id}
+                        event={event}
+                        onClick={onEventClick}
+                      />
+                    ))}
+                  </div>
+                </SlotElement>
+              )
+            })}
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -1006,6 +1071,8 @@ interface EventPillProps {
 }
 
 function EventPill({ event, compact = false, onClick }: EventPillProps) {
+  const resolveGroupColor = useContext(CalendarGroupColorContext)
+  const color = getItemColor(event.item, { groupColor: resolveGroupColor(event.item) })
   return (
     <button
       type="button"
@@ -1014,10 +1081,8 @@ function EventPill({ event, compact = false, onClick }: EventPillProps) {
         clickEvent.stopPropagation()
         onClick?.(event.item)
       }}
-      className={cn(
-        "block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium transition-colors",
-        getEventTypeClass(event.item.type),
-      )}
+      style={{ backgroundColor: color, color: getReadableTextColor(color) }}
+      className="block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium transition-opacity hover:opacity-90"
     >
       {compact
         ? event.allDay

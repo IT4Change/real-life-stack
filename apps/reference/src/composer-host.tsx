@@ -15,6 +15,8 @@ import {
   useModulePanel,
   type ContentTypeConfig,
   type ItemEditorMapper,
+  type WidgetData,
+  type ContentComposerHandle,
 } from "@real-life-stack/toolkit"
 import { useLocationPick } from "./location-pick"
 
@@ -22,12 +24,16 @@ export interface OpenComposerConfig {
   contentTypes: ContentTypeConfig[]
   /** Field mapping from composer submission → item payload (per module). */
   mapper: ItemEditorMapper
+  /** Prefill the composer's widget data — e.g. a clicked calendar date as `start`. */
+  initialData?: Partial<WidgetData>
   className?: string
 }
 
 interface ComposerHostValue {
   /** Open a create composer in the shared panel. */
   openComposer: (config: OpenComposerConfig) => void
+  /** Patch the currently-open composer's data (e.g. update only its date), keeping the rest. */
+  patchData: (patch: Partial<WidgetData>) => void
 }
 
 const ComposerHostContext = createContext<ComposerHostValue | null>(null)
@@ -69,6 +75,13 @@ export function ComposerHostProvider({
   isPickingRef.current = isPicking
   const confirmPickRef = useRef(confirmPick)
   confirmPickRef.current = confirmPick
+  // Bumped per open() so the ContentComposer remounts with fresh initialData
+  // (a different prefilled date). Stable across module switches (open() isn't
+  // re-called there), so the map-pick "frozen composer" flow keeps working.
+  const composerKeyRef = useRef(0)
+  // Live handle to the mounted composer, so the host can patch its data (e.g. the
+  // date) without remounting — set by the composer's own mount effect.
+  const composerApiRef = useRef<ContentComposerHandle | null>(null)
 
   // If the composer is replaced by other panel content (or closed) while a pick
   // is in flight, the entry's onClose does not fire on a content-swap — so end
@@ -82,12 +95,16 @@ export function ComposerHostProvider({
     (config: OpenComposerConfig) => {
       mapperRef.current = config.mapper
       editorRef.current.openCreate()
+      composerKeyRef.current += 1
       modulePanel.open({
         kind: "composer",
         content: (
           <ContentComposer
+            key={composerKeyRef.current}
+            apiRef={composerApiRef}
             className={config.className ?? "p-4 sm:p-6"}
             contentTypes={config.contentTypes}
+            initialData={config.initialData}
             showPreview={false}
             geocode={nominatimGeocode}
             reverseGeocode={nominatimReverseGeocode}
@@ -117,7 +134,11 @@ export function ComposerHostProvider({
     [modulePanel, startPick],
   )
 
-  const value = useMemo<ComposerHostValue>(() => ({ openComposer }), [openComposer])
+  const patchData = useCallback((patch: Partial<WidgetData>) => {
+    composerApiRef.current?.patchData(patch)
+  }, [])
+
+  const value = useMemo<ComposerHostValue>(() => ({ openComposer, patchData }), [openComposer, patchData])
   return <ComposerHostContext.Provider value={value}>{children}</ComposerHostContext.Provider>
 }
 

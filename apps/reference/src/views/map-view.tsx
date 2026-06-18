@@ -16,7 +16,10 @@ import {
   emptyFilterBarValue,
   useFilterableItems,
   type ItemEditorMapper,
-  getTagAccentColor,
+  getItemColor,
+  getSpacePrimaryColor,
+  useGroups,
+  useConnector,
   Button,
   Input,
   type FilterBarValue,
@@ -25,7 +28,7 @@ import {
 } from "@real-life-stack/toolkit"
 import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 import { Calendar, MapPin, Search } from "lucide-react"
-import type { Item, User } from "@real-life-stack/data-interface"
+import { hasItemGroups, type Item, type User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useLocationPick } from "../location-pick"
 
@@ -66,6 +69,23 @@ export function MapView({ groupId }: { groupId: string }) {
   // in from other spaces still resolve to their User.
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
+  const { data: groups } = useGroups()
+  const connector = useConnector()
+  // Per-group fallback colours, keyed by group id. The unified item-colour
+  // resolver (custom → first tag → group) falls back to the colour of the group
+  // an item was *created* in — so the aggregate ("Mein Netzwerk") view shows each
+  // marker in its origin group's colour. Shared logic with the calendar.
+  const groupColorById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const g of groups) {
+      map.set(g.id, getSpacePrimaryColor(g.id, (g.data?.primaryColor as string | undefined) ?? null))
+    }
+    return map
+  }, [groups])
+  const resolveItemGroupColor = useCallback((item: Item) => {
+    const originId = (hasItemGroups(connector) ? connector.getItemGroupId(item.id) : null) ?? groupId
+    return groupColorById.get(originId) ?? getSpacePrimaryColor(originId, null)
+  }, [connector, groupColorById, groupId])
 
   const modulePanel = useModulePanel()
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
@@ -143,7 +163,7 @@ export function MapView({ groupId }: { groupId: string }) {
         id: item.id,
         position: [lng, lat],
         label: typeof item.data.title === "string" ? item.data.title : item.id,
-        color: firstTag ? getTagAccentColor(firstTag) : undefined,
+        color: getItemColor(item, { groupColor: resolveItemGroupColor(item) }),
         // Glyph: an explicit item icon, else the first tag's name (which resolves
         // to a curated icon when it matches, e.g. "cafe"); unknown → a dot.
         icon: (item.data.icon as string | undefined) ?? firstTag,
@@ -151,7 +171,7 @@ export function MapView({ groupId }: { groupId: string }) {
       byId.set(item.id, item)
     }
     return { markers: markerList, itemsById: byId }
-  }, [filteredItems])
+  }, [filteredItems, resolveItemGroupColor])
 
   // Mount the adapter once. The lazy-loaded map library means mount() is
   // properly async, which exposes a classic StrictMode race: both effect

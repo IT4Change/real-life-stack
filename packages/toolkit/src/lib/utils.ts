@@ -68,6 +68,28 @@ export function getReadableTextColor(hex: string): string {
 }
 
 /**
+ * Unified accent color for an item across all modules (map markers, calendar
+ * events, …). Precedence, highest first:
+ * 1. a custom item color (`data.color`, a `#rrggbb` value),
+ * 2. the first tag's deterministic accent (`getTagAccentColor`),
+ * 3. the group/space color (passed in by the caller).
+ *
+ * The caller supplies `groupColor` (e.g. `getSpacePrimaryColor(...)` for the
+ * active space) so the same precedence holds everywhere. Pair with
+ * `getReadableTextColor` for text/glyph contrast.
+ */
+export function getItemColor(
+  item: { data?: Record<string, unknown> | null; tags?: string[] },
+  options: { groupColor: string },
+): string {
+  const custom = item.data?.color
+  if (typeof custom === "string" && HEX6.test(custom)) return custom
+  const firstTag = item.tags?.[0]
+  if (firstTag) return getTagAccentColor(firstTag)
+  return options.groupColor
+}
+
+/**
  * Resolve a possibly app-rooted asset URL against Vite's `BASE_URL`.
  *
  * - External URLs (`http(s):`, `data:`, `blob:`) are returned unchanged.
