@@ -41,6 +41,8 @@ import type {
   MapViewState,
   Unsubscribe,
 } from "../adapter"
+import { markerDataUrl } from "../markers/render-marker-svg"
+import { PIN_SIZE } from "../markers/marker-shapes"
 
 /** Free, key-less vector style (CORS-enabled). Override via MountOptions.tileSource. */
 const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
@@ -71,21 +73,33 @@ async function loadMapLibre(): Promise<MapLibreModule> {
   return maplibreModule
 }
 
+/** A stable key for a marker's appearance, so we only re-render the SVG when it changes. */
+function appearanceKey(spec: MapMarkerSpec): string {
+  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${spec.selected ? 1 : 0}`
+}
+
+/** The marker's pin as an SVG `data:` URL (see markerDataUrl — no injection surface). */
+function markerSrc(spec: MapMarkerSpec): string {
+  return markerDataUrl({
+    color: spec.color ?? DEFAULT_MARKER_COLOR,
+    icon: spec.icon,
+    shape: spec.shape,
+    selected: spec.selected,
+  })
+}
+
 /**
- * Build the colored-circle DOM element used as the marker. Mirrors the
- * Leaflet adapter's DivIcon so both adapters render visually consistent
- * markers. Color flows through `style.background` (property assignment, not
- * innerHTML) so there is no HTML-injection surface.
+ * Build the marker DOM element: an `<img>` showing the rendered pin SVG. Using
+ * an image (not innerHTML) keeps custom-icon SVGs free of any injection surface
+ * and mirrors the Leaflet adapter so both engines look identical.
  */
-function buildMarkerElement(color: string): HTMLElement {
-  const el = document.createElement("div")
-  el.className = "rls-tag-marker"
-  el.style.width = "18px"
-  el.style.height = "18px"
-  el.style.borderRadius = "9999px"
-  el.style.background = color
-  el.style.border = "2px solid #fff"
-  el.style.boxShadow = "0 1px 3px rgba(0,0,0,0.35)"
+function buildMarkerElement(spec: MapMarkerSpec): HTMLImageElement {
+  const el = document.createElement("img")
+  el.className = "rls-marker"
+  el.src = markerSrc(spec)
+  el.width = PIN_SIZE.width
+  el.height = PIN_SIZE.height
+  el.draggable = false
   el.style.cursor = "pointer"
   // Keyboard-accessible: the marker behaves as a button so non-pointer users
   // can activate it (a marker click opens the item's detail panel). The
@@ -103,7 +117,7 @@ export class MapLibreMapAdapter implements MapAdapter {
   private markers = new Map<string, unknown>()
   private markerEls = new Map<string, HTMLElement>()
   private markerLabels = new Map<string, string | undefined>()
-  private markerColors = new Map<string, string | undefined>()
+  private markerAppearance = new Map<string, string>()
   private viewListeners = new Set<(view: MapViewState) => void>()
   private clickListeners = new Set<(event: MapClickEvent) => void>()
   private markerClickListeners = new Set<(markerId: string) => void>()
@@ -176,7 +190,7 @@ export class MapLibreMapAdapter implements MapAdapter {
     this.markers.clear()
     this.markerEls.clear()
     this.markerLabels.clear()
-    this.markerColors.clear()
+    this.markerAppearance.clear()
     map.remove()
     this.mapInstance = null
     this.viewListeners.clear()
@@ -200,29 +214,29 @@ export class MapLibreMapAdapter implements MapAdapter {
         typedMarkers.delete(id)
         this.markerEls.delete(id)
         this.markerLabels.delete(id)
-        this.markerColors.delete(id)
+        this.markerAppearance.delete(id)
       }
     }
 
     // Add or update remaining
     for (const spec of markers) {
-      const color = spec.color ?? DEFAULT_MARKER_COLOR
       const existing = typedMarkers.get(spec.id)
       if (existing) {
         existing.setLngLat(spec.position)
-        const el = this.markerEls.get(spec.id)
+        const el = this.markerEls.get(spec.id) as HTMLImageElement | undefined
         // Reconcile label (hover title + accessible name) declaratively.
         if (this.markerLabels.get(spec.id) !== spec.label) {
           if (el) this.applyMarkerLabel(el, spec.label)
           this.markerLabels.set(spec.id, spec.label)
         }
-        // Reconcile color in place (no marker recreation, no flicker).
-        if (this.markerColors.get(spec.id) !== spec.color) {
-          if (el) el.style.background = color
-          this.markerColors.set(spec.id, spec.color)
+        // Reconcile appearance in place (no marker recreation, no flicker).
+        const key = appearanceKey(spec)
+        if (this.markerAppearance.get(spec.id) !== key) {
+          if (el) el.src = markerSrc(spec)
+          this.markerAppearance.set(spec.id, key)
         }
       } else {
-        const el = buildMarkerElement(color)
+        const el = buildMarkerElement(spec)
         this.applyMarkerLabel(el, spec.label)
         const activate = () => {
           this.markerClickListeners.forEach((cb) => cb(spec.id))
@@ -241,12 +255,13 @@ export class MapLibreMapAdapter implements MapAdapter {
             activate()
           }
         })
-        const marker = new maplibre.Marker({ element: el, anchor: "center" })
+        // anchor "bottom": the pin's tip sits on the coordinate.
+        const marker = new maplibre.Marker({ element: el, anchor: "bottom" })
         marker.setLngLat(spec.position).addTo(map)
         typedMarkers.set(spec.id, marker)
         this.markerEls.set(spec.id, el)
         this.markerLabels.set(spec.id, spec.label)
-        this.markerColors.set(spec.id, spec.color)
+        this.markerAppearance.set(spec.id, appearanceKey(spec))
       }
     }
   }

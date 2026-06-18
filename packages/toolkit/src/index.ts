@@ -2,6 +2,15 @@
 export { cn, getTagColor, getTagAccentColor, getSpacePrimaryColor, getReadableTextColor, resolveAssetUrl } from "./lib/utils"
 export { applyItemListFilter, type ItemListFilter } from "./lib/item-filter"
 export {
+  resolveIcon,
+  registerIcon,
+  getIcon,
+  iconNames,
+  DEFAULT_ICON,
+  MARKER_ICON_SET,
+  type IconData,
+} from "./lib/icons"
+export {
   createNominatimGeocoder,
   nominatimGeocode,
   createNominatimReverseGeocoder,

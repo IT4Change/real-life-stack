@@ -144,6 +144,9 @@ export function MapView({ groupId }: { groupId: string }) {
         position: [lng, lat],
         label: typeof item.data.title === "string" ? item.data.title : item.id,
         color: firstTag ? getTagAccentColor(firstTag) : undefined,
+        // Glyph: an explicit item icon, else the first tag's name (which resolves
+        // to a curated icon when it matches, e.g. "cafe"); unknown → a dot.
+        icon: (item.data.icon as string | undefined) ?? firstTag,
       })
       byId.set(item.id, item)
     }

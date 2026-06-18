@@ -12,6 +12,8 @@
  * internally.
  */
 
+import type { MarkerShape } from "./markers/marker-shapes"
+
 export type LngLat = [number, number]
 
 export interface MapBounds {
@@ -41,10 +43,17 @@ export interface MapMarkerSpec {
   position: LngLat
   /** Short label shown next to or above the marker (optional) */
   label?: string
-  /** Icon name / URL (adapter-defined; optional) */
+  /**
+   * Marker glyph: a curated icon name (`"garden"`), an inline `<svg>` / `data:`
+   * URL, or an emoji. Resolved via the shared icon registry; defaults to a dot.
+   */
   icon?: string
-  /** CSS-style color hint, e.g. "#9bc53d" */
+  /** CSS-style colour hint (e.g. "#9bc53d") for the pin. Defaults to a neutral colour. */
   color?: string
+  /** Pin shape. Defaults to `"circle"`. */
+  shape?: MarkerShape
+  /** Whether the marker is selected (renders a contrast outline). */
+  selected?: boolean
 }
 
 export interface MapViewState {

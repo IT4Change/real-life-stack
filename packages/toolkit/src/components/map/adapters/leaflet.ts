@@ -32,10 +32,13 @@ import type {
   MapViewState,
   Unsubscribe,
 } from "../adapter"
+import { markerDataUrl } from "../markers/render-marker-svg"
+import { PIN_SIZE, PIN_ANCHOR } from "../markers/marker-shapes"
 
 const DEFAULT_TILE_SOURCE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 const DEFAULT_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+const DEFAULT_MARKER_COLOR = "#2563eb"
 
 // Cached lazy module reference. Populated on first mount(), reused thereafter.
 let leafletModule: typeof L | null = null
@@ -68,43 +71,28 @@ function toBounds(bounds: L.LatLngBounds): MapBounds {
   }
 }
 
-/**
- * Translate `MapMarkerSpec.color` (a CSS color, see adapter.ts) into a
- * concrete Leaflet icon. Without a color we fall back to Leaflet's
- * default pin so consumers that don't care about colour keep the
- * library's standard look. With a color we render a small filled circle
- * via DivIcon — the lowest-friction way to surface arbitrary colours
- * without bundling a sprite-sheet of pre-coloured pin assets.
- */
-function buildMarkerIcon(leaflet: typeof L, color: string | undefined): L.Icon | L.DivIcon | undefined {
-  if (!color) return undefined
-  const safe = escapeAttr(color)
-  return leaflet.divIcon({
-    className: "rls-tag-marker",
-    html: `<span style="display:block;width:18px;height:18px;border-radius:9999px;background:${safe};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.35);"></span>`,
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-    tooltipAnchor: [0, -9],
-  })
+/** A stable key for a marker's appearance, so we only rebuild the icon when it changes. */
+function appearanceKey(spec: MapMarkerSpec): string {
+  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${spec.selected ? 1 : 0}`
 }
 
-/** Defensive escape for color strings flowing into an inline style. */
-function escapeAttr(value: string): string {
-  return value.replace(/[&<>"']/g, (c) => {
-    switch (c) {
-      case "&":
-        return "&amp;"
-      case "<":
-        return "&lt;"
-      case ">":
-        return "&gt;"
-      case "\"":
-        return "&quot;"
-      case "'":
-        return "&#39;"
-      default:
-        return c
-    }
+/**
+ * Build the Leaflet icon for a marker spec: the rendered pin SVG as an
+ * `iconUrl` data URL. Using an image (not DivIcon HTML) keeps custom-icon SVGs
+ * free of any injection surface and matches the MapLibre adapter. The default
+ * (no icon / no shape) is a circle pin with a dot glyph.
+ */
+function buildMarkerIcon(leaflet: typeof L, spec: MapMarkerSpec): L.Icon {
+  return leaflet.icon({
+    iconUrl: markerDataUrl({
+      color: spec.color ?? DEFAULT_MARKER_COLOR,
+      icon: spec.icon,
+      shape: spec.shape,
+      selected: spec.selected,
+    }),
+    iconSize: [PIN_SIZE.width, PIN_SIZE.height],
+    iconAnchor: [PIN_ANCHOR.x, PIN_ANCHOR.y],
+    tooltipAnchor: [0, -PIN_ANCHOR.y],
   })
 }
 
@@ -116,7 +104,7 @@ export class LeafletMapAdapter implements MapAdapter {
   private leafletInstance: unknown = null
   private markers = new Map<string, unknown>()
   private markerLabels = new Map<string, string | undefined>()
-  private markerColors = new Map<string, string | undefined>()
+  private markerAppearance = new Map<string, string>()
   private viewListeners = new Set<(view: MapViewState) => void>()
   private clickListeners = new Set<(event: MapClickEvent) => void>()
   private markerClickListeners = new Set<(markerId: string) => void>()
@@ -163,7 +151,7 @@ export class LeafletMapAdapter implements MapAdapter {
     ;(this.markers as Map<string, L.Marker>).forEach((m) => m.remove())
     this.markers.clear()
     this.markerLabels.clear()
-    this.markerColors.clear()
+    this.markerAppearance.clear()
     map.remove()
     this.mapInstance = null
     this.leafletInstance = null
@@ -187,7 +175,7 @@ export class LeafletMapAdapter implements MapAdapter {
         marker.remove()
         typedMarkers.delete(id)
         this.markerLabels.delete(id)
-        this.markerColors.delete(id)
+        this.markerAppearance.delete(id)
       }
     }
 
@@ -213,20 +201,17 @@ export class LeafletMapAdapter implements MapAdapter {
           }
           this.markerLabels.set(spec.id, spec.label)
         }
-        // Reconcile color: setIcon when changed (cheap, but not free —
-        // skip when unchanged so unrelated re-renders don't flicker the
-        // marker). When color goes from set → unset we fall back to
-        // Leaflet's default pin so the marker doesn't disappear.
-        const prevColor = this.markerColors.get(spec.id)
-        if (prevColor !== spec.color) {
-          existing.setIcon(buildMarkerIcon(leaflet, spec.color) ?? new leaflet.Icon.Default())
-          this.markerColors.set(spec.id, spec.color)
+        // Reconcile appearance: rebuild the icon only when it changes, so
+        // unrelated re-renders don't flicker the marker.
+        const key = appearanceKey(spec)
+        if (this.markerAppearance.get(spec.id) !== key) {
+          existing.setIcon(buildMarkerIcon(leaflet, spec))
+          this.markerAppearance.set(spec.id, key)
         }
       } else {
-        const colorIcon = buildMarkerIcon(leaflet, spec.color)
         const marker = leaflet.marker(latlng, {
           title: spec.label,
-          ...(colorIcon ? { icon: colorIcon } : {}),
+          icon: buildMarkerIcon(leaflet, spec),
         })
         if (spec.label !== undefined) marker.bindTooltip(spec.label)
         marker.on("click", () => {
@@ -235,7 +220,7 @@ export class LeafletMapAdapter implements MapAdapter {
         marker.addTo(map)
         typedMarkers.set(spec.id, marker)
         this.markerLabels.set(spec.id, spec.label)
-        this.markerColors.set(spec.id, spec.color)
+        this.markerAppearance.set(spec.id, appearanceKey(spec))
       }
     }
   }
