@@ -9,7 +9,6 @@ import {
   Columns,
   Grid3x3,
   List,
-  Plus,
   Search,
 } from "lucide-react"
 import { Button } from "../primitives/button"
@@ -40,6 +39,10 @@ const CalendarGroupColorContext = createContext<string>("#2563eb")
 
 /** Min horizontal travel (px) to commit a period swipe — PR spec contract. */
 const SWIPE_COMMIT_PX = 60
+/** Week grid template: a narrow time gutter + 7 equal day columns that shrink to
+ *  fit the viewport (no horizontal scroll), so the week paginates via the same
+ *  swipe carousel as month/day instead of an inner scroll. */
+const WEEK_COLS = "grid-cols-[3.25rem_repeat(7,minmax(0,1fr))]"
 
 export type CalendarViewMode = "month" | "week" | "day" | "list"
 type LocationFilter = "all" | "with" | "without"
@@ -669,58 +672,38 @@ export function CalendarView({
               )
             })}
           </div>
-
-          {onCreateEvent && (
-            <Button
-              size="icon-sm"
-              aria-label="Event erstellen"
-              onClick={() => onCreateEvent(selectedDate)}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          )}
         </div>
       </div>
 
-      {/* The week view scrolls its own grid horizontally (overflow-x-auto,
-          min-w-[760px]) to reach off-screen days, so it stays OUT of the swipe
-          carousel — a horizontal swipe there would fight that inner scroll
-          (touch-action: pan-y on the track would otherwise disable it and the
-          off-screen days become unreachable). Week steps via the ‹ › arrows;
-          the overscroll-to-paginate variant for week is a follow-up. Month/day/
-          list have no horizontal overflow and use the carousel. */}
-      {viewMode === "week" ? (
-        renderPeriod(visibleDate)
-      ) : (
-        // Swipe left/right to step the period. Previous, current and next are
-        // rendered side by side in the track so the neighbour is already
-        // attached while dragging — no empty gap (see the carousel handlers above).
-        <div className="overflow-hidden">
-          <div
-            ref={swipeTrackRef}
-            onTouchStart={handleSwipeStart}
-            onTouchMove={handleSwipeMove}
-            onTouchEnd={handleSwipeEnd}
-            onTouchCancel={handleSwipeCancel}
-            onTransitionEnd={handleSwipeTransitionEnd}
-            className="flex items-start"
-            style={{
-              transform: `translateX(calc(-100% + ${swipeDx}px))`,
-              transition: swipeAnimating ? "transform 250ms ease-out" : "none",
-              touchAction: "pan-y",
-            }}
-          >
-            {/* Only the centred panel is interactive. The off-screen
-                neighbours render full calendars (buttons, cards), so mark them
-                inert + aria-hidden to keep them out of the focus and a11y tree;
-                after a swap they re-render by position, so the middle one is
-                always the live period. */}
-            <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, -1))}</div>
-            <div className="w-full shrink-0">{renderPeriod(visibleDate)}</div>
-            <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, 1))}</div>
-          </div>
+      {/* Swipe left/right to step the period — all views, week included now
+          that it fits 7 columns without horizontal scroll. Previous, current
+          and next render side by side in the track so the neighbour is already
+          attached while dragging — no empty gap (see the carousel handlers above). */}
+      <div className="overflow-hidden">
+        <div
+          ref={swipeTrackRef}
+          onTouchStart={handleSwipeStart}
+          onTouchMove={handleSwipeMove}
+          onTouchEnd={handleSwipeEnd}
+          onTouchCancel={handleSwipeCancel}
+          onTransitionEnd={handleSwipeTransitionEnd}
+          className="flex items-start"
+          style={{
+            transform: `translateX(calc(-100% + ${swipeDx}px))`,
+            transition: swipeAnimating ? "transform 250ms ease-out" : "none",
+            touchAction: "pan-y",
+          }}
+        >
+          {/* Only the centred panel is interactive. The off-screen neighbours
+              render full calendars (buttons, cards), so mark them inert +
+              aria-hidden to keep them out of the focus and a11y tree; after a
+              swap they re-render by position, so the middle one is always the
+              live period. */}
+          <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, -1))}</div>
+          <div className="w-full shrink-0">{renderPeriod(visibleDate)}</div>
+          <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, 1))}</div>
         </div>
-      )}
+      </div>
       </div>
     </div>
     </CalendarGroupColorContext.Provider>
@@ -894,80 +877,79 @@ function WeekCalendar({
     })
 
   return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[760px]">
-        <div className="grid grid-cols-[72px_repeat(7,minmax(96px,1fr))] border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
-          <div className="px-2 py-2 text-center">Zeit</div>
-          {weekDays.map((day) => (
-            <button
-              key={day.toISOString()}
-              type="button"
-              onClick={() => onSelectDate(day)}
-              className="px-2 py-2 text-center hover:bg-muted"
-            >
-              <span>{DAY_NAMES[day.getDay()]}</span>
-              <span className="ml-1 text-foreground">{day.getDate()}</span>
-            </button>
-          ))}
-        </div>
-
-        {allDayBars.length > 0 && (
-          <div
-            className="grid grid-cols-[72px_repeat(7,minmax(96px,1fr))] gap-y-0.5 border-b bg-background py-0.5"
-            style={{ gridTemplateRows: `repeat(${allDayBars.length}, minmax(22px, auto))` }}
+    <div>
+      <div className={cn("grid border-b bg-muted/30 text-[11px] font-semibold text-muted-foreground", WEEK_COLS)}>
+        <div className="px-1 py-2 text-center">Zeit</div>
+        {weekDays.map((day) => (
+          <button
+            key={day.toISOString()}
+            type="button"
+            onClick={() => onSelectDate(day)}
+            className="px-1 py-2 text-center hover:bg-muted"
           >
-            <div
-              className="flex items-center justify-end border-r bg-muted/20 px-2 text-[10px] text-muted-foreground"
-              style={{ gridColumn: 1, gridRow: `1 / ${allDayBars.length + 1}` }}
-            >
-              Ganztägig
-            </div>
-            {allDayBars.map(({ event, startCol, span }, index) => (
-              <div
-                key={event.item.id}
-                className="px-0.5"
-                style={{ gridColumn: `${startCol + 2} / span ${span}`, gridRow: index + 1 }}
-              >
-                <EventPill event={event} onClick={onEventClick} />
-              </div>
-            ))}
-          </div>
-        )}
+            <span>{DAY_NAMES[day.getDay()]}</span>
+            <span className="ml-1 text-foreground">{day.getDate()}</span>
+          </button>
+        ))}
+      </div>
 
-        <div className="grid grid-cols-[72px_repeat(7,minmax(96px,1fr))]">
-          {TIME_SLOTS.map((hour) => (
-            <div key={hour} className="contents">
-              <div className="border-b border-r bg-muted/20 px-2 py-3 text-right text-xs text-muted-foreground">
-                {String(hour).padStart(2, "0")}:00
-              </div>
-              {weekDays.map((day) => {
-                const slotEvents = getEventsForDay(eventsByDay, day).filter((event) => event.start.getHours() === hour)
-                const canCreateInSlot = slotEvents.length === 0 && onCreateEvent
-                const SlotElement = canCreateInSlot ? "button" : "div"
-                return (
-                  <SlotElement
-                    key={`${day.toISOString()}-${hour}`}
-                    {...(canCreateInSlot
-                      ? { type: "button" as const, onClick: () => onCreateEvent(withTime(day, hour)) }
-                      : {})}
-                    className="min-h-16 border-b border-r p-1 text-left transition-colors hover:bg-muted/40"
-                  >
-                    <div className="space-y-1">
-                      {slotEvents.map((event) => (
-                        <EventPill
-                          key={event.item.id}
-                          event={event}
-                          compact
-                          onClick={onEventClick}
-                        />
-                      ))}
-                    </div>
-                  </SlotElement>
-                )
-              })}
+      {allDayBars.length > 0 && (
+        <div
+          className={cn("grid gap-y-0.5 border-b bg-background py-0.5", WEEK_COLS)}
+          style={{ gridTemplateRows: `repeat(${allDayBars.length}, minmax(22px, auto))` }}
+        >
+          <div
+            className="flex items-center justify-center border-r bg-muted/20 px-0.5 text-center text-[9px] leading-tight text-muted-foreground"
+            style={{ gridColumn: 1, gridRow: `1 / ${allDayBars.length + 1}` }}
+          >
+            Ganztägig
+          </div>
+          {allDayBars.map(({ event, startCol, span }, index) => (
+            <div
+              key={event.item.id}
+              className="px-0.5"
+              style={{ gridColumn: `${startCol + 2} / span ${span}`, gridRow: index + 1 }}
+            >
+              <EventPill event={event} onClick={onEventClick} />
             </div>
           ))}
         </div>
+      )}
+
+      <div className={cn("grid", WEEK_COLS)}>
+        {TIME_SLOTS.map((hour) => (
+          <div key={hour} className="contents">
+            <div className="border-b border-r bg-muted/20 px-1 py-3 text-right text-[10px] text-muted-foreground">
+              {String(hour).padStart(2, "0")}:00
+            </div>
+            {weekDays.map((day) => {
+              const slotEvents = getEventsForDay(eventsByDay, day).filter((event) => event.start.getHours() === hour)
+              const canCreateInSlot = slotEvents.length === 0 && onCreateEvent
+              const SlotElement = canCreateInSlot ? "button" : "div"
+              return (
+                <SlotElement
+                  key={`${day.toISOString()}-${hour}`}
+                  {...(canCreateInSlot
+                    ? { type: "button" as const, onClick: () => onCreateEvent(withTime(day, hour)) }
+                    : {})}
+                  className="min-h-16 border-b border-r p-0.5 text-left transition-colors hover:bg-muted/40"
+                >
+                  <div className="space-y-1">
+                    {slotEvents.map((event) => (
+                      // No `compact`: the hour is already in the time gutter, so
+                      // the pill shows just the title — identical to the month pills.
+                      <EventPill
+                        key={event.item.id}
+                        event={event}
+                        onClick={onEventClick}
+                      />
+                    ))}
+                  </div>
+                </SlotElement>
+              )
+            })}
+          </div>
+        ))}
       </div>
     </div>
   )
