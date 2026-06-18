@@ -139,6 +139,39 @@ Regeln:
 4. Netzwerke, Labels oder White-Label-Kontexte sind nicht automatisch Groups; sie können mehrere Groups oder Spaces umfassen.
 5. Group-Metadaten liegen in `Group.data` und müssen additiv erweiterbar bleiben.
 
+## Space-Metadaten
+
+Space-Metadaten (Name, Image, Modules) liegen gemäß Regel #5 in `Group.data` (Ausnahme `name`, top-level). `updateGroup` bildet `Group.data.image` und `Group.data.modules` auf die Y.Doc `_meta`-Map des Space ab (via `updateSpace`) und synct sie darüber. Code-Referenz: `packages/wot-connector/src/wot-connector.ts` (`updateGroup`, Lese-Felder `updates.data?.image` / `updates.data?.modules`).
+
+Regeln:
+
+1. Kanonische Quelle der Space-Metadaten ist `Group.data`; `_meta` ist die synchronisierte Projektion für andere Geräte und Leseflächen.
+2. Neue Metadatenfelder MÜSSEN demselben Muster folgen: Wert in `Group.data.<feld>`, Abbildung nach `_meta.<feld>` über `updateGroup`.
+
+### Space-Primärfarbe
+
+Jeder Space hat eine `primaryColor` — ein weiteres Space-Metadatenfeld nach obigem Muster: Wert in `Group.data.primaryColor`, Spiegelung nach `_meta.primaryColor` über `updateGroup` (wie `image` / `modules`).
+
+Regeln:
+
+1. `Group.data.primaryColor` ist die kanonische Quelle; `_meta.primaryColor` ist die synchronisierte Projektion. `primaryColor` MUSS ein Hex-Farbwert der Form `#rrggbb` sein (passend zu `TAG_PALETTE.accent` in `packages/toolkit/src/lib/utils.ts`, zum Beispiel `#2563eb`).
+2. Beim Logo-Upload MUSS der Client die dominanteste Farbe des Logos extrahieren und das Ergebnis in `Group.data.primaryColor` cachen. Die Extraktion läuft client-seitig genau einmal beim Upload, nicht bei jedem Render und nicht auf jedem Gerät neu.
+3. Ohne Logo MUSS `primaryColor` deterministisch aus der Space-ID abgeleitet werden, analog zu `getTagColor` / `getTagAccentColor` in `packages/toolkit/src/lib/utils.ts`. Die Ableitung MUSS über Geräte und Sessions stabil sein und DARF NICHT echtes Random verwenden.
+4. Wird ein Logo entfernt, SOLL `primaryColor` wieder auf den deterministischen ID-Fallback zurückfallen.
+5. `primaryColor` ist Cache und Default, kein Pflicht-Eingabefeld. Fehlt der Wert, MÜSSEN Leseflächen den deterministischen ID-Fallback berechnen.
+
+### Verwendung der Primärfarbe
+
+Solange ein Space aktiv ist, ist seine `primaryColor` die Primär-/Akzentfarbe der App und gibt jedem Space eine eigene visuelle Identität.
+
+Regeln:
+
+1. Während ein Space aktiv ist, SOLL `primaryColor` die Primär-/Akzent-Tokens der App speisen (Primär-Buttons, Fokus-Ringe, aktive Navigations- und Sidebar-Items, Hover-Tints). Sie SOLL am App-Root gesetzt werden, sodass auch portalte Flächen (Dialoge, Dropdowns) sie übernehmen. Hintergrund-, Karten- und Vordergrundflächen bleiben unberührt — `primaryColor` ist ein Akzent, keine vollflächige Themefarbe.
+2. Ist kein Space aktiv (Overview „Mein Netzwerk", No-Access), SOLL die Standard-Markenfarbe gelten.
+3. Map-Marker KÖNNEN `primaryColor` als Default-Markerfarbe verwenden, wenn kein item- oder tag-spezifischer Akzent greift (Tag-Akzent über `getTagAccentColor` hat Vorrang).
+4. UI-Flächen MÜSSEN ohne `primaryColor` robust bleiben und den deterministischen ID-Fallback verwenden.
+5. Kontraste (Text/Icon auf Akzentfläche) MÜSSEN lesbar bleiben; Flächen SOLLEN nicht annehmen, dass `primaryColor` hell oder dunkel ist.
+
 ## Profile
 
 Ein Profil kann als `type: "profile"`-Item erscheinen. Gleichzeitig gibt es `ProfileCapable` für eigenes Profil, öffentliche Profile und Sync.
