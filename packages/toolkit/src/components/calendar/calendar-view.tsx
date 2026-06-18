@@ -508,6 +508,7 @@ export function CalendarView({
         <WeekCalendar
           visibleDate={date}
           eventsByDay={eventsByDay}
+          events={filteredEvents}
           onSelectDate={(d) => {
             setSelectedDate(d)
             setVisibleDate(d)
@@ -859,6 +860,8 @@ function MonthCalendar({
 interface WeekCalendarProps {
   visibleDate: Date
   eventsByDay: Map<string, CalendarEvent[]>
+  /** Full filtered list — needed for all-day/multi-day spanning across the week. */
+  events: CalendarEvent[]
   onSelectDate: (date: Date) => void
   onEventClick?: (event: Item) => void
   onCreateEvent?: (date: Date) => void
@@ -867,12 +870,28 @@ interface WeekCalendarProps {
 function WeekCalendar({
   visibleDate,
   eventsByDay,
+  events,
   onSelectDate,
   onEventClick,
   onCreateEvent,
 }: WeekCalendarProps) {
   const weekStart = startOfWeek(visibleDate)
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index))
+  const weekEnd = addDays(weekStart, 6)
+
+  // All-day / multi-day events overlapping the visible week, as spanning bars
+  // (Thunderbird-style). They are invisible in the timed grid (start at local
+  // midnight, below the 06:00 first slot), so this row is where they appear.
+  const dayIndex = (d: Date) =>
+    Math.max(0, Math.min(6, Math.round((atStartOfDay(d).getTime() - weekStart.getTime()) / 86_400_000)))
+  const allDayBars = events
+    .filter((e) => e.allDay && atStartOfDay(e.start) <= weekEnd && atStartOfDay(e.end ?? e.start) >= weekStart)
+    .sort(compareEvents)
+    .map((e) => {
+      const startCol = dayIndex(e.start)
+      const endCol = dayIndex(e.end ?? e.start)
+      return { event: e, startCol, span: endCol - startCol + 1 }
+    })
 
   return (
     <div className="overflow-x-auto">
@@ -891,6 +910,29 @@ function WeekCalendar({
             </button>
           ))}
         </div>
+
+        {allDayBars.length > 0 && (
+          <div
+            className="grid grid-cols-[72px_repeat(7,minmax(96px,1fr))] gap-y-0.5 border-b bg-background py-0.5"
+            style={{ gridTemplateRows: `repeat(${allDayBars.length}, minmax(22px, auto))` }}
+          >
+            <div
+              className="flex items-center justify-end border-r bg-muted/20 px-2 text-[10px] text-muted-foreground"
+              style={{ gridColumn: 1, gridRow: `1 / ${allDayBars.length + 1}` }}
+            >
+              Ganztägig
+            </div>
+            {allDayBars.map(({ event, startCol, span }, index) => (
+              <div
+                key={event.item.id}
+                className="px-0.5"
+                style={{ gridColumn: `${startCol + 2} / span ${span}`, gridRow: index + 1 }}
+              >
+                <EventPill event={event} onClick={onEventClick} />
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="grid grid-cols-[72px_repeat(7,minmax(96px,1fr))]">
           {TIME_SLOTS.map((hour) => (
