@@ -216,6 +216,12 @@
   background-color: oklch(from var(--background) l c h / 0.8);
 }
 
+/* Drop shadow under map markers (the rendered pin SVG is an <img>; a CSS
+   filter follows its alpha and is reliable across browsers). */
+.rls-marker-shadow {
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+}
+
 /* Cursor pointer for interactive elements */
 @layer base {
   *,

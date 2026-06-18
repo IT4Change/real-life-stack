@@ -39,6 +39,9 @@ export function renderMarkerSvg({
   const glyphColor = getReadableTextColor(color)
   const pin = markerShapeBody(shape, color, selected ? glyphColor : BORDER)
   const glyph = placeGlyph(resolveIcon(icon) ?? DEFAULT_ICON, glyphColor)
+  // The drop shadow is applied by the adapters via the `.rls-marker-shadow` CSS
+  // class (a CSS `filter: drop-shadow`), which is reliable for `<img>`-embedded
+  // SVG across browsers — an in-SVG `feDropShadow` is not.
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${PIN_VIEWBOX}" width="${PIN_SIZE.width}" height="${PIN_SIZE.height}">${pin}${glyph}</svg>`
 }
 

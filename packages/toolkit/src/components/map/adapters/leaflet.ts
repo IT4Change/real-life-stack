@@ -93,6 +93,7 @@ function buildMarkerIcon(leaflet: typeof L, spec: MapMarkerSpec): L.Icon {
     iconSize: [PIN_SIZE.width, PIN_SIZE.height],
     iconAnchor: [PIN_ANCHOR.x, PIN_ANCHOR.y],
     tooltipAnchor: [0, -PIN_ANCHOR.y],
+    className: "rls-marker-shadow",
   })
 }
 

@@ -95,12 +95,16 @@ function markerSrc(spec: MapMarkerSpec): string {
  */
 function buildMarkerElement(spec: MapMarkerSpec): HTMLImageElement {
   const el = document.createElement("img")
-  el.className = "rls-marker"
+  el.className = "rls-marker rls-marker-shadow"
   el.src = markerSrc(spec)
   el.width = PIN_SIZE.width
   el.height = PIN_SIZE.height
   el.draggable = false
   el.style.cursor = "pointer"
+  // Drop shadow inline (not only via the .rls-marker-shadow class) so it applies
+  // even if maplibre touches the element's className. CSS filter follows the
+  // pin's alpha; reliable for <img>-embedded SVG (an in-SVG feDropShadow is not).
+  el.style.filter = "drop-shadow(0 2px 3px rgba(0,0,0,0.5))"
   // Keyboard-accessible: the marker behaves as a button so non-pointer users
   // can activate it (a marker click opens the item's detail panel). The
   // accessible name is set from the label in setMarkers.
