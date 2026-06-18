@@ -99,6 +99,23 @@ function buildMarkerIcon(leaflet: typeof L, spec: MapMarkerSpec): L.Icon {
   })
 }
 
+/**
+ * Inline `filter` for the marker's icon element: the base shadow (same as the
+ * `.rls-marker-shadow` class) plus a soft colour glow when the marker is
+ * selected — the Leaflet counterpart to the MapLibre adapter's `markerFilter`
+ * (alpha 0x80 ≈ 50%). Empty when not selected, so the class shadow applies.
+ */
+function selectedGlowFilter(spec: MapMarkerSpec): string {
+  if (!spec.selected || !spec.glowColor) return ""
+  return `drop-shadow(0 2px 3px rgba(0,0,0,0.5)) drop-shadow(0 0 3px ${spec.glowColor}80) drop-shadow(0 0 6px ${spec.glowColor}80)`
+}
+
+/** Apply {@link selectedGlowFilter} to a marker's rendered icon element. */
+function applyMarkerGlow(marker: L.Marker, spec: MapMarkerSpec): void {
+  const el = (marker as unknown as { _icon?: HTMLElement })._icon
+  if (el) el.style.filter = selectedGlowFilter(spec)
+}
+
 export class LeafletMapAdapter implements MapAdapter {
   // Internal Leaflet handles are held as `unknown` so the generated `.d.ts`
   // does not reference `leaflet` types. Consumers without `@types/leaflet`
@@ -211,6 +228,9 @@ export class LeafletMapAdapter implements MapAdapter {
           existing.setIcon(buildMarkerIcon(leaflet, spec))
           this.markerAppearance.set(spec.id, key)
         }
+        // Selection glow lives on the icon element (a CSS filter), not the SVG —
+        // re-apply on every reconcile so selecting/deselecting updates it.
+        applyMarkerGlow(existing, spec)
       } else {
         const marker = leaflet.marker(latlng, {
           title: spec.label,
@@ -221,6 +241,7 @@ export class LeafletMapAdapter implements MapAdapter {
           this.markerClickListeners.forEach((cb) => cb(spec.id))
         })
         marker.addTo(map)
+        applyMarkerGlow(marker, spec)
         typedMarkers.set(spec.id, marker)
         this.markerLabels.set(spec.id, spec.label)
         this.markerAppearance.set(spec.id, appearanceKey(spec))
