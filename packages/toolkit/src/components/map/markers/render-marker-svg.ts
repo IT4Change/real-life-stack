@@ -20,24 +20,22 @@ export interface RenderMarkerOptions {
   /** Icon string (curated name | inline SVG | emoji). Falls back to a dot. */
   icon?: string | null
   shape?: MarkerShape
-  selected?: boolean
 }
 
 /**
  * Render a map marker as one self-contained SVG string: a coloured pin (Utopia's
  * shape) with a centred glyph. Engine-agnostic — Leaflet mounts it in a
  * `DivIcon`, MapLibre in a custom marker element. The glyph takes a readable
- * contrast colour via {@link getReadableTextColor}; a selected marker gets a
- * contrast outline.
+ * contrast colour via {@link getReadableTextColor}. Selection is shown by the
+ * adapter as a soft colour glow (CSS filter), not by changing the pin outline.
  */
 export function renderMarkerSvg({
   color,
   icon,
   shape = DEFAULT_SHAPE,
-  selected = false,
 }: RenderMarkerOptions): string {
   const glyphColor = getReadableTextColor(color)
-  const pin = markerShapeBody(shape, color, selected ? glyphColor : BORDER)
+  const pin = markerShapeBody(shape, color, BORDER)
   const glyph = placeGlyph(resolveIcon(icon) ?? DEFAULT_ICON, glyphColor)
   // The drop shadow is applied by the adapters via the `.rls-marker-shadow` CSS
   // class (a CSS `filter: drop-shadow`), which is reliable for `<img>`-embedded

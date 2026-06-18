@@ -91,7 +91,8 @@ const MARKER_BASE_SHADOW = "drop-shadow(0 2px 3px rgba(0,0,0,0.5))"
  */
 function markerFilter(spec: MapMarkerSpec): string {
   if (spec.selected && spec.glowColor) {
-    return `${MARKER_BASE_SHADOW} drop-shadow(0 0 3px ${spec.glowColor}) drop-shadow(0 0 6px ${spec.glowColor})`
+    // Glow at 50% opacity (alpha 0x80), matching the cards' getActivePanelGlow.
+    return `${MARKER_BASE_SHADOW} drop-shadow(0 0 3px ${spec.glowColor}80) drop-shadow(0 0 6px ${spec.glowColor}80)`
   }
   return MARKER_BASE_SHADOW
 }
@@ -102,7 +103,6 @@ function markerSrc(spec: MapMarkerSpec): string {
     color: spec.color ?? DEFAULT_MARKER_COLOR,
     icon: spec.icon,
     shape: spec.shape,
-    selected: spec.selected,
   })
 }
 

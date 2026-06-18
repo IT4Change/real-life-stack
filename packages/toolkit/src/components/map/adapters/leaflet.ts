@@ -91,7 +91,6 @@ function buildMarkerIcon(leaflet: typeof L, spec: MapMarkerSpec): L.Icon {
       color: spec.color ?? DEFAULT_MARKER_COLOR,
       icon: spec.icon,
       shape: spec.shape,
-      selected: spec.selected,
     }),
     iconSize: [PIN_SIZE.width, PIN_SIZE.height],
     iconAnchor: [PIN_ANCHOR.x, PIN_ANCHOR.y],

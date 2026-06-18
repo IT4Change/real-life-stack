@@ -62,7 +62,17 @@ export function getSpacePrimaryColor(id: string, explicit?: string | null): stri
  */
 export function getActivePanelGlow(color: string): CSSProperties {
   if (!HEX6.test(color)) return {}
-  return { boxShadow: `0 0 0 1px ${color}, 0 0 8px 2px ${color}80` }
+  // Layered, slightly downward-biased glow so the active card reads as "lifted"
+  // rather than a flat colour blob: a tight ambient halo, a mid elevation glow,
+  // and a wide faint falloff. Negative spreads keep the lower layers from
+  // bleeding into a heavy aura. All ≤50% opacity for a soft, premium feel.
+  return {
+    boxShadow: [
+      `0 0 5px 0 ${color}66`,
+      `0 4px 14px -2px ${color}80`,
+      `0 10px 30px -6px ${color}40`,
+    ].join(", "),
+  }
 }
 
 /**
