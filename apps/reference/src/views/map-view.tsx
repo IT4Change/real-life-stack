@@ -56,7 +56,7 @@ const PICK_MARKER_COLOR = "#ef4444"
  *  marker into the strip of map left visible above the sheet. */
 const MAP_SHEET_FRACTION = 0.55
 
-export function MapView({ groupId }: { groupId: string }) {
+export function MapView({ groupId, active = true }: { groupId: string; active?: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Adapter lives in state so the markers-effect re-runs once `mount()` has
   // actually resolved. With the lazy-loaded map library, `mount()` is
@@ -217,6 +217,13 @@ export function MapView({ groupId }: { groupId: string }) {
       inner.remove()
     }
   }, [])
+
+  // Kept-alive map: when this view is revealed again (its host toggles back from
+  // `display:none`), the container regained its size — recompute so the map fills
+  // it instead of staying at its last-hidden (often 0) dimensions.
+  useEffect(() => {
+    if (active && adapter) adapter.resize()
+  }, [active, adapter])
 
   // Push markers to the adapter once it is mounted, and on every change.
   useEffect(() => {

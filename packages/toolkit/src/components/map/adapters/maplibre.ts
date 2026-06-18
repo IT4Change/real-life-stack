@@ -293,6 +293,10 @@ export class MapLibreMapAdapter implements MapAdapter {
     }
   }
 
+  resize(): void {
+    ;(this.mapInstance as MlMap | null)?.resize()
+  }
+
   setView(view: MapViewPatch): void {
     const map = this.mapInstance as MlMap | null
     if (!map) return

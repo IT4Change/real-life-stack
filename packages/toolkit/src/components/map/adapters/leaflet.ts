@@ -249,6 +249,10 @@ export class LeafletMapAdapter implements MapAdapter {
     }
   }
 
+  resize(): void {
+    ;(this.mapInstance as L.Map | null)?.invalidateSize()
+  }
+
   setView(view: MapViewPatch): void {
     const map = this.mapInstance as L.Map | null
     if (!map) return
