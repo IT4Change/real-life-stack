@@ -16,7 +16,9 @@ import {
   emptyFilterBarValue,
   useFilterableItems,
   type ItemEditorMapper,
-  getTagAccentColor,
+  getItemColor,
+  getSpacePrimaryColor,
+  useGroups,
   Button,
   Input,
   type FilterBarValue,
@@ -66,6 +68,11 @@ export function MapView({ groupId }: { groupId: string }) {
   // in from other spaces still resolve to their User.
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
+  const { data: groups } = useGroups()
+  // Group/space colour = the fallback in the unified item-colour resolver
+  // (custom → first tag → group), shared with the calendar.
+  const activeGroup = groups.find((g) => g.id === groupId)
+  const groupColor = getSpacePrimaryColor(groupId, (activeGroup?.data?.primaryColor as string | undefined) ?? null)
 
   const modulePanel = useModulePanel()
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
@@ -143,7 +150,7 @@ export function MapView({ groupId }: { groupId: string }) {
         id: item.id,
         position: [lng, lat],
         label: typeof item.data.title === "string" ? item.data.title : item.id,
-        color: firstTag ? getTagAccentColor(firstTag) : undefined,
+        color: getItemColor(item, { groupColor }),
         // Glyph: an explicit item icon, else the first tag's name (which resolves
         // to a curated icon when it matches, e.g. "cafe"); unknown → a dot.
         icon: (item.data.icon as string | undefined) ?? firstTag,
@@ -151,7 +158,7 @@ export function MapView({ groupId }: { groupId: string }) {
       byId.set(item.id, item)
     }
     return { markers: markerList, itemsById: byId }
-  }, [filteredItems])
+  }, [filteredItems, groupColor])
 
   // Mount the adapter once. The lazy-loaded map library means mount() is
   // properly async, which exposes a classic StrictMode race: both effect
