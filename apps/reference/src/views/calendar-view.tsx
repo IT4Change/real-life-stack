@@ -19,10 +19,14 @@ import {
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 
-/** Format a Date as a local `datetime-local` string (YYYY-MM-DDTHH:mm) for the composer's date widget. */
+const pad2 = (n: number) => String(n).padStart(2, "0")
+/** Local `datetime-local` string (YYYY-MM-DDTHH:mm) — used for a time-slot click. */
 function toLocalDatetime(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return `${toLocalDate(d)}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+/** Local date-only string (YYYY-MM-DD) — used for a bare day click (no time yet). */
+function toLocalDate(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 }
 
 export function CalendarViewWrapper({ groupId }: { groupId: string }) {
@@ -114,12 +118,15 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     openCreateComposer({ contentTypes: calendarContentTypes, mapper: mapSubmission })
   }, [openCreateComposer, calendarContentTypes, mapSubmission])
 
-  // Click on an empty day/slot → composer prefilled with that date/time.
+  // Click on an empty day/slot → composer prefilled with that date/time. A bare
+  // day click (month) lands at local midnight → keep it date-only so no time is
+  // shown until the user sets one; a time-slot click (week/day) keeps its hour.
   const openComposerAt = useCallback((date: Date) => {
+    const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0
     openCreateComposer({
       contentTypes: calendarContentTypes,
       mapper: mapSubmission,
-      initialData: { start: toLocalDatetime(date) },
+      initialData: { start: hasTime ? toLocalDatetime(date) : toLocalDate(date) },
     })
   }, [openCreateComposer, calendarContentTypes, mapSubmission])
 
