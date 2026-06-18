@@ -43,6 +43,7 @@ import type {
 } from "../adapter"
 import { markerDataUrl } from "../markers/render-marker-svg"
 import { PIN_SIZE } from "../markers/marker-shapes"
+import { iconRegistryVersion } from "../../../lib/icons/icon-registry"
 
 /** Free, key-less vector style (CORS-enabled). Override via MountOptions.tileSource. */
 const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
@@ -75,7 +76,9 @@ async function loadMapLibre(): Promise<MapLibreModule> {
 
 /** A stable key for a marker's appearance, so we only re-render the SVG when it changes. */
 function appearanceKey(spec: MapMarkerSpec): string {
-  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${spec.selected ? 1 : 0}`
+  // iconRegistryVersion() so a registerIcon() that redefines an icon invalidates
+  // cached markers using it (the spec key alone wouldn't change).
+  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${spec.selected ? 1 : 0}|${iconRegistryVersion()}`
 }
 
 /** The marker's pin as an SVG `data:` URL (see markerDataUrl — no injection surface). */

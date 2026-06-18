@@ -2,6 +2,8 @@ export {
   resolveIcon,
   registerIcon,
   getIcon,
+  iconToDataUrl,
+  iconRegistryVersion,
   iconNames,
   DEFAULT_ICON,
   type IconData,

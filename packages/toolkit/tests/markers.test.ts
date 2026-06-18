@@ -3,6 +3,8 @@ import {
   resolveIcon,
   getIcon,
   registerIcon,
+  iconToDataUrl,
+  iconRegistryVersion,
 } from "../src/lib/icons/icon-registry"
 import {
   renderMarkerSvg,
@@ -82,5 +84,47 @@ describe("markerShapeBody", () => {
     for (const shape of ["circle", "square"] as const) {
       expect(markerShapeBody(shape, "#abc123", "#000000")).toContain("#abc123")
     }
+  })
+})
+
+describe("iconToDataUrl (sandboxed glyph rendering — PR #100 XSS fix)", () => {
+  it("returns an svg data URL with the colour baked into currentColor paths", () => {
+    const url = iconToDataUrl({ viewBox: "0 0 24 24", body: '<path fill="currentColor" d="M0 0h1"/>' }, "#16a34a")
+    expect(url.startsWith("data:image/svg+xml,")).toBe(true)
+    const svg = decodeURIComponent(url.slice("data:image/svg+xml,".length))
+    expect(svg).toContain("#16a34a")
+    expect(svg).not.toContain("currentColor")
+  })
+
+  it("wraps even untrusted markup as a data URL (rendered via sandboxed <img>, never inlined)", () => {
+    // A registered icon may carry untrusted SVG. iconToDataUrl never inlines it;
+    // it is only ever shown via <img>, where scripts/handlers do not execute.
+    const url = iconToDataUrl(
+      { viewBox: "0 0 24 24", body: '<script>alert(1)</script><path d="M0 0h1"/>' },
+      "#000000",
+    )
+    expect(url.startsWith("data:image/svg+xml,")).toBe(true)
+  })
+
+  it("keeps emoji glyphs (monochrome:false) uncoloured", () => {
+    const url = iconToDataUrl({ viewBox: "0 0 24 24", monochrome: false, body: "<text>🌱</text>" }, "#000000")
+    const svg = decodeURIComponent(url.slice("data:image/svg+xml,".length))
+    expect(svg).toContain("🌱")
+    expect(svg).not.toContain('fill="#000000"')
+  })
+})
+
+describe("iconRegistryVersion (PR #100 cache-invalidation fix)", () => {
+  it("changes when registerIcon mutates the registry", () => {
+    const before = iconRegistryVersion()
+    registerIcon("pr100-version-probe", { viewBox: "0 0 4 4", body: "<rect/>" })
+    expect(iconRegistryVersion()).not.toBe(before)
+  })
+})
+
+describe("resolveIcon viewBox parsing (PR #100 single-quote fix)", () => {
+  it("parses a single-quoted viewBox in inline SVG", () => {
+    const d = resolveIcon("<svg viewBox='0 0 12 12'><circle r='5'/></svg>")
+    expect(d?.viewBox).toBe("0 0 12 12")
   })
 })

@@ -17,6 +17,15 @@ export interface IconData {
 
 const registry = new Map<string, IconData>(Object.entries(MARKER_ICON_SET))
 
+// Bumped whenever the registry mutates, so marker adapters can fold it into
+// their appearance cache key and re-render icons that were re-registered.
+let registryVersion = 0
+
+/** A counter that changes whenever {@link registerIcon} mutates the registry. */
+export function iconRegistryVersion(): number {
+  return registryVersion
+}
+
 /** Fallback glyph (a filled dot) when no icon resolves — Utopia's no-icon marker. */
 export const DEFAULT_ICON: IconData = {
   viewBox: "0 0 24 24",
@@ -29,20 +38,39 @@ export function iconNames(): string[] {
 }
 
 /**
- * Look up a curated icon by name only — no inline-SVG / emoji parsing, so the
- * returned body is always trusted registry content and safe to inline-render
- * (e.g. in `TagChip`). Markers use {@link resolveIcon} (rendered as an image).
+ * Look up a curated icon by name only — no inline-SVG / emoji parsing. Returns
+ * registry content (bundled or {@link registerIcon}'d). A registered icon's SVG
+ * is NOT assumed trusted, so consumers MUST render the body through a sandboxed
+ * `<img>` (see {@link iconToDataUrl}) — never inline it with
+ * `dangerouslySetInnerHTML`.
  */
 export function getIcon(name: string): IconData | undefined {
   return registry.get(name)
 }
 
 /**
- * Register or override a curated icon at runtime — e.g. a space's custom marker
- * SVG, mirroring Utopia's uploaded marker icons.
+ * Register or override a curated icon at runtime — e.g. a space's custom or
+ * uploaded marker SVG. The SVG is NOT assumed trusted: it is only ever rendered
+ * through a sandboxed `<img>` (markers via the data-URL pin, tags via
+ * {@link iconToDataUrl}), where scripts and event handlers never execute.
  */
 export function registerIcon(name: string, icon: IconData): void {
   registry.set(name, icon)
+  registryVersion++
+}
+
+/**
+ * Render a single glyph as a coloured SVG `data:` URL, for `<img src>` use.
+ * `<img>`-embedded SVG renders in a sandbox (no scripts or event handlers run),
+ * so this is safe even for untrusted / custom icons. Used by `TagChip`; the
+ * marker layer renders its pin + glyph through the same data-URL mechanism.
+ */
+export function iconToDataUrl(icon: IconData, color: string): string {
+  const mono = icon.monochrome !== false
+  const body = mono ? icon.body.replace(/currentColor/g, color) : icon.body
+  const fill = mono ? ` fill="${color}"` : ""
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${icon.viewBox}"${fill}>${body}</svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
 }
 
 const EMOJI_RE = /\p{Extended_Pictographic}/u
@@ -87,7 +115,7 @@ function parseInlineSvg(value: string): IconData | null {
     raw = raw.trim()
   }
   if (!raw.startsWith("<svg")) return null
-  const viewBox = /viewBox="([^"]+)"/.exec(raw)?.[1] ?? "0 0 24 24"
+  const viewBox = /viewBox\s*=\s*["']([^"']+)["']/.exec(raw)?.[1] ?? "0 0 24 24"
   const body = raw
     .replace(/^[\s\S]*?<svg[^>]*>/, "")
     .replace(/<\/svg>\s*$/, "")

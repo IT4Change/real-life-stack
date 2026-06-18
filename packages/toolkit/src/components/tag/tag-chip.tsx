@@ -1,8 +1,8 @@
 "use client"
 
 import { X } from "lucide-react"
-import { cn, getTagColor } from "../../lib/utils"
-import { getIcon } from "../../lib/icons/icon-registry"
+import { cn, getTagColor, getTagAccentColor } from "../../lib/utils"
+import { getIcon, iconToDataUrl } from "../../lib/icons/icon-registry"
 
 export interface TagChipProps {
   tag: string
@@ -53,16 +53,16 @@ export function TagChip({ tag, icon, size = "sm", selected, onToggle, onRemove, 
     className,
   )
 
-  // `getIcon` is registry-only (no inline-SVG parsing), so the body is trusted
-  // and safe to inline; it inherits the chip's text colour via `currentColor`.
+  // Render the glyph as a sandboxed <img> (data URL), never inline SVG: a
+  // registered/custom icon's body may be untrusted, and an <img>-embedded SVG
+  // never executes scripts or event handlers. Coloured to the chip's tag accent.
   const glyph = icon ? getIcon(icon) : undefined
   const glyphEl = glyph ? (
-    <svg
-      viewBox={glyph.viewBox}
-      className={cn("shrink-0", size === "sm" ? "h-2.5 w-2.5" : "h-3 w-3")}
-      fill="currentColor"
+    <img
+      src={iconToDataUrl(glyph, getTagAccentColor(tag))}
+      alt=""
       aria-hidden="true"
-      dangerouslySetInnerHTML={{ __html: glyph.body }}
+      className={cn("shrink-0", size === "sm" ? "h-2.5 w-2.5" : "h-3 w-3")}
     />
   ) : null
 

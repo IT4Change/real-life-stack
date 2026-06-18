@@ -5,6 +5,8 @@ export {
   resolveIcon,
   registerIcon,
   getIcon,
+  iconToDataUrl,
+  iconRegistryVersion,
   iconNames,
   DEFAULT_ICON,
   MARKER_ICON_SET,

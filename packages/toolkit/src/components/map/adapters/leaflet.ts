@@ -34,6 +34,7 @@ import type {
 } from "../adapter"
 import { markerDataUrl } from "../markers/render-marker-svg"
 import { PIN_SIZE, PIN_ANCHOR } from "../markers/marker-shapes"
+import { iconRegistryVersion } from "../../../lib/icons/icon-registry"
 
 const DEFAULT_TILE_SOURCE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 const DEFAULT_ATTRIBUTION =
@@ -73,7 +74,9 @@ function toBounds(bounds: L.LatLngBounds): MapBounds {
 
 /** A stable key for a marker's appearance, so we only rebuild the icon when it changes. */
 function appearanceKey(spec: MapMarkerSpec): string {
-  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${spec.selected ? 1 : 0}`
+  // iconRegistryVersion() so a registerIcon() that redefines an icon invalidates
+  // cached markers using it (the spec key alone wouldn't change).
+  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${spec.selected ? 1 : 0}|${iconRegistryVersion()}`
 }
 
 /**
