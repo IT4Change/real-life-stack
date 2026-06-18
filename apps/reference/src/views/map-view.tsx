@@ -222,7 +222,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // `display:none`), the container regained its size — recompute so the map fills
   // it instead of staying at its last-hidden (often 0) dimensions.
   useEffect(() => {
-    if (active && adapter) adapter.resize()
+    if (active && adapter) adapter.resize?.()
   }, [active, adapter])
 
   // Push markers to the adapter once it is mounted, and on every change.
