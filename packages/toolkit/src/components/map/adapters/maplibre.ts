@@ -316,6 +316,21 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
     ;(this.mapInstance as MlMap | null)?.setProjection({ type: projection })
   }
 
+  /**
+   * Style the globe's surrounding sky/atmosphere — the "space" behind the planet
+   * when zoomed out. Only visible in globe projection. Maplibre-only (no
+   * MapAdapter contract method); callers hold the concrete adapter.
+   */
+  setSky(sky: { skyColor?: string; horizonColor?: string; atmosphereBlend?: number }): void {
+    const map = this.mapInstance as MlMap | null
+    if (!map) return
+    map.setSky({
+      ...(sky.skyColor ? { "sky-color": sky.skyColor } : {}),
+      ...(sky.horizonColor ? { "horizon-color": sky.horizonColor } : {}),
+      ...(sky.atmosphereBlend != null ? { "atmosphere-blend": sky.atmosphereBlend } : {}),
+    })
+  }
+
   setView(view: MapViewPatch): void {
     const map = this.mapInstance as MlMap | null
     if (!map) return
