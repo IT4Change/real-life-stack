@@ -127,6 +127,7 @@ interface ItemFilter {
   hasTag?: string[]
   createdBy?: string
   source?: string
+  bbox?: [number, number, number, number]
   limit?: number
   offset?: number
 }
@@ -141,9 +142,12 @@ Mindestbedeutung:
 | `hasTag` | Nur Items, deren top-level `tags` alle genannten Strings enthält (AND, leeres Array matched alle) — siehe [07-tags.md](07-tags.md) |
 | `createdBy` | Nur Items dieser Autor-ID |
 | `source` | Optionaler Quellenfilter, wenn ein Connector mehrere Quellen unterscheidet |
+| `bbox` | Nur Items mit Position innerhalb der Bounding-Box `[west, south, east, north]` (GeoJSON-Längen-/Breitengrade). Viewport-begrenzte Abfrage (v.a. Karte); ein Connector ohne Geo-Index DARF clientseitig filtern, ein backend-gestützter Connector SOLL serverseitig einschränken. |
 | `limit` / `offset` | UI-Paginierung über eine bereits geladene oder beobachtbare Menge |
 
 `limit` und `offset` sind UI-Optimierungen. Sie ersetzen keine Trust-, Sichtbarkeits- oder Berechtigungslogik.
+
+`bbox` ist der Daten-Seam für skalierende Karten: dieselbe Abfrage liefert lokal (voller Satz, clientseitig gefiltert) wie später backend-gestützt (z.B. GraphQL, serverseitig eingeschränkt) nur die Items im sichtbaren Ausschnitt. Serverseitiges **Clustering** bei sehr großen Mengen (Rückgabe aggregierter Cluster statt Einzel-Items) ist eine **zukünftige, separate Query** und nicht Teil von `ItemFilter` (der `Item[]` zurückgibt) — siehe [modules/map.md](modules/map.md) → Datenquelle.
 
 ## Nicht-Ziele
 

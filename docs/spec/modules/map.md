@@ -1,8 +1,10 @@
 # Map Module
 
-**Status:** Normativer Entwurf v0.1
+**Status:** Normativer Entwurf v0.2
 
 Das Map Module ist die räumliche Projektion von Items im Current Space. Es macht sichtbar, welche Orte, Events, Personen oder andere Items mit geografischem Bezug in einem Ausschnitt relevant sind.
+
+> **v0.2-Änderung:** Der Karten-Adapter ist jetzt **capability-basiert** (analog zu den `DataInterface`-Connectoren): ein Basis-Contract, den jede Engine erfüllt, plus optionale Capabilities (`ClusterCapable`, `GlobeCapable`), die nicht jede Engine anbietet. Damit bleiben unterschiedliche Mapping-Frameworks kompatibel — inklusive **nativer Maps auf iOS/Android** — während fortgeschrittene Funktionen (WebGL-Cluster, Globe) dort genutzt werden, wo die Engine sie bietet, und das Modul sonst degradiert.
 
 ## Zweck
 
@@ -95,7 +97,8 @@ Regeln:
 | Item erstellen | `ItemWriter`, ggf. `Authenticatable` | Item mit `data.position` (per Click oder Adress-Suche) erstellen |
 | Item bearbeiten | `ItemWriter` | Position, Titel, Adresse, Tags oder Beschreibung aktualisieren |
 | Item löschen | `ItemWriter` | Item löschen, wenn die App diese Aktion erlaubt |
-| Cluster aufklappen | UI-Zustand | dichte Marker-Gruppen interaktiv expandieren |
+| Cluster aufklappen | `ClusterCapable` | dichte Marker-Gruppen interaktiv expandieren (Klick zoomt rein bis zum Aufbruch) |
+| Projection umschalten | `GlobeCapable` | Karte zwischen Mercator und Globe wechseln |
 | Verifikation anzeigen | `RelationCapable` oder `ConfirmationCapable` | Verifikation eines Orts oder einer Präsenz sichtbar machen |
 
 Mutationen laufen über Hooks oder Capability-Interfaces. Das Map Module darf keine backend-spezifischen Schreibpfade kennen.
@@ -116,7 +119,14 @@ Die konkrete Navigation ist App- oder Shell-Verantwortung.
 
 ## Karten-Library-Adapter
 
-Das Map Module ist **Library-agnostisch**. Konkrete Karten-Engines (Leaflet, MapLibre GL, Google Maps, OpenLayers, …) werden über einen Adapter angebunden. Komponenten und Hooks dürfen keine library-spezifischen Typen oder APIs leaken.
+Das Map Module ist **engine-agnostisch und capability-basiert** — nach demselben Muster wie die `DataInterface`-Connectoren (siehe [02-data-interface.md](../02-data-interface.md)). Konkrete Karten-Engines (MapLibre GL, Leaflet, Google/Apple-Maps nativ via Capacitor, OpenLayers, …) werden über einen Adapter angebunden. Komponenten und Hooks dürfen keine library-spezifischen Typen oder APIs leaken.
+
+Es gibt zwei Ebenen:
+
+1. **Basis-Contract `MapAdapter`** — den **jeder** Adapter vollständig erfüllt (Mount, Marker, Viewport, Clicks). Modul- und UI-Code laufen ausschließlich gegen diesen Contract.
+2. **Optionale Capabilities** — die ein Adapter anbieten KANN, aber nicht MUSS (`ClusterCapable`, `GlobeCapable`, …). Das Modul erkennt sie per Feature-Detection (`hasCluster(adapter)`, `hasGlobe(adapter)` — analog zu `hasItemGroups(connector)`) und **degradiert**, wenn sie fehlen: kein Globe-Toggle ohne `GlobeCapable`, viewport-begrenzte Einzel-Marker statt Cluster ohne `ClusterCapable`.
+
+Das **Marker-Rendering** ist Adapter-intern: derselbe `MapMarkerSpec` wird je nach Engine als DOM-Element (Leaflet), WebGL-Symbol-Layer (MapLibre, skaliert auf zehntausende Marker) oder native Annotation (iOS/Android) gezeichnet. Wie ein Adapter intern rendert, ist nie Teil des Contracts.
 
 ### Adapter-Vertrag
 
@@ -185,26 +195,56 @@ Regeln:
 
 Der obige Block ist illustrativ. Die **normative** Contract-Quelle ist `packages/toolkit/src/components/map/adapter.ts`. Reale Abweichungen vom Skizzen-Block: `setView` nimmt `MapViewPatch` (`{ center?, zoom? }`), `mount` kennt zusätzlich `attribution`, und die Hilfstypen heißen `LngLat`, `MapBounds`, `MapViewState`, `MapViewPatch`, `MapClickEvent`, `Unsubscribe`. Bei Drift gilt der Code, siehe Abschnitt „Austauschbarkeit: Raster-Adapter und Vektor-Adapter".
 
-### Bereitgestellte Adapter
+### Capabilities (optional)
 
-Adapter werden über dedizierte Subpath-Entries des Toolkits bereitgestellt, damit Consumer ohne den jeweiligen Adapter dessen Library nicht bündeln müssen:
+Capabilities sind separate Interfaces, die ein Adapter zusätzlich zu `MapAdapter` implementieren KANN. Das Modul prüft sie per Type-Guard und degradiert, wenn sie fehlen.
 
-- `LeafletMapAdapter` — vorhanden, importiert via `@real-life-stack/toolkit/leaflet`; Raster-Tiles (OSM-Default), geringe Komplexität
-- `MapLibreMapAdapter` — implementiert, via `@real-life-stack/toolkit/maplibre`; Vektorkarte (MapLibre GL), performant bei vielen Markern, Custom-Styling
+```ts
+interface ClusterCapable {
+  /** Marker-Dichte zusammenfassen; null/undefined deaktiviert Clustering. */
+  setClusterConfig(config: { radius?: number } | null): void
+  /** Klick auf einen Cluster (statt einzelnen Marker). */
+  observeClusterClicks(callback: (cluster: { id: string; count: number; position: LngLat }) => void): Unsubscribe
+}
 
-Weitere Adapter (Google, OpenLayers, MapboxGL) sind möglich, sind aber nicht Teil von v0.1.
+interface GlobeCapable {
+  setProjection(projection: "mercator" | "globe"): void
+}
 
-### Austauschbarkeit: Raster-Adapter und Vektor-Adapter
-
-Der heutige `LeafletMapAdapter` (Raster-Tiles) und ein `MapLibreMapAdapter` (Vektorkarte, MapLibre GL) sind zwei **austauschbare Implementierungen desselben `MapAdapter`-Contracts**. Sie unterscheiden sich nur in der Tile-/Style-Quelle und im internen Rendering, nicht in der vom Map Module konsumierten Schnittstelle.
-
-Der reale Contract lebt in `packages/toolkit/src/components/map/adapter.ts` und ist die normative Quelle. Beide Adapter MÜSSEN ihn vollständig erfüllen.
+function hasCluster(a: MapAdapter): a is MapAdapter & ClusterCapable
+function hasGlobe(a: MapAdapter): a is MapAdapter & GlobeCapable
+```
 
 Regeln:
 
-1. Beide Adapter implementieren `MapAdapter` identisch. `MapView` (bzw. die Reference-`MapView` in `apps/reference/src/views/map-view.tsx`) konsumiert ausschließlich `MapAdapter`-Typen aus dem Toolkit-Barrel `@real-life-stack/toolkit`; konkrete Adapter werden über dedizierte Subpath-Entries geladen (`@real-life-stack/toolkit/leaflet` und `@real-life-stack/toolkit/maplibre`).
-2. Die Auswahl Raster vs. Vektor ist eine reine Adapter-Substitution: dieselben Marker (`setMarkers`), dieselben Viewport-Operationen (`setView`/`getView`/`observeView`), dieselben Click-Pfade (`observeClicks`/`observeMarkerClicks`). Modul- und UI-Code dürfen nicht zwischen Raster- und Vektor-Adapter unterscheiden.
-3. Koordinaten bleiben durchgängig `[lng, lat]` (GeoJSON, Typ `LngLat`). MapLibre GL nutzt intern bereits `[lng, lat]`; Leaflet nutzt `[lat, lng]` und übersetzt im Adapter. Diese Übersetzung ist Adapter-Detail und nie sichtbar im Contract.
+1. Der Basis-Contract `MapAdapter` ist Pflicht; jede Capability ist optional. Modul-/UI-Code MUSS Capabilities per Feature-Detection prüfen und bei Abwesenheit degradieren — niemals annehmen, dass ein Adapter sie hat.
+2. **Clustering-Degradation:** ohne `ClusterCapable` zeigt das Modul die viewport-begrenzte Einzel-Marker-Menge (siehe Datenquelle), nicht alle Marker global. Mit `ClusterCapable` werden Cluster nativ/Plugin-seitig aus der gesetzten Marker-Menge gebildet.
+3. **Globe-Degradation:** ohne `GlobeCapable` entfällt der Projection-Toggle; die Karte bleibt 2D (Mercator).
+4. Capabilities leaken keine library-spezifischen Typen; ihre Signaturen nutzen nur Contract-Typen (`LngLat`, `Unsubscribe`, …).
+
+### Bereitgestellte Adapter
+
+Adapter werden über dedizierte Subpath-Entries des Toolkits bereitgestellt, damit Consumer ohne den jeweiligen Adapter dessen Library nicht bündeln müssen. Welche Capabilities ein Adapter erfüllt:
+
+| Adapter | Import | Basis | `ClusterCapable` | `GlobeCapable` | Rendering (intern) |
+|---|---|---|---|---|---|
+| `MapLibreMapAdapter` | `@real-life-stack/toolkit/maplibre` | ✅ | ✅ nativ (GL) | ✅ | GeoJSON-Source + WebGL-Layer; skaliert auf zehntausende Marker |
+| `LeafletMapAdapter` | `@real-life-stack/toolkit/leaflet` | ✅ | optional (Plugin) | ❌ | DOM-Marker; 2D-Raster, geringe Komplexität |
+| `CapacitorNativeMapAdapter` *(geplant)* | nativ (iOS/Android) | ✅ | (SDK-abhängig) | (SDK-abhängig) | native Annotations (MapKit/Google Maps) |
+
+`MapLibreMapAdapter` ist der **Vollausbau** (Cluster + Globe + WebGL) und die Referenz für skalierende Karten. Weitere Adapter (Google/OpenLayers Web, MapboxGL) sind möglich, aber nicht Teil von v0.2.
+
+### Austauschbarkeit und Capability-Degradation
+
+Adapter sind **austauschbare Implementierungen desselben Basis-`MapAdapter`-Contracts**. Sie unterscheiden sich in Tile-/Style-Quelle, internem Rendering und den angebotenen Capabilities — nicht im Basis-Contract.
+
+Der reale Contract lebt in `packages/toolkit/src/components/map/adapter.ts` und ist die normative Quelle. Jeder Adapter MUSS den Basis-Contract vollständig erfüllen; Capabilities sind optional.
+
+Regeln:
+
+1. Jeder Adapter implementiert `MapAdapter` identisch. `MapView` (`apps/reference/src/views/map-view.tsx`) konsumiert ausschließlich `MapAdapter`-Typen aus dem Toolkit-Barrel `@real-life-stack/toolkit`; konkrete Adapter werden über dedizierte Subpath-Entries geladen.
+2. Der **Basis-Pfad** ist reine Adapter-Substitution: dieselben Marker (`setMarkers`), dieselben Viewport-Operationen (`setView`/`getView`/`observeView`), dieselben Click-Pfade. Modul-/UI-Code dürfen für den Basis-Pfad nicht zwischen Adaptern unterscheiden. **Erweiterte** Funktionen (Cluster, Globe) laufen ausschließlich über Capability-Detection — nie über Engine-Erkennung („ist das MapLibre?").
+3. Koordinaten bleiben durchgängig `[lng, lat]` (GeoJSON, Typ `LngLat`). Eine Engine mit `[lat, lng]` (z.B. Leaflet) übersetzt im Adapter; nie sichtbar im Contract.
 
 #### Tile-/Style-Quelle als austauschbarer Parameter
 
@@ -225,10 +265,13 @@ Regeln:
 3. Marker-Click wird über `observeMarkerClicks(callback)` gemeldet und liefert nur die `markerId`. Das Map Module schlägt darüber das `Item` nach (heute `itemsById`-Lookup in `MapView`) und öffnet die Detailansicht. Click→Item ist damit ein zweistufiger Pfad: Adapter meldet `id`, Modul mappt `id`→`Item`.
 4. Freie Klicks auf die Karte (z.B. zum Setzen einer neuen Position) werden über `observeClicks(callback)` mit `MapClickEvent` gemeldet; `originalEvent` ist adapter-spezifisch und UI-Code DARF nicht auf dessen Form bauen.
 
-#### Clustering (optional)
+#### Clustering (`ClusterCapable`)
 
-1. Clustering ist **nicht Teil des v0.1-Contracts** und wird bei Bedarf als optionale Capability-Erweiterung ergänzt, nicht als Pflicht-Methode jedes Adapters.
-2. Ein Vektor-Adapter KANN Clustering nativ (z.B. GL-Layer-Cluster) anbieten, ein Raster-Adapter KANN es über eine Marker-Cluster-Erweiterung anbieten. In beiden Fällen bleibt die Marker-Eingabe `MapMarkerSpec[]`; Cluster-Aggregation ist Adapter-intern und leakt nicht in den Contract.
+1. Clustering ist eine **optionale Capability** (`ClusterCapable`), kein Teil des Basis-Contracts. Adapter, die sie anbieten, clustern die per `setMarkers` gesetzte Marker-Menge **adapter-intern** (MapLibre: native GL-Cluster; ein Raster-Adapter ggf. via Cluster-Plugin). Die Marker-Eingabe bleibt `MapMarkerSpec[]`; die Aggregation leakt nicht in den Contract.
+2. **Darstellung:** Ein Cluster wird als Bubble mit der **Anzahl** gezeigt, eingefärbt in der **dominanten Gruppenfarbe** der enthaltenen Items (analog zur Item-Farblogik; fehlt eine eindeutige, neutrale Default-Farbe). Einzelne (nicht geclusterte) Marker behalten ihren Pin.
+3. **Interaktion:** Klick auf einen Cluster (`observeClusterClicks`) zoomt so weit hinein, dass der Cluster aufbricht. Klick auf einen Einzel-Marker bleibt der Item-Click-Pfad.
+4. **Degradation:** Ohne `ClusterCapable` rendert das Modul die viewport-begrenzte Einzel-Marker-Menge ohne Aggregation (siehe Datenquelle).
+5. **Skalierung:** Natives Clustering (MapLibre) trägt zehntausende Punkte client-seitig. Sehr große Mengen (> ~100k) gehören **serverseitig** geclustert — siehe Datenquelle.
 
 ## Item→Marker-Mapping
 
@@ -238,7 +281,7 @@ Das Map Module besitzt **nicht** das Marker-Rendering. Es besitzt nur das **Mapp
 
 1. Die Marker-Primitive — Pin-Shapes (`circle`/`square`), die geteilte Icon-Registry und `renderMarkerSvg` / `markerDataUrl` — leben framework-unabhängig im Toolkit (`packages/toolkit/src/components/map/markers/`, `packages/toolkit/src/lib/icons/`), abgeleitet aus den Utopia-Map-Markern. Eine spätere Extraktion in ein eigenes `real-life-org`-Repo ist geplant, sobald stabil (vgl. A2).
 2. RLS hält das Mapping `Item → MapMarkerSpec`. Die Marker-Schicht ist die Quelle der Primitive; deren Implementierungsdetails gehören **nicht** in diese Spec.
-3. Adapter (Leaflet, MapLibre) rendern den Marker als SVG-`data:`-URL (`markerDataUrl`) und mounten ihn (Leaflet `icon({ iconUrl })`, MapLibre `<img>`). Das Map Module sieht weder Renderer- noch Adapter-Details.
+3. Adapter rendern denselben `MapMarkerSpec` je nach Engine unterschiedlich: als DOM-Element mit SVG-`data:`-URL (Leaflet `icon({ iconUrl })`), als WebGL-Symbol-Layer mit einem Image-Atlas aus denselben Pin-Bildern (`map.addImage`, MapLibre) oder als native Annotation mit dem Pin-Bild (iOS/Android). Die geteilte Pin-Bild-Erzeugung (`renderMarkerSvg` / `markerDataUrl`) ist allen gemeinsam; *wie* gemountet wird, ist Adapter-intern und nie Teil des Contracts. Auswahl/Glow ist im DOM-Pfad ein CSS-`filter`, im WebGL-Pfad ein Layer-Halo — beides Adapter-Detail.
 
 ### Mapping-Vertrag
 
@@ -251,7 +294,7 @@ Das Map Module leitet aus jedem map-fähigen Item ein `MapMarkerSpec` ab. Welche
 | `label` | `data.title` (Fallback `Item.id`) | Marker-Label / Tooltip. |
 | `color` | `getTagAccentColor(tags[0])` | Farbe aus dem ersten Tag (deterministische Palette). Fehlt ein Tag, KÖNNEN Marker die Space-`primaryColor` als Default verwenden (Tag-Akzent hat Vorrang; siehe `04-items-relations-groups-spaces.md` → Space-Primärfarbe); andernfalls nutzt der Adapter seinen Default-Pin. |
 | `icon` | `data.icon` (optional), sonst erster Tag-Name | Glyph-Hint; aufgelöst über die geteilte Icon-Registry (kuratierter Name \| inline-SVG \| Emoji), Fallback Dot. **Aktiv** emittiert (`MapView`) und konsumiert (beide Adapter rendern den Pin via `renderMarkerSvg`). |
-| `shape` / `selected` | optional | Pin-Form (`circle`/`square`, Default `circle`) und Auswahl-Zustand; vom Marker-Renderer gezeichnet. Clustering bleibt v0.1-extern (Adapter-intern, aus Marker-Dichte). |
+| `shape` / `selected` / `glowColor` | optional | Pin-Form (`circle`/`square`, Default `circle`), Auswahl-Zustand und Glow-Farbe (Ursprungsgruppe des Items); vom Renderer gezeichnet (DOM-`filter` bzw. WebGL-Layer-Halo). Clustering ist Capability-Sache (`ClusterCapable`), nicht Teil des Mappings. |
 
 Regeln:
 
@@ -259,6 +302,21 @@ Regeln:
 2. Farbe kommt heute aus `getTagAccentColor(tags[0])` (CSS-Color-Accent der geteilten Tag-Palette, vgl. `packages/toolkit/src/lib/utils.ts`). `getTagColor` (Tailwind-Chip-Klassen) ist hier **nicht** zu verwenden, da Marker keine Tailwind-Flächen sind.
 3. Die Position kommt ausschließlich aus `data.position`. Es gibt keinen Alias-Mechanismus (siehe Datenmodell-Regel 6).
 4. Das Mapping DARF keine library- oder adapter-spezifischen Typen produzieren; sein einziger Output-Typ ist `MapMarkerSpec` aus dem Adapter-Contract.
+
+## Globe-Projection (`GlobeCapable`)
+
+1. Globe ist eine **optionale Capability** (`GlobeCapable.setProjection("mercator" | "globe")`). Adapter ohne sie bleiben 2D (Mercator); das Modul blendet den Toggle aus.
+2. Default ist **Mercator**. Globe ist **umschaltbar** (Setting/Toggle), nicht erzwungen — fürs Erproben und weil Globe bei niedrigem Zoom andere UX hat.
+3. Marker, Cluster und Click-Pfade funktionieren in beiden Projektionen identisch über den Basis-Contract. Rückseiten-Occlusion (Marker auf der abgewandten Globe-Hälfte ausblenden) ist Adapter-Detail.
+
+## Datenquelle (viewport-begrenzt)
+
+Die Karte fragt Items **viewport-begrenzt** ab statt den vollen Satz zu laden — der Seam für skalierende Karten (zehntausende Items) und das spätere GraphQL-Backend.
+
+1. Die Marker-Abfrage MUSS die sichtbare **Bounding-Box** als `ItemFilter.bbox` (`[west, south, east, north]`) mitgeben; bei Pan/Zoom (`observeView` → `moveend`) wird neu abgefragt (debounced). Siehe [02-data-interface.md](../02-data-interface.md) → Filter.
+2. Ein lokaler Connector DARF `bbox` clientseitig aus dem vollen Satz filtern; ein backend-gestützter Connector (GraphQL) SOLL serverseitig einschränken, sodass nur die Items im Ausschnitt übertragen werden.
+3. **Serverseitiges Clustering** (Rückgabe aggregierter Cluster statt Einzel-Items, zoom-parametrisiert) ist die Antwort für sehr große Mengen (> ~100k). Es ist eine **zukünftige, separate Query** (nicht `ItemFilter`, der `Item[]` liefert) und Teil des GraphQL-Meilensteins, kein v0.2-Pflichtteil.
+4. Bis dahin gilt: lokaler/voller Satz → `bbox`-gefiltert → client-seitiges Clustering (`ClusterCapable`). Derselbe Modul-Code trägt später den server-geclusterten Pfad, ohne Umbau am Marker-/Adapter-Contract.
 
 ## Layout
 
@@ -269,9 +327,10 @@ Das Map Module füllt den verfügbaren Space-Bereich vollständig aus. Es hat **
 Map nutzt die generische `ItemFilters`-Komponente, die modulübergreifend die gleiche Filter-UX liefert (gleiche Pills, gleicher Composer-Dialog). Filter sind in zwei Klassen:
 
 - **Generische Filter** (aus `ItemFilters`): `type`, `tag`, `schema`, `createdBy`, freie Suche.
-- **Map-spezifische Filter** (vom Map Module ergänzt): `bounds` (nur Items im sichtbaren Ausschnitt), `withinRadius`, `hasPosition`, `geometryType`.
+- **Viewport-Filter** (erstklassig im `ItemFilter`): `bbox` (nur Items im sichtbaren Ausschnitt) — Teil der Datenquelle, siehe oben.
+- **Map-spezifische Zusatzfilter** (vom Map Module ergänzt): `withinRadius`, `hasPosition`, `geometryType`.
 
-Die Kombination wird in den `ItemFilter` der `DataInterface`-Observable abgebildet (siehe [02-data-interface.md](../02-data-interface.md), [06-schema-composition.md](../06-schema-composition.md) und [07-tags.md](../07-tags.md)). Map-spezifische Filter, die `ItemFilter` nicht direkt kennt (z.B. `bounds`), werden vom Map Module nach dem `observe()` clientseitig angewendet.
+Die Kombination wird in den `ItemFilter` der `DataInterface`-Observable abgebildet (siehe [02-data-interface.md](../02-data-interface.md), [06-schema-composition.md](../06-schema-composition.md) und [07-tags.md](../07-tags.md)). `bbox` ist erstklassiger `ItemFilter`-Parameter (Connector filtert lokal client- oder backend-seitig). Zusatzfilter, die `ItemFilter` nicht kennt (`withinRadius`, `geometryType`), werden nach dem `observe()` clientseitig angewendet.
 
 ## Komponenten
 
@@ -309,7 +368,7 @@ Das Map Module definiert nicht:
 
 1. Wo lebt die Library-Adapter-Auswahl: pro App, pro Space, pro Modul-Konfiguration?
 2. Wie wird der Default-Ausschnitt eines Space festgelegt (per Space-Config, oder berechnet aus Items)?
-3. Wie wird Clustering konfiguriert (im Adapter, im Modul, oder als optionale Capability)?
+3. ~~Wie wird Clustering konfiguriert?~~ **Entschieden (v0.2):** als optionale Capability `ClusterCapable` (adapter-intern, Modul degradiert) — siehe Abschnitt „Clustering".
 4. Wie werden Items mit `Polygon`-/`LineString`-Position dargestellt — als überlagerter Layer oder als reiche Marker?
 5. Welche Tile-Quellen sind Default in der Reference App (OSM-Standard, eigene Tile-Server, themed Tiles)?
 6. Soll der Adapter eine Möglichkeit haben, Karten-spezifische Custom-Controls zu hosten (Layer-Switcher, Zeichenwerkzeuge), oder bleibt die Map-UI im React-Layer?
@@ -323,3 +382,6 @@ Das Map Module definiert nicht:
    - **C — Hybrid:** Klick öffnet Popup mit `ItemPreview`; ein Hover oder Long-Press öffnet direkt das Detail-Panel. Pro: beides bedienbar. Contra: zwei verschiedene Interaktionen für sehr ähnliches Verhalten, Discoverability auf Touch unklar.
 
    Open Question für Sebastian: Welche Variante passt zu seinem UX-Modell für ortsbasierte Discovery? Insbesondere ob Map-Kontext-Erhalt wichtiger ist als Modul-Konsistenz.
+9. **Serverseitiges Clustering / Cluster-Tiling** (> ~100k Items): zoom-parametrisierte Cluster-Query oder Vektor-Tiles (z.B. PostGIS `ST_AsMVT`) — Teil des GraphQL-Backend-Meilensteins, Query-Form noch zu definieren (siehe Datenquelle).
+10. **`VectorSourceCapable`** (optional): effizienter Source-Handoff (GeoJSON-FeatureCollection / typed source) statt `MapMarkerSpec[]` für Engines mit nativer Vektor-Source, um den JS-Listen-Pfad bei sehr vielen Markern zu umgehen. Optimierung, noch nicht normiert.
+11. **`CapacitorNativeMapAdapter`** (iOS/Android nativ): konkrete SDK-Wahl (MapKit / Google Maps / Mapbox-native) und welche Capabilities das jeweilige SDK erfüllt, offen.
