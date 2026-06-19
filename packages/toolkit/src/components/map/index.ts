@@ -22,7 +22,13 @@ export type {
   MapClickEvent,
   MapAdapter,
   Unsubscribe,
+  GlobeCapable,
+  MapProjection,
 } from "./adapter"
+
+// Capability type-guards are runtime values (not types), so they ship as a
+// regular export.
+export { hasGlobe } from "./adapter"
 
 // Marker rendering is library-agnostic (pure SVG), so it lives in the barrel
 // alongside the contract — both adapters render markers through it.

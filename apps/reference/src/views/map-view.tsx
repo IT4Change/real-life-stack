@@ -20,12 +20,14 @@ import {
   useItemGroupColorResolver,
   Button,
   Input,
+  hasGlobe,
   type FilterBarValue,
   type FilterTypeOption,
   type MapMarkerSpec,
+  type MapProjection,
 } from "@real-life-stack/toolkit"
 import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
-import { Calendar, MapPin, Search } from "lucide-react"
+import { Calendar, Globe, MapPin, Search } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useLocationPick } from "../location-pick"
@@ -63,6 +65,9 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // genuinely async, and the StrictMode double-mount race is too tight for
   // refs alone.
   const [adapter, setAdapter] = useState<MapLibreMapAdapter | null>(null)
+  // Map projection — Mercator (2D) by default, switchable to globe where the
+  // adapter supports it (GlobeCapable). Toggleable for testing.
+  const [projection, setProjection] = useState<MapProjection>("mercator")
   // Field-presence filter (spec 06): any item with data.position is
   // map-renderable, regardless of `type`. The Point/coordinates check
   // below is still defensive validation, not the activation criterion.
@@ -225,6 +230,23 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     if (active && adapter) adapter.resize?.()
   }, [active, adapter])
 
+  // Apply the chosen projection whenever it changes or the adapter (re)mounts.
+  // Only adapters that support it (GlobeCapable) react; others stay 2D.
+  useEffect(() => {
+    if (adapter && hasGlobe(adapter)) adapter.setProjection(projection)
+  }, [adapter, projection])
+
+  // Toggle projection. MapLibre interpolates the globe back to mercator at high
+  // zoom (so it looks flat when zoomed in) — when switching to globe from a
+  // zoomed-in view, zoom out so the actual globe is visible ("world view").
+  const toggleProjection = useCallback(() => {
+    const next: MapProjection = projection === "globe" ? "mercator" : "globe"
+    if (next === "globe" && adapter && adapter.getView().zoom > 3) {
+      adapter.setView({ zoom: 2 })
+    }
+    setProjection(next)
+  }, [projection, adapter])
+
   // Push markers to the adapter once it is mounted, and on every change.
   useEffect(() => {
     if (!adapter) return
@@ -341,6 +363,26 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
           internal control / popup z-indices stay contained and don't overlay
           the navbar / workspace switcher / user menu above. */}
       <div ref={containerRef} className="absolute inset-0 isolate" />
+
+      {/* Projection toggle (Mercator ↔ Globe). Only shown when the adapter
+          supports it (GlobeCapable) and we're not mid pick. */}
+      {adapter && hasGlobe(adapter) && !isPicking && (
+        // z-30 so it sits above the full-width FilterBar overlay (z-20), whose
+        // `**:pointer-events-auto` descendants would otherwise eat the clicks.
+        <div className="absolute right-3 top-3 z-30">
+          <Button
+            variant={projection === "globe" ? "default" : "outline"}
+            size="icon-sm"
+            aria-pressed={projection === "globe"}
+            aria-label={projection === "globe" ? "Zur 2D-Karte wechseln" : "Zum Globus wechseln"}
+            title={projection === "globe" ? "2D-Karte" : "Globus"}
+            onClick={toggleProjection}
+            className={`shadow-md ${projection === "globe" ? "" : "bg-background"}`}
+          >
+            <Globe className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       {/* Location-pick banner: shown while a composer hands off position
           picking to this map. On mobile the composer drawer is suspended so

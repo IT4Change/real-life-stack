@@ -32,11 +32,13 @@ import type {
   NavigationControlOptions,
 } from "maplibre-gl"
 import type {
+  GlobeCapable,
   LngLat,
   MapAdapter,
   MapClickEvent,
   MapMarkerSpec,
   MapMountOptions,
+  MapProjection,
   MapViewPatch,
   MapViewState,
   Unsubscribe,
@@ -144,7 +146,7 @@ function buildMarkerElement(spec: MapMarkerSpec): HTMLImageElement {
   return el
 }
 
-export class MapLibreMapAdapter implements MapAdapter {
+export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
   // Internal MapLibre handles are held as `unknown` so the generated `.d.ts`
   // does not reference `maplibre-gl`. Consumers without it installed can
   // import the toolkit without TS errors.
@@ -307,6 +309,11 @@ export class MapLibreMapAdapter implements MapAdapter {
 
   resize(): void {
     ;(this.mapInstance as MlMap | null)?.resize()
+  }
+
+  // --- GlobeCapable ---
+  setProjection(projection: MapProjection): void {
+    ;(this.mapInstance as MlMap | null)?.setProjection({ type: projection })
   }
 
   setView(view: MapViewPatch): void {
