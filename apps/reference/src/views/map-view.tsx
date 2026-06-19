@@ -70,6 +70,11 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // genuinely async, and the StrictMode double-mount race is too tight for
   // refs alone.
   const [adapter, setAdapter] = useState<MapLibreMapAdapter | null>(null)
+  // Map init failure + retry trigger. Without this the loading overlay (shown
+  // while `!adapter`) would spin forever if `mount()` rejects (network / style /
+  // WebGL error). `mountAttempt` is a dep of the mount effect so retry re-runs it.
+  const [mountError, setMountError] = useState(false)
+  const [mountAttempt, setMountAttempt] = useState(0)
   // Map projection — Mercator (2D) by default, switchable to globe where the
   // adapter supports it (GlobeCapable). Toggleable for testing.
   const [projection, setProjection] = useState<MapProjection>("mercator")
@@ -228,6 +233,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       (err) => {
         // eslint-disable-next-line no-console
         console.error("MapLibreMapAdapter mount failed", err)
+        if (!cancelled) setMountError(true)
       },
     )
     return () => {
@@ -238,7 +244,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       }
       inner.remove()
     }
-  }, [])
+  }, [mountAttempt])
 
   // Kept-alive map: when this view is revealed again (its host toggles back from
   // `display:none`), the container regained its size — recompute so the map fills
@@ -394,14 +400,31 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         className={`absolute inset-0 isolate ${projection === "globe" ? "rls-globe-sky" : ""}`}
       />
 
-      {/* Loading state while the map library + style + first frame initialise
-          (the adapter resolves only once `mount()` completes). */}
+      {/* Loading / error state while the map library + style + first frame
+          initialise (the adapter resolves only once `mount()` completes). On a
+          mount failure we show an error + retry instead of spinning forever. */}
       {!adapter && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-12 w-12 animate-spin" />
-            <span className="text-sm">Karte wird geladen…</span>
-          </div>
+          {mountError ? (
+            <div className="flex flex-col items-center gap-3 px-6 text-center">
+              <span className="text-sm text-muted-foreground">Karte konnte nicht geladen werden.</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setMountError(false)
+                  setMountAttempt((a) => a + 1)
+                }}
+              >
+                Erneut versuchen
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 text-muted-foreground">
+              <Loader2 className="h-12 w-12 animate-spin" />
+              <span className="text-sm">Karte wird geladen…</span>
+            </div>
+          )}
         </div>
       )}
 
