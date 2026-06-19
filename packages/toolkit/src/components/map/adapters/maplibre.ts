@@ -62,6 +62,11 @@ const MARKER_SOURCE = "rls-markers"
 const MARKER_SYMBOL_LAYER = "rls-marker-symbols"
 /** Rasterise the pin SVG at 2× so the GPU icon stays crisp on retina. */
 const PIN_RASTER_SCALE = 2
+/** Logical-px padding baked around the pin so its drop shadow isn't clipped.
+ *  The symbol layer compensates with `icon-offset` so the tip stays on the
+ *  coordinate. */
+const PIN_SHADOW_PAD = 9
+const MARKER_GLOW_LAYER = "rls-marker-glow"
 
 // MapLibre's module shape mirrors its namespace. The two constructors we use
 // are typed against the real maplibre-gl option types so the mount/marker calls
@@ -134,14 +139,27 @@ function loadImageEl(url: string): Promise<HTMLImageElement> {
  */
 async function rasterizePin(url: string, scale: number): Promise<ImageData> {
   const img = await loadImageEl(url)
-  const w = PIN_SIZE.width * scale
-  const h = PIN_SIZE.height * scale
+  // Pad the canvas so the baked drop shadow has room (a symbol-layer icon can't
+  // carry a CSS filter, so the shadow must be in the image).
+  const w = (PIN_SIZE.width + PIN_SHADOW_PAD * 2) * scale
+  const h = (PIN_SIZE.height + PIN_SHADOW_PAD * 2) * scale
   const canvas = document.createElement("canvas")
   canvas.width = w
   canvas.height = h
   const ctx = canvas.getContext("2d")
   if (!ctx) throw new Error("MapLibreMapAdapter: no 2D context for pin rasterisation")
-  ctx.drawImage(img, 0, 0, w, h)
+  // Work in device pixels (no ctx.scale — shadow blur/offset don't transform
+  // reliably across browsers). Bake a clear drop shadow under the pin.
+  ctx.shadowColor = "rgba(0,0,0,0.45)"
+  ctx.shadowBlur = 5 * scale
+  ctx.shadowOffsetY = 3 * scale
+  ctx.drawImage(
+    img,
+    PIN_SHADOW_PAD * scale,
+    PIN_SHADOW_PAD * scale,
+    PIN_SIZE.width * scale,
+    PIN_SIZE.height * scale,
+  )
   return ctx.getImageData(0, 0, w, h)
 }
 
@@ -289,6 +307,29 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
         data: { type: "FeatureCollection", features: [] },
       })
     }
+    // Glow layer BELOW the pins (added first): a soft, blurred circle in the
+    // item's group colour behind the selected marker — the map counterpart of
+    // the cards' active-item glow. Data-driven (filter on `selected`), so it
+    // follows panel selection without extra calls. Translated up onto the pin's
+    // body (the coordinate is the tip).
+    if (!map.getLayer(MARKER_GLOW_LAYER)) {
+      map.addLayer({
+        id: MARKER_GLOW_LAYER,
+        type: "circle",
+        source: MARKER_SOURCE,
+        filter: ["==", ["get", "selected"], 1],
+        paint: {
+          "circle-color": ["get", "glowColor"],
+          // Larger than the pin so the halo reads around it (a small circle hides
+          // behind the opaque pin body).
+          "circle-radius": 26,
+          "circle-blur": 0.7,
+          "circle-opacity": 0.65,
+          "circle-translate": [0, -26],
+          "circle-translate-anchor": "viewport",
+        },
+      })
+    }
     if (!map.getLayer(MARKER_SYMBOL_LAYER)) {
       map.addLayer({
         id: MARKER_SYMBOL_LAYER,
@@ -296,9 +337,11 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
         source: MARKER_SOURCE,
         layout: {
           "icon-image": ["get", "iconImage"],
-          // The pin's tip is the bottom-centre of the image (PIN_ANCHOR), so it
-          // sits exactly on the coordinate.
+          // The pin's tip is the bottom-centre of the pin within the image; the
+          // image has PIN_SHADOW_PAD extra below it, so shift down by that pad to
+          // keep the tip on the coordinate ("bottom" anchors the padded bottom).
           "icon-anchor": "bottom",
+          "icon-offset": [0, PIN_SHADOW_PAD],
           "icon-size": 1,
           // Always show every pin (no label-style decluttering); clustering is a
           // separate capability.
