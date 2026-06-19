@@ -132,3 +132,22 @@ export interface MapAdapter {
   /** Observe marker clicks. */
   observeMarkerClicks(callback: (markerId: string) => void): Unsubscribe
 }
+
+// ---------------------------------------------------------------------------
+// Optional capabilities — separate interfaces an adapter MAY implement on top
+// of MapAdapter. Detected at runtime via the `hasX` type guards; the Map module
+// degrades gracefully when a capability is absent. Spec: docs/spec/modules/map.md
+// → "Capabilities".
+// ---------------------------------------------------------------------------
+
+export type MapProjection = "mercator" | "globe"
+
+/** Adapters that can switch the map projection (e.g. MapLibre globe). */
+export interface GlobeCapable {
+  setProjection(projection: MapProjection): void
+}
+
+/** True when `adapter` implements {@link GlobeCapable}. */
+export function hasGlobe(adapter: MapAdapter): adapter is MapAdapter & GlobeCapable {
+  return typeof (adapter as Partial<GlobeCapable>).setProjection === "function"
+}

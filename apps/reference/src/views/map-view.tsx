@@ -20,12 +20,14 @@ import {
   useItemGroupColorResolver,
   Button,
   Input,
+  hasGlobe,
   type FilterBarValue,
   type FilterTypeOption,
   type MapMarkerSpec,
+  type MapProjection,
 } from "@real-life-stack/toolkit"
 import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
-import { Calendar, MapPin, Search } from "lucide-react"
+import { Calendar, Globe, Loader2, MapPin, Search } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useLocationPick } from "../location-pick"
@@ -56,6 +58,11 @@ const PICK_MARKER_COLOR = "#ef4444"
  *  marker into the strip of map left visible above the sheet. */
 const MAP_SHEET_FRACTION = 0.55
 
+// Globe sky/atmosphere ("space" behind the planet), per theme. Light = airy sky
+// blue; dark = near-black space with a faint horizon glow.
+const GLOBE_SKY_LIGHT = { skyColor: "#dceaf7", horizonColor: "#ffffff", atmosphereBlend: 0.9 }
+const GLOBE_SKY_DARK = { skyColor: "#070b18", horizonColor: "#5a90e0", atmosphereBlend: 0.92 }
+
 export function MapView({ groupId, active = true }: { groupId: string; active?: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Adapter lives in state so the markers-effect re-runs once `mount()` has
@@ -63,6 +70,26 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // genuinely async, and the StrictMode double-mount race is too tight for
   // refs alone.
   const [adapter, setAdapter] = useState<MapLibreMapAdapter | null>(null)
+  // Map init failure + retry trigger. Without this the loading overlay (shown
+  // while `!adapter`) would spin forever if `mount()` rejects (network / style /
+  // WebGL error). `mountAttempt` is a dep of the mount effect so retry re-runs it.
+  const [mountError, setMountError] = useState(false)
+  const [mountAttempt, setMountAttempt] = useState(0)
+  // Map projection — Mercator (2D) by default, switchable to globe where the
+  // adapter supports it (GlobeCapable). Toggleable for testing.
+  const [projection, setProjection] = useState<MapProjection>("mercator")
+  // Dark mode drives the globe's sky colours. The app toggles a `.dark` class on
+  // <html>; mirror it here and react to changes (theme toggle in the header).
+  const [isDark, setIsDark] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
+  )
+  useEffect(() => {
+    const root = document.documentElement
+    const sync = () => setIsDark(root.classList.contains("dark"))
+    const observer = new MutationObserver(sync)
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] })
+    return () => observer.disconnect()
+  }, [])
   // Field-presence filter (spec 06): any item with data.position is
   // map-renderable, regardless of `type`. The Point/coordinates check
   // below is still defensive validation, not the activation criterion.
@@ -206,6 +233,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       (err) => {
         // eslint-disable-next-line no-console
         console.error("MapLibreMapAdapter mount failed", err)
+        if (!cancelled) setMountError(true)
       },
     )
     return () => {
@@ -216,7 +244,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       }
       inner.remove()
     }
-  }, [])
+  }, [mountAttempt])
 
   // Kept-alive map: when this view is revealed again (its host toggles back from
   // `display:none`), the container regained its size — recompute so the map fills
@@ -224,6 +252,29 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   useEffect(() => {
     if (active && adapter) adapter.resize?.()
   }, [active, adapter])
+
+  // Apply the chosen projection whenever it changes or the adapter (re)mounts.
+  // Only adapters that support it (GlobeCapable) react; others stay 2D.
+  useEffect(() => {
+    if (adapter && hasGlobe(adapter)) adapter.setProjection(projection)
+  }, [adapter, projection])
+
+  // Globe sky/atmosphere, theme-aware. Only set in globe projection (in mercator
+  // the map fills the viewport, so the sky is never visible — no reset needed).
+  useEffect(() => {
+    if (adapter && projection === "globe") adapter.setSky(isDark ? GLOBE_SKY_DARK : GLOBE_SKY_LIGHT)
+  }, [adapter, projection, isDark])
+
+  // Toggle projection. MapLibre interpolates the globe back to mercator at high
+  // zoom (so it looks flat when zoomed in) — when switching to globe from a
+  // zoomed-in view, zoom out so the actual globe is visible ("world view").
+  const toggleProjection = useCallback(() => {
+    const next: MapProjection = projection === "globe" ? "mercator" : "globe"
+    if (next === "globe" && adapter && adapter.getView().zoom > 2) {
+      adapter.setView({ zoom: 1 })
+    }
+    setProjection(next)
+  }, [projection, adapter])
 
   // Push markers to the adapter once it is mounted, and on every change.
   useEffect(() => {
@@ -340,7 +391,42 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       {/* `isolate` creates a new stacking context so the map library's
           internal control / popup z-indices stay contained and don't overlay
           the navbar / workspace switcher / user menu above. */}
-      <div ref={containerRef} className="absolute inset-0 isolate" />
+      {/* In globe projection the area around the planet is transparent canvas,
+          so the container background IS the "space" (rls-globe-sky: light = blue
+          radial gradient, dark = starfield). Mercator fills the viewport, so no
+          backdrop there. */}
+      <div
+        ref={containerRef}
+        className={`absolute inset-0 isolate ${projection === "globe" ? "rls-globe-sky" : ""}`}
+      />
+
+      {/* Loading / error state while the map library + style + first frame
+          initialise (the adapter resolves only once `mount()` completes). On a
+          mount failure we show an error + retry instead of spinning forever. */}
+      {!adapter && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
+          {mountError ? (
+            <div className="flex flex-col items-center gap-3 px-6 text-center">
+              <span className="text-sm text-muted-foreground">Karte konnte nicht geladen werden.</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setMountError(false)
+                  setMountAttempt((a) => a + 1)
+                }}
+              >
+                Erneut versuchen
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 text-muted-foreground">
+              <Loader2 className="h-12 w-12 animate-spin" />
+              <span className="text-sm">Karte wird geladen…</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Location-pick banner: shown while a composer hands off position
           picking to this map. On mobile the composer drawer is suspended so
@@ -392,6 +478,23 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
                 className="h-8 w-full pl-7 text-xs bg-background shadow-sm sm:w-40"
               />
             </div>
+          }
+          trailingActions={
+            // Projection toggle lives in the FilterBar row (not an absolute
+            // overlay) so it never sits over the search field on compact widths.
+            adapter && hasGlobe(adapter) && !isPicking ? (
+              <Button
+                variant={projection === "globe" ? "default" : "outline"}
+                size="icon-sm"
+                aria-pressed={projection === "globe"}
+                aria-label={projection === "globe" ? "Zur 2D-Karte wechseln" : "Zum Globus wechseln"}
+                title={projection === "globe" ? "2D-Karte" : "Globus"}
+                onClick={toggleProjection}
+                className={`shrink-0 shadow-sm ${projection === "globe" ? "" : "bg-background"}`}
+              >
+                <Globe className="h-4 w-4" />
+              </Button>
+            ) : undefined
           }
         />
       </div>

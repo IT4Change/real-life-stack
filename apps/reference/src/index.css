@@ -40,3 +40,57 @@
     flex-direction: column;
   }
 }
+
+/* Globe "space" backdrop behind the planet (the area outside the sphere is
+   transparent canvas, so this container background shows through). Light: an
+   airy blue radial gradient, brightest near the globe (à la Google Maps). Dark:
+   deep space with a subtle star field and a faint blue planet glow. */
+.rls-globe-sky {
+  /* Strong glow right around the planet (white core), fading to a deep blue at
+     the edges so the sides are noticeably darker. */
+  background: radial-gradient(
+    circle at 50% 44%,
+    #ffffff 24%,
+    #e2f0fc 40%,
+    #93bce4 64%,
+    #4b82bd 86%,
+    #2f679f 100%
+  );
+}
+.dark .rls-globe-sky {
+  background-color: #04060c;
+  /* Two star layers with non-matching tile sizes (380 / 250) so the field never
+     looks gridded, with clusters and varied size/brightness — plus a strong blue
+     planet glow as the last (non-repeating) layer. */
+  background-image:
+    radial-gradient(1.5px 1.5px at 34px 60px, rgba(255, 255, 255, 0.95), transparent),
+    radial-gradient(0.7px 0.7px at 41px 66px, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(0.8px 0.8px at 110px 28px, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1.7px 1.7px at 175px 95px, rgba(255, 255, 255, 0.98), transparent),
+    radial-gradient(0.6px 0.6px at 183px 103px, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 250px 40px, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(0.7px 0.7px at 300px 150px, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1.3px 1.3px at 60px 185px, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(0.9px 0.9px at 132px 212px, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 212px 240px, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(0.7px 0.7px at 342px 222px, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1.1px 1.1px at 92px 300px, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1.3px 1.3px at 280px 322px, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(0.6px 0.6px at 360px 352px, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(0.9px 0.9px at 20px 40px, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.2px 1.2px at 150px 70px, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(0.7px 0.7px at 210px 35px, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 60px 120px, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(0.6px 0.6px at 190px 140px, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1.4px 1.4px at 30px 205px, rgba(255, 255, 255, 0.88), transparent),
+    radial-gradient(0.8px 0.8px at 230px 212px, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(0.7px 0.7px at 160px 232px, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(900px 620px at 50% 44%, rgba(70, 130, 225, 0.5), transparent 60%);
+  background-size: 380px 380px, 380px 380px, 380px 380px, 380px 380px, 380px 380px, 380px 380px,
+    380px 380px, 380px 380px, 380px 380px, 380px 380px, 380px 380px, 380px 380px, 380px 380px,
+    380px 380px, 250px 250px, 250px 250px, 250px 250px, 250px 250px, 250px 250px, 250px 250px,
+    250px 250px, 250px 250px, 100% 100%;
+  background-repeat: repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat,
+    repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat,
+    no-repeat;
+}
