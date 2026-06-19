@@ -405,26 +405,6 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         </div>
       )}
 
-      {/* Projection toggle (Mercator ↔ Globe). Only shown when the adapter
-          supports it (GlobeCapable) and we're not mid pick. */}
-      {adapter && hasGlobe(adapter) && !isPicking && (
-        // z-30 so it sits above the full-width FilterBar overlay (z-20), whose
-        // `**:pointer-events-auto` descendants would otherwise eat the clicks.
-        <div className="absolute right-3 top-3 z-30">
-          <Button
-            variant={projection === "globe" ? "default" : "outline"}
-            size="icon-sm"
-            aria-pressed={projection === "globe"}
-            aria-label={projection === "globe" ? "Zur 2D-Karte wechseln" : "Zum Globus wechseln"}
-            title={projection === "globe" ? "2D-Karte" : "Globus"}
-            onClick={toggleProjection}
-            className={`shadow-md ${projection === "globe" ? "" : "bg-background"}`}
-          >
-            <Globe className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
       {/* Location-pick banner: shown while a composer hands off position
           picking to this map. On mobile the composer drawer is suspended so
           the map is reachable; this banner is the pick affordance + cancel. */}
@@ -475,6 +455,23 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
                 className="h-8 w-full pl-7 text-xs bg-background shadow-sm sm:w-40"
               />
             </div>
+          }
+          trailingActions={
+            // Projection toggle lives in the FilterBar row (not an absolute
+            // overlay) so it never sits over the search field on compact widths.
+            adapter && hasGlobe(adapter) && !isPicking ? (
+              <Button
+                variant={projection === "globe" ? "default" : "outline"}
+                size="icon-sm"
+                aria-pressed={projection === "globe"}
+                aria-label={projection === "globe" ? "Zur 2D-Karte wechseln" : "Zum Globus wechseln"}
+                title={projection === "globe" ? "2D-Karte" : "Globus"}
+                onClick={toggleProjection}
+                className={`shrink-0 shadow-sm ${projection === "globe" ? "" : "bg-background"}`}
+              >
+                <Globe className="h-4 w-4" />
+              </Button>
+            ) : undefined
           }
         />
       </div>
