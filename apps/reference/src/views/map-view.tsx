@@ -58,11 +58,6 @@ const PICK_MARKER_COLOR = "#ef4444"
  *  marker into the strip of map left visible above the sheet. */
 const MAP_SHEET_FRACTION = 0.55
 
-// Globe sky/atmosphere ("space" behind the planet), per theme. Light = airy sky
-// blue; dark = near-black space with a faint horizon glow.
-const GLOBE_SKY_LIGHT = { skyColor: "#dceaf7", horizonColor: "#ffffff", atmosphereBlend: 0.9 }
-const GLOBE_SKY_DARK = { skyColor: "#070b18", horizonColor: "#5a90e0", atmosphereBlend: 0.92 }
-
 export function MapView({ groupId, active = true }: { groupId: string; active?: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Adapter lives in state so the markers-effect re-runs once `mount()` has
@@ -78,18 +73,6 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // Map projection — Mercator (2D) by default, switchable to globe where the
   // adapter supports it (GlobeCapable). Toggleable for testing.
   const [projection, setProjection] = useState<MapProjection>("mercator")
-  // Dark mode drives the globe's sky colours. The app toggles a `.dark` class on
-  // <html>; mirror it here and react to changes (theme toggle in the header).
-  const [isDark, setIsDark] = useState(
-    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
-  )
-  useEffect(() => {
-    const root = document.documentElement
-    const sync = () => setIsDark(root.classList.contains("dark"))
-    const observer = new MutationObserver(sync)
-    observer.observe(root, { attributes: true, attributeFilter: ["class"] })
-    return () => observer.disconnect()
-  }, [])
   // Field-presence filter (spec 06): any item with data.position is
   // map-renderable, regardless of `type`. The Point/coordinates check
   // below is still defensive validation, not the activation criterion.
@@ -259,11 +242,9 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     if (adapter && hasGlobe(adapter)) adapter.setProjection(projection)
   }, [adapter, projection])
 
-  // Globe sky/atmosphere, theme-aware. Only set in globe projection (in mercator
-  // the map fills the viewport, so the sky is never visible — no reset needed).
-  useEffect(() => {
-    if (adapter && projection === "globe") adapter.setSky(isDark ? GLOBE_SKY_DARK : GLOBE_SKY_LIGHT)
-  }, [adapter, projection, isDark])
+  // No maplibre atmosphere (setSky): it renders in-scene and hazes markers near
+  // the globe edge. The visible "space"/glow comes from the CSS backdrop
+  // (rls-globe-sky) behind the transparent canvas, which never overlaps markers.
 
   // Toggle projection. MapLibre interpolates the globe back to mercator at high
   // zoom (so it looks flat when zoomed in) — when switching to globe from a
@@ -399,6 +380,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         ref={containerRef}
         className={`absolute inset-0 isolate ${projection === "globe" ? "rls-globe-sky" : ""}`}
       />
+
 
       {/* Loading / error state while the map library + style + first frame
           initialise (the adapter resolves only once `mount()` completes). On a
