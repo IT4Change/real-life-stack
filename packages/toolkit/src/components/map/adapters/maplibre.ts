@@ -28,6 +28,8 @@ import type {
   Marker as MlMarker,
   MarkerOptions,
   MapMouseEvent,
+  MapLayerMouseEvent,
+  GeoJSONSource,
   NavigationControl as MlNavigationControl,
   NavigationControlOptions,
 } from "maplibre-gl"
@@ -52,6 +54,19 @@ const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
 
 /** Marker color used when a MapMarkerSpec carries no color hint. */
 const DEFAULT_MARKER_COLOR = "#2563eb"
+
+/** GeoJSON source + symbol layer that render all markers via WebGL (one draw
+ *  call for the whole set, so it scales to tens of thousands of pins and gets
+ *  globe back-side occlusion for free — unlike per-marker DOM elements). */
+const MARKER_SOURCE = "rls-markers"
+const MARKER_SYMBOL_LAYER = "rls-marker-symbols"
+/** Rasterise the pin SVG at 2× so the GPU icon stays crisp on retina. */
+const PIN_RASTER_SCALE = 2
+/** Logical-px padding baked around the pin so its drop shadow isn't clipped.
+ *  The symbol layer compensates with `icon-offset` so the tip stays on the
+ *  coordinate. */
+const PIN_SHADOW_PAD = 9
+const MARKER_GLOW_LAYER = "rls-marker-glow"
 
 // MapLibre's module shape mirrors its namespace. The two constructors we use
 // are typed against the real maplibre-gl option types so the mount/marker calls
@@ -88,27 +103,13 @@ export async function prefetchMapLibre(styleUrl: string = DEFAULT_STYLE): Promis
   await fetch(styleUrl, { mode: "cors" }).then((r) => r.ok && r.json()).catch(() => {})
 }
 
-/** A stable key for a marker's appearance, so we only re-render the SVG when it changes. */
-function appearanceKey(spec: MapMarkerSpec): string {
-  // iconRegistryVersion() so a registerIcon() that redefines an icon invalidates
-  // cached markers using it (the spec key alone wouldn't change).
-  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${spec.selected ? 1 : 0}|${spec.glowColor ?? ""}|${iconRegistryVersion()}`
-}
-
-/** Base drop shadow under every pin. */
-const MARKER_BASE_SHADOW = "drop-shadow(0 2px 3px rgba(0,0,0,0.5))"
-
 /**
- * The element's CSS filter: the base shadow, plus a soft colour glow when the
- * marker is selected (its item open in the shared panel) — the map analogue of
- * the cards' active-item glow. Two stacked colour drop-shadows form the halo.
+ * Stable key for a marker's *image* — colour + icon + shape only (selection /
+ * glow are not baked into the pin image; they become a separate layer). The
+ * icon registry version invalidates cached images when an icon is redefined.
  */
-function markerFilter(spec: MapMarkerSpec): string {
-  if (spec.selected && spec.glowColor) {
-    // Glow at 50% opacity (alpha 0x80), matching the cards' getActivePanelGlow.
-    return `${MARKER_BASE_SHADOW} drop-shadow(0 0 3px ${spec.glowColor}80) drop-shadow(0 0 6px ${spec.glowColor}80)`
-  }
-  return MARKER_BASE_SHADOW
+function imageKey(spec: MapMarkerSpec): string {
+  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${iconRegistryVersion()}`
 }
 
 /** The marker's pin as an SVG `data:` URL (see markerDataUrl — no injection surface). */
@@ -120,30 +121,46 @@ function markerSrc(spec: MapMarkerSpec): string {
   })
 }
 
+/** Load an image URL (here: a pin SVG `data:` URL) into an `HTMLImageElement`. */
+function loadImageEl(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.decoding = "async"
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error("MapLibreMapAdapter: marker image failed to load"))
+    img.src = url
+  })
+}
+
 /**
- * Build the marker DOM element: an `<img>` showing the rendered pin SVG. Using
- * an image (not innerHTML) keeps custom-icon SVGs free of any injection surface
- * and mirrors the Leaflet adapter so both engines look identical.
+ * Rasterise a pin SVG to `ImageData` at `scale`× so `map.addImage(..., { pixelRatio })`
+ * gives the symbol layer a crisp retina icon. Data-URL source → no canvas taint,
+ * so `getImageData` is allowed.
  */
-function buildMarkerElement(spec: MapMarkerSpec): HTMLImageElement {
-  const el = document.createElement("img")
-  el.className = "rls-marker rls-marker-shadow"
-  el.src = markerSrc(spec)
-  el.width = PIN_SIZE.width
-  el.height = PIN_SIZE.height
-  el.draggable = false
-  el.style.cursor = "pointer"
-  // Drop shadow inline (not only via the .rls-marker-shadow class) so it applies
-  // even if maplibre touches the element's className. CSS filter follows the
-  // pin's alpha; reliable for <img>-embedded SVG (an in-SVG feDropShadow is not).
-  // Includes the selected glow when applicable.
-  el.style.filter = markerFilter(spec)
-  // Keyboard-accessible: the marker behaves as a button so non-pointer users
-  // can activate it (a marker click opens the item's detail panel). The
-  // accessible name is set from the label in setMarkers.
-  el.setAttribute("role", "button")
-  el.tabIndex = 0
-  return el
+async function rasterizePin(url: string, scale: number): Promise<ImageData> {
+  const img = await loadImageEl(url)
+  // Pad the canvas so the baked drop shadow has room (a symbol-layer icon can't
+  // carry a CSS filter, so the shadow must be in the image).
+  const w = (PIN_SIZE.width + PIN_SHADOW_PAD * 2) * scale
+  const h = (PIN_SIZE.height + PIN_SHADOW_PAD * 2) * scale
+  const canvas = document.createElement("canvas")
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext("2d")
+  if (!ctx) throw new Error("MapLibreMapAdapter: no 2D context for pin rasterisation")
+  // Work in device pixels (no ctx.scale — shadow blur/offset don't transform
+  // reliably across browsers). Bake a clear drop shadow under the pin.
+  ctx.shadowColor = "rgba(0,0,0,0.45)"
+  ctx.shadowBlur = 5 * scale
+  ctx.shadowOffsetY = 3 * scale
+  ctx.drawImage(
+    img,
+    PIN_SHADOW_PAD * scale,
+    PIN_SHADOW_PAD * scale,
+    PIN_SIZE.width * scale,
+    PIN_SIZE.height * scale,
+  )
+  return ctx.getImageData(0, 0, w, h)
 }
 
 export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
@@ -151,10 +168,11 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
   // does not reference `maplibre-gl`. Consumers without it installed can
   // import the toolkit without TS errors.
   private mapInstance: unknown = null
-  private markers = new Map<string, unknown>()
-  private markerEls = new Map<string, HTMLElement>()
-  private markerLabels = new Map<string, string | undefined>()
-  private markerAppearance = new Map<string, string>()
+  // WebGL markers: a GeoJSON source + symbol layer, plus an image atlas keyed by
+  // appearance. `markersVersion` ignores stale setData after async image loads.
+  private markerLayersReady = false
+  private addedImages = new Set<string>()
+  private markersVersion = 0
   private viewListeners = new Set<(view: MapViewState) => void>()
   private clickListeners = new Set<(event: MapClickEvent) => void>()
   private markerClickListeners = new Set<(markerId: string) => void>()
@@ -210,6 +228,16 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
     })
 
     map.on("click", (event: MapMouseEvent) => {
+      // A click that hit a marker is a marker click, not a map click — it goes
+      // through the layer handler (observeMarkerClicks), not the generic map
+      // click (used e.g. to drop a new pin). Mirrors the old DOM-marker behaviour
+      // where the element swallowed the map click.
+      if (
+        map.getLayer(MARKER_SYMBOL_LAYER) &&
+        map.queryRenderedFeatures(event.point, { layers: [MARKER_SYMBOL_LAYER] }).length > 0
+      ) {
+        return
+      }
       const evt: MapClickEvent = {
         position: [event.lngLat.lng, event.lngLat.lat],
         originalEvent: event,
@@ -223,11 +251,10 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
   async unmount(): Promise<void> {
     const map = this.mapInstance as MlMap | null
     if (!map) return
-    ;(this.markers as Map<string, MlMarker>).forEach((m) => m.remove())
-    this.markers.clear()
-    this.markerEls.clear()
-    this.markerLabels.clear()
-    this.markerAppearance.clear()
+    // Source, layer and atlas images all go away with the map; just drop our
+    // bookkeeping so a fresh mount re-creates them.
+    this.markerLayersReady = false
+    this.addedImages.clear()
     map.remove()
     this.mapInstance = null
     this.viewListeners.clear()
@@ -236,75 +263,134 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
   }
 
   setMarkers(markers: MapMarkerSpec[]): void {
-    const map = this.mapInstance as MlMap | null
-    const maplibre = maplibreModule
-    if (!map || !maplibre) {
+    // Keep the synchronous "called before mount" contract (the old DOM path threw
+    // here). The actual work runs detached (image loading is async); its rejection
+    // is handled so it never surfaces as an unhandled promise rejection.
+    if (!this.mapInstance) {
       throw new Error("MapLibreMapAdapter: setMarkers called before mount")
     }
-    const typedMarkers = this.markers as Map<string, MlMarker>
-    const next = new Map<string, MapMarkerSpec>(markers.map((m) => [m.id, m]))
+    void this.setMarkersAsync(markers).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error("MapLibreMapAdapter: setMarkers failed", err)
+    })
+  }
 
-    // Remove markers that no longer exist
-    for (const [id, marker] of typedMarkers) {
-      if (!next.has(id)) {
-        marker.remove()
-        typedMarkers.delete(id)
-        this.markerEls.delete(id)
-        this.markerLabels.delete(id)
-        this.markerAppearance.delete(id)
-      }
-    }
+  /**
+   * Declarative marker set, rendered as one GeoJSON source + symbol layer.
+   * Loading the needed pin images is async, so a version token drops the result
+   * if a newer `setMarkers` call started meanwhile (last-write-wins).
+   */
+  private async setMarkersAsync(markers: MapMarkerSpec[]): Promise<void> {
+    const map = this.mapInstance as MlMap | null
+    if (!map) return
+    this.ensureMarkerLayers(map)
+    const version = ++this.markersVersion
+    await this.ensureImages(map, markers)
+    if (version !== this.markersVersion || this.mapInstance !== map) return
 
-    // Add or update remaining
-    for (const spec of markers) {
-      const existing = typedMarkers.get(spec.id)
-      if (existing) {
-        existing.setLngLat(spec.position)
-        const el = this.markerEls.get(spec.id) as HTMLImageElement | undefined
-        // Reconcile label (hover title + accessible name) declaratively.
-        if (this.markerLabels.get(spec.id) !== spec.label) {
-          if (el) this.applyMarkerLabel(el, spec.label)
-          this.markerLabels.set(spec.id, spec.label)
-        }
-        // Reconcile appearance in place (no marker recreation, no flicker).
-        const key = appearanceKey(spec)
-        if (this.markerAppearance.get(spec.id) !== key) {
-          if (el) {
-            el.src = markerSrc(spec)
-            // Selection toggles the colour glow — refresh the element filter too.
-            el.style.filter = markerFilter(spec)
-          }
-          this.markerAppearance.set(spec.id, key)
-        }
-      } else {
-        const el = buildMarkerElement(spec)
-        this.applyMarkerLabel(el, spec.label)
-        const activate = () => {
-          this.markerClickListeners.forEach((cb) => cb(spec.id))
-        }
-        el.addEventListener("click", (e) => {
-          // Marker elements sit above the canvas, so the map "click" does not
-          // fire for marker hits; stopPropagation guards against any bubbling.
-          e.stopPropagation()
-          activate()
-        })
-        el.addEventListener("keydown", (e) => {
-          // Enter / Space activate the marker, matching native button behavior
-          // (role="button" + tabindex on the element).
-          if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
-            e.preventDefault()
-            activate()
-          }
-        })
-        // anchor "bottom": the pin's tip sits on the coordinate.
-        const marker = new maplibre.Marker({ element: el, anchor: "bottom" })
-        marker.setLngLat(spec.position).addTo(map)
-        typedMarkers.set(spec.id, marker)
-        this.markerEls.set(spec.id, el)
-        this.markerLabels.set(spec.id, spec.label)
-        this.markerAppearance.set(spec.id, appearanceKey(spec))
-      }
+    const data = {
+      type: "FeatureCollection",
+      features: markers.map((m) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: m.position },
+        properties: {
+          id: m.id,
+          iconImage: imageKey(m),
+          label: m.label ?? "",
+          selected: m.selected ? 1 : 0,
+          glowColor: m.glowColor ?? "",
+        },
+      })),
+    } as GeoJSON.FeatureCollection
+    ;(map.getSource(MARKER_SOURCE) as GeoJSONSource | undefined)?.setData(data)
+  }
+
+  /** Create the marker source + symbol layer and wire click/hover once. */
+  private ensureMarkerLayers(map: MlMap): void {
+    if (this.markerLayersReady) return
+    if (!map.getSource(MARKER_SOURCE)) {
+      map.addSource(MARKER_SOURCE, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      })
     }
+    // Glow layer BELOW the pins (added first): a soft, blurred circle in the
+    // item's group colour behind the selected marker — the map counterpart of
+    // the cards' active-item glow. Data-driven (filter on `selected`), so it
+    // follows panel selection without extra calls. Translated up onto the pin's
+    // body (the coordinate is the tip).
+    if (!map.getLayer(MARKER_GLOW_LAYER)) {
+      map.addLayer({
+        id: MARKER_GLOW_LAYER,
+        type: "circle",
+        source: MARKER_SOURCE,
+        filter: ["==", ["get", "selected"], 1],
+        paint: {
+          "circle-color": ["get", "glowColor"],
+          // Larger than the pin so the halo reads around it (a small circle hides
+          // behind the opaque pin body).
+          "circle-radius": 26,
+          "circle-blur": 0.7,
+          "circle-opacity": 0.65,
+          "circle-translate": [0, -26],
+          "circle-translate-anchor": "viewport",
+        },
+      })
+    }
+    if (!map.getLayer(MARKER_SYMBOL_LAYER)) {
+      map.addLayer({
+        id: MARKER_SYMBOL_LAYER,
+        type: "symbol",
+        source: MARKER_SOURCE,
+        layout: {
+          "icon-image": ["get", "iconImage"],
+          // The pin's tip is the bottom-centre of the pin within the image; the
+          // image has PIN_SHADOW_PAD extra below it, so shift down by that pad to
+          // keep the tip on the coordinate ("bottom" anchors the padded bottom).
+          "icon-anchor": "bottom",
+          "icon-offset": [0, PIN_SHADOW_PAD],
+          "icon-size": 1,
+          // Always show every pin (no label-style decluttering); clustering is a
+          // separate capability.
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+      })
+      map.on("click", MARKER_SYMBOL_LAYER, (e: MapLayerMouseEvent) => {
+        const id = e.features?.[0]?.properties?.id
+        if (id != null) this.markerClickListeners.forEach((cb) => cb(String(id)))
+      })
+      map.on("mouseenter", MARKER_SYMBOL_LAYER, () => {
+        map.getCanvas().style.cursor = "pointer"
+      })
+      map.on("mouseleave", MARKER_SYMBOL_LAYER, () => {
+        map.getCanvas().style.cursor = ""
+      })
+    }
+    this.markerLayersReady = true
+  }
+
+  /** Ensure every distinct pin appearance in `markers` is in the image atlas. */
+  private async ensureImages(map: MlMap, markers: MapMarkerSpec[]): Promise<void> {
+    const missing = new Map<string, MapMarkerSpec>()
+    for (const m of markers) {
+      const key = imageKey(m)
+      if (!this.addedImages.has(key) && !map.hasImage(key)) missing.set(key, m)
+    }
+    await Promise.all(
+      [...missing].map(async ([key, spec]) => {
+        try {
+          const image = await rasterizePin(markerSrc(spec), PIN_RASTER_SCALE)
+          if (this.mapInstance === map && !map.hasImage(key)) {
+            map.addImage(key, image, { pixelRatio: PIN_RASTER_SCALE })
+          }
+          this.addedImages.add(key)
+        } catch {
+          // A single failed icon shouldn't break the whole set; that feature
+          // just renders without an icon until a later pass succeeds.
+        }
+      }),
+    )
   }
 
   resize(): void {
@@ -390,12 +476,6 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
     return () => {
       this.markerClickListeners.delete(callback)
     }
-  }
-
-  /** Set the marker's hover title and accessible name from its label. */
-  private applyMarkerLabel(el: HTMLElement, label: string | undefined): void {
-    el.title = label ?? ""
-    el.setAttribute("aria-label", label ?? "Kartenmarker")
   }
 
   private lngLatTuple(center: { lng: number; lat: number }): LngLat {
