@@ -263,7 +263,16 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
   }
 
   setMarkers(markers: MapMarkerSpec[]): void {
-    void this.setMarkersAsync(markers)
+    // Keep the synchronous "called before mount" contract (the old DOM path threw
+    // here). The actual work runs detached (image loading is async); its rejection
+    // is handled so it never surfaces as an unhandled promise rejection.
+    if (!this.mapInstance) {
+      throw new Error("MapLibreMapAdapter: setMarkers called before mount")
+    }
+    void this.setMarkersAsync(markers).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error("MapLibreMapAdapter: setMarkers failed", err)
+    })
   }
 
   /**
@@ -273,9 +282,7 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
    */
   private async setMarkersAsync(markers: MapMarkerSpec[]): Promise<void> {
     const map = this.mapInstance as MlMap | null
-    if (!map) {
-      throw new Error("MapLibreMapAdapter: setMarkers called before mount")
-    }
+    if (!map) return
     this.ensureMarkerLayers(map)
     const version = ++this.markersVersion
     await this.ensureImages(map, markers)
