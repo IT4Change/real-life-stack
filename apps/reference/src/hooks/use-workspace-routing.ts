@@ -4,6 +4,7 @@ import { Newspaper, Map as MapIcon, Calendar, Columns3 } from "lucide-react"
 import {
   useConnector,
   useGroups,
+  useCurrentGroup,
   useItem,
   getSpacePrimaryColor,
   getReadableTextColor,
@@ -112,6 +113,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     itemId?: string
   }>()
   const { data: groups, isLoading: groupsLoading } = useGroups()
+  const currentGroup = useCurrentGroup()
 
   // The segment after the scope is a module (known enum) or a module-less item id.
   const segIsModule = !!urlSeg && VALID_MODULES.includes(urlSeg)
@@ -169,11 +171,20 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     ? VALID_MODULES
     : (activeGroup?.data?.modules as string[] | undefined) ?? VALID_MODULES
 
-  // Module-less item link (/{scope}/{itemId}): load the item to resolve its
-  // default module, then redirect to the canonical /{scope}/{module}/{itemId}.
-  // Loading by id bypasses any module/bbox filter (observeItem). Empty id when
-  // not on such a path → harmless null observable.
-  const { data: moduleLessItem, isLoading: moduleLessLoading } = useItem(moduleLessItemId ?? "")
+  // Module-less item link (/{scope}/{itemId}): resolve the item's default module,
+  // then redirect to the canonical /{scope}/{module}/{itemId}. The lookup must run
+  // against the URL's scope — getItem is scope-dependent in the WoT connector, and
+  // the scope is synced to the connector in a separate effect below. So gate the
+  // lookup (and redirect) on the connector's currentGroup actually matching the
+  // URL scope; otherwise a direct module-less deep-link to another space could
+  // resolve "not found" against the still-current space and pick the wrong module.
+  const expectedGroupId = activeWorkspace
+    ? (activeWorkspace.scope === "overview" ? null : activeWorkspace.id)
+    : null
+  const scopeSynced = !!activeWorkspace && (currentGroup?.id ?? null) === expectedGroupId
+  const { data: moduleLessItem, isLoading: moduleLessLoading } = useItem(
+    moduleLessItemId && scopeSynced ? moduleLessItemId : "",
+  )
 
   // Redirect bare/short paths to the canonical form.
   useEffect(() => {
@@ -184,8 +195,8 @@ export function useWorkspaceRouting(): WorkspaceRouting {
       navigate(`/${slug}/${activeModule}`, { replace: true })
       return
     }
-    // (b) Module-less item (`/{scope}/{itemId}`) → resolve module, then canonical.
-    if (moduleLessItemId && !moduleLessLoading) {
+    // (b) Module-less item — only once the scope is synced AND the lookup settled.
+    if (moduleLessItemId && scopeSynced && !moduleLessLoading) {
       const mod = moduleLessItem
         ? resolveDefaultModule(moduleLessItem, groupModuleIds)
         : (groupModuleIds[0] ?? "feed")
@@ -197,6 +208,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     urlSeg,
     activeModule,
     moduleLessItemId,
+    scopeSynced,
     moduleLessLoading,
     moduleLessItem,
     groupModuleIds,
