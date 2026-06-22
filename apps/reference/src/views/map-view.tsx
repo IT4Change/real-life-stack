@@ -109,9 +109,15 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
 
   // Accumulate loaded items across viewport queries. `bbox` limits what LOADS,
   // but markers shouldn't vanish when panned out of view — keep everything ever
-  // loaded. Inside the current bbox the fresh query is authoritative (edits,
-  // deletes and filtering reflect immediately); outside it the last-known items
-  // are retained until the user pans back. Reset when the space changes.
+  // loaded. Inside the current bbox the fresh query is authoritative once it has
+  // data; outside it the last-known items are retained until the user pans back.
+  //
+  // Important: async connectors (WotConnector/BaseConnector) expose a new
+  // `observe(filter)` as `[]` until the first `getItems(filter)` resolves. Treating
+  // that transient empty array as authoritative makes clusters disappear briefly
+  // while zooming out, because the expanded bbox says "remove everything in view"
+  // before the new result arrives. Skip that destructive reconciliation for empty
+  // result sets; the next non-empty result still updates/removes in-bbox items.
   const accumulatedRef = useRef<Map<string, Item>>(new Map())
   const [accumulatedItems, setAccumulatedItems] = useState<Item[]>([])
   useEffect(() => {
@@ -121,7 +127,8 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   useEffect(() => {
     const acc = accumulatedRef.current
     let changed = false
-    if (bbox) {
+    const canReconcileCurrentBbox = !!bbox && items.length > 0
+    if (bbox && canReconcileCurrentBbox) {
       const currentIds = new Set(items.map((i) => i.id))
       for (const [id, item] of acc) {
         if (!currentIds.has(id) && itemInBbox(item, bbox)) {
