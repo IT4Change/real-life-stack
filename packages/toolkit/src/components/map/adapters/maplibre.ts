@@ -30,6 +30,7 @@ import type {
   MapMouseEvent,
   MapLayerMouseEvent,
   GeoJSONSource,
+  GeoJSONFeatureDiff,
   NavigationControl as MlNavigationControl,
   NavigationControlOptions,
   AttributionControl as MlAttributionControl,
@@ -228,6 +229,11 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
   // JS and applied via feature-state, so colours never force a rebuild.
   private clusterConfig: { radius?: number } | null = null
   private lastMarkers: MapMarkerSpec[] = []
+  // Rendered marker id → appearance hash. Lets `setMarkersAsync` push only the
+  // delta via `GeoJSONSource.updateData` (add/update/remove) instead of a full
+  // `setData`, which would reload + re-cluster the whole source in the worker
+  // and briefly clear the markers (the flash). Cleared on teardown.
+  private renderedMarkers = new Map<string, string>()
   private viewListeners = new Set<(view: MapViewState) => void>()
   private clickListeners = new Set<(event: MapClickEvent) => void>()
   private markerClickListeners = new Set<(markerId: string) => void>()
@@ -381,25 +387,48 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     await this.ensureImages(map, markers)
     if (version !== this.markersVersion || this.mapInstance !== map) return
 
-    const data = {
-      type: "FeatureCollection",
-      features: markers.map((m) => ({
-        type: "Feature",
-        geometry: { type: "Point", coordinates: m.position },
-        properties: {
+    const source = map.getSource(MARKER_SOURCE) as GeoJSONSource | undefined
+    if (!source) return
+
+    // Push only the delta (add/update/remove by feature id). A full `setData`
+    // reloads + re-clusters the whole source in a worker, which briefly clears
+    // the rendered features — the marker/cluster flash on every viewport change.
+    const add: GeoJSON.Feature[] = []
+    const update: GeoJSONFeatureDiff[] = []
+    const nextRendered = new Map<string, string>()
+    for (const m of markers) {
+      const properties = {
+        id: m.id,
+        iconImage: imageKey(m),
+        label: m.label ?? "",
+        selected: m.selected ? 1 : 0,
+        glowColor: m.glowColor ?? "",
+        color: m.color ?? DEFAULT_MARKER_COLOR,
+      }
+      const geometry: GeoJSON.Point = { type: "Point", coordinates: m.position }
+      // Appearance hash — any change re-pushes just this feature.
+      const hash = `${m.position[0]},${m.position[1]}|${properties.iconImage}|${properties.selected}|${properties.glowColor}|${properties.color}|${properties.label}`
+      nextRendered.set(m.id, hash)
+      const prev = this.renderedMarkers.get(m.id)
+      if (prev === undefined) {
+        add.push({ type: "Feature", id: m.id, geometry, properties })
+      } else if (prev !== hash) {
+        update.push({
           id: m.id,
-          iconImage: imageKey(m),
-          label: m.label ?? "",
-          selected: m.selected ? 1 : 0,
-          glowColor: m.glowColor ?? "",
-          color: m.color ?? DEFAULT_MARKER_COLOR,
-        },
-      })),
-    } as GeoJSON.FeatureCollection
-    ;(map.getSource(MARKER_SOURCE) as GeoJSONSource | undefined)?.setData(data)
-    // Re-cluster happens in a worker; the `data` listener (wireMarkerEvents)
-    // colours the clusters once it completes. This call covers the case where
-    // the source was already clustered/idle.
+          newGeometry: geometry,
+          addOrUpdateProperties: Object.entries(properties).map(([key, value]) => ({ key, value })),
+        })
+      }
+    }
+    const remove: string[] = []
+    for (const id of this.renderedMarkers.keys()) {
+      if (!nextRendered.has(id)) remove.push(id)
+    }
+    this.renderedMarkers = nextRendered
+    if (add.length === 0 && update.length === 0 && remove.length === 0) return
+    source.updateData({ add, update, remove })
+    // Re-cluster runs in the worker; the `data` listener (wireMarkerEvents)
+    // re-colours clusters once it completes. This call covers the already-idle case.
     this.updateClusterColors(map)
   }
 
@@ -596,6 +625,9 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     }
     if (map.getSource(MARKER_SOURCE)) map.removeSource(MARKER_SOURCE)
     this.markerLayersReady = false
+    // The new source starts empty → forget what was rendered so the next
+    // setMarkers re-adds every feature.
+    this.renderedMarkers.clear()
   }
 
   // --- ClusterCapable ---
