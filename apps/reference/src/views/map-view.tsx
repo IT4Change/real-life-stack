@@ -74,10 +74,16 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // Map projection — Mercator (2D) by default, switchable to globe where the
   // adapter supports it (GlobeCapable). Toggleable for testing.
   const [projection, setProjection] = useState<MapProjection>("mercator")
+  // Viewport bounding box [west, south, east, north]; tracked from the map and
+  // passed to the query so only items in the visible area load (spec: Map →
+  // Datenquelle). undefined until the map is mounted → the full set loads once,
+  // then narrows on the first `observeView`.
+  const [bbox, setBbox] = useState<[number, number, number, number] | undefined>(undefined)
   // Field-presence filter (spec 06): any item with data.position is
-  // map-renderable, regardless of `type`. The Point/coordinates check
-  // below is still defensive validation, not the activation criterion.
-  const { data: items } = useItems({ hasField: ["position"] })
+  // map-renderable, regardless of `type`. `bbox` limits to the viewport. The
+  // Point/coordinates check below is still defensive validation, not the
+  // activation criterion.
+  const { data: items } = useItems({ hasField: ["position"], bbox })
   // Cross-space aggregate ("Mein Netzwerk"): useMembers(null) yields
   // the union of all known members, so authors of map items pulled
   // in from other spaces still resolve to their User.
@@ -248,6 +254,27 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   useEffect(() => {
     if (adapter && hasGlobe(adapter)) adapter.setProjection(projection)
   }, [adapter, projection])
+
+  // Viewport-limited query (spec: Map → Datenquelle). Read the visible bounds
+  // once the map is mounted and re-read them (debounced) after every pan/zoom
+  // (`observeView` fires on `moveend`), feeding `bbox` into the items query.
+  useEffect(() => {
+    if (!adapter) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const applyBounds = () => {
+      const b = adapter.getView().bounds
+      setBbox([b.west, b.south, b.east, b.north])
+    }
+    applyBounds()
+    const unsubscribe = adapter.observeView(() => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(applyBounds, 250)
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+      unsubscribe()
+    }
+  }, [adapter])
 
   // No maplibre atmosphere (setSky): it renders in-scene and hazes markers near
   // the globe edge. The visible "space"/glow comes from the CSS backdrop

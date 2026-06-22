@@ -156,6 +156,48 @@ describe("matchesFilter", () => {
 
     expect(matchesFilter(item, { hasTag: ["legacy"] })).toBe(false)
   })
+
+  // bbox = [west, south, east, north]; Berlin-ish box around [13.4, 52.5].
+  const BERLIN_BBOX: [number, number, number, number] = [13.0, 52.3, 13.8, 52.7]
+  const pointItem = (lng: number, lat: number) =>
+    createItem({ data: { position: { type: "Point", coordinates: [lng, lat] } } })
+
+  it("filters by bbox — Point inside the box matches", () => {
+    expect(matchesFilter(pointItem(13.4, 52.5), { bbox: BERLIN_BBOX })).toBe(true)
+  })
+
+  it("filters by bbox — Point outside the box (lng or lat) is excluded", () => {
+    expect(matchesFilter(pointItem(8.68, 50.11), { bbox: BERLIN_BBOX })).toBe(false) // Frankfurt
+    expect(matchesFilter(pointItem(13.4, 53.9), { bbox: BERLIN_BBOX })).toBe(false) // north of box
+    expect(matchesFilter(pointItem(14.5, 52.5), { bbox: BERLIN_BBOX })).toBe(false) // east of box
+  })
+
+  it("filters by bbox — items without a position are excluded", () => {
+    expect(matchesFilter(createItem(), { bbox: BERLIN_BBOX })).toBe(false)
+  })
+
+  it("filters by bbox — uses the first vertex of non-Point geometries", () => {
+    const line = createItem({
+      data: { position: { type: "LineString", coordinates: [[13.4, 52.5], [99, 99]] } },
+    })
+    expect(matchesFilter(line, { bbox: BERLIN_BBOX })).toBe(true)
+  })
+
+  it("filters by bbox — west > east wraps across the antimeridian", () => {
+    const wrap: [number, number, number, number] = [170, -10, -170, 10] // 170°E → -170°E
+    expect(matchesFilter(pointItem(179, 0), { bbox: wrap })).toBe(true)
+    expect(matchesFilter(pointItem(-179, 0), { bbox: wrap })).toBe(true)
+    expect(matchesFilter(pointItem(0, 0), { bbox: wrap })).toBe(false)
+  })
+
+  it("combines bbox with type/hasField", () => {
+    const event = createItem({
+      type: "event",
+      data: { position: { type: "Point", coordinates: [13.4, 52.5] }, title: "x" },
+    })
+    expect(matchesFilter(event, { type: "event", hasField: ["position"], bbox: BERLIN_BBOX })).toBe(true)
+    expect(matchesFilter(event, { type: "task", bbox: BERLIN_BBOX })).toBe(false)
+  })
 })
 
 describe("findRelatedItems", () => {

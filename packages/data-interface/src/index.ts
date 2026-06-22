@@ -90,6 +90,15 @@ export interface ItemFilter {
    */
   hasTag?: string[]
   createdBy?: string
+  /**
+   * Viewport bounding box `[west, south, east, north]` (GeoJSON lng/lat axis
+   * order). Matches items whose `data.position` lies inside the box; items
+   * without a parsable position are excluded while `bbox` is set. The data seam
+   * for scaling maps: a local connector MAY filter client-side from the full
+   * set, a backend connector SHOULD restrict server-side. Spec:
+   * docs/spec/modules/map.md → Datenquelle, docs/spec/02-data-interface.md.
+   */
+  bbox?: [number, number, number, number]
   source?: string
   limit?: number
   offset?: number
