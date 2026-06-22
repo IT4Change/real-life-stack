@@ -4,12 +4,13 @@ import { Newspaper, Map as MapIcon, Calendar, Columns3 } from "lucide-react"
 import {
   useConnector,
   useGroups,
+  useItem,
   getSpacePrimaryColor,
   getReadableTextColor,
   type Workspace,
   type Module,
 } from "@real-life-stack/toolkit"
-import type { Group } from "@real-life-stack/data-interface"
+import type { Group, Item } from "@real-life-stack/data-interface"
 import { hasGroups } from "@real-life-stack/data-interface"
 
 export const STORAGE_KEY_GROUP = "rls-active-group"
@@ -31,7 +32,40 @@ const MODULE_LABELS: Record<string, string> = {
 
 const VALID_MODULES = ["feed", "kanban", "calendar", "map"]
 
-const OVERVIEW_WORKSPACE: Workspace = { id: "__overview__", name: "Mein Netzwerk", scope: "overview" }
+// The aggregate ("Mein Netzwerk") keeps its internal scope id `__overview__`
+// (used across the module views) but appears as `network` in the URL.
+const OVERVIEW_ID = "__overview__"
+const OVERVIEW_SLUG = "network"
+/** Internal scope id → URL slug. */
+export const scopeToSlug = (id: string) => (id === OVERVIEW_ID ? OVERVIEW_SLUG : id)
+/** URL slug → internal scope id. */
+const slugToScope = (slug: string) => (slug === OVERVIEW_SLUG ? OVERVIEW_ID : slug)
+
+const OVERVIEW_WORKSPACE: Workspace = { id: OVERVIEW_ID, name: "Mein Netzwerk", scope: "overview" }
+
+const TASK_STATUS = new Set(["open", "in-progress", "done", "archived"])
+
+/**
+ * Default module for a module-less item link (`/{scope}/{itemId}`), by field
+ * presence: position→map, start→calendar, status/task→kanban, content→feed.
+ * Falls back to the first module the space offers. (Decided with Anton: position
+ * has priority — an event-at-a-place opens on the map.) Only the module-less
+ * default; an explicit `/{scope}/{module}/{itemId}` always wins.
+ */
+function resolveDefaultModule(item: Item, available: string[]): string {
+  const d = (item.data ?? {}) as Record<string, unknown>
+  const pos = d.position as { coordinates?: unknown } | undefined
+  const status = d.status
+  const preferred =
+    pos && Array.isArray(pos.coordinates)
+      ? "map"
+      : typeof d.start === "string" && d.start.length > 0
+        ? "calendar"
+        : item.type === "task" || (typeof status === "string" && TASK_STATUS.has(status))
+          ? "kanban"
+          : "feed"
+  return available.includes(preferred) ? preferred : (available[0] ?? "feed")
+}
 
 export interface WorkspaceRouting {
   groups: Group[]
@@ -57,20 +91,36 @@ export interface WorkspaceRouting {
 }
 
 /**
- * Owns the workspace/module routing concern of the reference app:
- * deriving the workspace list from groups, resolving the active
- * workspace/module from the URL (with localStorage fallback for the
- * next session), keeping the connector's current group in sync, and
- * exposing the two navigation handlers.
+ * Owns the workspace/module/item routing concern of the reference app. URL
+ * scheme (flat; the URL is the single source of truth for the focused item):
+ *   /{scope}                   → redirect to /{scope}/{defaultModule}
+ *   /{scope}/{module}          → module view
+ *   /{scope}/{module}/{itemId} → module + focused item (canonical)
+ *   /{scope}/{itemId}          → module-less item → resolveDefaultModule → redirect
+ * `scope` is a space id, or `network` for the aggregate. The segment after the
+ * scope is a module iff it is in VALID_MODULES, else a (module-less) item id —
+ * generated ids never collide with the fixed module names.
  *
- * Pure glue — no rendering, no dialog state. Home composes the shell
- * around this.
+ * Pure glue — no rendering, no dialog state. Home composes the shell around this.
  */
 export function useWorkspaceRouting(): WorkspaceRouting {
   const connector = useConnector()
   const navigate = useNavigate()
-  const { spaceId: urlSpaceId, module: urlModule, itemId: urlItemId } = useParams<{ spaceId?: string; module?: string; itemId?: string }>()
+  const { scope: urlScope, seg: urlSeg, itemId: urlItemIdParam } = useParams<{
+    scope?: string
+    seg?: string
+    itemId?: string
+  }>()
   const { data: groups, isLoading: groupsLoading } = useGroups()
+
+  // The segment after the scope is a module (known enum) or a module-less item id.
+  const segIsModule = !!urlSeg && VALID_MODULES.includes(urlSeg)
+  const urlModule = segIsModule ? urlSeg : undefined
+  const moduleLessItemId = !segIsModule ? urlSeg : undefined
+  // Canonical focused item: the 3rd segment (/{scope}/{module}/{itemId}).
+  const urlItemId = urlItemIdParam
+  // The space the URL names (aggregate slug → internal overview id).
+  const urlSpaceId = urlScope ? slugToScope(urlScope) : undefined
 
   const basePath = import.meta.env.BASE_URL
   const workspaces: Workspace[] = useMemo(
@@ -87,24 +137,20 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     [groups, basePath]
   )
 
-  // Derive active workspace from URL params (with fallback to localStorage → first space)
+  // Derive active workspace from the URL scope (fallback localStorage → first space).
   const activeWorkspace: Workspace | null = useMemo(() => {
     if (urlSpaceId) {
       const found = workspaces.find((w) => w.id === urlSpaceId)
       if (found) return found
-      // Space ID from URL but not in the list. While groups are still
-      // loading we can't tell "no access" from "not yet loaded" — assume
-      // the space exists (optimistic placeholder) so valid deep-links
-      // don't flash the no-access notice. Once groups are LOADED and the
-      // id still doesn't resolve, this is a foreign or inaccessible space:
-      // return null so the UI says so instead of silently falling back to
-      // the overview. `groupsLoading` is now a real loaded signal
-      // (Observable.loaded), so a user with genuinely zero groups resolves
-      // an unknown id to no-access instead of the placeholder.
+      // Scope id from URL but not in the list. While groups are still loading we
+      // can't tell "no access" from "not yet loaded" — assume it exists
+      // (optimistic placeholder) so valid deep-links don't flash the no-access
+      // notice. Once groups are LOADED and it still doesn't resolve, it's a
+      // foreign/inaccessible space → null so the UI says so. `groupsLoading` is a
+      // real loaded signal (Observable.loaded).
       if (groupsLoading) return { id: urlSpaceId, name: "" }
       return null
     }
-    // No space in URL — try localStorage, then first workspace
     const savedId = localStorage.getItem(STORAGE_KEY_GROUP)
     if (savedId) {
       const found = workspaces.find((w) => w.id === savedId)
@@ -113,16 +159,49 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     return workspaces[0] ?? null
   }, [urlSpaceId, workspaces, groupsLoading])
 
-  // Derive active module from URL params
-  const activeModule = urlModule && VALID_MODULES.includes(urlModule) ? urlModule : (localStorage.getItem(STORAGE_KEY_MODULE) ?? "feed")
+  // Derive active module from the URL (with localStorage fallback → "feed").
+  const activeModule = urlModule ?? localStorage.getItem(STORAGE_KEY_MODULE) ?? "feed"
 
-  // Redirect to URL with space/module if not already there
+  // Available modules for the active space (overview = all modules).
+  const isOverview = activeWorkspace?.scope === "overview"
+  const activeGroup = isOverview ? null : groups.find((g) => g.id === activeWorkspace?.id)
+  const groupModuleIds = isOverview
+    ? VALID_MODULES
+    : (activeGroup?.data?.modules as string[] | undefined) ?? VALID_MODULES
+
+  // Module-less item link (/{scope}/{itemId}): load the item to resolve its
+  // default module, then redirect to the canonical /{scope}/{module}/{itemId}.
+  // Loading by id bypasses any module/bbox filter (observeItem). Empty id when
+  // not on such a path → harmless null observable.
+  const { data: moduleLessItem, isLoading: moduleLessLoading } = useItem(moduleLessItemId ?? "")
+
+  // Redirect bare/short paths to the canonical form.
   useEffect(() => {
-    if (workspaces.length === 0) return
-    if (!urlSpaceId && activeWorkspace) {
-      navigate(`/spaces/${activeWorkspace.id}/${activeModule}`, { replace: true })
+    if (workspaces.length === 0 || !activeWorkspace) return
+    const slug = scopeToSlug(activeWorkspace.id)
+    // (a) No module/item segment (`/` or `/{scope}`) → default module.
+    if (!urlSeg) {
+      navigate(`/${slug}/${activeModule}`, { replace: true })
+      return
     }
-  }, [workspaces.length, urlSpaceId, activeWorkspace, activeModule, navigate])
+    // (b) Module-less item (`/{scope}/{itemId}`) → resolve module, then canonical.
+    if (moduleLessItemId && !moduleLessLoading) {
+      const mod = moduleLessItem
+        ? resolveDefaultModule(moduleLessItem, groupModuleIds)
+        : (groupModuleIds[0] ?? "feed")
+      navigate(`/${slug}/${mod}/${moduleLessItemId}`, { replace: true })
+    }
+  }, [
+    workspaces.length,
+    activeWorkspace,
+    urlSeg,
+    activeModule,
+    moduleLessItemId,
+    moduleLessLoading,
+    moduleLessItem,
+    groupModuleIds,
+    navigate,
+  ])
 
   // Sync connector current group when workspace changes
   useEffect(() => {
@@ -134,15 +213,9 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   // Save to localStorage for next session
   useEffect(() => {
     if (activeWorkspace) localStorage.setItem(STORAGE_KEY_GROUP, activeWorkspace.id)
-    if (urlModule && VALID_MODULES.includes(urlModule)) localStorage.setItem(STORAGE_KEY_MODULE, urlModule)
+    if (urlModule) localStorage.setItem(STORAGE_KEY_MODULE, urlModule)
   }, [activeWorkspace?.id, urlModule]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Derive available modules from active group's data.modules (overview = all modules)
-  const isOverview = activeWorkspace?.scope === "overview"
-  const activeGroup = isOverview ? null : groups.find((g) => g.id === activeWorkspace?.id)
-  const groupModuleIds = isOverview
-    ? VALID_MODULES
-    : (activeGroup?.data?.modules as string[] | undefined) ?? VALID_MODULES
   const modules: Module[] = useMemo(
     () => groupModuleIds
       .filter((id) => MODULE_ICONS[id])
@@ -188,19 +261,21 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     return () => PRIMARY_VARS.forEach((v) => root.style.removeProperty(v))
   }, [activeWorkspace?.id, activeWorkspace?.primaryColor, isOverview])
 
-  // When switching workspace, navigate to URL
+  // Switch workspace (keep the module if offered). Item focus is space-scoped → dropped.
   const handleWorkspaceChange = useCallback((workspace: Workspace) => {
     const group = groups.find((g) => g.id === workspace.id)
     const mods = (group?.data?.modules as string[] | undefined) ?? VALID_MODULES
     const mod = mods.includes(activeModule) ? activeModule : (mods[0] ?? "feed")
-    navigate(`/spaces/${workspace.id}/${mod}`)
+    navigate(`/${scopeToSlug(workspace.id)}/${mod}`)
   }, [groups, activeModule, navigate])
 
+  // Switch module within the active space, carrying the focused item if any.
   const handleModuleChange = useCallback((moduleId: string, opts?: { replace?: boolean }) => {
-    if (activeWorkspace) {
-      navigate(`/spaces/${activeWorkspace.id}/${moduleId}`, opts?.replace ? { replace: true } : undefined)
-    }
-  }, [activeWorkspace, navigate])
+    if (!activeWorkspace) return
+    const slug = scopeToSlug(activeWorkspace.id)
+    const path = urlItemId ? `/${slug}/${moduleId}/${urlItemId}` : `/${slug}/${moduleId}`
+    navigate(path, opts?.replace ? { replace: true } : undefined)
+  }, [activeWorkspace, urlItemId, navigate])
 
   return {
     groups,
