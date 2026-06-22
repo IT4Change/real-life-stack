@@ -103,21 +103,21 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // map-renderable, regardless of `type`. `bbox` limits to the viewport. The
   // Point/coordinates check below is still defensive validation, not the
   // activation criterion.
-  const { data: items } = useItems(
+  const { data: items, isLoading: itemsLoading } = useItems(
     bbox ? { hasField: ["position"], bbox } : AWAITING_VIEWPORT_FILTER,
   )
 
   // Accumulate loaded items across viewport queries. `bbox` limits what LOADS,
   // but markers shouldn't vanish when panned out of view — keep everything ever
   // loaded. Inside the current bbox the fresh query is authoritative once it has
-  // data; outside it the last-known items are retained until the user pans back.
+  // loaded; outside it the last-known items are retained until the user pans back.
   //
-  // Important: async connectors (WotConnector/BaseConnector) expose a new
-  // `observe(filter)` as `[]` until the first `getItems(filter)` resolves. Treating
-  // that transient empty array as authoritative makes clusters disappear briefly
-  // while zooming out, because the expanded bbox says "remove everything in view"
-  // before the new result arrives. Skip that destructive reconciliation for empty
-  // result sets; the next non-empty result still updates/removes in-bbox items.
+  // Reconcile (drop in-view items the fresh query no longer returns) only once
+  // the query has actually LOADED. An async connector reports `[]` transiently
+  // while loading; treating that as authoritative would say "remove everything in
+  // view" before the result arrives → clusters briefly disappear while zooming
+  // out. Gating on `itemsLoading` (a real loaded flag, not "list is empty") also
+  // makes a genuinely empty loaded result correctly drop stale in-view markers.
   const accumulatedRef = useRef<Map<string, Item>>(new Map())
   const [accumulatedItems, setAccumulatedItems] = useState<Item[]>([])
   useEffect(() => {
@@ -127,8 +127,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   useEffect(() => {
     const acc = accumulatedRef.current
     let changed = false
-    const canReconcileCurrentBbox = !!bbox && items.length > 0
-    if (bbox && canReconcileCurrentBbox) {
+    if (bbox && !itemsLoading) {
       const currentIds = new Set(items.map((i) => i.id))
       for (const [id, item] of acc) {
         if (!currentIds.has(id) && itemInBbox(item, bbox)) {
@@ -144,7 +143,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       }
     }
     if (changed) setAccumulatedItems(Array.from(acc.values()))
-  }, [items, bbox])
+  }, [items, bbox, itemsLoading])
   // Cross-space aggregate ("Mein Netzwerk"): useMembers(null) yields
   // the union of all known members, so authors of map items pulled
   // in from other spaces still resolve to their User.

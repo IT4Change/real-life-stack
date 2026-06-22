@@ -10,15 +10,30 @@ export function useItems(filter?: ItemFilter) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [connector, filterKey]
   )
-  const [data, setData] = useState<Item[]>(observable.current)
-  const update = useCallback((items: Item[]) => startTransition(() => setData(items)), [])
+  // Track value AND loaded together. `isLoading` reflects the observable's
+  // `loaded` flag (false only while an async source's first fetch is in flight),
+  // NOT "the list is empty" — so a genuinely empty result reads as loaded, not
+  // loading. `loaded === undefined` (sources without the flag) counts as loaded.
+  const [snapshot, setSnapshot] = useState<{ data: Item[]; loaded: boolean }>(() => ({
+    data: observable.current,
+    loaded: observable.loaded !== false,
+  }))
+  const sync = useCallback(
+    () =>
+      startTransition(() =>
+        setSnapshot({ data: observable.current, loaded: observable.loaded !== false }),
+      ),
+    [observable],
+  )
 
   useEffect(() => {
-    setData(observable.current)
-    return observable.subscribe(update)
-  }, [observable, update])
+    sync()
+    // `markLoaded` notifies through the same channel, so this re-reads `loaded`
+    // even when the resolved value is unchanged (empty result).
+    return observable.subscribe(sync)
+  }, [observable, sync])
 
-  return { data, isLoading: data.length === 0 && observable.current.length === 0 }
+  return { data: snapshot.data, isLoading: !snapshot.loaded }
 }
 
 export function useItem(id: string) {
