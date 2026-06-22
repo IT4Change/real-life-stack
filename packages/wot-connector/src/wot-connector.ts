@@ -262,6 +262,13 @@ export class WotConnector extends BaseConnector {
     this.profileObs = createObservable<Item | null>(null)
     this.currentUserObs = createObservable<User | null>(null)
     this.syncPendingObs = createObservable<boolean>(false)
+    // Groups load asynchronously from the local space docs (unlike the
+    // synchronous Mock/Local connectors). Override the BaseConnector default so
+    // the groups observable starts UNLOADED — markLoaded() fires once the
+    // initial local spaces are read in init() (see updateGroupsFromSpaces). This
+    // lets the UI tell "still loading groups" from "loaded, zero groups" (e.g.
+    // the no-access notice for a deep-linked space a user with no groups can't see).
+    this.groupsObservable = createObservable<Group[]>([], false)
   }
 
   // ==================== Lifecycle ====================
@@ -1170,8 +1177,10 @@ export class WotConnector extends BaseConnector {
     this.spacesSubscriptionUnsub = spacesSubscribable.subscribe((spaces: SpaceInfo[]) => {
       this.updateGroupsFromSpaces(spaces)
     })
-    // Load initial spaces
+    // Load initial spaces — the local space docs have been read at this point,
+    // so the groups observable is now "loaded" (even if the user has zero spaces).
     this.updateGroupsFromSpaces(spacesSubscribable.getValue())
+    this.groupsObservable.markLoaded()
 
     // 12. Ensure private space exists (hidden space for personal items)
     const allSpaces = this.replication.watchSpaces().getValue()
