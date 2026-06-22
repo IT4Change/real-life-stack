@@ -276,7 +276,7 @@ export class LeafletMapAdapter implements MapAdapter {
     if (options?.zoom != null) {
       map.flyTo(toLatLngTuple(center), options.zoom, {
         animate,
-        duration: (options?.duration ?? 3000) / 1000,
+        duration: (options?.duration ?? 1500) / 1000,
       })
     } else {
       map.panTo(toLatLngTuple(center), { animate })

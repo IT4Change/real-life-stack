@@ -86,7 +86,7 @@ const MAP_SHEET_FRACTION = 0.55
 // the cluster it sits in. The exact level in between is derived from how close
 // its nearest neighbour is — zoom only as deep as needed to separate them.
 const MIN_REVEAL_ZOOM = 10
-const MAX_REVEAL_ZOOM = 16
+const MAX_REVEAL_ZOOM = 20
 // Pixels the focused marker must clear its nearest neighbour by to read as its
 // own marker — a hair above the cluster radius (DEFAULT_CLUSTER_RADIUS = 50) so
 // the cluster it sat in actually breaks apart.
