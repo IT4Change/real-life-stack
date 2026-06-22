@@ -466,12 +466,12 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   }, [modulePanel, resolveAuthor, clearFocus])
 
   // Focus bookkeeping: `panelOwnedRef` so we only ever close a detail WE opened
-  // (the panel persists across module switches); `revealedIdRef` opens/reveals
-  // once per id; `fromMarkerClickRef` distinguishes an in-view tap (no zoom yank)
-  // from a deep-link / cross-module arrival (zoom in to surface the marker).
+  // (the panel persists across module switches); `openedIdRef` opens the detail
+  // once per id; `flownIdRef` flies/reveals once per id; `fromMarkerClickRef`
+  // marks an in-view tap (no zoom yank) vs. a deep-link / cross-module arrival.
   const panelOwnedRef = useRef(false)
-  const revealedIdRef = useRef<string | null>(null)
-  const refinedIdRef = useRef<string | null>(null)
+  const openedIdRef = useRef<string | null>(null)
+  const flownIdRef = useRef<string | null>(null)
   const fromMarkerClickRef = useRef(false)
 
   // Wire marker clicks into the URL (single source of truth). While picking a
@@ -504,22 +504,21 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     return unsubscribe
   }, [adapter, itemsById, focusItem, isPicking, updatePick])
 
-  // Reveal the URL-focused item: open its detail + bring it into view. Runs only
-  // on the visible map. The item comes from useItem (scope-aware), so it works
-  // even when the marker isn't loaded yet — fly there, then the bbox query loads
-  // it. Re-arm when the map is hidden so returning re-centers the still-focused
-  // item (another module may have taken over the panel meanwhile).
+  // Reveal the URL-focused item: open its detail, then bring it into view with a
+  // SINGLE smooth flight. Runs only on the visible map. The item comes from
+  // useItem (scope-aware), so the panel opens even before its marker has loaded.
+  // Re-arm when the map is hidden so returning re-centers the still-focused item.
   useEffect(() => {
     if (!active) {
-      revealedIdRef.current = null
-      refinedIdRef.current = null
+      openedIdRef.current = null
+      flownIdRef.current = null
     }
   }, [active])
   useEffect(() => {
     if (!active) return
     if (!focusedId) {
-      revealedIdRef.current = null
-      refinedIdRef.current = null
+      openedIdRef.current = null
+      flownIdRef.current = null
       if (panelOwnedRef.current) {
         panelOwnedRef.current = false
         modulePanel.close()
@@ -531,53 +530,37 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     const c = pos?.coordinates
     const hasPos = !!c && typeof c[0] === "number" && typeof c[1] === "number"
     const bottomInset = isCompact ? window.innerHeight * MAP_SHEET_FRACTION : 0
-    // The item's own neighbourhood has loaded once it appears in the bbox set —
-    // only then is the density (and the needed zoom) real, not a pre-fly guess.
-    const neighbourhoodLoaded = accumulatedItems.some((i) => i.id === focusedId)
 
-    // (1) Open the panel + initial reveal, once per id.
-    if (revealedIdRef.current !== focusedId) {
-      revealedIdRef.current = focusedId
+    // (1) Open the panel once.
+    if (openedIdRef.current !== focusedId) {
+      openedIdRef.current = focusedId
       panelOwnedRef.current = true
-      const fromClick = fromMarkerClickRef.current
-      fromMarkerClickRef.current = false
       openDetail(focusedItem)
-      if (!hasPos) {
-        refinedIdRef.current = focusedId
-        return
+      if (fromMarkerClickRef.current) {
+        // In-view tap: keep the user's zoom — never fly. Just (on mobile) lift
+        // the marker above the detail sheet.
+        fromMarkerClickRef.current = false
+        flownIdRef.current = focusedId
+        if (hasPos && bottomInset) adapter.focusOn([c![0], c![1]], { bottomInset, animate: true })
       }
-      if (fromClick) {
-        // In-view tap: keep the user's zoom, just (on mobile) lift the marker
-        // above the detail sheet. No zoom yank, and never a refine.
-        refinedIdRef.current = focusedId
-        if (bottomInset) adapter.focusOn([c![0], c![1]], { bottomInset, animate: true })
-        return
-      }
-      // Deep-link / cross-module arrival: fly in only as deep as the item needs
-      // to clear its nearest neighbour (lone → gentle, crowded → breaks cluster),
-      // smooth not racing. Never zoom OUT if the user is already closer.
+    }
+
+    // (2) Fly once — a single, slow, density-aware motion. Wait until the
+    // viewport query has settled (`!itemsLoading`) so the nearest-neighbour
+    // distance — and thus how deep we need to go — is real, not a pre-load
+    // guess: a lone marker barely zooms in, a crowded one only as far as it
+    // takes to leave its cluster. Computing it up front means ONE flight, not a
+    // gentle approach followed by a fast second zoom (which made the slow
+    // duration invisible).
+    if (flownIdRef.current !== focusedId && hasPos && bbox && !itemsLoading) {
+      flownIdRef.current = focusedId
       const zoom = Math.max(adapter.getView().zoom, separationZoom(focusedItem, accumulatedItems))
       adapter.focusOn([c![0], c![1]], { zoom, bottomInset, animate: true })
-      // If its neighbourhood is already loaded the density was real → done.
-      if (neighbourhoodLoaded) refinedIdRef.current = focusedId
-      return
-    }
-
-    // (2) Refine once the neighbourhood has loaded: the initial fly used a
-    // pre-load fallback (MIN) when the item wasn't loaded yet, so a deep-linked
-    // item in a dense spot would land too shallow. Now that real neighbours are
-    // in, nudge deeper if it's still too crowded to read as its own marker.
-    if (refinedIdRef.current !== focusedId && hasPos && neighbourhoodLoaded) {
-      refinedIdRef.current = focusedId
-      const sep = separationZoom(focusedItem, accumulatedItems)
-      if (sep > adapter.getView().zoom + 0.3) {
-        adapter.focusOn([c![0], c![1]], { zoom: sep, bottomInset, animate: true, duration: 700 })
-      }
     }
     // openDetail omitted: re-opening on its identity change (author load) is
-    // unwanted; focusedItem/accumulatedItems drive the load-retry + refine.
+    // unwanted; focusedItem/itemsLoading drive the open + the single fly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, focusedId, focusedItem, adapter, accumulatedItems])
+  }, [active, focusedId, focusedItem, adapter, accumulatedItems, bbox, itemsLoading])
 
   // While picking, a map click commits the position immediately (so "Erstellen"
   // always has it) and drops the marker where clicked. No recenter: the click

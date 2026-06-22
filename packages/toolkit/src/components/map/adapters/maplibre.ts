@@ -750,9 +750,12 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
         zoom: options.zoom,
         offset,
         duration: animate ? options?.duration ?? 3000 : 0,
+        // `essential` so the reveal still animates (and honours `duration`) under
+        // an OS "reduce motion" setting, which maplibre otherwise snaps instant.
+        essential: true,
       })
     } else {
-      map.easeTo({ center, offset, duration: animate ? options?.duration ?? 500 : 0 })
+      map.easeTo({ center, offset, duration: animate ? options?.duration ?? 500 : 0, essential: true })
     }
   }
 
