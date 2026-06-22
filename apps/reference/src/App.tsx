@@ -288,7 +288,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   const inviteMember = useInviteMember()
   const removeMember = useRemoveMember()
   const { data: currentUser } = useCurrentUser()
-  const { activeContacts, pendingContacts, contacts: allContacts, removeContact, updateContactName, supportsContacts } = useContacts()
+  const { activeContacts, pendingContacts, contacts: allContacts, isLoading: contactsLoading, removeContact, updateContactName, supportsContacts } = useContacts()
   const verification = useVerification()
 
   // Dialog-Ebene (Ebene 2) als Back-Stack, an die Browser-History gekoppelt:
@@ -529,6 +529,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         onOpenChange={(open) => { if (!open) popDialog() }}
         activeContacts={activeContacts}
         pendingContacts={pendingContacts}
+        isLoading={contactsLoading}
         onRemove={removeContact}
         onEditName={updateContactName}
         onVerify={() => openDialog("verify")}

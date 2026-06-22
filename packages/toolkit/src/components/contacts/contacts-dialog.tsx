@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/primitives/dialog"
+import { Skeleton } from "@/components/primitives/skeleton"
 import { ContactList } from "./contact-list"
 
 export interface ContactsDialogProps {
@@ -18,6 +19,8 @@ export interface ContactsDialogProps {
   onOpenChange: (open: boolean) => void
   activeContacts: ContactInfo[]
   pendingContacts: ContactInfo[]
+  /** True while the first contacts read is still in flight (shows a skeleton). */
+  isLoading?: boolean
   onRemove: (id: string) => void
   onEditName: (id: string, name: string) => void
   onVerify: () => void
@@ -28,6 +31,7 @@ export function ContactsDialog({
   onOpenChange,
   activeContacts,
   pendingContacts,
+  isLoading = false,
   onRemove,
   onEditName,
   onVerify,
@@ -49,27 +53,43 @@ export function ContactsDialog({
             <QrCode className="h-3.5 w-3.5 mr-1.5" />
             Verifizieren
           </Button>
-          {pendingContacts.length > 0 && (
-            <div className="space-y-2">
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ausstehend</h3>
-              <ContactList
-                contacts={pendingContacts}
-                onRemove={onRemove}
-                onEditName={onEditName}
-              />
+          {isLoading ? (
+            <div className="space-y-2" aria-hidden>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={`contact-skeleton-${i}`} className="flex items-center gap-3 px-1 py-1.5">
+                  <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-3.5 w-28" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                </div>
+              ))}
             </div>
+          ) : (
+            <>
+              {pendingContacts.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ausstehend</h3>
+                  <ContactList
+                    contacts={pendingContacts}
+                    onRemove={onRemove}
+                    onEditName={onEditName}
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                {activeContacts.length > 0 && pendingContacts.length > 0 && (
+                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Verifiziert</h3>
+                )}
+                <ContactList
+                  contacts={activeContacts}
+                  onRemove={onRemove}
+                  onEditName={onEditName}
+                  emptyMessage="Noch keine verifizierten Kontakte"
+                />
+              </div>
+            </>
           )}
-          <div className="space-y-2">
-            {activeContacts.length > 0 && pendingContacts.length > 0 && (
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Verifiziert</h3>
-            )}
-            <ContactList
-              contacts={activeContacts}
-              onRemove={onRemove}
-              onEditName={onEditName}
-              emptyMessage="Noch keine verifizierten Kontakte"
-            />
-          </div>
         </div>
       </DialogContent>
     </Dialog>
