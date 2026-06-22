@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { createObservable, shallowEqual, matchesFilter, findRelatedItems } from "../src/base-connector.js"
+import { createObservable, shallowEqual, matchesFilter, findRelatedItems, BaseConnector } from "../src/base-connector.js"
 import type { Item, ItemFilter } from "../src/index.js"
 
 // Helper: create a minimal Item
@@ -105,6 +105,46 @@ describe("createObservable", () => {
 
     obs.markLoaded()
     expect(calls).toBe(0)
+  })
+})
+
+describe("BaseConnector loaded contract", () => {
+  class StubConnector extends BaseConnector {
+    constructor(private readonly stubItems: Item[] = []) {
+      super()
+    }
+    async getItems() {
+      return this.stubItems
+    }
+    async getItem(id: string) {
+      return this.stubItems.find((i) => i.id === id) ?? null
+    }
+    async createItem() {
+      throw new Error("not implemented")
+    }
+    async updateItem() {
+      throw new Error("not implemented")
+    }
+    async deleteItem() {
+      throw new Error("not implemented")
+    }
+  }
+
+  it("observe() stays unloaded until the first (even empty) load settles", async () => {
+    const obs = new StubConnector([]).observe({})
+    expect(obs.loaded).toBe(false)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(obs.loaded).toBe(true)
+    expect(obs.current).toEqual([])
+  })
+
+  it("observe() surfaces resolved data and flips loaded", async () => {
+    const item = createItem({ id: "x" })
+    const obs = new StubConnector([item]).observe({})
+    expect(obs.loaded).toBe(false)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(obs.loaded).toBe(true)
+    expect(obs.current).toEqual([item])
   })
 })
 

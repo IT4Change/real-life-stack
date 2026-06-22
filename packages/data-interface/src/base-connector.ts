@@ -235,14 +235,23 @@ export abstract class BaseConnector implements FullConnector {
   // --- Observables (Default: kein Live-Update) ---
 
   observe(filter: ItemFilter): Observable<Item[]> {
-    const observable = createObservable<Item[]>([])
-    this.getItems(filter).then((items) => observable.set(items))
+    // Async default: starts unloaded and markLoaded() once the first fetch
+    // settles (even when empty), so consumers can tell "loading" from "loaded,
+    // empty". `.finally` also covers errors so it never sticks on loading.
+    const observable = createObservable<Item[]>([], false)
+    this.getItems(filter)
+      .then((items) => observable.set(items))
+      .catch((err) => console.error("[BaseConnector] observe initial load failed", err))
+      .finally(() => observable.markLoaded())
     return observable
   }
 
   observeItem(id: string): Observable<Item | null> {
-    const observable = createObservable<Item | null>(null)
-    this.getItem(id).then((item) => observable.set(item))
+    const observable = createObservable<Item | null>(null, false)
+    this.getItem(id)
+      .then((item) => observable.set(item))
+      .catch((err) => console.error("[BaseConnector] observeItem initial load failed", err))
+      .finally(() => observable.markLoaded())
     return observable
   }
 
@@ -262,8 +271,11 @@ export abstract class BaseConnector implements FullConnector {
     predicate?: string,
     options?: RelatedItemsOptions
   ): Observable<Item[]> {
-    const observable = createObservable<Item[]>([])
-    this.getRelatedItems(itemId, predicate, options).then((items) => observable.set(items))
+    const observable = createObservable<Item[]>([], false)
+    this.getRelatedItems(itemId, predicate, options)
+      .then((items) => observable.set(items))
+      .catch((err) => console.error("[BaseConnector] observeRelatedItems initial load failed", err))
+      .finally(() => observable.markLoaded())
     return observable
   }
 
