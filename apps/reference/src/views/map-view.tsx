@@ -21,6 +21,7 @@ import {
   Button,
   Input,
   hasGlobe,
+  hasCluster,
   type FilterBarValue,
   type FilterTypeOption,
   type MapMarkerSpec,
@@ -228,6 +229,12 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       inner.remove()
     }
   }, [mountAttempt])
+
+  // Cluster dense markers (default on where supported). Set before the markers
+  // effect runs, so the source is created with clustering enabled.
+  useEffect(() => {
+    if (adapter && hasCluster(adapter)) adapter.setClusterConfig({})
+  }, [adapter])
 
   // Kept-alive map: when this view is revealed again (its host toggles back from
   // `display:none`), the container regained its size — recompute so the map fills
@@ -443,12 +450,16 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
           Leaflet adapter did); offset the FilterBar past it so the trigger
           doesn't hide the minus button. A low overlay z keeps the FilterBar
           above the map but still below the detail/composer panel when open. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 py-3 pr-3 pl-16 **:pointer-events-auto">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 py-4 pr-4 pl-16 **:pointer-events-auto">
         <FilterBar
           value={filterBarValue}
           onChange={setFilterBarValue}
           availableTags={availableTags}
           availableTypes={MAP_TYPES}
+          // Floating over the map: force the (outline) Filter trigger opaque.
+          // The shared outline variant is `dark:bg-input/30` — fine on a solid
+          // page, but it lets the map bleed through in dark mode here.
+          className="[&_[data-slot=button][data-variant=outline]]:bg-background!"
           leadingActions={
             <div className="relative min-w-0 flex-1 sm:flex-none">
               <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -457,7 +468,9 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
                 aria-label="Karte durchsuchen"
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                className="h-8 w-full pl-7 text-xs bg-background shadow-sm sm:w-40"
+                // `bg-background!` (important): the Input base is `bg-transparent`
+                // + `dark:bg-input/30`, which would let the map show through.
+                className="h-8 w-full pl-7 text-xs bg-background! shadow-sm sm:w-40"
               />
             </div>
           }

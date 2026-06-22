@@ -151,3 +151,26 @@ export interface GlobeCapable {
 export function hasGlobe(adapter: MapAdapter): adapter is MapAdapter & GlobeCapable {
   return typeof (adapter as Partial<GlobeCapable>).setProjection === "function"
 }
+
+/** A clicked marker cluster. */
+export interface MapCluster {
+  id: string
+  count: number
+  position: LngLat
+}
+
+/**
+ * Adapters that can cluster dense markers (e.g. MapLibre native GeoJSON
+ * clustering). The marker input stays `MapMarkerSpec[]`; aggregation is internal.
+ */
+export interface ClusterCapable {
+  /** Enable clustering with an optional pixel radius; `null` disables it. */
+  setClusterConfig(config: { radius?: number } | null): void
+  /** A cluster (not a single marker) was clicked. */
+  observeClusterClicks(callback: (cluster: MapCluster) => void): Unsubscribe
+}
+
+/** True when `adapter` implements {@link ClusterCapable}. */
+export function hasCluster(adapter: MapAdapter): adapter is MapAdapter & ClusterCapable {
+  return typeof (adapter as Partial<ClusterCapable>).setClusterConfig === "function"
+}

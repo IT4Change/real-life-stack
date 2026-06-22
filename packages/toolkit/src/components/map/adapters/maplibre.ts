@@ -32,11 +32,15 @@ import type {
   GeoJSONSource,
   NavigationControl as MlNavigationControl,
   NavigationControlOptions,
+  AttributionControl as MlAttributionControl,
+  AttributionControlOptions,
 } from "maplibre-gl"
 import type {
+  ClusterCapable,
   GlobeCapable,
   LngLat,
   MapAdapter,
+  MapCluster,
   MapClickEvent,
   MapMarkerSpec,
   MapMountOptions,
@@ -60,13 +64,19 @@ const DEFAULT_MARKER_COLOR = "#2563eb"
  *  globe back-side occlusion for free — unlike per-marker DOM elements). */
 const MARKER_SOURCE = "rls-markers"
 const MARKER_SYMBOL_LAYER = "rls-marker-symbols"
+const MARKER_GLOW_LAYER = "rls-marker-glow"
+const CLUSTER_CIRCLE_LAYER = "rls-marker-clusters"
+const CLUSTER_COUNT_LAYER = "rls-marker-cluster-count"
+/** Neutral cluster-bubble colour (spec allows a neutral default; dominant
+ *  group colour would need mode aggregation — a later refinement). */
+const CLUSTER_COLOR = "#475569"
+const DEFAULT_CLUSTER_RADIUS = 50
 /** Rasterise the pin SVG at 2× so the GPU icon stays crisp on retina. */
 const PIN_RASTER_SCALE = 2
 /** Logical-px padding baked around the pin so its drop shadow isn't clipped.
  *  The symbol layer compensates with `icon-offset` so the tip stays on the
  *  coordinate. */
 const PIN_SHADOW_PAD = 9
-const MARKER_GLOW_LAYER = "rls-marker-glow"
 
 // MapLibre's module shape mirrors its namespace. The two constructors we use
 // are typed against the real maplibre-gl option types so the mount/marker calls
@@ -76,6 +86,7 @@ type MapLibreModule = {
   Map: new (options: MapOptions) => MlMap
   Marker: new (options?: MarkerOptions) => MlMarker
   NavigationControl: new (options?: NavigationControlOptions) => MlNavigationControl
+  AttributionControl: new (options?: AttributionControlOptions) => MlAttributionControl
 }
 
 // Cached lazy module reference. Populated on first mount(), reused thereafter.
@@ -163,7 +174,37 @@ async function rasterizePin(url: string, scale: number): Promise<ImageData> {
   return ctx.getImageData(0, 0, w, h)
 }
 
-export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
+/**
+ * `clusterProperties` that count, per cluster, how many points carry each
+ * distinct marker colour (`clr0`, `clr1`, …) — the basis for the dominant
+ * colour. (Native clustering has no built-in "mode" aggregation.)
+ */
+function clusterColorCounts(colorSet: string[]): Record<string, unknown> {
+  const props: Record<string, unknown> = {}
+  colorSet.forEach((color, i) => {
+    props[`clr${i}`] = ["+", ["case", ["==", ["get", "color"], color], 1, 0]]
+  })
+  return props
+}
+
+/**
+ * A `circle-color` expression returning the colour with the highest `clrN` count
+ * (the most-represented marker colour in a cluster). Ties resolve to the first
+ * in the (sorted) colour set; empty/one-colour sets short-circuit; a neutral
+ * `fallback` covers the rest.
+ */
+function dominantClusterColor(colorSet: string[], fallback: string): unknown {
+  if (colorSet.length === 0) return fallback
+  if (colorSet.length === 1) return colorSet[0]
+  const counts = colorSet.map((_, i) => ["get", `clr${i}`])
+  const cases: unknown[] = []
+  colorSet.forEach((color, i) => {
+    cases.push(["==", ["get", `clr${i}`], ["var", "m"]], color)
+  })
+  return ["let", "m", ["max", ...counts], ["case", ...cases, fallback]]
+}
+
+export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapable {
   // Internal MapLibre handles are held as `unknown` so the generated `.d.ts`
   // does not reference `maplibre-gl`. Consumers without it installed can
   // import the toolkit without TS errors.
@@ -173,9 +214,17 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
   private markerLayersReady = false
   private addedImages = new Set<string>()
   private markersVersion = 0
+  // Clustering config (null = off). Read when the source is (re)created; a change
+  // after the source exists triggers a rebuild. `lastMarkers` re-applies data then.
+  private clusterConfig: { radius?: number } | null = null
+  // Distinct marker colours the cluster bubbles are coloured by (dominant colour
+  // per cluster). A change rebuilds the source (clusterProperties depend on it).
+  private clusterColorSet: string[] = []
+  private lastMarkers: MapMarkerSpec[] = []
   private viewListeners = new Set<(view: MapViewState) => void>()
   private clickListeners = new Set<(event: MapClickEvent) => void>()
   private markerClickListeners = new Set<(markerId: string) => void>()
+  private clusterClickListeners = new Set<(cluster: MapCluster) => void>()
 
   async mount(container: HTMLElement, options: MapMountOptions): Promise<void> {
     if (this.mapInstance) {
@@ -188,11 +237,30 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
       style: options.tileSource ?? DEFAULT_STYLE,
       center: options.center, // [lng, lat] — GeoJSON order, native to MapLibre
       zoom: options.zoom,
-      attributionControl: { customAttribution: options.attribution },
+      // Add the attribution ourselves (below) so we can place + compact it.
+      attributionControl: false,
     })
 
     // Zoom control top-left, matching the Leaflet adapter's default placement.
     map.addControl(new maplibre.NavigationControl({ showCompass: false }), "top-left")
+    // Compact attribution bottom-LEFT (a small "ⓘ" that expands to the right on
+    // click) — out of the way of the bottom-right create FAB.
+    map.addControl(
+      new maplibre.AttributionControl({ compact: true, customAttribution: options.attribution }),
+      "bottom-left",
+    )
+    // MapLibre's compact attribution starts EXPANDED (its `_updateCompact` adds
+    // `maplibregl-compact-show` on add and re-adds it on every resize). Collapse
+    // it on add and after each resize so it starts (and stays) as just the "ⓘ"
+    // until the user clicks it.
+    const collapseAttribution = () => {
+      map
+        .getContainer()
+        .querySelector(".maplibregl-ctrl-attrib")
+        ?.classList.remove("maplibregl-compact-show")
+    }
+    collapseAttribution()
+    map.on("resize", collapseAttribution)
 
     // Settle once the map is usable. "load" fires after the style loads and the
     // first frame renders. A fatal style-load failure (404 / CORS / unreachable
@@ -251,15 +319,18 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
   async unmount(): Promise<void> {
     const map = this.mapInstance as MlMap | null
     if (!map) return
-    // Source, layer and atlas images all go away with the map; just drop our
+    // Source, layers and atlas images all go away with the map; just drop our
     // bookkeeping so a fresh mount re-creates them.
     this.markerLayersReady = false
+    this.markerEventsWired = false
     this.addedImages.clear()
+    this.lastMarkers = []
     map.remove()
     this.mapInstance = null
     this.viewListeners.clear()
     this.clickListeners.clear()
     this.markerClickListeners.clear()
+    this.clusterClickListeners.clear()
   }
 
   setMarkers(markers: MapMarkerSpec[]): void {
@@ -269,9 +340,20 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
     if (!this.mapInstance) {
       throw new Error("MapLibreMapAdapter: setMarkers called before mount")
     }
+    this.reapplyMarkersSafely(markers)
+  }
+
+  /**
+   * Run the async marker pipeline detached, with its rejection always handled so
+   * it can never surface as an unhandled promise rejection. Shared by the
+   * synchronous fire-and-forget entry points — `setMarkers` and the
+   * `setClusterConfig` rebuild — both of which keep a sync signature while the
+   * underlying work (image loading, `setData`) is genuinely async.
+   */
+  private reapplyMarkersSafely(markers: MapMarkerSpec[]): void {
     void this.setMarkersAsync(markers).catch((err) => {
       // eslint-disable-next-line no-console
-      console.error("MapLibreMapAdapter: setMarkers failed", err)
+      console.error("MapLibreMapAdapter: applying markers failed", err)
     })
   }
 
@@ -283,6 +365,18 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
   private async setMarkersAsync(markers: MapMarkerSpec[]): Promise<void> {
     const map = this.mapInstance as MlMap | null
     if (!map) return
+    this.lastMarkers = markers
+    // The cluster bubble colour depends on the distinct marker colours (via
+    // clusterProperties); when that set changes, the source must be rebuilt.
+    if (this.clusterConfig) {
+      const colorSet = Array.from(
+        new Set(markers.map((m) => m.color ?? DEFAULT_MARKER_COLOR)),
+      ).sort()
+      if (colorSet.join("|") !== this.clusterColorSet.join("|")) {
+        this.clusterColorSet = colorSet
+        if (this.markerLayersReady) this.teardownMarkerLayers(map)
+      }
+    }
     this.ensureMarkerLayers(map)
     const version = ++this.markersVersion
     await this.ensureImages(map, markers)
@@ -299,36 +393,47 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
           label: m.label ?? "",
           selected: m.selected ? 1 : 0,
           glowColor: m.glowColor ?? "",
+          color: m.color ?? DEFAULT_MARKER_COLOR,
         },
       })),
     } as GeoJSON.FeatureCollection
     ;(map.getSource(MARKER_SOURCE) as GeoJSONSource | undefined)?.setData(data)
   }
 
-  /** Create the marker source + symbol layer and wire click/hover once. */
+  /**
+   * Create the marker source + layers (idempotent; re-runnable on a cluster
+   * rebuild). All layers carry `point_count` filters, so the same layer set
+   * works clustered or not: pins/glow only on unclustered points, cluster
+   * bubble/count only on cluster features.
+   */
   private ensureMarkerLayers(map: MlMap): void {
     if (this.markerLayersReady) return
     if (!map.getSource(MARKER_SOURCE)) {
       map.addSource(MARKER_SOURCE, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
+        ...(this.clusterConfig
+          ? {
+              cluster: true,
+              clusterRadius: this.clusterConfig.radius ?? DEFAULT_CLUSTER_RADIUS,
+              clusterMaxZoom: 14,
+              clusterProperties: clusterColorCounts(this.clusterColorSet),
+            }
+          : {}),
       })
     }
-    // Glow layer BELOW the pins (added first): a soft, blurred circle in the
-    // item's group colour behind the selected marker — the map counterpart of
-    // the cards' active-item glow. Data-driven (filter on `selected`), so it
-    // follows panel selection without extra calls. Translated up onto the pin's
-    // body (the coordinate is the tip).
+    // Glow halo behind the selected (unclustered) pin, in its group colour.
     if (!map.getLayer(MARKER_GLOW_LAYER)) {
       map.addLayer({
         id: MARKER_GLOW_LAYER,
         type: "circle",
         source: MARKER_SOURCE,
-        filter: ["==", ["get", "selected"], 1],
+        filter: ["all", ["==", ["get", "selected"], 1], ["!", ["has", "point_count"]]],
         paint: {
           "circle-color": ["get", "glowColor"],
           // Larger than the pin so the halo reads around it (a small circle hides
-          // behind the opaque pin body).
+          // behind the opaque pin body). Translated up onto the pin body (the
+          // coordinate is the tip).
           "circle-radius": 26,
           "circle-blur": 0.7,
           "circle-opacity": 0.65,
@@ -337,11 +442,46 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
         },
       })
     }
+    // Cluster bubble + count — present only when the source clusters.
+    if (!map.getLayer(CLUSTER_CIRCLE_LAYER)) {
+      map.addLayer({
+        id: CLUSTER_CIRCLE_LAYER,
+        type: "circle",
+        source: MARKER_SOURCE,
+        filter: ["has", "point_count"],
+        paint: {
+          // Fill = most-represented marker colour in the cluster, white ring.
+          "circle-color": dominantClusterColor(this.clusterColorSet, CLUSTER_COLOR) as never,
+          "circle-opacity": 0.9,
+          "circle-radius": ["step", ["get", "point_count"], 16, 25, 20, 100, 26],
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#ffffff",
+        },
+      })
+    }
+    if (!map.getLayer(CLUSTER_COUNT_LAYER)) {
+      map.addLayer({
+        id: CLUSTER_COUNT_LAYER,
+        type: "symbol",
+        source: MARKER_SOURCE,
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-font": ["Noto Sans Bold", "Noto Sans Regular"],
+          "text-size": 13,
+          "text-allow-overlap": true,
+          "text-ignore-placement": true,
+        },
+        paint: { "text-color": "#ffffff" },
+      })
+    }
+    // Pins — only unclustered points.
     if (!map.getLayer(MARKER_SYMBOL_LAYER)) {
       map.addLayer({
         id: MARKER_SYMBOL_LAYER,
         type: "symbol",
         source: MARKER_SOURCE,
+        filter: ["!", ["has", "point_count"]],
         layout: {
           "icon-image": ["get", "iconImage"],
           // The pin's tip is the bottom-centre of the pin within the image; the
@@ -350,24 +490,92 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable {
           "icon-anchor": "bottom",
           "icon-offset": [0, PIN_SHADOW_PAD],
           "icon-size": 1,
-          // Always show every pin (no label-style decluttering); clustering is a
-          // separate capability.
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
         },
       })
-      map.on("click", MARKER_SYMBOL_LAYER, (e: MapLayerMouseEvent) => {
-        const id = e.features?.[0]?.properties?.id
-        if (id != null) this.markerClickListeners.forEach((cb) => cb(String(id)))
-      })
-      map.on("mouseenter", MARKER_SYMBOL_LAYER, () => {
-        map.getCanvas().style.cursor = "pointer"
-      })
-      map.on("mouseleave", MARKER_SYMBOL_LAYER, () => {
-        map.getCanvas().style.cursor = ""
-      })
     }
+    this.wireMarkerEvents(map)
     this.markerLayersReady = true
+  }
+
+  /**
+   * Click/hover handlers. Wired once: MapLibre keys layer-scoped listeners by
+   * layer id, so they survive a layer remove/re-add (cluster rebuild) and must
+   * not be added again.
+   */
+  private markerEventsWired = false
+  private wireMarkerEvents(map: MlMap): void {
+    if (this.markerEventsWired) return
+    map.on("click", MARKER_SYMBOL_LAYER, (e: MapLayerMouseEvent) => {
+      const id = e.features?.[0]?.properties?.id
+      if (id != null) this.markerClickListeners.forEach((cb) => cb(String(id)))
+    })
+    map.on("mouseenter", MARKER_SYMBOL_LAYER, () => {
+      map.getCanvas().style.cursor = "pointer"
+    })
+    map.on("mouseleave", MARKER_SYMBOL_LAYER, () => {
+      map.getCanvas().style.cursor = ""
+    })
+    // Cluster click → notify listeners + zoom in until the cluster breaks apart.
+    map.on("click", CLUSTER_CIRCLE_LAYER, (e: MapLayerMouseEvent) => {
+      const f = e.features?.[0]
+      if (!f) return
+      const props = (f.properties ?? {}) as { cluster_id?: number; point_count?: number }
+      const clusterId = props.cluster_id
+      const position: LngLat =
+        f.geometry.type === "Point" ? (f.geometry.coordinates as LngLat) : [e.lngLat.lng, e.lngLat.lat]
+      this.clusterClickListeners.forEach((cb) =>
+        cb({ id: String(clusterId), count: Number(props.point_count ?? 0), position }),
+      )
+      const src = map.getSource(MARKER_SOURCE) as GeoJSONSource | undefined
+      if (src && clusterId != null) {
+        src
+          .getClusterExpansionZoom(clusterId)
+          .then((zoom) => map.easeTo({ center: position, zoom }))
+          .catch(() => {})
+      }
+    })
+    map.on("mouseenter", CLUSTER_CIRCLE_LAYER, () => {
+      map.getCanvas().style.cursor = "pointer"
+    })
+    map.on("mouseleave", CLUSTER_CIRCLE_LAYER, () => {
+      map.getCanvas().style.cursor = ""
+    })
+    this.markerEventsWired = true
+  }
+
+  /** Remove the marker source + layers so they can be rebuilt with new source
+   *  settings (clustering on/off, or a changed cluster colour set). Wired event
+   *  handlers persist (keyed by layer id) and are not re-added. */
+  private teardownMarkerLayers(map: MlMap): void {
+    for (const id of [CLUSTER_COUNT_LAYER, CLUSTER_CIRCLE_LAYER, MARKER_SYMBOL_LAYER, MARKER_GLOW_LAYER]) {
+      if (map.getLayer(id)) map.removeLayer(id)
+    }
+    if (map.getSource(MARKER_SOURCE)) map.removeSource(MARKER_SOURCE)
+    this.markerLayersReady = false
+  }
+
+  // --- ClusterCapable ---
+  setClusterConfig(config: { radius?: number } | null): void {
+    const wasOn = !!this.clusterConfig
+    const prevRadius = this.clusterConfig?.radius ?? DEFAULT_CLUSTER_RADIUS
+    this.clusterConfig = config
+    if (wasOn === !!config && prevRadius === (config?.radius ?? DEFAULT_CLUSTER_RADIUS)) return
+    const map = this.mapInstance as MlMap | null
+    // Not built yet → ensureMarkerLayers will pick up the new config on first use.
+    if (!map || !this.markerLayersReady) return
+    // `cluster` is a source-creation property → rebuild, then re-apply markers
+    // through the same guarded path as `setMarkers` (no unhandled rejection).
+    this.teardownMarkerLayers(map)
+    this.reapplyMarkersSafely(this.lastMarkers)
+  }
+
+  observeClusterClicks(callback: (cluster: MapCluster) => void): Unsubscribe {
+    this.clusterClickListeners.add(callback)
+    return () => {
+      this.clusterClickListeners.delete(callback)
+    }
   }
 
   /** Ensure every distinct pin appearance in `markers` is in the image atlas. */

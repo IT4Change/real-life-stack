@@ -57,6 +57,36 @@
     #2f679f 100%
   );
 }
+/* Equalize the map's overlay controls with the create-FAB (bottom-right) and
+   the FilterBar (top): 16px from every edge. MapLibre's stock controls sit 10px
+   from their corner, which read as "tighter" than the FAB — nudge the zoom box
+   (top-left) and the attribution "ⓘ" (bottom-left) out to match. The extra
+   `.maplibregl-map` class gives this rule higher specificity than
+   maplibre-gl.css, so it wins regardless of stylesheet import order. */
+.maplibregl-map .maplibregl-ctrl-top-left .maplibregl-ctrl {
+  margin: 16px 0 0 16px;
+}
+.maplibregl-map .maplibregl-ctrl-top-right .maplibregl-ctrl {
+  margin: 16px 16px 0 0;
+}
+.maplibregl-map .maplibregl-ctrl-bottom-left .maplibregl-ctrl {
+  margin: 0 0 16px 16px;
+}
+.maplibregl-map .maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+  margin: 0 16px 16px 0;
+}
+/* On mobile (< Tailwind `md`) the map is full-bleed behind the fixed BottomNav
+   (App.tsx: `withBottomNav={false}` for the map). Lift the bottom controls clear
+   of the bar so the attribution "ⓘ" isn't hidden behind it — same offset as the
+   create-FAB (`5.25rem + safe-area`), so the bottom-left "ⓘ" and bottom-right FAB
+   line up. md+ has no BottomNav, so the 16px rule above applies there. */
+@media (max-width: 47.99rem) {
+  .maplibregl-map .maplibregl-ctrl-bottom-left .maplibregl-ctrl,
+  .maplibregl-map .maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+    margin-bottom: calc(5.25rem + env(safe-area-inset-bottom));
+  }
+}
+
 .dark .rls-globe-sky {
   background-color: #04060c;
   /* Two star layers with non-matching tile sizes (380 / 250) so the field never
