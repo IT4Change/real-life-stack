@@ -81,12 +81,12 @@ function itemInBbox(item: Item, bbox: [number, number, number, number]): boolean
  *  marker into the strip of map left visible above the sheet. */
 const MAP_SHEET_FRACTION = 0.55
 
-// Reveal-zoom bounds. A lone item only zooms to MIN_REVEAL_ZOOM (enough to see
-// the place, not a street-level slam); a crowded item zooms up to MAX to break
-// the cluster it sits in. The exact level in between is derived from how close
-// its nearest neighbour is — zoom only as deep as needed to separate them.
+// Reveal-zoom floor. A lone item only zooms to MIN_REVEAL_ZOOM (enough to see
+// the place, not a street-level slam). There is intentionally NO ceiling: a
+// crowded item zooms as deep as it takes to break its cluster — even for very
+// dense markers — bounded only by the map's own maxZoom. The exact level is
+// derived from how close the nearest neighbour is (zoom only as deep as needed).
 const MIN_REVEAL_ZOOM = 10
-const MAX_REVEAL_ZOOM = 20
 // Pixels the focused marker must clear its nearest neighbour by to read as its
 // own marker — a hair above the cluster radius (DEFAULT_CLUSTER_RADIUS = 50) so
 // the cluster it sat in actually breaks apart.
@@ -108,10 +108,11 @@ function metersBetween(aLng: number, aLat: number, bLng: number, bLat: number): 
 
 /**
  * Zoom needed to separate `item` from its nearest neighbour in `others` by
- * REVEAL_SEPARATION_PX (so it leaves any cluster), clamped to [MIN, MAX]. Lone
- * items (no/very distant neighbours) resolve to MIN_REVEAL_ZOOM — a gentle
- * reveal, not a deep slam. This is what lets the reveal zoom only as far as a
- * given item actually needs, instead of always slamming to a fixed deep level.
+ * REVEAL_SEPARATION_PX (so it leaves any cluster). Floored at MIN_REVEAL_ZOOM
+ * for lone items (no/very distant neighbours → a gentle reveal). No ceiling:
+ * the denser the spot, the deeper it goes, so every cluster dissolves; the map
+ * clamps the result to its own maxZoom. This lets the reveal zoom only as far
+ * as a given item actually needs, instead of a fixed level.
  */
 function separationZoom(item: Item, others: Item[]): number {
   const pos = item.data.position as { coordinates?: number[] } | undefined
@@ -128,14 +129,14 @@ function separationZoom(item: Item, others: Item[]): number {
     if (d < nearest) nearest = d
   }
   if (!Number.isFinite(nearest)) return MIN_REVEAL_ZOOM // lone
-  if (nearest < 1) return MAX_REVEAL_ZOOM // ~identical position
   // metres/pixel = EARTH·cos(lat) / (tile·2^zoom); solve for the zoom where the
-  // neighbour sits REVEAL_SEPARATION_PX away.
+  // neighbour sits REVEAL_SEPARATION_PX away. Floor the distance so coincident
+  // markers stay finite (→ a very deep zoom the map clamps to its maxZoom).
   const z = Math.log2(
     (REVEAL_SEPARATION_PX * EARTH_CIRCUMFERENCE_M * Math.cos((lat * Math.PI) / 180)) /
-      (nearest * MERCATOR_TILE_SIZE),
+      (Math.max(nearest, 0.1) * MERCATOR_TILE_SIZE),
   )
-  return Math.min(MAX_REVEAL_ZOOM, Math.max(MIN_REVEAL_ZOOM, z))
+  return Math.max(MIN_REVEAL_ZOOM, z)
 }
 
 export function MapView({ groupId, active = true }: { groupId: string; active?: boolean }) {
