@@ -174,34 +174,42 @@ async function rasterizePin(url: string, scale: number): Promise<ImageData> {
   return ctx.getImageData(0, 0, w, h)
 }
 
-/**
- * `clusterProperties` that count, per cluster, how many points carry each
- * distinct marker colour (`clr0`, `clr1`, …) — the basis for the dominant
- * colour. (Native clustering has no built-in "mode" aggregation.)
- */
-function clusterColorCounts(colorSet: string[]): Record<string, unknown> {
-  const props: Record<string, unknown> = {}
-  colorSet.forEach((color, i) => {
-    props[`clr${i}`] = ["+", ["case", ["==", ["get", "color"], color], 1, 0]]
-  })
-  return props
-}
+// Cluster bubble colour = the most-represented marker colour among the leaves.
+// Native clustering has no "mode" aggregation, and per-colour `clusterProperties`
+// would have to be baked at source-creation — so a newly-appearing colour would
+// force a source rebuild, which flashes the markers (the cluster re-clusters in
+// a worker and renders empty meanwhile). Instead we accumulate the leaf colours
+// into ONE colour-agnostic string (`colorList`); the source never needs
+// rebuilding, and the dominant colour is computed in JS (below) and applied via
+// `feature-state`. The `;`-separator keeps `#rrggbb` values parseable.
+const CLUSTER_COLOR_SEP = ";"
+const CLUSTER_COLOR_PROPERTIES = {
+  colorList: [
+    ["concat", ["accumulated"], ["get", "colorList"]],
+    ["concat", ["get", "color"], CLUSTER_COLOR_SEP],
+  ],
+} as const
 
 /**
- * A `circle-color` expression returning the colour with the highest `clrN` count
- * (the most-represented marker colour in a cluster). Ties resolve to the first
- * in the (sorted) colour set; empty/one-colour sets short-circuit; a neutral
- * `fallback` covers the rest.
+ * Most-frequent colour in a `colorList` cluster property (a `;`-joined list of
+ * the leaf marker colours). Ties resolve to the first one reaching the max.
+ * Returns null for an empty/absent list (caller keeps the neutral fallback).
  */
-function dominantClusterColor(colorSet: string[], fallback: string): unknown {
-  if (colorSet.length === 0) return fallback
-  if (colorSet.length === 1) return colorSet[0]
-  const counts = colorSet.map((_, i) => ["get", `clr${i}`])
-  const cases: unknown[] = []
-  colorSet.forEach((color, i) => {
-    cases.push(["==", ["get", `clr${i}`], ["var", "m"]], color)
-  })
-  return ["let", "m", ["max", ...counts], ["case", ...cases, fallback]]
+function dominantColorFromList(list: unknown): string | null {
+  if (typeof list !== "string" || list.length === 0) return null
+  const counts = new Map<string, number>()
+  let best: string | null = null
+  let bestCount = 0
+  for (const color of list.split(CLUSTER_COLOR_SEP)) {
+    if (!color) continue
+    const next = (counts.get(color) ?? 0) + 1
+    counts.set(color, next)
+    if (next > bestCount) {
+      bestCount = next
+      best = color
+    }
+  }
+  return best
 }
 
 export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapable {
@@ -214,12 +222,11 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
   private markerLayersReady = false
   private addedImages = new Set<string>()
   private markersVersion = 0
-  // Clustering config (null = off). Read when the source is (re)created; a change
-  // after the source exists triggers a rebuild. `lastMarkers` re-applies data then.
+  // Clustering config (null = off). Read when the source is created; a radius/
+  // on-off change rebuilds the source (`lastMarkers` re-applies data then). The
+  // bubble colour does NOT depend on the source: it is computed per cluster in
+  // JS and applied via feature-state, so colours never force a rebuild.
   private clusterConfig: { radius?: number } | null = null
-  // Distinct marker colours the cluster bubbles are coloured by (dominant colour
-  // per cluster). A change rebuilds the source (clusterProperties depend on it).
-  private clusterColorSet: string[] = []
   private lastMarkers: MapMarkerSpec[] = []
   private viewListeners = new Set<(view: MapViewState) => void>()
   private clickListeners = new Set<(event: MapClickEvent) => void>()
@@ -366,17 +373,9 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     const map = this.mapInstance as MlMap | null
     if (!map) return
     this.lastMarkers = markers
-    // The cluster bubble colour depends on the distinct marker colours (via
-    // clusterProperties); when that set changes, the source must be rebuilt.
-    if (this.clusterConfig) {
-      const colorSet = Array.from(
-        new Set(markers.map((m) => m.color ?? DEFAULT_MARKER_COLOR)),
-      ).sort()
-      if (colorSet.join("|") !== this.clusterColorSet.join("|")) {
-        this.clusterColorSet = colorSet
-        if (this.markerLayersReady) this.teardownMarkerLayers(map)
-      }
-    }
+    // The cluster source is colour-agnostic (bubble colour comes from
+    // feature-state, set in updateClusterColors), so it never needs rebuilding
+    // when the visible marker colours change — no flash on pan/zoom.
     this.ensureMarkerLayers(map)
     const version = ++this.markersVersion
     await this.ensureImages(map, markers)
@@ -398,6 +397,10 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
       })),
     } as GeoJSON.FeatureCollection
     ;(map.getSource(MARKER_SOURCE) as GeoJSONSource | undefined)?.setData(data)
+    // Re-cluster happens in a worker; the `data` listener (wireMarkerEvents)
+    // colours the clusters once it completes. This call covers the case where
+    // the source was already clustered/idle.
+    this.updateClusterColors(map)
   }
 
   /**
@@ -417,7 +420,7 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
               cluster: true,
               clusterRadius: this.clusterConfig.radius ?? DEFAULT_CLUSTER_RADIUS,
               clusterMaxZoom: 14,
-              clusterProperties: clusterColorCounts(this.clusterColorSet),
+              clusterProperties: CLUSTER_COLOR_PROPERTIES as unknown as Record<string, unknown>,
             }
           : {}),
       })
@@ -450,8 +453,10 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
         source: MARKER_SOURCE,
         filter: ["has", "point_count"],
         paint: {
-          // Fill = most-represented marker colour in the cluster, white ring.
-          "circle-color": dominantClusterColor(this.clusterColorSet, CLUSTER_COLOR) as never,
+          // Fill = most-represented marker colour in the cluster (set per
+          // cluster via feature-state in updateClusterColors), neutral until
+          // then; white ring.
+          "circle-color": ["coalesce", ["feature-state", "color"], CLUSTER_COLOR] as never,
           "circle-opacity": 0.9,
           "circle-radius": ["step", ["get", "point_count"], 16, 25, 20, 100, 26],
           "circle-stroke-width": 2,
@@ -542,11 +547,48 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     map.on("mouseleave", CLUSTER_CIRCLE_LAYER, () => {
       map.getCanvas().style.cursor = ""
     })
+    // Cluster bubble colours are feature-state, computed in JS from each
+    // cluster's leaf colours. Recompute when the source finishes (re)clustering
+    // and after viewport changes (clusters merge/split with zoom). Setting it in
+    // the synchronous `data` handler means it lands before the next paint — the
+    // cluster shows its dominant colour immediately, no neutral flash.
+    map.on("data", (e) => {
+      const ev = e as { sourceId?: string; isSourceLoaded?: boolean; dataType?: string }
+      if (ev.dataType === "source" && ev.sourceId === MARKER_SOURCE && ev.isSourceLoaded) {
+        this.updateClusterColors(map)
+      }
+    })
+    map.on("moveend", () => this.updateClusterColors(map))
     this.markerEventsWired = true
   }
 
+  /**
+   * Colour every visible cluster bubble by its dominant leaf colour. The source
+   * itself is colour-agnostic; each cluster carries an accumulated `colorList`
+   * property (the `;`-joined leaf colours), available synchronously from
+   * `querySourceFeatures`. We pick the most frequent colour and apply it via
+   * feature-state (keyed by `cluster_id`), which the bubble's `circle-color`
+   * reads. No-op while clustering is off or the layer is gone.
+   */
+  private updateClusterColors(map: MlMap): void {
+    if (!this.clusterConfig || !map.getLayer(CLUSTER_CIRCLE_LAYER)) return
+    let clusters: Array<{ id?: string | number; properties?: Record<string, unknown> | null }>
+    try {
+      clusters = map.querySourceFeatures(MARKER_SOURCE, {
+        filter: ["has", "point_count"],
+      }) as never
+    } catch {
+      return // source not query-ready yet
+    }
+    for (const f of clusters) {
+      if (f.id == null) continue
+      const color = dominantColorFromList(f.properties?.colorList)
+      if (color) map.setFeatureState({ source: MARKER_SOURCE, id: f.id }, { color })
+    }
+  }
+
   /** Remove the marker source + layers so they can be rebuilt with new source
-   *  settings (clustering on/off, or a changed cluster colour set). Wired event
+   *  settings (clustering on/off, or a changed cluster radius). Wired event
    *  handlers persist (keyed by layer id) and are not re-added. */
   private teardownMarkerLayers(map: MlMap): void {
     for (const id of [CLUSTER_COUNT_LAYER, CLUSTER_CIRCLE_LAYER, MARKER_SYMBOL_LAYER, MARKER_GLOW_LAYER]) {
