@@ -23,7 +23,14 @@ import type {
 
 // --- Shared Helpers for Connector implementations ---
 
-export type ReactiveObservable<T> = Observable<T> & { set(value: T): void; destroy(): void }
+export type ReactiveObservable<T> = Observable<T> & {
+  set(value: T): void
+  /** Mark the first fetch as settled (loaded), notifying subscribers even if the
+   *  value is unchanged — so an async source resolving to an *empty* result still
+   *  flips `loaded` and re-renders. No-op once already loaded. */
+  markLoaded(): void
+  destroy(): void
+}
 
 /**
  * Shallow equality check for Observable values.
@@ -44,13 +51,23 @@ export function shallowEqual<T>(a: T, b: T): boolean {
   return false
 }
 
-export function createObservable<T>(initial: T): ReactiveObservable<T> {
+/**
+ * Create a reactive observable. `loaded` defaults to `true` for synchronous
+ * sources whose initial value is already authoritative; pass `false` for an
+ * async source that resolves its first value later and call `markLoaded()` once
+ * it settles (see {@link ReactiveObservable.markLoaded}).
+ */
+export function createObservable<T>(initial: T, loaded = true): ReactiveObservable<T> {
   let current = initial
+  let isLoaded = loaded
   const subscribers = new Set<(value: T) => void>()
 
   return {
     get current() {
       return current
+    },
+    get loaded() {
+      return isLoaded
     },
     subscribe(callback: (value: T) => void): Unsubscribe {
       subscribers.add(callback)
@@ -60,6 +77,11 @@ export function createObservable<T>(initial: T): ReactiveObservable<T> {
       if (shallowEqual(current, value)) return
       current = value
       subscribers.forEach((cb) => cb(value))
+    },
+    markLoaded() {
+      if (isLoaded) return
+      isLoaded = true
+      subscribers.forEach((cb) => cb(current))
     },
     destroy() {
       subscribers.clear()
@@ -213,14 +235,23 @@ export abstract class BaseConnector implements FullConnector {
   // --- Observables (Default: kein Live-Update) ---
 
   observe(filter: ItemFilter): Observable<Item[]> {
-    const observable = createObservable<Item[]>([])
-    this.getItems(filter).then((items) => observable.set(items))
+    // Async default: starts unloaded and markLoaded() once the first fetch
+    // settles (even when empty), so consumers can tell "loading" from "loaded,
+    // empty". `.finally` also covers errors so it never sticks on loading.
+    const observable = createObservable<Item[]>([], false)
+    this.getItems(filter)
+      .then((items) => observable.set(items))
+      .catch((err) => console.error("[BaseConnector] observe initial load failed", err))
+      .finally(() => observable.markLoaded())
     return observable
   }
 
   observeItem(id: string): Observable<Item | null> {
-    const observable = createObservable<Item | null>(null)
-    this.getItem(id).then((item) => observable.set(item))
+    const observable = createObservable<Item | null>(null, false)
+    this.getItem(id)
+      .then((item) => observable.set(item))
+      .catch((err) => console.error("[BaseConnector] observeItem initial load failed", err))
+      .finally(() => observable.markLoaded())
     return observable
   }
 
@@ -240,8 +271,11 @@ export abstract class BaseConnector implements FullConnector {
     predicate?: string,
     options?: RelatedItemsOptions
   ): Observable<Item[]> {
-    const observable = createObservable<Item[]>([])
-    this.getRelatedItems(itemId, predicate, options).then((items) => observable.set(items))
+    const observable = createObservable<Item[]>([], false)
+    this.getRelatedItems(itemId, predicate, options)
+      .then((items) => observable.set(items))
+      .catch((err) => console.error("[BaseConnector] observeRelatedItems initial load failed", err))
+      .finally(() => observable.markLoaded())
     return observable
   }
 
