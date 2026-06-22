@@ -85,7 +85,7 @@ const MAP_SHEET_FRACTION = 0.55
 // the place, not a street-level slam); a crowded item zooms up to MAX to break
 // the cluster it sits in. The exact level in between is derived from how close
 // its nearest neighbour is — zoom only as deep as needed to separate them.
-const MIN_REVEAL_ZOOM = 12
+const MIN_REVEAL_ZOOM = 10
 const MAX_REVEAL_ZOOM = 16
 // Pixels the focused marker must clear its nearest neighbour by to read as its
 // own marker — a hair above the cluster radius (DEFAULT_CLUSTER_RADIUS = 50) so
