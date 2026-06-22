@@ -475,7 +475,13 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   const openedIdRef = useRef<string | null>(null)
   const settledIdRef = useRef<string | null>(null)
   const approachedIdRef = useRef<string | null>(null)
-  const fromMarkerClickRef = useRef(false)
+  // Holds the id of a marker click awaiting its reveal (not a bare boolean): a
+  // click only counts when the ref still matches the now-focused id, so a leaked
+  // flag can't make a later deep-link skip its zoom.
+  const fromMarkerClickRef = useRef<string | null>(null)
+  // Live focus id for the marker-click handler — avoids re-subscribing on focus.
+  const focusedIdRef = useRef(focusedId)
+  focusedIdRef.current = focusedId
 
   // Wire marker clicks into the URL (single source of truth). While picking a
   // location, marker clicks are ignored — a click should set the position, not
@@ -500,8 +506,14 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         return
       }
       if (item) {
-        fromMarkerClickRef.current = true
-        focusItem(item.id)
+        // Only a click that actually CHANGES the focus counts as a marker click.
+        // Clicking the already-focused marker is a no-op navigate, so the reveal
+        // effect wouldn't run to consume the flag and it would leak into the next
+        // deep-link (suppressing its zoom). Skip it.
+        if (item.id !== focusedIdRef.current) {
+          fromMarkerClickRef.current = item.id
+          focusItem(item.id)
+        }
       }
     })
     return unsubscribe
@@ -544,10 +556,12 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       openedIdRef.current = focusedId
       panelOwnedRef.current = true
       openDetail(focusedItem)
-      if (fromMarkerClickRef.current) {
+      // Consume the marker-click flag, honouring it only when it matches THIS id.
+      const fromClick = fromMarkerClickRef.current === focusedId
+      fromMarkerClickRef.current = null
+      if (fromClick) {
         // In-view tap: keep the user's zoom — never fly. Just (on mobile) lift
         // the marker above the detail sheet.
-        fromMarkerClickRef.current = false
         settledIdRef.current = focusedId
         approachedIdRef.current = focusedId
         if (hasPos && bottomInset) adapter.focusOn([c![0], c![1]], { bottomInset, animate: true })

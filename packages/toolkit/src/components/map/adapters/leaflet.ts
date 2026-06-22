@@ -269,20 +269,22 @@ export class LeafletMapAdapter implements MapAdapter {
     const map = this.mapInstance as L.Map | null
     if (!map) return
     const animate = options?.animate !== false
+    // Leaflet durations are in seconds. Honour `duration` (the adapter contract)
+    // on BOTH the zoom path and the pan path, matching MapLibre's defaults
+    // (1500 ms fly / 500 ms pan) so the contract is consistent across adapters.
+    const flyDuration = (options?.duration ?? 1500) / 1000
+    const panDuration = (options?.duration ?? 500) / 1000
     // Centre the target, then shift the view up by half the obscured strip so it
     // sits centred in the visible area above a bottom sheet (panBy +y moves the
     // map content up, i.e. the target rises). A zoom change flies (smooth
-    // zoom+pan, Leaflet duration is in seconds) instead of a hard setView.
+    // zoom+pan) instead of a hard setView.
     if (options?.zoom != null) {
-      map.flyTo(toLatLngTuple(center), options.zoom, {
-        animate,
-        duration: (options?.duration ?? 1500) / 1000,
-      })
+      map.flyTo(toLatLngTuple(center), options.zoom, { animate, duration: flyDuration })
     } else {
-      map.panTo(toLatLngTuple(center), { animate })
+      map.panTo(toLatLngTuple(center), { animate, duration: panDuration })
     }
     const bottomInset = options?.bottomInset ?? 0
-    if (bottomInset) map.panBy([0, bottomInset / 2], { animate })
+    if (bottomInset) map.panBy([0, bottomInset / 2], { animate, duration: panDuration })
   }
 
   getView(): MapViewState {
