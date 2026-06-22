@@ -945,10 +945,17 @@ export class WotConnector extends BaseConnector {
     const key = JSON.stringify(filter)
     let obs = this.itemObservables.get(key)
     if (!obs) {
-      obs = createObservable<Item[]>([])
+      // Starts unloaded: `current` is `[]` until the first fetch settles. Set the
+      // data, then markLoaded() so consumers can tell "still loading" apart from
+      // "loaded, empty" — even when the result is genuinely empty (set([]) on an
+      // already-empty observable is a no-op, so markLoaded does the notifying).
+      obs = createObservable<Item[]>([], false)
       this.itemObservables.set(key, obs)
       // Load initial data (awaits handleReady internally)
-      void this.getItems(filter).then((items) => obs!.set(items))
+      void this.getItems(filter)
+        .then((items) => obs!.set(items))
+        .catch((err) => console.error("[WotConnector] observe initial load failed", err))
+        .finally(() => obs!.markLoaded())
     }
     return obs
   }
