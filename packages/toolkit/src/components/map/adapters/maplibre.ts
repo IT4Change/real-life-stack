@@ -72,6 +72,12 @@ const CLUSTER_COUNT_LAYER = "rls-marker-cluster-count"
  *  group colour would need mode aggregation — a later refinement). */
 const CLUSTER_COLOR = "#475569"
 const DEFAULT_CLUSTER_RADIUS = 50
+/** Extra zoom added to a cluster's expansion zoom when easing in **globe**
+ *  projection. The globe maps the camera zoom to a coarser effective tile zoom
+ *  at low zoom, so easing to the bare expansion zoom often leaves the cluster
+ *  still merged (needing a second click / nudge). A small margin reliably breaks
+ *  it apart; over-zooming a hair is harmless. Mercator is exact (buffer 0). */
+const CLUSTER_EXPANSION_GLOBE_BUFFER = 1
 /** Rasterise the pin SVG at 2× so the GPU icon stays crisp on retina. */
 const PIN_RASTER_SCALE = 2
 /** Logical-px padding baked around the pin so its drop shadow isn't clipped.
@@ -228,6 +234,9 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
   // bubble colour does NOT depend on the source: it is computed per cluster in
   // JS and applied via feature-state, so colours never force a rebuild.
   private clusterConfig: { radius?: number } | null = null
+  // Current projection — tracked so the cluster-expansion easeTo can compensate
+  // for the globe's coarser effective tile zoom (see CLUSTER_EXPANSION_GLOBE_BUFFER).
+  private currentProjection: MapProjection = "mercator"
   private lastMarkers: MapMarkerSpec[] = []
   // Rendered marker id → appearance hash. Lets `setMarkersAsync` push only the
   // delta via `GeoJSONSource.updateData` (add/update/remove) instead of a full
@@ -252,6 +261,11 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
       zoom: options.zoom,
       // Add the attribution ourselves (below) so we can place + compact it.
       attributionControl: false,
+      // No symbol fade: the cluster bubble (circle) updates instantly with the
+      // source, but the count (symbol) would otherwise fade out over the default
+      // 300ms — leaving the old number lingering/displaced as a cluster breaks
+      // apart on zoom. 0 keeps the count in sync with its bubble.
+      fadeDuration: 0,
     })
 
     // Zoom control top-left, matching the Leaflet adapter's default placement.
@@ -566,7 +580,14 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
       if (src && clusterId != null) {
         src
           .getClusterExpansionZoom(clusterId)
-          .then((zoom) => map.easeTo({ center: position, zoom }))
+          .then((zoom) => {
+            // Globe needs a small extra push past the expansion zoom (its camera
+            // zoom maps to a coarser effective tile zoom), else the cluster often
+            // stays merged. Mercator is exact.
+            const target =
+              this.currentProjection === "globe" ? zoom + CLUSTER_EXPANSION_GLOBE_BUFFER : zoom
+            map.easeTo({ center: position, zoom: target })
+          })
           .catch(() => {})
       }
     })
@@ -681,6 +702,7 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
 
   // --- GlobeCapable ---
   setProjection(projection: MapProjection): void {
+    this.currentProjection = projection
     ;(this.mapInstance as MlMap | null)?.setProjection({ type: projection })
   }
 
