@@ -38,9 +38,29 @@ const MAP_TYPES: FilterTypeOption[] = [
   { id: "place", label: "Orte", icon: MapPin },
 ]
 
+// Until the map is mounted the viewport is unknown, so request nothing rather
+// than the full (unbounded) set — the map shows its loading state meanwhile, and
+// the real bbox query starts as soon as the bounds are known. `hasField` on a
+// field no item carries yields an empty result.
+const AWAITING_VIEWPORT_FILTER = { hasField: ["__rls_awaiting_viewport__"] }
+
 // Provisional location-pick marker (visually distinct from item markers).
 const PICK_MARKER_ID = "__rls_pick__"
 const PICK_MARKER_COLOR = "#ef4444"
+
+/** Whether an item's Point position lies within `bbox` ([west, south, east,
+ *  north]); a box with `west > east` wraps the antimeridian. Used to reconcile
+ *  the accumulated set: a kept item inside the current view that the fresh query
+ *  no longer returns was deleted/filtered and is dropped. */
+function itemInBbox(item: Item, bbox: [number, number, number, number]): boolean {
+  const pos = item.data.position as { coordinates?: number[] } | undefined
+  const c = pos?.coordinates
+  if (!c || typeof c[0] !== "number" || typeof c[1] !== "number") return false
+  const [lng, lat] = c
+  const [west, south, east, north] = bbox
+  if (lat < south || lat > north) return false
+  return west <= east ? lng >= west && lng <= east : lng >= west || lng <= east
+}
 
 /**
  * Map module — vector version using the MapLibreMapAdapter from toolkit.
@@ -83,7 +103,41 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // map-renderable, regardless of `type`. `bbox` limits to the viewport. The
   // Point/coordinates check below is still defensive validation, not the
   // activation criterion.
-  const { data: items } = useItems({ hasField: ["position"], bbox })
+  const { data: items } = useItems(
+    bbox ? { hasField: ["position"], bbox } : AWAITING_VIEWPORT_FILTER,
+  )
+
+  // Accumulate loaded items across viewport queries. `bbox` limits what LOADS,
+  // but markers shouldn't vanish when panned out of view — keep everything ever
+  // loaded. Inside the current bbox the fresh query is authoritative (edits,
+  // deletes and filtering reflect immediately); outside it the last-known items
+  // are retained until the user pans back. Reset when the space changes.
+  const accumulatedRef = useRef<Map<string, Item>>(new Map())
+  const [accumulatedItems, setAccumulatedItems] = useState<Item[]>([])
+  useEffect(() => {
+    accumulatedRef.current = new Map()
+    setAccumulatedItems([])
+  }, [groupId])
+  useEffect(() => {
+    const acc = accumulatedRef.current
+    let changed = false
+    if (bbox) {
+      const currentIds = new Set(items.map((i) => i.id))
+      for (const [id, item] of acc) {
+        if (!currentIds.has(id) && itemInBbox(item, bbox)) {
+          acc.delete(id)
+          changed = true
+        }
+      }
+    }
+    for (const item of items) {
+      if (acc.get(item.id) !== item) {
+        acc.set(item.id, item)
+        changed = true
+      }
+    }
+    if (changed) setAccumulatedItems(Array.from(acc.values()))
+  }, [items, bbox])
   // Cross-space aggregate ("Mein Netzwerk"): useMembers(null) yields
   // the union of all known members, so authors of map items pulled
   // in from other spaces still resolve to their User.
@@ -99,7 +153,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   const modulePanel = useModulePanel()
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [searchText, setSearchText] = useState("")
-  const itemsAfterBar = useFilterableItems(items, filterBarValue)
+  const itemsAfterBar = useFilterableItems(accumulatedItems, filterBarValue)
   const filteredItems = useMemo(() => {
     const needle = searchText.trim().toLowerCase()
     if (!needle) return itemsAfterBar
@@ -112,9 +166,9 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   }, [itemsAfterBar, searchText])
   const availableTags = useMemo(() => {
     const seen = new Set<string>()
-    for (const item of items) for (const tag of item.tags ?? []) seen.add(tag)
+    for (const item of accumulatedItems) for (const tag of item.tags ?? []) seen.add(tag)
     return Array.from(seen).sort()
-  }, [items])
+  }, [accumulatedItems])
 
   const mapContentTypes: ContentTypeConfig[] = useMemo(() => [
     {
