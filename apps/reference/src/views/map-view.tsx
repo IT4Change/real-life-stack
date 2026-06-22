@@ -81,10 +81,11 @@ function itemInBbox(item: Item, bbox: [number, number, number, number]): boolean
  *  marker into the strip of map left visible above the sheet. */
 const MAP_SHEET_FRACTION = 0.55
 
-/** Zoom level a URL-revealed item is brought to. Above the cluster-break
- *  threshold (clusterMaxZoom = 14) so a deep-linked item inside a cluster
- *  surfaces as its own marker instead of staying hidden in the cluster. */
-const FOCUS_ZOOM = 15.5
+/** Zoom a URL-revealed item is brought to when it might be clustered: just one
+ *  past the adapter's cluster-break threshold (clusterMaxZoom = 14) — far enough
+ *  that the item surfaces as its own marker, but not a deep "max" zoom that
+ *  rips the surrounding context away. */
+const REVEAL_ZOOM = 15
 
 export function MapView({ groupId, active = true }: { groupId: string; active?: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -479,10 +480,11 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
           // above the detail sheet. No zoom yank.
           if (bottomInset) adapter.focusOn([c[0], c[1]], { bottomInset, animate: true })
         } else {
-          // Deep-link / cross-module arrival: zoom in past the cluster-break
-          // threshold so the item surfaces as its own marker. Never zoom OUT if
+          // Deep-link / cross-module arrival: fly in just past the cluster-break
+          // threshold so the item surfaces as its own marker — smooth, not a
+          // race (the adapter uses flyTo for the zoom path). Never zoom OUT if
           // the user is already closer.
-          const zoom = Math.max(adapter.getView().zoom, FOCUS_ZOOM)
+          const zoom = Math.max(adapter.getView().zoom, REVEAL_ZOOM)
           adapter.focusOn([c[0], c[1]], { zoom, bottomInset, animate: true })
         }
       }

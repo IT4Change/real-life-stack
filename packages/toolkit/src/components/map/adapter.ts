@@ -118,9 +118,14 @@ export interface MapAdapter {
    * bottom inset (in CSS pixels) — e.g. the strip of map above a bottom sheet.
    * `bottomInset` 0 centres normally. Animated unless `animate` is `false`.
    * Pass `zoom` to also change the zoom level (e.g. to reveal a deep-linked item
-   * past the cluster-break threshold); omitted keeps the current zoom.
+   * past the cluster-break threshold); omitted keeps the current zoom — a zoom
+   * change animates as a smooth flight (eased zoom+pan) rather than a hard race.
+   * `duration` (ms) overrides the animation length.
    */
-  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean; zoom?: number }): void
+  focusOn(
+    center: LngLat,
+    options?: { bottomInset?: number; animate?: boolean; zoom?: number; duration?: number },
+  ): void
 
   /** Current viewport. */
   getView(): MapViewState
