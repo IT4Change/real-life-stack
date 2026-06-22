@@ -23,6 +23,8 @@ import {
   ItemDetailPanel,
   ReactionBar,
   CreateFab,
+  Skeleton,
+  ItemPreviewSkeleton,
   FilterBar,
   FilterSection,
   FilterToggle,
@@ -117,7 +119,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
   )
   // Kanban activates on data.status (task/v1). After the PR-1a status
   // migration only tasks carry this field, so no event/place leakage.
-  const { data: tasks } = useItems({ hasField: ["status"] })
+  const { data: tasks, isLoading: tasksLoading } = useItems({ hasField: ["status"] })
   const { data: members } = useMembers(activeWorkspaceId === "__overview__" ? null : (activeWorkspaceId ?? "group-1"))
   const { data: currentUser } = useCurrentUser()
   const { mutate: updateItem } = useUpdateItem()
@@ -527,7 +529,21 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
         }
       />
 
-      {isAggregate && groupedView && tasksByGroup ? (
+      {tasksLoading ? (
+        // Loading: a board-shaped skeleton (columns with placeholder cards).
+        // The empty board (loaded, no tasks) intentionally stays as-is — the
+        // columns themselves communicate "nothing here yet, drop/create".
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3" aria-hidden>
+          {[3, 2, 2].map((cards, c) => (
+            <div key={c} className="space-y-3">
+              <Skeleton className="h-5 w-24" />
+              {Array.from({ length: cards }).map((_, i) => (
+                <ItemPreviewSkeleton key={i} />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : isAggregate && groupedView && tasksByGroup ? (
         <div className="space-y-6">
           {concreteGroups.map((group) => {
             const groupTasks = tasksByGroup.get(group.id) ?? []

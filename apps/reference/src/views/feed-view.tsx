@@ -6,6 +6,8 @@ import {
   useModulePanel,
   ReactionBar,
   ItemPreview,
+  ItemPreviewSkeleton,
+  EmptyState,
   ItemTypeBadge,
   ItemGroupBadge,
   ItemMetaRow,
@@ -25,7 +27,7 @@ import {
   getActivePanelGlow,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
-import { Calendar, FileText, Search } from "lucide-react"
+import { Calendar, FileText, Search, SearchX } from "lucide-react"
 import { Input } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
 
@@ -41,8 +43,10 @@ export function FeedView({ groupId }: { groupId: string }) {
   // - Events carry data.start (event/v1)
   // Cross-context items (e.g. an event-with-place) naturally show up in
   // multiple modules without any extra handling.
-  const { data: posts } = useItems({ hasField: ["content"] })
-  const { data: events } = useItems({ hasField: ["start"] })
+  const { data: posts, isLoading: postsLoading } = useItems({ hasField: ["content"] })
+  const { data: events, isLoading: eventsLoading } = useItems({ hasField: ["start"] })
+  // Feed is the union of both queries → it has "loaded" only once both have.
+  const isLoading = postsLoading || eventsLoading
   // `groupId === "__overview__"` is the cross-space aggregate view
   // ("Mein Netzwerk"). useMembers(null) returns the union of all
   // members the connector knows about, so author resolution still
@@ -136,6 +140,10 @@ export function FeedView({ groupId }: { groupId: string }) {
     for (const item of feedItems) for (const tag of item.tags ?? []) seen.add(tag)
     return Array.from(seen).sort()
   }, [feedItems])
+  // Distinguishes "no items at all" from "filtered/searched to nothing" for the
+  // empty state copy.
+  const filterActive =
+    searchText.trim() !== "" || filterBarValue.tags.length > 0 || filterBarValue.types.length > 0
 
   // Content type configs for the composer
   const feedContentTypes: ContentTypeConfig[] = useMemo(() => [
@@ -252,9 +260,23 @@ export function FeedView({ groupId }: { groupId: string }) {
         )}
       </FeedComposerTrigger>
 
-      {/* Feed items */}
+      {/* Feed items — skeleton while loading, empty state once loaded with
+          nothing, otherwise the list. */}
       <div className="space-y-4">
-        {filteredFeedItems.map((item) => {
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => <ItemPreviewSkeleton key={`skeleton-${i}`} />)
+        ) : filteredFeedItems.length === 0 ? (
+          <EmptyState
+            icon={filterActive ? SearchX : FileText}
+            title={filterActive ? "Keine Treffer" : "Noch keine Beiträge"}
+            description={
+              filterActive
+                ? "Passe Suche oder Filter an."
+                : "Teile den ersten Beitrag mit deinem Space."
+            }
+          />
+        ) : (
+          filteredFeedItems.map((item) => {
           // In the aggregate view, show which group an item comes from — a chip
           // next to the type badge (analogous to it). Omitted inside a single group.
           const group = isOverview ? resolveItemGroup(item) : undefined
@@ -275,7 +297,8 @@ export function FeedView({ groupId }: { groupId: string }) {
               footerAdornment={renderFeedFooter(item, () => openDetail(item))}
             />
           )
-        })}
+          })
+        )}
       </div>
 
     </div>
