@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useReducer, useState, startTransition } from "react"
-import type { Group, User } from "@real-life-stack/data-interface"
+import { useCallback, useEffect, useMemo, useReducer, startTransition } from "react"
+import type { Group } from "@real-life-stack/data-interface"
 import { hasGroups } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 
@@ -73,15 +73,15 @@ export function useDeleteGroup() {
 export function useMembers(groupId: string | null) {
   const connector = useGroupConnector()
   const observable = useMemo(() => connector.observeMembers(groupId), [connector, groupId])
-  const [data, setData] = useState<User[]>(observable.current)
-  const update = useCallback((members: User[]) => startTransition(() => setData(members)), [])
-
+  // Read fresh each render (no stale snapshot across groupId change); `isLoading`
+  // from the real `loaded` flag, so "loaded, no members" ≠ "still loading".
+  const [, rerender] = useReducer((n: number) => n + 1, 0)
   useEffect(() => {
-    setData(observable.current)
-    return observable.subscribe(update)
-  }, [observable, update])
+    rerender()
+    return observable.subscribe(() => startTransition(rerender))
+  }, [observable])
 
-  return { data, isLoading: data.length === 0 && observable.current.length === 0 }
+  return { data: observable.current, isLoading: observable.loaded === false }
 }
 
 export function useInviteMember() {
