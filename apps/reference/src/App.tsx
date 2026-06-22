@@ -352,11 +352,31 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     }, 0)
     return () => clearTimeout(t)
   }, [topDialog])
-  // One id drives the shared profile panel; null = closed. The own
-  // profile (id === currentUser.id) opens the editor, any other id a
-  // read-only view.
-  const [profileUserId, setProfileUserId] = useState<string | null>(null)
-  const openProfile = useCallback((userId: string) => setProfileUserId(userId), [])
+  // The profile overlay lives in the URL (`?profile={userId}`) so it is
+  // deep-linkable and back-stackable: opening pushes a history entry (joining
+  // the same rlsDialogPush mechanism as the dialog stack), so browser-back / X
+  // pops it. The own profile (id === currentUser.id) opens the editor, any
+  // other id a read-only view.
+  const profileUserId = searchParams.get("profile")
+  const openProfile = useCallback((userId: string) => {
+    const params = new URLSearchParams(searchParams)
+    params.set("profile", userId)
+    const prev = (typeof location.state === "object" && location.state) || {}
+    setSearchParams(params, { state: { ...prev, rlsDialogPush: true } })
+  }, [searchParams, setSearchParams, location.state])
+  const closeProfile = useCallback(() => {
+    // Mirror popDialog: an in-app push has a real history entry → navigate(-1)
+    // (browser-back identical); a deep-link/refresh entry isn't pushed → strip
+    // the param via replace so we never navigate out of the app.
+    const pushed = (location.state as { rlsDialogPush?: boolean } | null)?.rlsDialogPush
+    if (pushed) {
+      navigate(-1)
+    } else {
+      const params = new URLSearchParams(searchParams)
+      params.delete("profile")
+      setSearchParams(params, { replace: true })
+    }
+  }, [location.state, navigate, searchParams, setSearchParams])
 
   const handleSaveProfile = useCallback(async (updates: { name: string; bio: string; avatar?: string }) => {
     if (hasProfile(connector)) {
@@ -521,7 +541,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         connector={connector}
         contactCount={activeContacts.length}
         onSaveProfile={handleSaveProfile}
-        onClose={() => setProfileUserId(null)}
+        onClose={closeProfile}
       />
 
       {/* Contacts Dialog */}
