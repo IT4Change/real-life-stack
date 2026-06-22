@@ -81,11 +81,62 @@ function itemInBbox(item: Item, bbox: [number, number, number, number]): boolean
  *  marker into the strip of map left visible above the sheet. */
 const MAP_SHEET_FRACTION = 0.55
 
-/** Zoom a URL-revealed item is brought to when it might be clustered: just one
- *  past the adapter's cluster-break threshold (clusterMaxZoom = 14) — far enough
- *  that the item surfaces as its own marker, but not a deep "max" zoom that
- *  rips the surrounding context away. */
-const REVEAL_ZOOM = 15
+// Reveal-zoom bounds. A lone item only zooms to MIN_REVEAL_ZOOM (enough to see
+// the place, not a street-level slam); a crowded item zooms up to MAX to break
+// the cluster it sits in. The exact level in between is derived from how close
+// its nearest neighbour is — zoom only as deep as needed to separate them.
+const MIN_REVEAL_ZOOM = 12
+const MAX_REVEAL_ZOOM = 16
+// Pixels the focused marker must clear its nearest neighbour by to read as its
+// own marker — a hair above the cluster radius (DEFAULT_CLUSTER_RADIUS = 50) so
+// the cluster it sat in actually breaks apart.
+const REVEAL_SEPARATION_PX = 64
+const MERCATOR_TILE_SIZE = 512
+const EARTH_CIRCUMFERENCE_M = 40075016.686
+
+/** Great-circle distance in metres. */
+function metersBetween(aLng: number, aLat: number, bLng: number, bLat: number): number {
+  const R = 6371008.8
+  const dLat = ((bLat - aLat) * Math.PI) / 180
+  const dLng = ((bLng - aLng) * Math.PI) / 180
+  const lat1 = (aLat * Math.PI) / 180
+  const lat2 = (bLat * Math.PI) / 180
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/**
+ * Zoom needed to separate `item` from its nearest neighbour in `others` by
+ * REVEAL_SEPARATION_PX (so it leaves any cluster), clamped to [MIN, MAX]. Lone
+ * items (no/very distant neighbours) resolve to MIN_REVEAL_ZOOM — a gentle
+ * reveal, not a deep slam. This is what lets the reveal zoom only as far as a
+ * given item actually needs, instead of always slamming to a fixed deep level.
+ */
+function separationZoom(item: Item, others: Item[]): number {
+  const pos = item.data.position as { coordinates?: number[] } | undefined
+  const c = pos?.coordinates
+  if (!c || typeof c[0] !== "number" || typeof c[1] !== "number") return MIN_REVEAL_ZOOM
+  const [lng, lat] = c
+  let nearest = Infinity
+  for (const other of others) {
+    if (other.id === item.id) continue
+    const op = other.data.position as { coordinates?: number[] } | undefined
+    const oc = op?.coordinates
+    if (!oc || typeof oc[0] !== "number" || typeof oc[1] !== "number") continue
+    const d = metersBetween(lng, lat, oc[0], oc[1])
+    if (d < nearest) nearest = d
+  }
+  if (!Number.isFinite(nearest)) return MIN_REVEAL_ZOOM // lone
+  if (nearest < 1) return MAX_REVEAL_ZOOM // ~identical position
+  // metres/pixel = EARTH·cos(lat) / (tile·2^zoom); solve for the zoom where the
+  // neighbour sits REVEAL_SEPARATION_PX away.
+  const z = Math.log2(
+    (REVEAL_SEPARATION_PX * EARTH_CIRCUMFERENCE_M * Math.cos((lat * Math.PI) / 180)) /
+      (nearest * MERCATOR_TILE_SIZE),
+  )
+  return Math.min(MAX_REVEAL_ZOOM, Math.max(MIN_REVEAL_ZOOM, z))
+}
 
 export function MapView({ groupId, active = true }: { groupId: string; active?: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -420,6 +471,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // from a deep-link / cross-module arrival (zoom in to surface the marker).
   const panelOwnedRef = useRef(false)
   const revealedIdRef = useRef<string | null>(null)
+  const refinedIdRef = useRef<string | null>(null)
   const fromMarkerClickRef = useRef(false)
 
   // Wire marker clicks into the URL (single source of truth). While picking a
@@ -454,51 +506,78 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
 
   // Reveal the URL-focused item: open its detail + bring it into view. Runs only
   // on the visible map. The item comes from useItem (scope-aware), so it works
-  // even when the marker isn't loaded yet — pan/zoom there, then the bbox query
-  // loads it.
-  // Re-arm the reveal when the map is hidden, so returning to it re-centers the
-  // still-focused item (another module may have taken over the panel meanwhile).
+  // even when the marker isn't loaded yet — fly there, then the bbox query loads
+  // it. Re-arm when the map is hidden so returning re-centers the still-focused
+  // item (another module may have taken over the panel meanwhile).
   useEffect(() => {
-    if (!active) revealedIdRef.current = null
+    if (!active) {
+      revealedIdRef.current = null
+      refinedIdRef.current = null
+    }
   }, [active])
   useEffect(() => {
     if (!active) return
-    if (focusedId) {
-      if (revealedIdRef.current === focusedId) return
-      if (!focusedItem || !adapter) return // wait for the item + the map
-      const fromClick = fromMarkerClickRef.current
-      fromMarkerClickRef.current = false
-      revealedIdRef.current = focusedId
-      panelOwnedRef.current = true
-      openDetail(focusedItem)
-      const pos = focusedItem.data.position as { coordinates?: number[] } | undefined
-      const c = pos?.coordinates
-      if (c && typeof c[0] === "number" && typeof c[1] === "number") {
-        const bottomInset = isCompact ? window.innerHeight * MAP_SHEET_FRACTION : 0
-        if (fromClick) {
-          // In-view tap: keep the user's zoom, just (on mobile) lift the marker
-          // above the detail sheet. No zoom yank.
-          if (bottomInset) adapter.focusOn([c[0], c[1]], { bottomInset, animate: true })
-        } else {
-          // Deep-link / cross-module arrival: fly in just past the cluster-break
-          // threshold so the item surfaces as its own marker — smooth, not a
-          // race (the adapter uses flyTo for the zoom path). Never zoom OUT if
-          // the user is already closer.
-          const zoom = Math.max(adapter.getView().zoom, REVEAL_ZOOM)
-          adapter.focusOn([c[0], c[1]], { zoom, bottomInset, animate: true })
-        }
-      }
-    } else {
+    if (!focusedId) {
       revealedIdRef.current = null
+      refinedIdRef.current = null
       if (panelOwnedRef.current) {
         panelOwnedRef.current = false
         modulePanel.close()
       }
+      return
+    }
+    if (!focusedItem || !adapter) return // wait for the item + the map
+    const pos = focusedItem.data.position as { coordinates?: number[] } | undefined
+    const c = pos?.coordinates
+    const hasPos = !!c && typeof c[0] === "number" && typeof c[1] === "number"
+    const bottomInset = isCompact ? window.innerHeight * MAP_SHEET_FRACTION : 0
+    // The item's own neighbourhood has loaded once it appears in the bbox set —
+    // only then is the density (and the needed zoom) real, not a pre-fly guess.
+    const neighbourhoodLoaded = accumulatedItems.some((i) => i.id === focusedId)
+
+    // (1) Open the panel + initial reveal, once per id.
+    if (revealedIdRef.current !== focusedId) {
+      revealedIdRef.current = focusedId
+      panelOwnedRef.current = true
+      const fromClick = fromMarkerClickRef.current
+      fromMarkerClickRef.current = false
+      openDetail(focusedItem)
+      if (!hasPos) {
+        refinedIdRef.current = focusedId
+        return
+      }
+      if (fromClick) {
+        // In-view tap: keep the user's zoom, just (on mobile) lift the marker
+        // above the detail sheet. No zoom yank, and never a refine.
+        refinedIdRef.current = focusedId
+        if (bottomInset) adapter.focusOn([c![0], c![1]], { bottomInset, animate: true })
+        return
+      }
+      // Deep-link / cross-module arrival: fly in only as deep as the item needs
+      // to clear its nearest neighbour (lone → gentle, crowded → breaks cluster),
+      // smooth not racing. Never zoom OUT if the user is already closer.
+      const zoom = Math.max(adapter.getView().zoom, separationZoom(focusedItem, accumulatedItems))
+      adapter.focusOn([c![0], c![1]], { zoom, bottomInset, animate: true })
+      // If its neighbourhood is already loaded the density was real → done.
+      if (neighbourhoodLoaded) refinedIdRef.current = focusedId
+      return
+    }
+
+    // (2) Refine once the neighbourhood has loaded: the initial fly used a
+    // pre-load fallback (MIN) when the item wasn't loaded yet, so a deep-linked
+    // item in a dense spot would land too shallow. Now that real neighbours are
+    // in, nudge deeper if it's still too crowded to read as its own marker.
+    if (refinedIdRef.current !== focusedId && hasPos && neighbourhoodLoaded) {
+      refinedIdRef.current = focusedId
+      const sep = separationZoom(focusedItem, accumulatedItems)
+      if (sep > adapter.getView().zoom + 0.3) {
+        adapter.focusOn([c![0], c![1]], { zoom: sep, bottomInset, animate: true, duration: 700 })
+      }
     }
     // openDetail omitted: re-opening on its identity change (author load) is
-    // unwanted; focusedItem drives the load-retry.
+    // unwanted; focusedItem/accumulatedItems drive the load-retry + refine.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, focusedId, focusedItem, adapter])
+  }, [active, focusedId, focusedItem, adapter, accumulatedItems])
 
   // While picking, a map click commits the position immediately (so "Erstellen"
   // always has it) and drops the marker where clicked. No recenter: the click

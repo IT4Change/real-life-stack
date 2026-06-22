@@ -749,7 +749,7 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
         center,
         zoom: options.zoom,
         offset,
-        duration: animate ? options?.duration ?? 1200 : 0,
+        duration: animate ? options?.duration ?? 1500 : 0,
       })
     } else {
       map.easeTo({ center, offset, duration: animate ? options?.duration ?? 500 : 0 })
