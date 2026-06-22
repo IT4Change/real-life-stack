@@ -154,14 +154,14 @@ export class GraphQLConnector implements FullConnector {
     void this.getGroups()
   }
 
-  async getMembers(groupId: string): Promise<User[]> {
+  async getMembers(groupId: string | null): Promise<User[]> {
     const { members } = await this.client.request<{ members: User[] }>(MEMBERS_QUERY, { groupId })
     return members
   }
 
-  private memberObservables = new Map<string, ReturnType<typeof createObservable<User[]>>>()
+  private memberObservables = new Map<string | null, ReturnType<typeof createObservable<User[]>>>()
 
-  observeMembers(groupId: string): Observable<User[]> {
+  observeMembers(groupId: string | null): Observable<User[]> {
     if (!this.memberObservables.has(groupId)) {
       // Starts unloaded; markLoaded() once the first members fetch settles so
       // consumers can tell "still loading members" from "loaded, no members".
@@ -175,7 +175,7 @@ export class GraphQLConnector implements FullConnector {
     return this.memberObservables.get(groupId)!
   }
 
-  private async notifyMemberObservers(groupId: string): Promise<void> {
+  private async notifyMemberObservers(groupId: string | null): Promise<void> {
     const obs = this.memberObservables.get(groupId)
     if (obs) {
       const members = await this.getMembers(groupId)
