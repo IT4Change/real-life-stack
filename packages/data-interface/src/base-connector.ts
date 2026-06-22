@@ -77,6 +77,38 @@ export function applyPagination<T>(items: T[], limit?: number, offset?: number):
   return items
 }
 
+/**
+ * First `[lng, lat]` pair found in an arbitrarily nested GeoJSON `coordinates`
+ * value (Point → the pair itself; LineString/Polygon/Multi* → first vertex).
+ * Returns null if no numeric pair is reachable.
+ */
+function firstLngLat(coordinates: unknown): [number, number] | null {
+  if (!Array.isArray(coordinates)) return null
+  if (typeof coordinates[0] === "number" && typeof coordinates[1] === "number") {
+    return [coordinates[0], coordinates[1]]
+  }
+  for (const part of coordinates) {
+    const found = firstLngLat(part)
+    if (found) return found
+  }
+  return null
+}
+
+/**
+ * Whether an item's `data.position` falls inside `bbox` (`[west, south, east,
+ * north]`). A box with `west > east` wraps across the ±180° antimeridian.
+ * Items without a parsable position never match a bbox filter.
+ */
+function positionInBbox(item: Item, bbox: [number, number, number, number]): boolean {
+  const position = (item.data as { position?: { coordinates?: unknown } }).position
+  const lngLat = position ? firstLngLat(position.coordinates) : null
+  if (!lngLat) return false
+  const [lng, lat] = lngLat
+  const [west, south, east, north] = bbox
+  if (lat < south || lat > north) return false
+  return west <= east ? lng >= west && lng <= east : lng >= west || lng <= east
+}
+
 export function matchesFilter(item: Item, filter: ItemFilter): boolean {
   if (filter.type && item.type !== filter.type) return false
   if (filter.createdBy && item.createdBy !== filter.createdBy) return false
@@ -91,6 +123,7 @@ export function matchesFilter(item: Item, filter: ItemFilter): boolean {
       if (!itemTags.includes(tag)) return false
     }
   }
+  if (filter.bbox && !positionInBbox(item, filter.bbox)) return false
   return true
 }
 

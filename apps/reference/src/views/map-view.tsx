@@ -38,9 +38,29 @@ const MAP_TYPES: FilterTypeOption[] = [
   { id: "place", label: "Orte", icon: MapPin },
 ]
 
+// Until the map is mounted the viewport is unknown, so request nothing rather
+// than the full (unbounded) set — the map shows its loading state meanwhile, and
+// the real bbox query starts as soon as the bounds are known. `hasField` on a
+// field no item carries yields an empty result.
+const AWAITING_VIEWPORT_FILTER = { hasField: ["__rls_awaiting_viewport__"] }
+
 // Provisional location-pick marker (visually distinct from item markers).
 const PICK_MARKER_ID = "__rls_pick__"
 const PICK_MARKER_COLOR = "#ef4444"
+
+/** Whether an item's Point position lies within `bbox` ([west, south, east,
+ *  north]); a box with `west > east` wraps the antimeridian. Used to reconcile
+ *  the accumulated set: a kept item inside the current view that the fresh query
+ *  no longer returns was deleted/filtered and is dropped. */
+function itemInBbox(item: Item, bbox: [number, number, number, number]): boolean {
+  const pos = item.data.position as { coordinates?: number[] } | undefined
+  const c = pos?.coordinates
+  if (!c || typeof c[0] !== "number" || typeof c[1] !== "number") return false
+  const [lng, lat] = c
+  const [west, south, east, north] = bbox
+  if (lat < south || lat > north) return false
+  return west <= east ? lng >= west && lng <= east : lng >= west || lng <= east
+}
 
 /**
  * Map module — vector version using the MapLibreMapAdapter from toolkit.
@@ -74,10 +94,57 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // Map projection — Mercator (2D) by default, switchable to globe where the
   // adapter supports it (GlobeCapable). Toggleable for testing.
   const [projection, setProjection] = useState<MapProjection>("mercator")
+  // Viewport bounding box [west, south, east, north]; tracked from the map and
+  // passed to the query so only items in the visible area load (spec: Map →
+  // Datenquelle). undefined until the map is mounted → the full set loads once,
+  // then narrows on the first `observeView`.
+  const [bbox, setBbox] = useState<[number, number, number, number] | undefined>(undefined)
   // Field-presence filter (spec 06): any item with data.position is
-  // map-renderable, regardless of `type`. The Point/coordinates check
-  // below is still defensive validation, not the activation criterion.
-  const { data: items } = useItems({ hasField: ["position"] })
+  // map-renderable, regardless of `type`. `bbox` limits to the viewport. The
+  // Point/coordinates check below is still defensive validation, not the
+  // activation criterion.
+  const { data: items } = useItems(
+    bbox ? { hasField: ["position"], bbox } : AWAITING_VIEWPORT_FILTER,
+  )
+
+  // Accumulate loaded items across viewport queries. `bbox` limits what LOADS,
+  // but markers shouldn't vanish when panned out of view — keep everything ever
+  // loaded. Inside the current bbox the fresh query is authoritative once it has
+  // data; outside it the last-known items are retained until the user pans back.
+  //
+  // Important: async connectors (WotConnector/BaseConnector) expose a new
+  // `observe(filter)` as `[]` until the first `getItems(filter)` resolves. Treating
+  // that transient empty array as authoritative makes clusters disappear briefly
+  // while zooming out, because the expanded bbox says "remove everything in view"
+  // before the new result arrives. Skip that destructive reconciliation for empty
+  // result sets; the next non-empty result still updates/removes in-bbox items.
+  const accumulatedRef = useRef<Map<string, Item>>(new Map())
+  const [accumulatedItems, setAccumulatedItems] = useState<Item[]>([])
+  useEffect(() => {
+    accumulatedRef.current = new Map()
+    setAccumulatedItems([])
+  }, [groupId])
+  useEffect(() => {
+    const acc = accumulatedRef.current
+    let changed = false
+    const canReconcileCurrentBbox = !!bbox && items.length > 0
+    if (bbox && canReconcileCurrentBbox) {
+      const currentIds = new Set(items.map((i) => i.id))
+      for (const [id, item] of acc) {
+        if (!currentIds.has(id) && itemInBbox(item, bbox)) {
+          acc.delete(id)
+          changed = true
+        }
+      }
+    }
+    for (const item of items) {
+      if (acc.get(item.id) !== item) {
+        acc.set(item.id, item)
+        changed = true
+      }
+    }
+    if (changed) setAccumulatedItems(Array.from(acc.values()))
+  }, [items, bbox])
   // Cross-space aggregate ("Mein Netzwerk"): useMembers(null) yields
   // the union of all known members, so authors of map items pulled
   // in from other spaces still resolve to their User.
@@ -93,7 +160,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   const modulePanel = useModulePanel()
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [searchText, setSearchText] = useState("")
-  const itemsAfterBar = useFilterableItems(items, filterBarValue)
+  const itemsAfterBar = useFilterableItems(accumulatedItems, filterBarValue)
   const filteredItems = useMemo(() => {
     const needle = searchText.trim().toLowerCase()
     if (!needle) return itemsAfterBar
@@ -106,9 +173,9 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   }, [itemsAfterBar, searchText])
   const availableTags = useMemo(() => {
     const seen = new Set<string>()
-    for (const item of items) for (const tag of item.tags ?? []) seen.add(tag)
+    for (const item of accumulatedItems) for (const tag of item.tags ?? []) seen.add(tag)
     return Array.from(seen).sort()
-  }, [items])
+  }, [accumulatedItems])
 
   const mapContentTypes: ContentTypeConfig[] = useMemo(() => [
     {
@@ -248,6 +315,27 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   useEffect(() => {
     if (adapter && hasGlobe(adapter)) adapter.setProjection(projection)
   }, [adapter, projection])
+
+  // Viewport-limited query (spec: Map → Datenquelle). Read the visible bounds
+  // once the map is mounted and re-read them (debounced) after every pan/zoom
+  // (`observeView` fires on `moveend`), feeding `bbox` into the items query.
+  useEffect(() => {
+    if (!adapter) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const applyBounds = () => {
+      const b = adapter.getView().bounds
+      setBbox([b.west, b.south, b.east, b.north])
+    }
+    applyBounds()
+    const unsubscribe = adapter.observeView(() => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(applyBounds, 250)
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+      unsubscribe()
+    }
+  }, [adapter])
 
   // No maplibre atmosphere (setSky): it renders in-scene and hazes markers near
   // the globe edge. The visible "space"/glow comes from the CSS backdrop
