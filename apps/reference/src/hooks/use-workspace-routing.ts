@@ -31,7 +31,7 @@ const MODULE_LABELS: Record<string, string> = {
   kanban: "Kanban",
 }
 
-const VALID_MODULES = ["feed", "kanban", "calendar", "map"]
+export const VALID_MODULES = ["feed", "kanban", "calendar", "map"]
 
 // The aggregate ("Mein Netzwerk") keeps its internal scope id `__overview__`
 // (used across the module views) but appears as `network` in the URL.

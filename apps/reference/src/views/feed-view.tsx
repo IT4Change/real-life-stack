@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import {
   ContentComposer,
   type ContentTypeConfig,
@@ -30,6 +30,7 @@ import {
 import { Calendar, FileText, Search, SearchX } from "lucide-react"
 import { Input } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
+import { useItemFocus } from "../hooks/use-item-focus"
 
 const FEED_TYPES: FilterTypeOption[] = [
   { id: "post", label: "Posts", icon: FileText },
@@ -91,6 +92,10 @@ export function FeedView({ groupId }: { groupId: string }) {
 
   // Detail panel — shared single panel via ModulePanelProvider
   const modulePanel = useModulePanel()
+  // URL is the single source of truth for the focused item: a click writes
+  // `/{scope}/feed/{id}` and an effect below opens the detail + scrolls to it;
+  // browser-back clears the URL and closes the panel.
+  const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
   // Active-item glow uses the colour of each item's origin group.
   const isOverview = groupId === "__overview__"
   const resolveItemGroupColor = useItemGroupColorResolver(isOverview ? undefined : groupId)
@@ -118,8 +123,40 @@ export function FeedView({ groupId }: { groupId: string }) {
           </div>
         </ItemDetailPanel>
       ),
+      onClose: clearFocus,
     })
-  }, [modulePanel, resolveAuthor])
+  }, [modulePanel, resolveAuthor, clearFocus])
+
+  // Drive the detail panel + scroll-reveal from the URL focus. Opens once per
+  // id (waiting for the item to load into the feed), scrolls the card into
+  // view, and closes again when the focus clears (X button → clearFocus, or
+  // browser-back). `panelOwnedRef` ensures we only ever close a detail WE
+  // opened — never one another module left open across a module switch.
+  const panelOwnedRef = useRef(false)
+  const openedIdRef = useRef<string | null>(null)
+  const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  useEffect(() => {
+    if (focusedId) {
+      if (openedIdRef.current === focusedId) return
+      const item = feedItems.find((i) => i.id === focusedId)
+      if (!item) return // not loaded yet — re-runs when feedItems updates
+      openedIdRef.current = focusedId
+      panelOwnedRef.current = true
+      openDetail(item)
+      // Reveal: scroll the card into view if it is in the rendered (filtered)
+      // list. Filtered out → the panel still opens, the scroll just no-ops.
+      itemRefs.current.get(focusedId)?.scrollIntoView({ behavior: "smooth", block: "center" })
+    } else {
+      openedIdRef.current = null
+      if (panelOwnedRef.current) {
+        panelOwnedRef.current = false
+        modulePanel.close()
+      }
+    }
+    // openDetail is intentionally omitted: it changes identity when author data
+    // loads, which must not re-open the panel. feedItems drives the load-retry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedId, feedItems])
 
   // FilterBar state — controlled, lives in the view
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
@@ -281,21 +318,28 @@ export function FeedView({ groupId }: { groupId: string }) {
           // next to the type badge (analogous to it). Omitted inside a single group.
           const group = isOverview ? resolveItemGroup(item) : undefined
           return (
-            <ItemPreview
+            <div
               key={item.id}
-              item={item}
-              author={resolveAuthor(item.createdBy)}
-              style={modulePanel.current?.itemId === item.id ? getActivePanelGlow(resolveItemGroupColor(item)) : undefined}
-              onClick={() => openDetail(item)}
-              headerAdornment={
-                <>
-                  <ItemTypeBadge type={item.type} />
-                  {group && <ItemGroupBadge name={group.name} color={resolveItemGroupColor(item)} />}
-                </>
-              }
-              metaAdornment={<ItemMetaRow item={item} />}
-              footerAdornment={renderFeedFooter(item, () => openDetail(item))}
-            />
+              ref={(el) => {
+                if (el) itemRefs.current.set(item.id, el)
+                else itemRefs.current.delete(item.id)
+              }}
+            >
+              <ItemPreview
+                item={item}
+                author={resolveAuthor(item.createdBy)}
+                style={modulePanel.current?.itemId === item.id ? getActivePanelGlow(resolveItemGroupColor(item)) : undefined}
+                onClick={() => focusItem(item.id)}
+                headerAdornment={
+                  <>
+                    <ItemTypeBadge type={item.type} />
+                    {group && <ItemGroupBadge name={group.name} color={resolveItemGroupColor(item)} />}
+                  </>
+                }
+                metaAdornment={<ItemMetaRow item={item} />}
+                footerAdornment={renderFeedFooter(item, () => focusItem(item.id))}
+              />
+            </div>
           )
           })
         )}
