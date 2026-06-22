@@ -978,9 +978,15 @@ export class WotConnector extends BaseConnector {
   override observeItem(id: string): Observable<Item | null> {
     let obs = this.itemByIdObservables.get(id)
     if (!obs) {
-      obs = createObservable<Item | null>(null)
+      // Starts unloaded; markLoaded() once getItem settles so consumers can tell
+      // "still loading" from "loaded, not found" (null) — e.g. the module-less
+      // item redirect must not resolve before the item is actually known.
+      obs = createObservable<Item | null>(null, false)
       this.itemByIdObservables.set(id, obs)
-      void this.getItem(id).then((item) => obs!.set(item))
+      void this.getItem(id)
+        .then((item) => obs!.set(item))
+        .catch((err) => console.error("[WotConnector] observeItem initial load failed", err))
+        .finally(() => obs!.markLoaded())
     }
     return obs
   }
