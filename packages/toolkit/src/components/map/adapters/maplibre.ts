@@ -729,18 +729,34 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     map.jumpTo({ center, zoom })
   }
 
-  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean }): void {
+  focusOn(
+    center: LngLat,
+    options?: { bottomInset?: number; animate?: boolean; zoom?: number; duration?: number },
+  ): void {
     const map = this.mapInstance as MlMap | null
     if (!map) return
     const bottomInset = options?.bottomInset ?? 0
     // Offset the target up by half the obscured strip so it ends up centred in
     // the visible map area above a bottom sheet. Negative y = up (maplibre uses
     // a per-move `offset` so no persistent camera padding is left behind).
-    map.easeTo({
-      center,
-      offset: [0, -bottomInset / 2],
-      duration: options?.animate === false ? 0 : 500,
-    })
+    const offset: [number, number] = [0, -bottomInset / 2]
+    const animate = options?.animate !== false
+    if (options?.zoom != null) {
+      // A zoom change is a "fly to this place" gesture: flyTo's eased, curved
+      // zoom+pan stays smooth even over a big delta and lets tiles load, where a
+      // fast easeTo would visibly race in. Calm default duration.
+      map.flyTo({
+        center,
+        zoom: options.zoom,
+        offset,
+        duration: animate ? options?.duration ?? 1500 : 0,
+        // `essential` so the reveal still animates (and honours `duration`) under
+        // an OS "reduce motion" setting, which maplibre otherwise snaps instant.
+        essential: true,
+      })
+    } else {
+      map.easeTo({ center, offset, duration: animate ? options?.duration ?? 500 : 0, essential: true })
+    }
   }
 
   getView(): MapViewState {

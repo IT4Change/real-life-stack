@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import {
   useItems,
+  useItem,
   useMembers,
   useCurrentUser,
   useModulePanel,
@@ -32,6 +33,7 @@ import { Calendar, Globe, Loader2, MapPin, Search } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useLocationPick } from "../location-pick"
+import { useItemFocus } from "../hooks/use-item-focus"
 
 const MAP_TYPES: FilterTypeOption[] = [
   { id: "event", label: "Events", icon: Calendar },
@@ -78,6 +80,64 @@ function itemInBbox(item: Item, bbox: [number, number, number, number]): boolean
  *  AdaptivePanel drawer default (`drawerInitialHeight`), so we can pan a tapped
  *  marker into the strip of map left visible above the sheet. */
 const MAP_SHEET_FRACTION = 0.55
+
+// Reveal-zoom floor. A lone item only zooms to MIN_REVEAL_ZOOM (enough to see
+// the place, not a street-level slam). There is intentionally NO ceiling: a
+// crowded item zooms as deep as it takes to break its cluster — even for very
+// dense markers — bounded only by the map's own maxZoom. The exact level is
+// derived from how close the nearest neighbour is (zoom only as deep as needed).
+const MIN_REVEAL_ZOOM = 10
+// Pixels the focused marker must clear its nearest neighbour by to read as its
+// own marker — a hair above the cluster radius (DEFAULT_CLUSTER_RADIUS = 50) so
+// the cluster it sat in actually breaks apart.
+const REVEAL_SEPARATION_PX = 64
+const MERCATOR_TILE_SIZE = 512
+const EARTH_CIRCUMFERENCE_M = 40075016.686
+
+/** Great-circle distance in metres. */
+function metersBetween(aLng: number, aLat: number, bLng: number, bLat: number): number {
+  const R = 6371008.8
+  const dLat = ((bLat - aLat) * Math.PI) / 180
+  const dLng = ((bLng - aLng) * Math.PI) / 180
+  const lat1 = (aLat * Math.PI) / 180
+  const lat2 = (bLat * Math.PI) / 180
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/**
+ * Zoom needed to separate `item` from its nearest neighbour in `others` by
+ * REVEAL_SEPARATION_PX (so it leaves any cluster). Floored at MIN_REVEAL_ZOOM
+ * for lone items (no/very distant neighbours → a gentle reveal). No ceiling:
+ * the denser the spot, the deeper it goes, so every cluster dissolves; the map
+ * clamps the result to its own maxZoom. This lets the reveal zoom only as far
+ * as a given item actually needs, instead of a fixed level.
+ */
+function separationZoom(item: Item, others: Item[]): number {
+  const pos = item.data.position as { coordinates?: number[] } | undefined
+  const c = pos?.coordinates
+  if (!c || typeof c[0] !== "number" || typeof c[1] !== "number") return MIN_REVEAL_ZOOM
+  const [lng, lat] = c
+  let nearest = Infinity
+  for (const other of others) {
+    if (other.id === item.id) continue
+    const op = other.data.position as { coordinates?: number[] } | undefined
+    const oc = op?.coordinates
+    if (!oc || typeof oc[0] !== "number" || typeof oc[1] !== "number") continue
+    const d = metersBetween(lng, lat, oc[0], oc[1])
+    if (d < nearest) nearest = d
+  }
+  if (!Number.isFinite(nearest)) return MIN_REVEAL_ZOOM // lone
+  // metres/pixel = EARTH·cos(lat) / (tile·2^zoom); solve for the zoom where the
+  // neighbour sits REVEAL_SEPARATION_PX away. Floor the distance so coincident
+  // markers stay finite (→ a very deep zoom the map clamps to its maxZoom).
+  const z = Math.log2(
+    (REVEAL_SEPARATION_PX * EARTH_CIRCUMFERENCE_M * Math.cos((lat * Math.PI) / 180)) /
+      (Math.max(nearest, 0.1) * MERCATOR_TILE_SIZE),
+  )
+  return Math.max(MIN_REVEAL_ZOOM, z)
+}
 
 export function MapView({ groupId, active = true }: { groupId: string; active?: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -157,6 +217,13 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   )
 
   const modulePanel = useModulePanel()
+  // URL-driven focus: a marker click / deep-link writes `/{scope}/map/{id}`; the
+  // reveal effect below opens the detail + brings the item into view. The
+  // focused item is fetched scope-aware via useItem (NOT the viewport-bounded
+  // query) so a deep-linked item outside the current bbox still resolves — we
+  // need its position to pan/zoom there, which then loads its marker.
+  const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
+  const { data: focusedItem } = useItem(active ? (focusedId ?? "") : "")
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [searchText, setSearchText] = useState("")
   const itemsAfterBar = useFilterableItems(accumulatedItems, filterBarValue)
@@ -395,25 +462,32 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
           </div>
         </ItemDetailPanel>
       ),
+      onClose: clearFocus,
     })
-    // On mobile the detail sheet slides up over the lower part of the map. Pan
-    // so the tapped marker stays visible, centred in the strip above the sheet.
-    if (isCompact && adapter) {
-      const pos = item.data.position as { coordinates?: number[] } | undefined
-      const coords = pos?.coordinates
-      if (coords && typeof coords[0] === "number" && typeof coords[1] === "number") {
-        adapter.focusOn([coords[0], coords[1]], {
-          bottomInset: window.innerHeight * MAP_SHEET_FRACTION,
-          animate: true,
-        })
-      }
-    }
-  }, [modulePanel, resolveAuthor, isCompact, adapter])
+  }, [modulePanel, resolveAuthor, clearFocus])
 
-  // Wire marker clicks to the shared module panel. The adapter's
-  // subscriber returns an unsubscribe — clean up so we don't leak
-  // callbacks across remounts. While picking a location, marker clicks
-  // are ignored: a click should set the position, not open a detail.
+  // Focus bookkeeping: `panelOwnedRef` so we only ever close a detail WE opened
+  // (the panel persists across module switches); `openedIdRef` opens the detail
+  // once per id; `settledIdRef` marks the final density-zoom done; `approachedIdRef`
+  // marks the one-off approach for a far deep-link; `fromMarkerClickRef` marks an
+  // in-view tap (no zoom yank) vs. a deep-link / cross-module arrival.
+  const panelOwnedRef = useRef(false)
+  const openedIdRef = useRef<string | null>(null)
+  const settledIdRef = useRef<string | null>(null)
+  const approachedIdRef = useRef<string | null>(null)
+  // Holds the id of a marker click awaiting its reveal (not a bare boolean): a
+  // click only counts when the ref still matches the now-focused id, so a leaked
+  // flag can't make a later deep-link skip its zoom.
+  const fromMarkerClickRef = useRef<string | null>(null)
+  // Live focus id for the marker-click handler — avoids re-subscribing on focus.
+  const focusedIdRef = useRef(focusedId)
+  focusedIdRef.current = focusedId
+
+  // Wire marker clicks into the URL (single source of truth). While picking a
+  // location, marker clicks are ignored — a click should set the position, not
+  // open a detail. `fromMarkerClickRef` tells the reveal effect this focus came
+  // from an in-view tap, so it opens the detail without yanking the zoom (vs. a
+  // deep-link / cross-module arrival, which zooms in to surface the marker).
   useEffect(() => {
     if (!adapter) return
     const unsubscribe = adapter.observeMarkerClicks((markerId) => {
@@ -431,10 +505,99 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         }
         return
       }
-      if (item) openDetail(item)
+      if (item) {
+        // Only a click that actually CHANGES the focus counts as a marker click.
+        // Clicking the already-focused marker is a no-op navigate, so the reveal
+        // effect wouldn't run to consume the flag and it would leak into the next
+        // deep-link (suppressing its zoom). Skip it.
+        if (item.id !== focusedIdRef.current) {
+          fromMarkerClickRef.current = item.id
+          focusItem(item.id)
+        }
+      }
     })
     return unsubscribe
-  }, [adapter, itemsById, openDetail, isPicking, updatePick])
+  }, [adapter, itemsById, focusItem, isPicking, updatePick])
+
+  // Reveal the URL-focused item: open its detail, then bring it into view. Runs
+  // only on the visible map. The item comes from useItem (scope-aware), so the
+  // panel opens even before its marker has loaded. The density-zoom is computed
+  // from the FRESH bbox result `items` (not the one-render-lagged accumulated
+  // set) so a deep-link reveal sees its real neighbours — otherwise it flew
+  // shallow and a dense cluster (e.g. Frankfurt) never opened on reload.
+  // Re-arm when the map is hidden so returning re-centers the still-focused item.
+  useEffect(() => {
+    if (!active) {
+      openedIdRef.current = null
+      settledIdRef.current = null
+      approachedIdRef.current = null
+    }
+  }, [active])
+  useEffect(() => {
+    if (!active) return
+    if (!focusedId) {
+      openedIdRef.current = null
+      settledIdRef.current = null
+      approachedIdRef.current = null
+      if (panelOwnedRef.current) {
+        panelOwnedRef.current = false
+        modulePanel.close()
+      }
+      return
+    }
+    if (!focusedItem || !adapter) return // wait for the item + the map
+    const pos = focusedItem.data.position as { coordinates?: number[] } | undefined
+    const c = pos?.coordinates
+    const hasPos = !!c && typeof c[0] === "number" && typeof c[1] === "number"
+    const bottomInset = isCompact ? window.innerHeight * MAP_SHEET_FRACTION : 0
+
+    // (1) Open the panel once.
+    if (openedIdRef.current !== focusedId) {
+      openedIdRef.current = focusedId
+      panelOwnedRef.current = true
+      openDetail(focusedItem)
+      // Consume the marker-click flag, honouring it only when it matches THIS id.
+      const fromClick = fromMarkerClickRef.current === focusedId
+      fromMarkerClickRef.current = null
+      if (fromClick) {
+        // In-view tap: keep the user's zoom — never fly. Just (on mobile) lift
+        // the marker above the detail sheet.
+        settledIdRef.current = focusedId
+        approachedIdRef.current = focusedId
+        if (hasPos && bottomInset) adapter.focusOn([c![0], c![1]], { bottomInset, animate: true })
+      }
+    }
+
+    if (!hasPos || settledIdRef.current === focusedId) return
+
+    // (2) Final density fly — once the item's own neighbours are loaded (it is in
+    // the fresh bbox result). A single slow motion as deep as it takes to leave
+    // its cluster: a lone marker barely zooms, a crowded one goes deep enough to
+    // dissolve the cluster.
+    if (items.some((i) => i.id === focusedId)) {
+      settledIdRef.current = focusedId
+      const zoom = Math.max(adapter.getView().zoom, separationZoom(focusedItem, items))
+      adapter.focusOn([c![0], c![1]], { zoom, bottomInset, animate: true })
+      return
+    }
+
+    // (3) Item sits inside the current viewport but its markers haven't loaded
+    // yet → wait (the effect re-runs when `items` arrives) so we fly ONCE at the
+    // real density instead of a shallow guess.
+    if (bbox && itemInBbox(focusedItem, bbox)) return
+
+    // (4) Item is outside the loaded viewport (a far deep-link) → approach its
+    // position once at the gentle floor; arriving loads its neighbours, then (2)
+    // settles the zoom to the real density.
+    if (approachedIdRef.current !== focusedId && bbox && !itemsLoading) {
+      approachedIdRef.current = focusedId
+      const zoom = Math.max(adapter.getView().zoom, MIN_REVEAL_ZOOM)
+      adapter.focusOn([c![0], c![1]], { zoom, bottomInset, animate: true })
+    }
+    // openDetail omitted: re-opening on its identity change (author load) is
+    // unwanted; focusedItem/items drive the open + the density fly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, focusedId, focusedItem, adapter, items, bbox, itemsLoading])
 
   // While picking, a map click commits the position immediately (so "Erstellen"
   // always has it) and drops the marker where clicked. No recenter: the click
