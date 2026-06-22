@@ -95,13 +95,12 @@ export function useWorkspaceRouting(): WorkspaceRouting {
       // Space ID from URL but not in the list. While groups are still
       // loading we can't tell "no access" from "not yet loaded" — assume
       // the space exists (optimistic placeholder) so valid deep-links
-      // don't flash the no-access notice. Once groups are present and
-      // the id still doesn't resolve, this is a foreign or inaccessible
-      // space: return null so the UI says so instead of silently falling
-      // back to the overview. (useGroups has no real loading signal —
-      // isLoading approximates it as "list is empty", so a user with
-      // zero groups also resolves unknown ids to the placeholder. Good
-      // enough until the DataInterface exposes a loaded state.)
+      // don't flash the no-access notice. Once groups are LOADED and the
+      // id still doesn't resolve, this is a foreign or inaccessible space:
+      // return null so the UI says so instead of silently falling back to
+      // the overview. `groupsLoading` is now a real loaded signal
+      // (Observable.loaded), so a user with genuinely zero groups resolves
+      // an unknown id to no-access instead of the placeholder.
       if (groupsLoading) return { id: urlSpaceId, name: "" }
       return null
     }
