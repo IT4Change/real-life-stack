@@ -229,10 +229,15 @@ export class GraphQLConnector implements FullConnector {
   }
 
   observeItem(id: string): Observable<Item | null> {
-    const observable = createObservable<Item | null>(null)
+    // Starts unloaded; markLoaded() once the first fetch settles so consumers can
+    // tell "still loading" from "loaded, not found" (null).
+    const observable = createObservable<Item | null>(null, false)
 
     // Initial fetch
-    this.getItem(id).then((item) => observable.set(item))
+    this.getItem(id)
+      .then((item) => observable.set(item))
+      .catch((err) => console.error("[GraphQLConnector] observeItem initial load failed", err))
+      .finally(() => observable.markLoaded())
 
     // SSE subscription for live updates
     this.subscribeWs<{ itemChanged: Record<string, unknown> | null }>(

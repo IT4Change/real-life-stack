@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button, type Workspace } from "@real-life-stack/toolkit"
 import type { Group } from "@real-life-stack/data-interface"
+import { scopeToSlug } from "../hooks/use-workspace-routing"
 import { FeedView } from "./feed-view"
 import { MapView } from "./map-view"
 import { CalendarViewWrapper } from "./calendar-view"
@@ -77,15 +78,15 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
             activeWorkspaceId={activeWorkspace?.id ?? null}
             groups={groups}
             selectedItemId={urlItemId}
-            onItemSelect={(id) => navigate(`/spaces/${activeWorkspace?.id}/${activeModule}/item/${id}`)}
+            onItemSelect={(id) => navigate(`/${scopeToSlug(activeWorkspace?.id ?? "")}/${activeModule}/${id}`)}
             onItemClose={() => {
               // Guard against the persisted shared panel firing this after the
               // user already left Kanban (would otherwise yank the route back).
               // Also require a real spaceId — on a no-access route activeWorkspace
-              // is null, and we must not navigate to /spaces/undefined/kanban.
+              // is null, and we must not navigate to /undefined/kanban.
               const { module, spaceId } = routeRef.current
               if (module === "kanban" && spaceId) {
-                navigate(`/spaces/${spaceId}/kanban`)
+                navigate(`/${scopeToSlug(spaceId)}/kanban`)
               }
             }}
           />

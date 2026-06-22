@@ -139,7 +139,7 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
   const navigate = useNavigate()
   const handleOpenSpace = () => {
     if (spaceInvite) {
-      navigate(`/spaces/${spaceInvite.spaceId}/feed`)
+      navigate(`/${spaceInvite.spaceId}/feed`)
     }
     dismiss()
   }
@@ -688,12 +688,16 @@ export default function App() {
       <IncomingEventsProvider>
         <AuthGate connector={connector}>
           <Routes>
-            <Route path="spaces/:spaceId/:module/item/:itemId" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
-            <Route path="spaces/:spaceId/item/:itemId" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
-            <Route path="spaces/:spaceId/:module" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
-            <Route path="spaces/:spaceId" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
-            <Route path="profile" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
-            <Route path="contacts" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
+            {/* Flat scheme — the URL is the single source of truth for the focused
+                item. `:seg` is a module (known enum) or a module-less item id;
+                use-workspace-routing discriminates + redirects. `/` and unknown
+                paths fall to `*` → Home → redirect to the default scope/module.
+                App-level surfaces (profile, contacts, …) are query overlays, not
+                path routes. Reserved for later: literal `/u/:userId`, `/join/:token`
+                would go ABOVE `:scope` (literal beats param). */}
+            <Route path=":scope/:seg/:itemId" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
+            <Route path=":scope/:seg" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
+            <Route path=":scope" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
             <Route path="*" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
           </Routes>
         </AuthGate>
