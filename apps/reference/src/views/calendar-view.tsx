@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import {
   CalendarView as ToolkitCalendarView,
   CreateFab,
@@ -17,6 +17,7 @@ import {
 } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
+import { useItemFocus } from "../hooks/use-item-focus"
 
 const pad2 = (n: number) => String(n).padStart(2, "0")
 /** Local `datetime-local` string (YYYY-MM-DDTHH:mm) — used for a time-slot click. */
@@ -46,6 +47,10 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   )
 
   const modulePanel = useModulePanel()
+  // URL is the single source of truth for the focused event: a click writes
+  // `/{scope}/calendar/{id}`, the effect below opens the detail and the calendar
+  // jumps to its month (focusDate); browser-back clears it and closes the panel.
+  const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
 
   const calendarContentTypes: ContentTypeConfig[] = useMemo(() => [
     {
@@ -109,8 +114,48 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
           </div>
         </ItemDetailPanel>
       ),
+      onClose: clearFocus,
     })
-  }, [modulePanel, members, currentUser])
+  }, [modulePanel, members, currentUser, clearFocus])
+
+  // The URL-focused event (from the loaded list) + the month to reveal it in.
+  const focusedEvent = useMemo(
+    () => (focusedId ? events.find((e) => e.id === focusedId) : undefined),
+    [focusedId, events],
+  )
+  const focusDate = useMemo(() => {
+    const start = focusedEvent?.data.start
+    if (typeof start !== "string") return undefined
+    const d = new Date(start)
+    return Number.isNaN(d.getTime()) ? undefined : d
+  }, [focusedEvent])
+
+  // Drive the detail panel from the URL focus: open once per id (waiting for the
+  // event to load), close when the focus clears (X → clearFocus, or browser-
+  // back). `panelOwnedRef` so we only ever close a detail WE opened — never one
+  // another module left open across a module switch. The month jump itself is
+  // declarative via the `focusDate` prop below.
+  const panelOwnedRef = useRef(false)
+  const openedIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (focusedId) {
+      if (openedIdRef.current === focusedId) return
+      const event = events.find((e) => e.id === focusedId)
+      if (!event) return // not loaded yet — re-runs when events updates
+      openedIdRef.current = focusedId
+      panelOwnedRef.current = true
+      openDetail(event)
+    } else {
+      openedIdRef.current = null
+      if (panelOwnedRef.current) {
+        panelOwnedRef.current = false
+        modulePanel.close()
+      }
+    }
+    // openDetail omitted: it changes identity when member/user data loads, which
+    // must not re-open the panel. `events` drives the load-retry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedId, events])
 
   // Composer opens via the app-level host, so its save path survives a switch
   // to the Map module for location picking. The Feed keeps its own
@@ -145,7 +190,8 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         currentUserId={currentUser?.id}
         resolveItemGroupColor={resolveItemGroupColor}
         activeItemId={modulePanel.current?.itemId}
-        onEventClick={openDetail}
+        focusDate={focusDate}
+        onEventClick={(event) => focusItem(event.id)}
         onCreateEvent={openComposerAt}
       />
 
