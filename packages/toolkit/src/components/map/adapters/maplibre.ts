@@ -340,9 +340,20 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     if (!this.mapInstance) {
       throw new Error("MapLibreMapAdapter: setMarkers called before mount")
     }
+    this.reapplyMarkersSafely(markers)
+  }
+
+  /**
+   * Run the async marker pipeline detached, with its rejection always handled so
+   * it can never surface as an unhandled promise rejection. Shared by the
+   * synchronous fire-and-forget entry points — `setMarkers` and the
+   * `setClusterConfig` rebuild — both of which keep a sync signature while the
+   * underlying work (image loading, `setData`) is genuinely async.
+   */
+  private reapplyMarkersSafely(markers: MapMarkerSpec[]): void {
     void this.setMarkersAsync(markers).catch((err) => {
       // eslint-disable-next-line no-console
-      console.error("MapLibreMapAdapter: setMarkers failed", err)
+      console.error("MapLibreMapAdapter: applying markers failed", err)
     })
   }
 
@@ -554,9 +565,10 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     const map = this.mapInstance as MlMap | null
     // Not built yet → ensureMarkerLayers will pick up the new config on first use.
     if (!map || !this.markerLayersReady) return
-    // `cluster` is a source-creation property → rebuild, then re-apply markers.
+    // `cluster` is a source-creation property → rebuild, then re-apply markers
+    // through the same guarded path as `setMarkers` (no unhandled rejection).
     this.teardownMarkerLayers(map)
-    void this.setMarkersAsync(this.lastMarkers)
+    this.reapplyMarkersSafely(this.lastMarkers)
   }
 
   observeClusterClicks(callback: (cluster: MapCluster) => void): Unsubscribe {
