@@ -294,7 +294,11 @@ describe("Item CRUD (CRDT-agnostic contract)", () => {
 
       const updated = updateItemOnHandle(handle, item.id, { tags: [] })
 
-      expect(updated.tags).toEqual([])
+      // Clearing persists (the previous tags are gone). The (de)serialization
+      // canonicalizes "empty" to "absent" — consistently with relations and
+      // @context — so the round-tripped value is `undefined`, not `[]`. Both
+      // mean "no tags"; every consumer reads `item.tags ?? []`.
+      expect(updated.tags ?? []).toEqual([])
     })
 
     it("updates @context (spec 06-schema-composition.md)", () => {
