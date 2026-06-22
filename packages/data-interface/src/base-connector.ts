@@ -472,7 +472,7 @@ export abstract class BaseConnector implements FullConnector {
 
   async syncProfile(): Promise<void> {}
 
-  isSyncPending(): Observable<boolean> {
+  isProfileSyncPending(): Observable<boolean> {
     return createObservable<boolean>(false)
   }
 

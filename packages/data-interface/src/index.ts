@@ -307,7 +307,13 @@ export interface ProfileCapable {
   setFieldVisibility(field: string, isPublic: boolean): Promise<void>
   getPublicProfile(id: string): Promise<PublicProfileData | null>
   syncProfile(): Promise<void>
-  isSyncPending(): Observable<boolean>
+  /**
+   * Whether a profile publish to the discovery server is currently in flight.
+   * Scoped to the profile write path only — NOT a generic read/sync status
+   * (read readiness is `Observable.loaded`, generic write-pending is
+   * `getOutboxPendingCount()`). See docs/spec/02-data-interface.md → Readiness vs. Sync.
+   */
+  isProfileSyncPending(): Observable<boolean>
 }
 
 // --- Incoming Events ---

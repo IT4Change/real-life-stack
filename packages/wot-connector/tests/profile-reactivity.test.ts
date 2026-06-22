@@ -185,7 +185,7 @@ describe("Profile Reactivity — observeMyProfile()", () => {
   })
 })
 
-describe("Profile Reactivity — isSyncPending()", () => {
+describe("Profile Reactivity — isProfileSyncPending()", () => {
   it("is initially false", () => {
     const { syncPendingObs } = createProfileReactivity("did:key:z6MkTest")
     expect(syncPendingObs.current).toBe(false)

@@ -523,7 +523,7 @@ export class WotConnector extends BaseConnector {
     }
   }
 
-  override isSyncPending(): Observable<boolean> {
+  override isProfileSyncPending(): Observable<boolean> {
     return this.syncPendingObs
   }
 
@@ -717,10 +717,15 @@ export class WotConnector extends BaseConnector {
 
   override observeMembers(groupId: string | null): Observable<User[]> {
     if (!this.memberObservables.has(groupId)) {
-      const obs = createObservable<User[]>([])
+      // Starts unloaded; markLoaded() once the first members fetch settles so
+      // consumers can tell "still loading members" from "loaded, no members".
+      const obs = createObservable<User[]>([], false)
       this.memberObservables.set(groupId, obs)
       // Load initial members
-      void this.getMembers(groupId).then((members) => obs.set(members))
+      void this.getMembers(groupId)
+        .then((members) => obs.set(members))
+        .catch((err) => console.error("[WotConnector] observeMembers initial load failed", err))
+        .finally(() => obs.markLoaded())
     }
     return this.memberObservables.get(groupId)!
   }
