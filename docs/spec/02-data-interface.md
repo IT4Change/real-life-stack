@@ -106,7 +106,7 @@ Regeln:
 |---|---|---|
 | `Observable.loaded` | Lesen | Initialer lokaler Bestand gelesen? → Skeleton vs. Empty-State |
 | `getOutboxPendingCount()` | Schreiben | Wie viele eigene Änderungen warten aufs Netz? → Pending-Badge |
-| `isSyncPending()` | Schreiben (Profil) | Läuft gerade ein Profil-Publish? |
+| `isProfileSyncPending()` | Schreiben (Profil) | Läuft gerade ein Profil-Publish? |
 
 Die vierte denkbare Frage — „bin ich gegenüber dem Netz aktuell?" — beantwortet bei local-first bewusst niemand.
 

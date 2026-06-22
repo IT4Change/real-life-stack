@@ -163,9 +163,14 @@ export class GraphQLConnector implements FullConnector {
 
   observeMembers(groupId: string): Observable<User[]> {
     if (!this.memberObservables.has(groupId)) {
-      const obs = createObservable<User[]>([])
+      // Starts unloaded; markLoaded() once the first members fetch settles so
+      // consumers can tell "still loading members" from "loaded, no members".
+      const obs = createObservable<User[]>([], false)
       this.memberObservables.set(groupId, obs)
-      void this.getMembers(groupId).then((members) => obs.set(members))
+      void this.getMembers(groupId)
+        .then((members) => obs.set(members))
+        .catch((err) => console.error("[GraphQLConnector] observeMembers initial load failed", err))
+        .finally(() => obs.markLoaded())
     }
     return this.memberObservables.get(groupId)!
   }
