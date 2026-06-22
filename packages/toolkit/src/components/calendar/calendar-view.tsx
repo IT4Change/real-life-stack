@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
 import {
   Calendar as CalendarIcon,
   CalendarDays,
@@ -292,6 +292,9 @@ export interface CalendarViewProps {
   resolveItemGroupColor?: (item: Item) => string
   /** Id of the item currently open in the shared panel — its pill/card is highlighted. */
   activeItemId?: string
+  /** One-way: jump the visible period to this date when it changes (e.g. to reveal
+   *  a URL-focused event's month). Doesn't fight the user's manual navigation. */
+  focusDate?: Date
   onEventClick?: (event: Item) => void
   onCreateEvent?: (date: Date) => void
   className?: string
@@ -305,6 +308,7 @@ export function CalendarView({
   groupColor = "#2563eb",
   resolveItemGroupColor,
   activeItemId,
+  focusDate,
   onEventClick,
   onCreateEvent,
   className,
@@ -317,6 +321,23 @@ export function CalendarView({
   const [locationFilter, setLocationFilter] = useState<LocationFilter>("all")
   const [myEventsOnly, setMyEventsOnly] = useState(false)
   const [searchText, setSearchText] = useState("")
+
+  // One-way focus: jump the visible period to a date the parent asks to reveal
+  // (a URL-focused event's month). Tracked by value so it fires once per new
+  // focus and never fights the user's manual navigation afterwards; clearing
+  // (focusDate → undefined) re-arms it so re-focusing the same date jumps again.
+  const lastFocusRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!focusDate) {
+      lastFocusRef.current = null
+      return
+    }
+    const t = focusDate.getTime()
+    if (Number.isNaN(t) || lastFocusRef.current === t) return
+    lastFocusRef.current = t
+    setVisibleDate(focusDate)
+    setSelectedDate(focusDate)
+  }, [focusDate])
 
   const eventsAfterBar = useFilterableItems(events, filterBarValue)
 
