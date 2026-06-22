@@ -468,11 +468,13 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
 
   // Focus bookkeeping: `panelOwnedRef` so we only ever close a detail WE opened
   // (the panel persists across module switches); `openedIdRef` opens the detail
-  // once per id; `flownIdRef` flies/reveals once per id; `fromMarkerClickRef`
-  // marks an in-view tap (no zoom yank) vs. a deep-link / cross-module arrival.
+  // once per id; `settledIdRef` marks the final density-zoom done; `approachedIdRef`
+  // marks the one-off approach for a far deep-link; `fromMarkerClickRef` marks an
+  // in-view tap (no zoom yank) vs. a deep-link / cross-module arrival.
   const panelOwnedRef = useRef(false)
   const openedIdRef = useRef<string | null>(null)
-  const flownIdRef = useRef<string | null>(null)
+  const settledIdRef = useRef<string | null>(null)
+  const approachedIdRef = useRef<string | null>(null)
   const fromMarkerClickRef = useRef(false)
 
   // Wire marker clicks into the URL (single source of truth). While picking a
@@ -505,21 +507,26 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     return unsubscribe
   }, [adapter, itemsById, focusItem, isPicking, updatePick])
 
-  // Reveal the URL-focused item: open its detail, then bring it into view with a
-  // SINGLE smooth flight. Runs only on the visible map. The item comes from
-  // useItem (scope-aware), so the panel opens even before its marker has loaded.
+  // Reveal the URL-focused item: open its detail, then bring it into view. Runs
+  // only on the visible map. The item comes from useItem (scope-aware), so the
+  // panel opens even before its marker has loaded. The density-zoom is computed
+  // from the FRESH bbox result `items` (not the one-render-lagged accumulated
+  // set) so a deep-link reveal sees its real neighbours — otherwise it flew
+  // shallow and a dense cluster (e.g. Frankfurt) never opened on reload.
   // Re-arm when the map is hidden so returning re-centers the still-focused item.
   useEffect(() => {
     if (!active) {
       openedIdRef.current = null
-      flownIdRef.current = null
+      settledIdRef.current = null
+      approachedIdRef.current = null
     }
   }, [active])
   useEffect(() => {
     if (!active) return
     if (!focusedId) {
       openedIdRef.current = null
-      flownIdRef.current = null
+      settledIdRef.current = null
+      approachedIdRef.current = null
       if (panelOwnedRef.current) {
         panelOwnedRef.current = false
         modulePanel.close()
@@ -541,27 +548,42 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         // In-view tap: keep the user's zoom — never fly. Just (on mobile) lift
         // the marker above the detail sheet.
         fromMarkerClickRef.current = false
-        flownIdRef.current = focusedId
+        settledIdRef.current = focusedId
+        approachedIdRef.current = focusedId
         if (hasPos && bottomInset) adapter.focusOn([c![0], c![1]], { bottomInset, animate: true })
       }
     }
 
-    // (2) Fly once — a single, slow, density-aware motion. Wait until the
-    // viewport query has settled (`!itemsLoading`) so the nearest-neighbour
-    // distance — and thus how deep we need to go — is real, not a pre-load
-    // guess: a lone marker barely zooms in, a crowded one only as far as it
-    // takes to leave its cluster. Computing it up front means ONE flight, not a
-    // gentle approach followed by a fast second zoom (which made the slow
-    // duration invisible).
-    if (flownIdRef.current !== focusedId && hasPos && bbox && !itemsLoading) {
-      flownIdRef.current = focusedId
-      const zoom = Math.max(adapter.getView().zoom, separationZoom(focusedItem, accumulatedItems))
+    if (!hasPos || settledIdRef.current === focusedId) return
+
+    // (2) Final density fly — once the item's own neighbours are loaded (it is in
+    // the fresh bbox result). A single slow motion as deep as it takes to leave
+    // its cluster: a lone marker barely zooms, a crowded one goes deep enough to
+    // dissolve the cluster.
+    if (items.some((i) => i.id === focusedId)) {
+      settledIdRef.current = focusedId
+      const zoom = Math.max(adapter.getView().zoom, separationZoom(focusedItem, items))
+      adapter.focusOn([c![0], c![1]], { zoom, bottomInset, animate: true })
+      return
+    }
+
+    // (3) Item sits inside the current viewport but its markers haven't loaded
+    // yet → wait (the effect re-runs when `items` arrives) so we fly ONCE at the
+    // real density instead of a shallow guess.
+    if (bbox && itemInBbox(focusedItem, bbox)) return
+
+    // (4) Item is outside the loaded viewport (a far deep-link) → approach its
+    // position once at the gentle floor; arriving loads its neighbours, then (2)
+    // settles the zoom to the real density.
+    if (approachedIdRef.current !== focusedId && bbox && !itemsLoading) {
+      approachedIdRef.current = focusedId
+      const zoom = Math.max(adapter.getView().zoom, MIN_REVEAL_ZOOM)
       adapter.focusOn([c![0], c![1]], { zoom, bottomInset, animate: true })
     }
     // openDetail omitted: re-opening on its identity change (author load) is
-    // unwanted; focusedItem/itemsLoading drive the open + the single fly.
+    // unwanted; focusedItem/items drive the open + the density fly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, focusedId, focusedItem, adapter, accumulatedItems, bbox, itemsLoading])
+  }, [active, focusedId, focusedItem, adapter, items, bbox, itemsLoading])
 
   // While picking, a map click commits the position immediately (so "Erstellen"
   // always has it) and drops the marker where clicked. No recenter: the click
