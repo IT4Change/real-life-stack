@@ -12,6 +12,7 @@ import { Button } from "../primitives/button"
 import { Input } from "../primitives/input"
 import { Label } from "../primitives/label"
 import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
+import { Skeleton } from "../primitives/skeleton"
 
 function getInitials(name: string): string {
   return name
@@ -73,7 +74,7 @@ export function GroupDialog({
 }: GroupDialogProps) {
   const isEdit = mode.type === "edit"
   const groupId = isEdit ? mode.group.id : "__none__"
-  const { data: members } = useMembers(groupId)
+  const { data: members, isLoading: membersLoading } = useMembers(groupId)
   const isCreator = isEdit && members.length > 0 && members[0]?.id === currentUserId
 
   const [name, setName] = useState(() =>
@@ -311,7 +312,9 @@ export function GroupDialog({
                   <Pencil className="h-3 w-3" />
                 </button>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">{members.length} Mitglieder</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {membersLoading ? "Mitglieder werden geladen…" : `${members.length} Mitglieder`}
+              </p>
             </div>
           </div>
         </div>
@@ -319,6 +322,14 @@ export function GroupDialog({
         {/* Members */}
         <div className="px-6 pb-2">
           <div className="space-y-1 max-h-48 overflow-y-auto">
+            {membersLoading &&
+              members.length === 0 &&
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={`member-skeleton-${i}`} className="flex items-center gap-2.5 px-2 py-1.5" aria-hidden>
+                  <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
+                  <Skeleton className="h-3.5 w-32" />
+                </div>
+              ))}
             {members.map((member) => (
               <div
                 key={member.id}

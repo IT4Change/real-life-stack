@@ -1,21 +1,30 @@
-import { useEffect, useState, useCallback, useMemo } from "react"
+import { useEffect, useReducer, useCallback, useMemo, startTransition } from "react"
 import type { ContactInfo } from "@real-life-stack/data-interface"
 import { hasContacts } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 
 const noop = () => Promise.resolve() as any
+const EMPTY: ContactInfo[] = []
 
 export function useContacts() {
   const connector = useConnector()
   const supportsContacts = hasContacts(connector)
-  const observable = supportsContacts ? connector.observeContacts() : null
-  const [contacts, setContacts] = useState<ContactInfo[]>(observable?.current ?? [])
-
+  const observable = useMemo(
+    () => (supportsContacts ? connector.observeContacts() : null),
+    [connector, supportsContacts],
+  )
+  // Re-render trigger; values read fresh from the observable each render so the
+  // `markLoaded` notification (which may carry an unchanged value) still updates
+  // `isLoading`. `isLoading` reflects the real `loaded` flag, not "list empty".
+  const [, rerender] = useReducer((n: number) => n + 1, 0)
   useEffect(() => {
     if (!observable) return
-    setContacts(observable.current)
-    return observable.subscribe(setContacts)
+    rerender()
+    return observable.subscribe(() => startTransition(rerender))
   }, [observable])
+
+  const contacts = observable?.current ?? EMPTY
+  const isLoading = observable?.loaded === false
 
   const activeContacts = useMemo(
     () => contacts.filter((c) => c.status === "active"),
@@ -57,6 +66,7 @@ export function useContacts() {
 
   return {
     contacts,
+    isLoading,
     activeContacts,
     pendingContacts,
     addContact,

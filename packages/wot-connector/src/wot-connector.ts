@@ -255,7 +255,10 @@ export class WotConnector extends BaseConnector {
     this.graphCacheStore = new InMemoryGraphCacheStore()
     this.discovery = new OfflineFirstDiscoveryAdapter(this.httpDiscovery, this.publishStateStore, this.graphCacheStore)
     this.authStateObs = createObservable<AuthState>({ status: "loading" })
-    this.contactsObs = createObservable<ContactInfo[]>([])
+    // Contacts load async from local storage during init; start unloaded so the
+    // UI can tell "loading contacts" from "loaded, no contacts" (markLoaded after
+    // the initial read below).
+    this.contactsObs = createObservable<ContactInfo[]>([], false)
     this.confirmationsObs = createObservable<ConfirmationView[]>([])
     this.relayStateObs = createObservable<RelayState>("disconnected")
     this.outboxCountObs = createObservable<number>(0)
@@ -1138,6 +1141,8 @@ export class WotConnector extends BaseConnector {
         updatedAt: c.updatedAt ?? new Date().toISOString(),
       }))
     )
+    // Initial local contacts read done.
+    this.contactsObs.markLoaded()
 
     // Reactive confirmations via StorageAdapter (verifications + attestations)
     this.verificationsUnsub = this.storage.watchAllVerifications().subscribe(() => this.syncConfirmationsFromPersonalDoc())
