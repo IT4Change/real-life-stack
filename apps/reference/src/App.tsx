@@ -58,6 +58,7 @@ import { MockConnector } from "@real-life-stack/mock-connector"
 import { LocalConnector } from "@real-life-stack/local-connector"
 import { ModuleOutlet } from "./views/module-outlet"
 import { useWorkspaceRouting, STORAGE_KEY_GROUP } from "./hooks/use-workspace-routing"
+import { ItemFocusProvider } from "./hooks/use-item-focus"
 import { LocationPickProvider, useLocationPick } from "./location-pick"
 import { ComposerHostProvider } from "./composer-host"
 
@@ -687,19 +688,24 @@ export default function App() {
     <ConnectorProvider connector={connector} key={connectorId}>
       <IncomingEventsProvider>
         <AuthGate connector={connector}>
-          <Routes>
-            {/* Flat scheme — the URL is the single source of truth for the focused
-                item. `:seg` is a module (known enum) or a module-less item id;
-                use-workspace-routing discriminates + redirects. `/` and unknown
-                paths fall to `*` → Home → redirect to the default scope/module.
-                App-level surfaces (profile, contacts, …) are query overlays, not
-                path routes. Reserved for later: literal `/u/:userId`, `/join/:token`
-                would go ABOVE `:scope` (literal beats param). */}
-            <Route path=":scope/:seg/:itemId" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
-            <Route path=":scope/:seg" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
-            <Route path=":scope" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
-            <Route path="*" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
-          </Routes>
+          {/* Focus lives above the routes so it survives module switches — the
+              shared panel's onClose must clear the focus on whatever module the
+              user is on now, not the one that opened it. */}
+          <ItemFocusProvider>
+            <Routes>
+              {/* Flat scheme — the URL is the single source of truth for the focused
+                  item. `:seg` is a module (known enum) or a module-less item id;
+                  use-workspace-routing discriminates + redirects. `/` and unknown
+                  paths fall to `*` → Home → redirect to the default scope/module.
+                  App-level surfaces (profile, contacts, …) are query overlays, not
+                  path routes. Reserved for later: literal `/u/:userId`, `/join/:token`
+                  would go ABOVE `:scope` (literal beats param). */}
+              <Route path=":scope/:seg/:itemId" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
+              <Route path=":scope/:seg" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
+              <Route path=":scope" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
+              <Route path="*" element={<Home activeConnectorId={connectorId} onConnectorChange={setConnectorId} />} />
+            </Routes>
+          </ItemFocusProvider>
         </AuthGate>
       </IncomingEventsProvider>
     </ConnectorProvider>
