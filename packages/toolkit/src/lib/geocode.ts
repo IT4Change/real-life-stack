@@ -97,9 +97,56 @@ export interface NominatimReverseOptions {
 
 const DEFAULT_REVERSE_ENDPOINT = "https://nominatim.openstreetmap.org/reverse"
 
+/** Structured address from Nominatim (`addressdetails=1`). All fields optional. */
+interface NominatimAddress {
+  road?: string
+  pedestrian?: string
+  footway?: string
+  path?: string
+  house_number?: string
+  city?: string
+  town?: string
+  village?: string
+  municipality?: string
+  suburb?: string
+  city_district?: string
+}
+
+interface NominatimReverseEntry {
+  /** Primary feature name, e.g. "Junges Museum Frankfurt" (empty for plain addresses). */
+  name?: string
+  display_name?: string
+  address?: NominatimAddress
+}
+
 /**
- * Build a {@link ReverseGeocoder} backed by a Nominatim instance. Returns the
- * `display_name` for the coordinate, or null if none.
+ * Compact, two-segment label from a Nominatim reverse result: a named place
+ * (or street + house number) followed by its town/city — e.g.
+ * "Junges Museum Frankfurt, Frankfurt am Main" or "Saalhof 1, Frankfurt am Main".
+ * Falls back to the raw `display_name` when the structured address is missing.
+ */
+export function formatShortAddress(entry: NominatimReverseEntry): string | null {
+  const a = entry.address ?? {}
+  const locality =
+    a.city ?? a.town ?? a.village ?? a.municipality ?? a.suburb ?? a.city_district
+  const street = a.road ?? a.pedestrian ?? a.footway ?? a.path
+  const streetLine = street
+    ? a.house_number
+      ? `${street} ${a.house_number}`
+      : street
+    : undefined
+  // Prefer a named POI when it adds information over the bare street name.
+  const name = entry.name?.trim()
+  const primary = name && name !== street ? name : streetLine
+  const parts = [primary, locality].filter((p): p is string => Boolean(p))
+  if (parts.length > 0) return parts.join(", ")
+  return entry.display_name ?? null
+}
+
+/**
+ * Build a {@link ReverseGeocoder} backed by a Nominatim instance. Returns a
+ * compact "<place|street>, <city>" label (see {@link formatShortAddress}), or
+ * null if none.
  */
 export function createNominatimReverseGeocoder(
   options: NominatimReverseOptions = {},
@@ -110,6 +157,7 @@ export function createNominatimReverseGeocoder(
       lat: String(pos.lat),
       lon: String(pos.lng),
       format: "jsonv2",
+      addressdetails: "1",
     })
     if (language) params.set("accept-language", language)
     const res = await fetch(`${endpoint}?${params.toString()}`, {
@@ -117,8 +165,8 @@ export function createNominatimReverseGeocoder(
       headers: { Accept: "application/json" },
     })
     if (!res.ok) throw new Error(`Reverse geocoding failed: ${res.status}`)
-    const data = (await res.json()) as { display_name?: string }
-    return data.display_name ?? null
+    const data = (await res.json()) as NominatimReverseEntry
+    return formatShortAddress(data)
   }
 }
 
