@@ -1,4 +1,5 @@
 export { ItemPreview, type ItemPreviewProps } from "./item-preview"
+export { ItemPreviewSkeleton } from "./item-preview-skeleton"
 export {
   ItemTypeBadge,
   type ItemTypeBadgeProps,

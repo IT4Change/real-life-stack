@@ -85,6 +85,7 @@ interface User {
 interface Observable<T> {
   current: T
   subscribe(callback: (value: T) => void): Unsubscribe
+  loaded?: boolean
 }
 ```
 
@@ -92,9 +93,22 @@ Regeln:
 
 1. `current` liefert synchron den letzten bekannten Wert.
 2. `subscribe()` registriert Änderungen und gibt eine Unsubscribe-Funktion zurück.
-3. Hooks übersetzen Observables in React State.
-4. UI-Flächen sprechen den Connector nicht direkt an, wenn ein Hook existiert.
-5. Reaktive Detailregeln stehen in [reaktivitaet.md](reaktivitaet.md).
+3. `loaded` zeigt, ob der **initiale lokale Bestand gelesen** ist. Synchrone Quellen sind ab Erzeugung geladen; eine async Quelle (netz-/persistenzgestütztes `observe`) ist `false`, bis ihr erster Read settled — auch wenn das Ergebnis leer ist. Optional und „loaded by default": `false` heißt lädt-noch, alles andere geladen. So lässt sich **leer-weil-lädt** von **leer-weil-wirklich-leer** unterscheiden (Skeleton vs. Empty-State). Ein async Connector MUSS `loaded` nach Abschluss des ersten Reads setzen (auch bei leerem Resultat).
+4. Hooks übersetzen Observables in React State; `isLoading` leitet sich aus `loaded` ab, nicht aus „Liste leer".
+5. UI-Flächen sprechen den Connector nicht direkt an, wenn ein Hook existiert.
+6. Reaktive Detailregeln stehen in [reaktivitaet.md](reaktivitaet.md).
+
+### Readiness vs. Sync
+
+`loaded` betrifft nur die **lokale Lese-Ebene** („ist der Bestand des Scopes gelesen?"), nicht die Netzwerk-Konvergenz. Bei local-first ist lokal die Wahrheit; das CRDT konvergiert, wann es kann. Drei komplementäre, nicht überlappende Signale:
+
+| Signal | Ebene | Frage |
+|---|---|---|
+| `Observable.loaded` | Lesen | Initialer lokaler Bestand gelesen? → Skeleton vs. Empty-State |
+| `getOutboxPendingCount()` | Schreiben | Wie viele eigene Änderungen warten aufs Netz? → Pending-Badge |
+| `isSyncPending()` | Schreiben (Profil) | Läuft gerade ein Profil-Publish? |
+
+Die vierte denkbare Frage — „bin ich gegenüber dem Netz aktuell?" — beantwortet bei local-first bewusst niemand.
 
 ## Core Methods
 
