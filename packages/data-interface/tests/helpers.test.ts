@@ -73,6 +73,39 @@ describe("createObservable", () => {
 
     expect(values).toEqual([])
   })
+
+  it("is loaded by default (synchronous source)", () => {
+    expect(createObservable(0).loaded).toBe(true)
+  })
+
+  it("starts unloaded when loaded=false, flips on markLoaded", () => {
+    const obs = createObservable<number[]>([], false)
+    expect(obs.loaded).toBe(false)
+    obs.markLoaded()
+    expect(obs.loaded).toBe(true)
+  })
+
+  it("markLoaded notifies subscribers even when the value is unchanged (empty result)", () => {
+    const obs = createObservable<number[]>([], false)
+    let calls = 0
+    obs.subscribe(() => calls++)
+
+    obs.set([]) // no-op: value unchanged (shallowEqual) → no notification
+    expect(calls).toBe(0)
+
+    obs.markLoaded() // must still notify so consumers learn it loaded (empty)
+    expect(calls).toBe(1)
+    expect(obs.loaded).toBe(true)
+  })
+
+  it("markLoaded is a no-op once already loaded", () => {
+    const obs = createObservable(0) // loaded=true
+    let calls = 0
+    obs.subscribe(() => calls++)
+
+    obs.markLoaded()
+    expect(calls).toBe(0)
+  })
 })
 
 describe("matchesFilter", () => {

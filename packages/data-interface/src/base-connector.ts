@@ -23,7 +23,14 @@ import type {
 
 // --- Shared Helpers for Connector implementations ---
 
-export type ReactiveObservable<T> = Observable<T> & { set(value: T): void; destroy(): void }
+export type ReactiveObservable<T> = Observable<T> & {
+  set(value: T): void
+  /** Mark the first fetch as settled (loaded), notifying subscribers even if the
+   *  value is unchanged — so an async source resolving to an *empty* result still
+   *  flips `loaded` and re-renders. No-op once already loaded. */
+  markLoaded(): void
+  destroy(): void
+}
 
 /**
  * Shallow equality check for Observable values.
@@ -44,13 +51,23 @@ export function shallowEqual<T>(a: T, b: T): boolean {
   return false
 }
 
-export function createObservable<T>(initial: T): ReactiveObservable<T> {
+/**
+ * Create a reactive observable. `loaded` defaults to `true` for synchronous
+ * sources whose initial value is already authoritative; pass `false` for an
+ * async source that resolves its first value later and call `markLoaded()` once
+ * it settles (see {@link ReactiveObservable.markLoaded}).
+ */
+export function createObservable<T>(initial: T, loaded = true): ReactiveObservable<T> {
   let current = initial
+  let isLoaded = loaded
   const subscribers = new Set<(value: T) => void>()
 
   return {
     get current() {
       return current
+    },
+    get loaded() {
+      return isLoaded
     },
     subscribe(callback: (value: T) => void): Unsubscribe {
       subscribers.add(callback)
@@ -60,6 +77,11 @@ export function createObservable<T>(initial: T): ReactiveObservable<T> {
       if (shallowEqual(current, value)) return
       current = value
       subscribers.forEach((cb) => cb(value))
+    },
+    markLoaded() {
+      if (isLoaded) return
+      isLoaded = true
+      subscribers.forEach((cb) => cb(current))
     },
     destroy() {
       subscribers.clear()

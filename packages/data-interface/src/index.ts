@@ -63,6 +63,15 @@ export interface User {
 export interface Observable<T> {
   current: T
   subscribe(callback: (value: T) => void): Unsubscribe
+  /**
+   * Whether the first value has been resolved. Synchronous sources are loaded
+   * from creation; an async source (e.g. a network-backed `observe`) is `false`
+   * until its first fetch settles — even when that result is empty. Optional and
+   * defaults to "loaded": treat `false` as still-loading, anything else as
+   * loaded. Lets consumers tell "no data yet" apart from "loaded, genuinely
+   * empty" (e.g. a viewport query that legitimately returns nothing).
+   */
+  loaded?: boolean
 }
 
 export type Unsubscribe = () => void
