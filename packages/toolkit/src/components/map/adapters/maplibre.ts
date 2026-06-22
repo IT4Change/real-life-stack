@@ -729,7 +729,7 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     map.jumpTo({ center, zoom })
   }
 
-  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean }): void {
+  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean; zoom?: number }): void {
     const map = this.mapInstance as MlMap | null
     if (!map) return
     const bottomInset = options?.bottomInset ?? 0
@@ -738,6 +738,7 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     // a per-move `offset` so no persistent camera padding is left behind).
     map.easeTo({
       center,
+      ...(options?.zoom != null ? { zoom: options.zoom } : {}),
       offset: [0, -bottomInset / 2],
       duration: options?.animate === false ? 0 : 500,
     })

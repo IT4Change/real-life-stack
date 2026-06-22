@@ -262,14 +262,18 @@ export class LeafletMapAdapter implements MapAdapter {
     map.setView(center, zoom)
   }
 
-  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean }): void {
+  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean; zoom?: number }): void {
     const map = this.mapInstance as L.Map | null
     if (!map) return
     const animate = options?.animate !== false
-    // Centre the target, then shift the view up by half the obscured strip so it
-    // sits centred in the visible area above a bottom sheet (panBy +y moves the
-    // map content up, i.e. the target rises on screen).
-    map.panTo(toLatLngTuple(center), { animate })
+    // Centre the target (changing zoom too when given), then shift the view up by
+    // half the obscured strip so it sits centred in the visible area above a
+    // bottom sheet (panBy +y moves the map content up, i.e. the target rises).
+    if (options?.zoom != null) {
+      map.setView(toLatLngTuple(center), options.zoom, { animate })
+    } else {
+      map.panTo(toLatLngTuple(center), { animate })
+    }
     const bottomInset = options?.bottomInset ?? 0
     if (bottomInset) map.panBy([0, bottomInset / 2], { animate })
   }

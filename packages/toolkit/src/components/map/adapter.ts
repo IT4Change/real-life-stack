@@ -117,8 +117,10 @@ export interface MapAdapter {
    * Pan so `center` ends up centred in the viewport area NOT covered by a
    * bottom inset (in CSS pixels) — e.g. the strip of map above a bottom sheet.
    * `bottomInset` 0 centres normally. Animated unless `animate` is `false`.
+   * Pass `zoom` to also change the zoom level (e.g. to reveal a deep-linked item
+   * past the cluster-break threshold); omitted keeps the current zoom.
    */
-  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean }): void
+  focusOn(center: LngLat, options?: { bottomInset?: number; animate?: boolean; zoom?: number }): void
 
   /** Current viewport. */
   getView(): MapViewState

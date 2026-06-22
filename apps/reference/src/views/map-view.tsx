@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import {
   useItems,
+  useItem,
   useMembers,
   useCurrentUser,
   useModulePanel,
@@ -32,6 +33,7 @@ import { Calendar, Globe, Loader2, MapPin, Search } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useLocationPick } from "../location-pick"
+import { useItemFocus } from "../hooks/use-item-focus"
 
 const MAP_TYPES: FilterTypeOption[] = [
   { id: "event", label: "Events", icon: Calendar },
@@ -78,6 +80,11 @@ function itemInBbox(item: Item, bbox: [number, number, number, number]): boolean
  *  AdaptivePanel drawer default (`drawerInitialHeight`), so we can pan a tapped
  *  marker into the strip of map left visible above the sheet. */
 const MAP_SHEET_FRACTION = 0.55
+
+/** Zoom level a URL-revealed item is brought to. Above the cluster-break
+ *  threshold (clusterMaxZoom = 14) so a deep-linked item inside a cluster
+ *  surfaces as its own marker instead of staying hidden in the cluster. */
+const FOCUS_ZOOM = 15.5
 
 export function MapView({ groupId, active = true }: { groupId: string; active?: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -157,6 +164,13 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   )
 
   const modulePanel = useModulePanel()
+  // URL-driven focus: a marker click / deep-link writes `/{scope}/map/{id}`; the
+  // reveal effect below opens the detail + brings the item into view. The
+  // focused item is fetched scope-aware via useItem (NOT the viewport-bounded
+  // query) so a deep-linked item outside the current bbox still resolves — we
+  // need its position to pan/zoom there, which then loads its marker.
+  const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
+  const { data: focusedItem } = useItem(active ? (focusedId ?? "") : "")
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [searchText, setSearchText] = useState("")
   const itemsAfterBar = useFilterableItems(accumulatedItems, filterBarValue)
@@ -395,25 +409,23 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
           </div>
         </ItemDetailPanel>
       ),
+      onClose: clearFocus,
     })
-    // On mobile the detail sheet slides up over the lower part of the map. Pan
-    // so the tapped marker stays visible, centred in the strip above the sheet.
-    if (isCompact && adapter) {
-      const pos = item.data.position as { coordinates?: number[] } | undefined
-      const coords = pos?.coordinates
-      if (coords && typeof coords[0] === "number" && typeof coords[1] === "number") {
-        adapter.focusOn([coords[0], coords[1]], {
-          bottomInset: window.innerHeight * MAP_SHEET_FRACTION,
-          animate: true,
-        })
-      }
-    }
-  }, [modulePanel, resolveAuthor, isCompact, adapter])
+  }, [modulePanel, resolveAuthor, clearFocus])
 
-  // Wire marker clicks to the shared module panel. The adapter's
-  // subscriber returns an unsubscribe — clean up so we don't leak
-  // callbacks across remounts. While picking a location, marker clicks
-  // are ignored: a click should set the position, not open a detail.
+  // Focus bookkeeping: `panelOwnedRef` so we only ever close a detail WE opened
+  // (the panel persists across module switches); `revealedIdRef` opens/reveals
+  // once per id; `fromMarkerClickRef` distinguishes an in-view tap (no zoom yank)
+  // from a deep-link / cross-module arrival (zoom in to surface the marker).
+  const panelOwnedRef = useRef(false)
+  const revealedIdRef = useRef<string | null>(null)
+  const fromMarkerClickRef = useRef(false)
+
+  // Wire marker clicks into the URL (single source of truth). While picking a
+  // location, marker clicks are ignored — a click should set the position, not
+  // open a detail. `fromMarkerClickRef` tells the reveal effect this focus came
+  // from an in-view tap, so it opens the detail without yanking the zoom (vs. a
+  // deep-link / cross-module arrival, which zooms in to surface the marker).
   useEffect(() => {
     if (!adapter) return
     const unsubscribe = adapter.observeMarkerClicks((markerId) => {
@@ -431,10 +443,60 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         }
         return
       }
-      if (item) openDetail(item)
+      if (item) {
+        fromMarkerClickRef.current = true
+        focusItem(item.id)
+      }
     })
     return unsubscribe
-  }, [adapter, itemsById, openDetail, isPicking, updatePick])
+  }, [adapter, itemsById, focusItem, isPicking, updatePick])
+
+  // Reveal the URL-focused item: open its detail + bring it into view. Runs only
+  // on the visible map. The item comes from useItem (scope-aware), so it works
+  // even when the marker isn't loaded yet — pan/zoom there, then the bbox query
+  // loads it.
+  // Re-arm the reveal when the map is hidden, so returning to it re-centers the
+  // still-focused item (another module may have taken over the panel meanwhile).
+  useEffect(() => {
+    if (!active) revealedIdRef.current = null
+  }, [active])
+  useEffect(() => {
+    if (!active) return
+    if (focusedId) {
+      if (revealedIdRef.current === focusedId) return
+      if (!focusedItem || !adapter) return // wait for the item + the map
+      const fromClick = fromMarkerClickRef.current
+      fromMarkerClickRef.current = false
+      revealedIdRef.current = focusedId
+      panelOwnedRef.current = true
+      openDetail(focusedItem)
+      const pos = focusedItem.data.position as { coordinates?: number[] } | undefined
+      const c = pos?.coordinates
+      if (c && typeof c[0] === "number" && typeof c[1] === "number") {
+        const bottomInset = isCompact ? window.innerHeight * MAP_SHEET_FRACTION : 0
+        if (fromClick) {
+          // In-view tap: keep the user's zoom, just (on mobile) lift the marker
+          // above the detail sheet. No zoom yank.
+          if (bottomInset) adapter.focusOn([c[0], c[1]], { bottomInset, animate: true })
+        } else {
+          // Deep-link / cross-module arrival: zoom in past the cluster-break
+          // threshold so the item surfaces as its own marker. Never zoom OUT if
+          // the user is already closer.
+          const zoom = Math.max(adapter.getView().zoom, FOCUS_ZOOM)
+          adapter.focusOn([c[0], c[1]], { zoom, bottomInset, animate: true })
+        }
+      }
+    } else {
+      revealedIdRef.current = null
+      if (panelOwnedRef.current) {
+        panelOwnedRef.current = false
+        modulePanel.close()
+      }
+    }
+    // openDetail omitted: re-opening on its identity change (author load) is
+    // unwanted; focusedItem drives the load-retry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, focusedId, focusedItem, adapter])
 
   // While picking, a map click commits the position immediately (so "Erstellen"
   // always has it) and drops the marker where clicked. No recenter: the click
