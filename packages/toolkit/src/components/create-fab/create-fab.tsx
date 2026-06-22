@@ -38,7 +38,9 @@ export function CreateFab({ onClick, label = "Erstellen", className }: CreateFab
       // so the FAB slides left to sit beside the panel instead of being overlaid.
       style={{ right: "calc(1rem + var(--adaptive-panel-margin-right, 0px))" }}
       className={cn(
-        "fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all duration-300 ease-out in-[.adaptive-panel-resizing]:transition-none hover:scale-105 hover:shadow-xl active:scale-95 md:bottom-[calc(1.5rem+env(safe-area-inset-bottom))]",
+        // Desktop offset is 1rem on both axes so it matches the right inline
+        // offset (1rem) and lines up with the other module/map corner controls.
+        "fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all duration-300 ease-out in-[.adaptive-panel-resizing]:transition-none hover:scale-105 hover:shadow-xl active:scale-95 md:bottom-[calc(1rem+env(safe-area-inset-bottom))]",
         className,
       )}
     >
