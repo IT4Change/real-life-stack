@@ -3,6 +3,7 @@ import {
   ContentComposer,
   type ContentTypeConfig,
   ItemDetailPanel,
+  ItemDetailActions,
   useModulePanel,
   ReactionBar,
   ItemPreview,
@@ -115,6 +116,14 @@ export function FeedView({ groupId }: { groupId: string }) {
               item={item}
               author={resolveAuthor(item.createdBy)}
               headerAdornment={<ItemTypeBadge type={item.type} />}
+              actions={
+                <ItemDetailActions
+                  item={item}
+                  title={typeof item.data.title === "string" ? item.data.title : undefined}
+                  onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
+                  onDeleted={clearFocus}
+                />
+              }
               metaAdornment={<ItemMetaRow item={item} />}
               footerAdornment={
                 item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined

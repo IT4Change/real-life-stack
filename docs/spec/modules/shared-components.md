@@ -124,6 +124,40 @@ interface ItemDetailPanelProps {
 
 **Spec:** [01-app-composition.md → Module Components](../01-app-composition.md)
 
+### `ItemDetailActions`
+
+**Zweck:** Item-Aktionen im **Card-Header** (rechtsbündig über `ItemPreview`s `actions`-Slot, nicht in der Panel-Chrome): prominenter „Bearbeiten"-Button + ⋮-Menü (Teilen / Löschen). Berechtigungs-gegated über `useItemPermissions(item)` (siehe [03-capabilities.md → AuthorizationCapable](../03-capabilities.md)).
+
+> **Trennung Inhalt vs. Fenster:** Item-Aktionen (⋮) gehören zum Item (Card-Header). Die Panel-Chrome (`AdaptivePanel`) trägt nur noch **Schließen** (+ mobiler Drag-Griff) — Pin und Maximieren wurden entfernt (kein realer Nutzen: Pin wirkt in der Sidebar nicht, Maximieren verdeckt den Kontext).
+
+**Vertrag:**
+
+```ts
+interface ItemDetailActionsProps {
+  item: Item
+  onEdit?: () => void      // → Edit-Modus; "Bearbeiten" nur wenn editierbar UND verdrahtet
+  onDeleted?: () => void   // nach erfolgtem Löschen (z.B. Panel schließen); Löschung erfolgt intern
+  onShare?: () => void     // Link teilen/kopieren
+  title?: string           // für den Lösch-Dialog
+}
+```
+
+**Regeln:**
+
+1. Sichtbarkeit folgt `useItemPermissions(item)`: nicht erlaubte Aktionen werden **ausgeblendet** (nicht disabled). Gibt es keine erlaubte Aktion, rendert die Komponente nichts.
+2. **Bearbeiten** ist ein prominenter Button (read-first, ein Tap), nur bei `canEdit` **und** vorhandenem `onEdit`.
+3. **Löschen** liegt im ⋮-Menü, läuft hinter `DeleteConfirmDialog` und führt die Löschung selbst aus (`connector.deleteItem`, defensiv auf `isWritable` gegated); danach `onDeleted`.
+4. **Teilen** erscheint im ⋮-Menü, wenn `onShare` verdrahtet ist.
+5. Das Gating ist eine **UI-Affordance**, keine Sicherheitsgrenze — Durchsetzung backend-/protokollseitig.
+
+Die reine Sichtbarkeitslogik ist als `visibleDetailActions(perms, hasOnEdit, hasOnShare)` ausgelagert (testbar).
+
+### `DeleteConfirmDialog`
+
+**Zweck:** Bestätigung vor dem Löschen („… wird gelöscht. Das kann nicht rückgängig gemacht werden.") mit Busy-State. `onConfirm` führt die Löschung aus, der Dialog schließt danach. Wird intern von `ItemDetailActions` benutzt, ist aber eigenständig einbindbar.
+
+Konzept/UX: [concepts/item-edit-delete-2026-06.md](../../concepts/item-edit-delete-2026-06.md). Das vollständige Edit-in-Panel (read↔edit-Host) folgt in einer späteren Phase.
+
 ### `CommentSection`
 
 **Zweck:** Comments + Replies UI mit Reply-Threading. Wird intern von `ItemDetailPanel` benutzt, kann aber auch direkt eingebunden werden.
@@ -196,6 +230,10 @@ interface ItemPreviewProps {
   onClick?: () => void
   /** Slot neben dem Author-Namen (z.B. Type-Badge, Status-Chip). */
   headerAdornment?: ReactNode
+  /** Rechtsbündige Aktionen am Ende der Header-Zeile (z.B. das Detail-⋮ via
+   *  `ItemDetailActions`). Nur Detail-Ansichten füllen ihn; Listen-Cards lassen
+   *  ihn leer, damit Cards aktionsfrei bleiben. */
+  actions?: ReactNode
   /** Slot zwischen Title und Description (z.B. Date-Hint, Distance). */
   metaAdornment?: ReactNode
   /** Slot unter den Tag-Chips (z.B. Assignees, Comment-Count, ReactionBar). */

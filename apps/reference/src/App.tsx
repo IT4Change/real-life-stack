@@ -67,24 +67,18 @@ import { ComposerHostProvider } from "./composer-host"
  * mounted) while the user picks a location on the map — so the drawer steps
  * aside on mobile. Lives inside LocationPickProvider to read `isPicking`.
  */
-function ModulePanelHost({
-  pinned,
-  onPinnedChange,
-  children,
-}: {
-  pinned: boolean
-  onPinnedChange: (pinned: boolean) => void
-  children: ReactNode
-}) {
+function ModulePanelHost({ children }: { children: ReactNode }) {
   const { isPicking } = useLocationPick()
   return (
+    // No "modal" mode (drops the maximise/mode-switch) and no pinning — both were
+    // controls without a real use in the detail panel (Pin does nothing in a
+    // sidebar; maximise hides the context, esp. on the map). Chrome is just the
+    // close button; item actions live in the card header (ItemDetailActions).
     <ModulePanelProvider
-      allowedModes={["modal", "sidebar", "drawer"]}
+      allowedModes={["sidebar", "drawer"]}
       sidebarWidth="420px"
       sidebarMinWidth="300px"
       sidebarMaxWidth="70vw"
-      pinned={pinned}
-      onPinnedChange={onPinnedChange}
       suspended={isPicking}
     >
       {children}
@@ -412,7 +406,6 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
   const [isDark, setIsDark] = useState(false)
   const supportsMessaging = hasMessaging(connector)
-  const [panelPinned, setPanelPinned] = useState(false)
 
   const toggleTheme = () => {
     setIsDark(!isDark)
@@ -422,7 +415,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   return (
     <OpenProfileProvider openProfile={openProfile}>
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
-    <ModulePanelHost pinned={panelPinned} onPinnedChange={setPanelPinned}>
+    <ModulePanelHost>
     <ComposerHostProvider currentUserId={currentUser?.id}>
     <AppShell>
       <Navbar>
