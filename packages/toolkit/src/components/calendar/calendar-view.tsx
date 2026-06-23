@@ -875,7 +875,7 @@ function MonthCalendar({
                 aria-label="Event an diesem Tag erstellen"
                 onClick={() => onCreateEvent(day.date)}
                 tabIndex={-1}
-                className="mt-0.5 min-h-4 flex-1 rounded transition-colors hover:bg-primary/5"
+                className="mt-2 min-h-4 flex-1 rounded transition-colors hover:bg-primary/5"
               />
             )}
           </div>
@@ -1121,7 +1121,7 @@ function EventPill({ event, compact = false, onClick }: EventPillProps) {
         // Soft glow in the group colour for the item open in the shared panel.
         ...(isActive ? getActivePanelGlow(groupColor) : null),
       }}
-      className="block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium transition-opacity hover:opacity-90"
+      className="block w-full truncate rounded-md px-2 py-1.5 text-left text-xs font-medium transition-opacity hover:opacity-90"
     >
       {compact
         ? event.allDay
