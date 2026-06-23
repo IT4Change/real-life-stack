@@ -50,21 +50,21 @@ export function withGroupOptions(
   groups: { id: string; name: string }[],
   currentGroupId?: string,
 ): ContentTypeConfig[] {
-  if (groups.length === 0) return types
+  // Only surface a picker when there's an actual choice (≥2 groups), matching
+  // the composer's own edit-mode threshold. With 0 or 1 group the item simply
+  // lands in that group; no widget at all (not shown, not toggleable).
+  if (groups.length < 2) return types
   const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }))
   const defaultGroup =
     currentGroupId && groups.some((g) => g.id === currentGroupId) ? currentGroupId : undefined
-  // Only surface the picker when there's an actual choice (≥2), matching the
-  // composer's own edit-mode threshold. Adding "group" to defaultWidgets shows it
-  // at create time too (not only in edit), so a new item's group is selectable.
-  const showWidget = groups.length >= 2
   return types.map((t) => ({
     ...t,
     groupOptions,
     ...(defaultGroup ? { defaultGroup } : {}),
-    ...(showWidget && !t.defaultWidgets.includes("group")
-      ? { defaultWidgets: [...t.defaultWidgets, "group"] }
-      : {}),
+    // Add "group" to defaultWidgets so it shows at create time too (not only edit).
+    ...(t.defaultWidgets.includes("group")
+      ? {}
+      : { defaultWidgets: [...t.defaultWidgets, "group"] }),
   }))
 }
 
