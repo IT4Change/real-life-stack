@@ -1418,11 +1418,18 @@ export class WotConnector extends BaseConnector {
       const migratedIds = new Set<string>()
       targetHandle.transact((targetDoc: RlsSpaceDoc) => {
         if (!targetDoc.items) targetDoc.items = {}
+        const idRemap = new Map<string, string>()
+
         for (const [itemId, serialized] of entries) {
           const targetItemId = targetDoc.items[itemId]
             ? `${itemId}-private-${crypto.randomUUID()}`
             : itemId
-          targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId)
+          idRemap.set(itemId, targetItemId)
+        }
+
+        for (const [itemId, serialized] of entries) {
+          const targetItemId = idRemap.get(itemId)!
+          targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId, idRemap)
           migratedIds.add(itemId)
         }
       })
@@ -1445,11 +1452,31 @@ export class WotConnector extends BaseConnector {
     this.notifyAllObservers()
   }
 
-  private cloneSerializedItem(item: SerializedItem, id: string): SerializedItem {
+  private cloneSerializedItem(
+    item: SerializedItem,
+    id: string,
+    idRemap: Map<string, string> = new Map(),
+  ): SerializedItem {
+    const clone = JSON.parse(JSON.stringify(item)) as SerializedItem
+    if (clone.relations?.length) {
+      clone.relations = clone.relations.map((relation) => ({
+        ...relation,
+        target: this.remapRelationTarget(relation.target, idRemap),
+      }))
+    }
     return {
-      ...JSON.parse(JSON.stringify(item)),
+      ...clone,
       id,
     } as SerializedItem
+  }
+
+  private remapRelationTarget(target: string, idRemap: Map<string, string>): string {
+    const match = /^(item:|global:)(.+)$/.exec(target)
+    if (!match) return target
+
+    const [, prefix, id] = match
+    const remappedId = idRemap.get(id)
+    return remappedId ? `${prefix}${remappedId}` : target
   }
 
   private spaceToGroup(space: SpaceInfo): Group {

@@ -350,6 +350,17 @@ function createSerializedItem(id: string, title: string): SerializedItem {
   }
 }
 
+function createSerializedItemWithRelations(
+  id: string,
+  title: string,
+  relations: SerializedItem["relations"],
+): SerializedItem {
+  return {
+    ...createSerializedItem(id, title),
+    relations,
+  }
+}
+
 function createSpaceInfo(id: string, appTag = "rls-private"): SpaceInfo {
   return {
     id,
@@ -394,6 +405,16 @@ function createFakePrivateSpaceConnector(spaces: SpaceInfo[], docs: Record<strin
 }
 
 describe("WotConnector private space reconciliation", () => {
+  it("does not notify observers when createIfMissing is false and no private space exists", async () => {
+    const fake = createFakePrivateSpaceConnector([], {})
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: false })
+
+    expect(fake.privateSpaceId).toBeNull()
+    expect(fake.replication.createSpace).not.toHaveBeenCalled()
+    expect(fake.notifyAllObservers).not.toHaveBeenCalled()
+  })
+
   it("adopts the lexicographically smallest private space as canonical", async () => {
     const spaces = [
       createSpaceInfo("private-z"),
@@ -411,6 +432,20 @@ describe("WotConnector private space reconciliation", () => {
 
     expect(fake.privateSpaceId).toBe("private-a")
     expect(fake.replication.createSpace).not.toHaveBeenCalled()
+  })
+
+  it("does not notify observers when the canonical private space is unchanged", async () => {
+    const spaces = [createSpaceInfo("private-a")]
+    const docs = {
+      "private-a": { _type: "rls", items: {} } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    fake.privateSpaceId = "private-a"
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: false })
+
+    expect(fake.privateSpaceId).toBe("private-a")
+    expect(fake.notifyAllObservers).not.toHaveBeenCalled()
   })
 
   it("migrates items from duplicate private spaces into the canonical space", async () => {
@@ -443,6 +478,49 @@ describe("WotConnector private space reconciliation", () => {
     expect(fake.crossGroupIndex.reindexGroup).toHaveBeenCalledWith("private-a")
     expect(fake.crossGroupIndex.reindexGroup).toHaveBeenCalledWith("private-b")
     expect(fake.notifyAllObservers).toHaveBeenCalledTimes(1)
+  })
+
+  it("remaps relations between migrated items when duplicate IDs are renamed", async () => {
+    const spaces = [
+      createSpaceInfo("private-b"),
+      createSpaceInfo("private-a"),
+    ]
+    const docs = {
+      "private-a": {
+        _type: "rls",
+        items: {
+          parent: createSerializedItem("parent", "Canonical parent"),
+          child: createSerializedItem("child", "Canonical child"),
+        },
+      } as RlsSpaceDoc,
+      "private-b": {
+        _type: "rls",
+        items: {
+          parent: createSerializedItemWithRelations("parent", "Migrated parent", [
+            { predicate: "blocks", target: "item:child" },
+            { predicate: "mentions", target: "global:child" },
+            { predicate: "external", target: "space:other/item:child" },
+          ]),
+          child: createSerializedItem("child", "Migrated child"),
+        },
+      } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: false })
+
+    const migratedParentId = Object.keys(docs["private-a"].items)
+      .find((id) => id.startsWith("parent-private-"))
+    const migratedChildId = Object.keys(docs["private-a"].items)
+      .find((id) => id.startsWith("child-private-"))
+
+    expect(migratedParentId).toBeTruthy()
+    expect(migratedChildId).toBeTruthy()
+    expect(docs["private-a"].items[migratedParentId!].relations).toEqual([
+      { predicate: "blocks", target: `item:${migratedChildId}` },
+      { predicate: "mentions", target: `global:${migratedChildId}` },
+      { predicate: "external", target: "space:other/item:child" },
+    ])
   })
 
   it("creates a private space only when none exists", async () => {
