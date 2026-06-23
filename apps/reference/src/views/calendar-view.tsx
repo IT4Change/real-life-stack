@@ -157,17 +157,30 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedId, events])
 
+  const clearFocusForComposer = useCallback(() => {
+    // Opening the composer replaces the calendar-owned detail panel, so the URL
+    // focus must be cleared too. Otherwise clicking the same event again is a
+    // no-op (`focusItem` sees the URL already points at that id) and the detail
+    // panel does not re-open. Mark the detail as no longer calendar-owned before
+    // navigating, so the focus-clearing effect doesn't close the composer.
+    openedIdRef.current = null
+    panelOwnedRef.current = false
+    clearFocus()
+  }, [clearFocus])
+
   // Composer opens via the app-level host, so its save path survives a switch
   // to the Map module for location picking. The Feed keeps its own
   // fullscreen-morph shell.
   const openComposer = useCallback(() => {
+    clearFocusForComposer()
     openCreateComposer({ contentTypes: calendarContentTypes, mapper: mapSubmission })
-  }, [openCreateComposer, calendarContentTypes, mapSubmission])
+  }, [clearFocusForComposer, openCreateComposer, calendarContentTypes, mapSubmission])
 
   // Click on an empty day/slot → composer prefilled with that date/time. A bare
   // day click (month) lands at local midnight → keep it date-only so no time is
   // shown until the user sets one; a time-slot click (week/day) keeps its hour.
   const openComposerAt = useCallback((date: Date) => {
+    clearFocusForComposer()
     const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0
     const start = hasTime ? toLocalDatetime(date) : toLocalDate(date)
     // Composer already open (user may be typing) → change only the date, keep the
@@ -181,7 +194,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         initialData: { start },
       })
     }
-  }, [openCreateComposer, patchComposerData, modulePanel, calendarContentTypes, mapSubmission])
+  }, [clearFocusForComposer, openCreateComposer, patchComposerData, modulePanel, calendarContentTypes, mapSubmission])
 
   return (
     <>

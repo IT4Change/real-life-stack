@@ -870,9 +870,6 @@ function MonthCalendar({
             </div>
 
             {onCreateEvent && day.isCurrentMonth && (
-              // "Add on this day" fills the leftover space, but a clear top buffer
-              // keeps it off the pills: a near-miss just below a pill lands in the
-              // dead gap (no-op) instead of silently setting the composer's date.
               <button
                 type="button"
                 aria-label="Event an diesem Tag erstellen"
