@@ -373,11 +373,11 @@ Das Map Module definiert nicht:
 5. Welche Tile-Quellen sind Default in der Reference App (OSM-Standard, eigene Tile-Server, themed Tiles)?
 6. Soll der Adapter eine Möglichkeit haben, Karten-spezifische Custom-Controls zu hosten (Layer-Switcher, Zeichenwerkzeuge), oder bleibt die Map-UI im React-Layer?
 7. Die generische `ItemFilters`-Komponente gehört konzeptionell in eine Cross-Modul-Spec (App Composition oder eigenes Dokument). Der Vertrag, wie Module ihre modulspezifischen Filter registrieren, ist noch offen.
-8. **Marker-Click-Flow: Popup vs. Detail-Panel.** Aktuell öffnet ein Marker-Click direkt das `ItemDetailPanel` im `AdaptivePanel` — konsistent mit Feed, Kanban und Calendar.
+8. **Marker-Click-Flow: Popup vs. Detail-Panel.** Aktuell öffnet ein Marker-Click direkt den `ItemDetailView`-Host (read↔edit + Aktionsmenü, intern `ItemDetailPanel`) im `AdaptivePanel` — konsistent mit Feed und Calendar (Kanban nutzt vorerst sein eigenes `TaskEditPanel`).
 
    Diskussion mit Sebastian offen, drei mögliche Varianten:
 
-   - **A — Direkt-Detail (heutiger Stand):** Marker-Klick öffnet `ItemDetailPanel` als Sidebar. Pro: identisch zu allen anderen Modulen, volles Comment-Threading + Reaktionen sofort verfügbar. Contra: Map verschwindet visuell teilweise hinter dem Panel, User verliert räumlichen Kontext.
+   - **A — Direkt-Detail (heutiger Stand):** Marker-Klick öffnet den `ItemDetailView`-Host als Sidebar. Pro: identisch zu allen anderen Modulen, Edit/Delete in-panel, volles Comment-Threading + Reaktionen sofort verfügbar. Contra: Map verschwindet visuell teilweise hinter dem Panel, User verliert räumlichen Kontext.
    - **B — Popup-Zwischenstation:** Marker-Klick öffnet ein Leaflet/MapLibre-Popup mit der `ItemPreview` inline; ein „Details öffnen"-Action im Popup wechselt dann zum `ItemDetailPanel`. Pro: Map bleibt voll sichtbar, schnelles Peek. Contra: zwei Klicks bis zum Detail, weicht vom Modul-übergreifenden Pattern ab, Popup-Styling muss separat gepflegt werden.
    - **C — Hybrid:** Klick öffnet Popup mit `ItemPreview`; ein Hover oder Long-Press öffnet direkt das Detail-Panel. Pro: beides bedienbar. Contra: zwei verschiedene Interaktionen für sehr ähnliches Verhalten, Discoverability auf Touch unklar.
 
