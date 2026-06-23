@@ -2,7 +2,9 @@
 
 **Status:** Vorschlag (2026-06-23)
 **Scope:** Phase 1 = generisches Bearbeiten/Löschen von Items in **allen** Modulen. Phase 2 = typ-bewusste Detail-Sektionen (hier skizziert, nicht Teil von Phase 1).
-**Bezug:** [../spec/modules/shared-components.md](../spec/modules/shared-components.md) (normativ: `ContentComposer`, `ItemDetailPanel`, `useItemEditor`, `ModulePanel`), [../modules/item-detail.md](../modules/item-detail.md) (Detail-Sektionen), [./unified-module-ux-2026-06.md](./unified-module-ux-2026-06.md).
+**Bezug:** [../spec/03-capabilities.md](../spec/03-capabilities.md) (Capability-Katalog — hier landet `AuthorizationCapable`), [../spec/modules/shared-components.md](../spec/modules/shared-components.md) (normativ: `ContentComposer`, `ItemDetailPanel`, `useItemEditor`, `ModulePanel`), [../modules/item-detail.md](../modules/item-detail.md) (Detail-Sektionen), [./unified-module-ux-2026-06.md](./unified-module-ux-2026-06.md).
+
+Die normativen Teile (Capability, geteilte Komponenten) werden **inline** in den o.g. Spec-Docs verankert (kein ADR), mit den jeweiligen Implementierungs-PRs.
 
 ## 1. Ausgangslage
 
@@ -52,33 +54,42 @@ Im Detail-Header ein `MoreVertical`-Dropdown (Muster aus Prototype `MessageBubbl
 
 Aktionen, die der Nutzer nicht darf, werden **ausgeblendet** (nicht disabled). Hat ein Item keine erlaubte Aktion, entfällt das Menü.
 
-### 3.3 Berechtigungsmodell — **connector-bestimmt**
+### 3.3 Berechtigungsmodell — **Capability über Resource** (connector-bestimmt)
 
-Wer editieren/löschen darf, folgt dem Backend, nicht einer App-Regel:
+Wer was darf, folgt dem Backend, nicht einer App-Regel. WoT und GraphQL teilen dasselbe Grundmodell, nur anders aufgelöst:
 
-- **WoT:** eingeschränkt (z.B. Creator-eigen, gemäß Membership-/Trust-Modell).
-- **GraphQL (Supabase/Directus):** volle RBAC — der Server kennt die Rechte (RLS-Policies / Rollen) und liefert sie i.d.R. pro Item mit.
+- **WoT / UCAN:** capability-basiert, lokal + kryptografisch — der Holder prüft seine UCAN-Kette (Delegation, Attenuation), kein Server nötig.
+- **Directus / Supabase:** serverseitig — RBAC + RLS-Policies; per-Row-Permissions kommen i.d.R. mit den Daten mit.
 
-Umsetzung über eine optionale Capability + einen toolkit-Hook:
+Beides ist dieselbe Frage: **„darf der Actor `ability` auf `resource`"** — exakt die UCAN-Form `{ can, with }`. Permissions hängen damit **nicht „am Item", sondern an der Resource, auf die die Aktion zielt:**
+
+| Aktion | Resource | Ability |
+|---|---|---|
+| Erstellen | Space (+ Typ) | `item/create` |
+| Bearbeiten | das Item | `item/edit` |
+| Löschen | das Item | `item/delete` |
+
+Interface (UCAN-nah, RLS-mappbar):
 
 ```ts
-// data-interface — neue optionale Capability
-interface ItemPermissionsCapable {
-  canEditItem(item: Item): boolean
-  canDeleteItem(item: Item): boolean
+// data-interface — optionale Capability
+type Ability = "item/create" | "item/edit" | "item/delete"   // erweiterbar (UCAN-Strings)
+interface AuthorizationCapable {
+  can(ability: Ability, resource: Item | { space: string }): boolean   // sync
 }
-export function hasItemPermissions(c: DataInterface): c is DataInterface & ItemPermissionsCapable
+export function hasAuthorization(c: DataInterface): c is DataInterface & AuthorizationCapable
 ```
 
 ```ts
-// toolkit — useItemPermissions(item) → { canEdit, canDelete }
-//  1. !isWritable(connector)            → { false, false }   (Connector kann gar nicht schreiben)
-//  2. hasItemPermissions(connector)     → connector.canEditItem/canDeleteItem  (Backend-Wahrheit)
-//  3. Default (creator-owns)            → item.createdBy === currentUser?.id
+// toolkit — ergonomische Hooks darüber
+useItemPermissions(item)      // → { canEdit, canDelete }   (can("item/edit"/"item/delete", item))
+useCanCreate(spaceId, type?)  // → boolean                   (can("item/create", { space }))
 ```
 
-- **BaseConnector** liefert den Default `creator-owns`; Connectors mit Backend-Wissen überschreiben (`canEditItem` liest z.B. die vom GraphQL-Server gelieferten Permission-Flags). So bekommt jeder Connector ein sinnvolles Verhalten, ohne dass die App eine Regel hardcodet.
-- **Durchsetzung** liegt beim Connector/Backend (Server-Policy bei GraphQL, Client-Regel bei WoT). Das UI-Gating ist nur UX (verstecke, was nicht geht) — keine Sicherheitsgrenze.
+- **Auflösung je Connector:** UCAN-Connector matcht die gehaltene Kette (`with` + `can` + Attenuation); Directus/Supabase liest die mit den Daten gelieferten Permission-Flags (bzw. owner-Spalte + Rolle); **BaseConnector-Default** = `creator-owns` (Mock/Local + Fallback). `!isWritable(connector)` ⇒ alles `false`.
+- **Sync** (kein Promise) — sonst N Permission-Calls pro Liste. Funktioniert, solange die Permission-Info geladen ist (gehaltene UCANs / per-Row-Flags / owner+Rolle). Bei sehr komplexen RLS-Policies ist das UI-Gate „best effort".
+- **Durchsetzung backend-/protokoll-seitig** (Relay/Peer lehnt nicht-autorisierte Writes ab; RLS lehnt ab). UI-Gating ist nur UX, keine Sicherheitsgrenze.
+- **Delegation gratis:** „edit für alle Items in Space Y" lässt sich (UCAN) an andere delegieren — die UI fragt nur „darf ich?", *wie* die Capability entstand (Ownership/Rolle/Delegation) ist Connector-Sache.
 
 ### 3.4 Bearbeiten (im Panel)
 
@@ -102,12 +113,12 @@ export function hasItemPermissions(c: DataInterface): c is DataInterface & ItemP
 | Kanban `TaskEditPanel`-Muster (Composer im Edit-Modus) | ✅ Vorlage zum Heben |
 | `ItemDetailView`-Host (Read↔Edit + Aktionsmenü) | 🆕 toolkit |
 | Aktionsmenü (⋮) + Delete-Confirm-Dialog | 🆕 toolkit |
-| `ItemPermissionsCapable` + `hasItemPermissions` + `useItemPermissions` | 🆕 data-interface + toolkit |
+| `AuthorizationCapable` (`can`) + `hasAuthorization` + `useItemPermissions`/`useCanCreate` | 🆕 data-interface + toolkit |
 | Typ-Registry (Widgets + Mapper typ-gekeyt) | 🆕 (baut auf Badge-Registry/`deriveContext`) |
 
 ## 5. Phase-1 PR-Schnitt
 
-1. **Berechtigungs-Capability:** `ItemPermissionsCapable` + `hasItemPermissions` + BaseConnector-Default (creator-owns) + `useItemPermissions(item)`-Hook. (Klein, isoliert, testbar.)
+1. **Berechtigungs-Capability:** `AuthorizationCapable` (`can(ability, resource)`) + `hasAuthorization` + BaseConnector-Default (creator-owns) + Hooks `useItemPermissions(item)` / `useCanCreate(space, type)`. Normativer Eintrag inline in `03-capabilities.md`. (Klein, isoliert, testbar.)
 2. **Geteilter Detail-Host + Aktionsmenü + Delete-Confirm:** `ItemDetailView` (Read + ⋮ + Edit-Toggle) + Delete-Dialog im toolkit. Kanban als erstes Modul darauf umstellen (es hat das Muster schon → Regressions-Referenz).
 3. **Feed / Kalender / Karte** auf den Host umstellen (Edit/Delete dort neu verfügbar) + Typ-gekeyte Composer-Configs (Mapper aus den heutigen per-Modul-Mappern in die Registry heben).
 
@@ -128,6 +139,6 @@ Layout (Bottom-Sheet mobil / Sidebar Desktop) liegt schon im `AdaptivePanel`/`Mo
 ## 7. Nicht-Ziele / Offene Punkte
 
 - **Keine** neue Edit-Route/-Page (Edit bleibt im Panel — Antons Entscheidung).
-- **Keine** App-seitige Permission-Regel (folgt dem Connector — Antons Entscheidung).
+- **Keine** App-seitige Permission-Regel (folgt dem Connector als Capability — Antons Entscheidung).
 - Soft-Delete/Archiv ist Connector-Sache, kein UI-Konzept in Phase 1.
-- Offen: Reihenfolge der Felder im Edit-Composer pro Typ (heute `WIDGET_ORDER`); ob die Typ-Registry in `data-interface` (geteilt) oder `toolkit` (UI-nah) lebt — Tendenz toolkit, da UI-Konfiguration.
+- Offen: **Resource-Adressierung** — wie Items/Spaces als UCAN-`with`-URIs adressiert werden (WoT hat schon Identifier; Schema festzulegen). Reihenfolge der Felder im Edit-Composer pro Typ (heute `WIDGET_ORDER`); ob die Typ-Registry in `data-interface` (geteilt) oder `toolkit` (UI-nah) lebt — Tendenz toolkit, da UI-Konfiguration.
