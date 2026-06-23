@@ -12,19 +12,22 @@ import {
 } from "../composer/content-composer"
 import { useItemEditor, type ItemEditorMapper } from "../../hooks/use-item-editor"
 import { useCurrentUser } from "../../hooks/use-auth"
+import { useItem } from "../../hooks/use-items"
 
 export interface ItemDetailViewProps {
   item: Item
-  /** Read-view body. The host passes the action menu (⋮ + „Bearbeiten") in, to
-   *  embed in the card header (ItemPreview `actions` slot). */
-  renderRead: (actions: ReactNode) => ReactNode
+  /** Read-view body. Receives the **current** (live) item — the host subscribes
+   *  via `useItem`, so the read view reflects edits / external updates — plus the
+   *  action menu (⋮ + „Bearbeiten") to embed in the card header (ItemPreview
+   *  `actions` slot). */
+  renderRead: (item: Item, actions: ReactNode) => ReactNode
   /** Composer config for editing (widget types + labels). Pass only the item's
    *  own type to avoid a type switcher. */
   contentTypes: ContentTypeConfig[]
   /** Edit-aware mapper (composer submission → item payload; uses `existingItem`). */
   mapper: ItemEditorMapper
-  /** Pre-fill the composer from the item. */
-  editInitialData: Partial<WidgetData>
+  /** Pre-fill the composer from the (current) item. */
+  editInitialData: (item: Item) => Partial<WidgetData>
   /** Extra ContentComposer props per module (people/tag suggestions, geocode,
    *  map-pick, liveUpdate, …). Core props (types/initialData/editMode/submit/
    *  cancel) stay owned by the host. */
@@ -35,8 +38,6 @@ export interface ItemDetailViewProps {
   onClose: () => void
   /** Share/copy a link to the item. */
   onShare?: () => void
-  /** Item title for the delete prompt. */
-  title?: string
 }
 
 /**
@@ -56,15 +57,19 @@ export function ItemDetailView({
   renderCommentReactions,
   onClose,
   onShare,
-  title,
 }: ItemDetailViewProps) {
   const { data: currentUser } = useCurrentUser()
+  // Subscribe to the live item so the read view reflects the just-saved edit (and
+  // any external update); fall back to the opened item while it (re)loads.
+  const { data: liveItem } = useItem(item.id)
+  const current = liveItem ?? item
   const editor = useItemEditor({ currentUserId: currentUser?.id, mapSubmission: mapper })
   const [mode, setMode] = useState<"read" | "edit">("read")
 
+  const title = typeof current.data.title === "string" ? current.data.title : undefined
   const actions = (
     <ItemDetailActions
-      item={item}
+      item={current}
       title={title}
       onEdit={() => setMode("edit")}
       onDeleted={onClose}
@@ -73,21 +78,21 @@ export function ItemDetailView({
   )
 
   return (
-    <ItemDetailPanel itemId={item.id} renderCommentReactions={renderCommentReactions}>
+    <ItemDetailPanel itemId={current.id} renderCommentReactions={renderCommentReactions}>
       {mode === "read" ? (
-        <div className="p-4">{renderRead(actions)}</div>
+        <div className="p-4">{renderRead(current, actions)}</div>
       ) : (
         <ContentComposer
-          key={item.id}
+          key={current.id}
           className="p-4"
           showPreview={false}
           {...composerProps}
           contentTypes={contentTypes}
-          initialContentType={item.type}
-          initialData={editInitialData}
+          initialContentType={current.type}
+          initialData={editInitialData(current)}
           editMode
           onSubmit={async (data) => {
-            const updated = await editor.submit(data, { existingItem: item })
+            const updated = await editor.submit(data, { existingItem: current })
             if (updated) setMode("read")
           }}
           onCancel={() => setMode("read")}

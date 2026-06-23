@@ -158,26 +158,25 @@ export function FeedView({ groupId }: { groupId: string }) {
       content: (
         <ItemDetailView
           item={item}
-          renderRead={(actions) => (
+          renderRead={(current, actions) => (
             <ItemPreview
-              item={item}
-              author={resolveAuthor(item.createdBy)}
-              headerAdornment={<ItemTypeBadge type={item.type} />}
+              item={current}
+              author={resolveAuthor(current.createdBy)}
+              headerAdornment={<ItemTypeBadge type={current.type} />}
               actions={actions}
-              metaAdornment={<ItemMetaRow item={item} />}
+              metaAdornment={<ItemMetaRow item={current} />}
               footerAdornment={
-                item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined
+                current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
               }
             />
           )}
           contentTypes={matchedTypes.length ? matchedTypes : FEED_CONTENT_TYPES}
           mapper={mapFeedSubmission}
-          editInitialData={feedItemToComposerData(item)}
+          editInitialData={feedItemToComposerData}
           composerProps={{ geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode }}
           renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
           onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
           onClose={clearFocus}
-          title={typeof item.data.title === "string" ? item.data.title : undefined}
         />
       ),
       onClose: clearFocus,

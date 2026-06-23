@@ -165,16 +165,15 @@ Konzept/UX: [concepts/item-edit-delete-2026-06.md](../../concepts/item-edit-dele
 
 ```ts
 interface ItemDetailViewProps {
-  item: Item
-  renderRead: (actions: ReactNode) => ReactNode   // Read-View; bekommt das ⋮/„Bearbeiten" zum Einbetten (ItemPreview actions-Slot)
+  item: Item                                       // initial geöffnetes Item (Fallback bis live geladen)
+  renderRead: (item: Item, actions: ReactNode) => ReactNode  // Read-View; bekommt das **aktuelle** (live) Item + das ⋮/„Bearbeiten" zum Einbetten (ItemPreview actions-Slot)
   contentTypes: ContentTypeConfig[]                // nur der Item-Typ → kein Type-Switcher
   mapper: ItemEditorMapper                         // edit-fähig (nutzt existingItem)
-  editInitialData: Partial<WidgetData>             // Composer-Vorfüllung aus dem Item
+  editInitialData: (item: Item) => Partial<WidgetData>  // Composer-Vorfüllung aus dem (aktuellen) Item
   composerProps?: Partial<ContentComposerProps>    // Modul-Extras (people/tags/geocode/map-pick/…)
   renderCommentReactions?: (commentId: string) => ReactNode
   onClose: () => void
   onShare?: () => void
-  title?: string
 }
 ```
 
@@ -182,7 +181,8 @@ interface ItemDetailViewProps {
 
 1. Default ist **Read** (`ItemPreview` + Aktionsmenü via `renderRead`). „Bearbeiten" (gegated über `useItemPermissions`) schaltet auf **Edit** (`ContentComposer`, `editMode`, vorbefüllt). Speichern (`useItemEditor.submit` mit `existingItem`) → zurück auf Read; Abbrechen → zurück auf Read.
 2. Der Host **besitzt den Editor** — Mapper + Vorfüllung kommen als Config; die rufende View hat keine Editor-Abhängigkeit.
-3. Löschen läuft weiter über das Aktionsmenü (`ItemDetailActions`) im Read-Modus.
+3. Der Host **abonniert das Item live** (`useItem(item.id)`): `renderRead`, das Aktionsmenü und die Edit-Vorfüllung sehen immer das aktuelle Item. Damit ist die Read-Ansicht nach einem Save (und bei externen Updates) **nicht stale** — `item` dient nur als Fallback, bis das Live-Item geladen ist. Den Titel für den Lösch-Dialog leitet der Host selbst aus `item.data.title` ab.
+4. Löschen läuft weiter über das Aktionsmenü (`ItemDetailActions`) im Read-Modus.
 
 ### `CommentSection`
 
