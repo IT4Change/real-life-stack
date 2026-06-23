@@ -185,7 +185,13 @@ export function DetailHostController({ activeModule }: { activeModule: string })
   }, [store, activeModule])
 
   useEffect(() => {
-    if (hostOwns && focusedId && config) {
+    if (hostOwns && focusedId) {
+      // The active host module's config isn't registered yet (e.g. the map is
+      // still mounting → its `useRegisterDetail` effect hasn't run). This is a
+      // transient wait, NOT a reason to close: closing here would fire
+      // `onClose=clearFocus` and drop the URL focus mid module-switch. Wait for
+      // the config; the panel (if already open) stays put.
+      if (!config) return
       // Already showing this item → leave it (config/module changes flow into the
       // outlet via the store without a remount, so the edit composer survives).
       if (openedIdRef.current === focusedId && panelOwnedRef.current) return
