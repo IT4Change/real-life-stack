@@ -18,7 +18,7 @@ import { visibleDetailActions } from "./detail-actions"
 
 export interface ItemDetailActionsProps {
   item: Item
-  /** Enter edit mode. Surfaces a prominent "Bearbeiten" button when the user may
+  /** Enter edit mode. Adds a „Bearbeiten" entry to the ⋮ menu when the user may
    *  edit. Omit while edit-in-panel isn't wired for a module yet. */
   onEdit?: () => void
   /** Called after the item was deleted — e.g. to close the panel / clear the URL
@@ -31,10 +31,10 @@ export interface ItemDetailActionsProps {
 }
 
 /**
- * Detail-header actions: a prominent "Bearbeiten" button plus a ⋮ menu
- * (Teilen / Löschen). All gated by `useItemPermissions(item)` — actions the user
- * can't perform are hidden, not disabled. Delete runs behind a confirm dialog
- * and is enforced backend-side (this gating is UX only).
+ * Detail-header actions in a single ⋮ menu (Bearbeiten / Teilen / Löschen), all
+ * gated by `useItemPermissions(item)` — actions the user can't perform are
+ * hidden, not disabled. Delete runs behind a confirm dialog and is enforced
+ * backend-side (this gating is UX only).
  */
 export function ItemDetailActions({ item, onEdit, onDeleted, onShare, title }: ItemDetailActionsProps) {
   const connector = useConnector()
@@ -42,43 +42,40 @@ export function ItemDetailActions({ item, onEdit, onDeleted, onShare, title }: I
   const visible = visibleDetailActions(perms, !!onEdit, !!onShare)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
-  const hasMenu = visible.delete || visible.share
-  if (!visible.edit && !hasMenu) return null
+  if (!visible.edit && !visible.delete && !visible.share) return null
 
   return (
-    <div className="flex items-center justify-end gap-1">
-      {visible.edit && (
-        <Button variant="outline" size="sm" onClick={onEdit} className="gap-1.5">
-          <Pencil className="h-3.5 w-3.5" />
-          Bearbeiten
-        </Button>
-      )}
-      {hasMenu && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Weitere Aktionen">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {visible.share && (
-              <DropdownMenuItem onClick={onShare} className="gap-2">
-                <Share2 className="h-4 w-4" />
-                Teilen
-              </DropdownMenuItem>
-            )}
-            {visible.delete && (
-              <DropdownMenuItem
-                onClick={() => setConfirmOpen(true)}
-                className="gap-2 text-destructive focus:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-                Löschen
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+    <div className="flex items-center justify-end">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="Aktionen">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {visible.edit && (
+            <DropdownMenuItem onClick={onEdit} className="gap-2">
+              <Pencil className="h-4 w-4" />
+              Bearbeiten
+            </DropdownMenuItem>
+          )}
+          {visible.share && (
+            <DropdownMenuItem onClick={onShare} className="gap-2">
+              <Share2 className="h-4 w-4" />
+              Teilen
+            </DropdownMenuItem>
+          )}
+          {visible.delete && (
+            <DropdownMenuItem
+              onClick={() => setConfirmOpen(true)}
+              className="gap-2 text-destructive focus:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+              Löschen
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
       {visible.delete && (
         <DeleteConfirmDialog
           open={confirmOpen}

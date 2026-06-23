@@ -126,7 +126,7 @@ interface ItemDetailPanelProps {
 
 ### `ItemDetailActions`
 
-**Zweck:** Item-Aktionen im **Card-Header** (rechtsbündig über `ItemPreview`s `actions`-Slot, nicht in der Panel-Chrome): prominenter „Bearbeiten"-Button + ⋮-Menü (Teilen / Löschen). Berechtigungs-gegated über `useItemPermissions(item)` (siehe [03-capabilities.md → AuthorizationCapable](../03-capabilities.md)).
+**Zweck:** Item-Aktionen im **Card-Header** (rechtsbündig über `ItemPreview`s `actions`-Slot, nicht in der Panel-Chrome): ein **⋮-Menü** mit Bearbeiten / Teilen / Löschen. Berechtigungs-gegated über `useItemPermissions(item)` (siehe [03-capabilities.md → AuthorizationCapable](../03-capabilities.md)).
 
 > **Trennung Inhalt vs. Fenster:** Item-Aktionen (⋮) gehören zum Item (Card-Header). Die Panel-Chrome (`AdaptivePanel`) trägt nur noch **Schließen** (+ mobiler Drag-Griff) — Pin und Maximieren wurden entfernt (kein realer Nutzen: Pin wirkt in der Sidebar nicht, Maximieren verdeckt den Kontext).
 
@@ -145,10 +145,9 @@ interface ItemDetailActionsProps {
 **Regeln:**
 
 1. Sichtbarkeit folgt `useItemPermissions(item)`: nicht erlaubte Aktionen werden **ausgeblendet** (nicht disabled). Gibt es keine erlaubte Aktion, rendert die Komponente nichts.
-2. **Bearbeiten** ist ein prominenter Button (read-first, ein Tap), nur bei `canEdit` **und** vorhandenem `onEdit`.
-3. **Löschen** liegt im ⋮-Menü, läuft hinter `DeleteConfirmDialog` und führt die Löschung selbst aus (`connector.deleteItem`, defensiv auf `isWritable` gegated); danach `onDeleted`.
-4. **Teilen** erscheint im ⋮-Menü, wenn `onShare` verdrahtet ist.
-5. Das Gating ist eine **UI-Affordance**, keine Sicherheitsgrenze — Durchsetzung backend-/protokollseitig.
+2. Alle Aktionen liegen im **⋮-Menü**: **Bearbeiten** bei `canEdit` **und** vorhandenem `onEdit`; **Teilen** bei vorhandenem `onShare`; **Löschen** bei `canDelete`.
+3. **Löschen** läuft hinter `DeleteConfirmDialog` und führt die Löschung selbst aus (`connector.deleteItem`, defensiv auf `isWritable` gegated); `onDeleted` nur nach echtem Delete.
+4. Das Gating ist eine **UI-Affordance**, keine Sicherheitsgrenze — Durchsetzung backend-/protokollseitig.
 
 Die reine Sichtbarkeitslogik ist als `visibleDetailActions(perms, hasOnEdit, hasOnShare)` ausgelagert (testbar).
 
