@@ -76,17 +76,19 @@ export function ItemDetailView({
     )
   }
 
-  // Lock the edit composer to the item's own type (no type switcher in phase 1).
-  // The caller passes its full type list; we narrow to the matching one.
-  const editTypes = contentTypes.filter((t) => t.id === item.type)
-  const composerTypes = editTypes.length ? editTypes : contentTypes
+  // Lock the edit composer to the item's own type (no type switcher in phase 1):
+  // narrow the caller's full type list to the matching one. NO fallback to the
+  // full list — for an item whose type the module doesn't configure, editing is
+  // simply not offered (a fallback would show a wrong type switcher / form).
+  const composerTypes = contentTypes.filter((t) => t.id === item.type)
+  const canEdit = composerTypes.length > 0
 
   const title = typeof item.data.title === "string" ? item.data.title : undefined
   const actions = (
     <ItemDetailActions
       item={item}
       title={title}
-      onEdit={() => setMode("edit")}
+      onEdit={canEdit ? () => setMode("edit") : undefined}
       onDeleted={onClose}
       onShare={onShare}
     />

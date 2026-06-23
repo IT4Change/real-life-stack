@@ -107,7 +107,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     }),
     [resolveAuthor, calendarContentTypes],
   )
-  useRegisterDetail(detailConfig)
+  useRegisterDetail("calendar", detailConfig)
 
   // The URL-focused event (from the loaded list) + the month to reveal it in.
   const focusedEvent = useMemo(

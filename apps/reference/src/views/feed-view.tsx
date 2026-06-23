@@ -136,7 +136,7 @@ export function FeedView({ groupId }: { groupId: string }) {
     }),
     [resolveAuthor],
   )
-  useRegisterDetail(detailConfig)
+  useRegisterDetail("feed", detailConfig)
 
   // Reveal: scroll the focused card into view once it is in the rendered
   // (filtered) list. The host opens the detail panel itself; this only handles

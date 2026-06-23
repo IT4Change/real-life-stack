@@ -46,29 +46,48 @@ export interface DetailConfig {
 }
 
 /**
- * External store for the active module's detail config. A plain subscribable —
- * NOT React state — so registering a config does NOT re-render the whole
- * subtree (which, with an unstable config, would loop). Only the host's outlet
- * + controller subscribe (via `useSyncExternalStore`); modules just call
- * `setConfig` through the stable store ref.
+ * External store for the registered detail configs, keyed by module id. A plain
+ * subscribable — NOT React state — so registering a config does NOT re-render
+ * the whole subtree (which, with an unstable config, would loop).
+ *
+ * Keyed by module so a module that stays MOUNTED while inactive (the map is kept
+ * alive via `display:none`) can't overwrite the active module's config: only the
+ * ACTIVE module's config is read, and a write to a non-active module never
+ * notifies. Only the host's outlet + controller subscribe.
  */
 interface ConfigStore {
-  setConfig: (config: DetailConfig | null) => void
-  getConfig: () => DetailConfig | null
+  setConfig: (module: string, config: DetailConfig | null) => void
+  setActiveModule: (module: string) => void
+  getActiveConfig: () => DetailConfig | null
   subscribe: (listener: () => void) => () => void
 }
 
 function createConfigStore(): ConfigStore {
-  let config: DetailConfig | null = null
+  const configs = new Map<string, DetailConfig>()
+  let activeModule = ""
   const listeners = new Set<() => void>()
+  const notify = () => {
+    for (const l of listeners) l()
+  }
   return {
-    setConfig(next) {
-      if (next === config) return
-      config = next
-      for (const l of listeners) l()
+    setConfig(module, config) {
+      if (config === null) {
+        if (!configs.has(module)) return
+        configs.delete(module)
+      } else {
+        if (configs.get(module) === config) return
+        configs.set(module, config)
+      }
+      // A non-active module's config change must not disturb the active panel.
+      if (module === activeModule) notify()
     },
-    getConfig() {
-      return config
+    setActiveModule(module) {
+      if (module === activeModule) return
+      activeModule = module
+      notify()
+    },
+    getActiveConfig() {
+      return configs.get(activeModule) ?? null
     },
     subscribe(listener) {
       listeners.add(listener)
@@ -85,9 +104,9 @@ function useConfigStore(): ConfigStore {
   return ctx
 }
 
-function useDetailConfig(): DetailConfig | null {
+function useActiveDetailConfig(): DetailConfig | null {
   const store = useConfigStore()
-  return useSyncExternalStore(store.subscribe, store.getConfig, store.getConfig)
+  return useSyncExternalStore(store.subscribe, store.getActiveConfig, store.getActiveConfig)
 }
 
 /**
@@ -104,28 +123,28 @@ export function DetailHostProvider({ children }: { children: ReactNode }) {
 
 /**
  * A host module registers its detail config here (instead of calling
- * `openDetail`). Pass a memoised config so it only re-registers on real change.
- * Not cleared on unmount — the next host module overwrites it, and the
- * controller gates on the active module anyway (so a stale config on Kanban is
- * harmless).
+ * `openDetail`), keyed by its module id. Pass a memoised config so it only
+ * re-registers on real change. Removes its config on unmount so a torn-down
+ * module can't leave a stale config behind.
  */
-export function useRegisterDetail(config: DetailConfig): void {
+export function useRegisterDetail(module: string, config: DetailConfig): void {
   const store = useConfigStore()
   useEffect(() => {
-    store.setConfig(config)
-  }, [config, store])
+    store.setConfig(module, config)
+    return () => store.setConfig(module, null)
+  }, [module, config, store])
 }
 
 /**
  * Panel content: renders the shared `ItemDetailView` for the focused item from
- * the live registered config. Stable element (set once into the panel) that
- * re-renders on config change — so a module switch updates the read rendering
- * without remounting (edit state survives). Keyed on the item id, so a
+ * the ACTIVE module's live registered config. Stable element (set once into the
+ * panel) that re-renders on config change — so a module switch updates the read
+ * rendering without remounting (edit state survives). Keyed on the item id, so a
  * *different* item starts fresh in read mode.
  */
 function DetailHostOutlet() {
   const { itemId: focusedId, clearFocus } = useItemFocus()
-  const config = useDetailConfig()
+  const config = useActiveDetailConfig()
   if (!focusedId || !config) return null
   return (
     <ItemDetailView
@@ -153,10 +172,17 @@ function DetailHostOutlet() {
 export function DetailHostController({ activeModule }: { activeModule: string }) {
   const modulePanel = useModulePanel()
   const { itemId: focusedId, clearFocus } = useItemFocus()
-  const config = useDetailConfig()
+  const store = useConfigStore()
+  const config = useActiveDetailConfig()
   const hostOwns = HOST_MODULES.includes(activeModule)
   const panelOwnedRef = useRef(false)
   const openedIdRef = useRef<string | null>(null)
+
+  // Tell the store which module is active, so the outlet reads ITS config (and a
+  // hidden, still-mounted module's config is ignored).
+  useEffect(() => {
+    store.setActiveModule(activeModule)
+  }, [store, activeModule])
 
   useEffect(() => {
     if (hostOwns && focusedId && config) {

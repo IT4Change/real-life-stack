@@ -182,8 +182,9 @@ interface ItemDetailViewProps {
 1. Default ist **Read** (`ItemPreview` + Aktionsmenü via `renderRead`). „Bearbeiten" (gegated über `useItemPermissions`) schaltet auf **Edit** (`ContentComposer`, `editMode`, vorbefüllt). Speichern (`useItemEditor.submit` mit `existingItem`) → zurück auf Read; Abbrechen → zurück auf Read.
 2. Die View **besitzt den Editor** — Mapper + Vorfüllung kommen als Config; der Aufrufer hat keine Editor-Abhängigkeit.
 3. Sie **abonniert das Item live** (`useItem(itemId)`): `renderRead`, Aktionsmenü und Edit-Vorfüllung sehen immer das aktuelle Item → Read nach Save (und bei externen Updates) **nicht stale**. Bis das Item geladen ist, zeigt sie ein `ItemPreviewSkeleton`.
-4. `contentTypes` ist die volle Typ-Liste des Moduls; die View narrowt intern auf den Item-Typ (`item.type`) → kein Type-Switcher.
+4. `contentTypes` ist die volle Typ-Liste des Moduls; die View narrowt intern auf den Item-Typ (`item.type`) → kein Type-Switcher. **Kein Fallback** auf die volle Liste: matcht kein Typ (Item-Typ nicht in der Modul-Config), wird **Bearbeiten ausgeblendet** (kein `onEdit`) statt einen falschen Composer zu öffnen.
 5. Löschen läuft über das Aktionsmenü (`ItemDetailActions`) im Read-Modus.
+6. Registrierung beim Detail-Host ist **modul-gescoped**: `useRegisterDetail(moduleId, config)`. Nur die Config des **aktiven** Moduls wird gerendert — ein hidden-mounted Modul (z.B. die keep-alive Karte) kann die aktive Ansicht nicht überschreiben.
 
 ### `CommentSection`
 

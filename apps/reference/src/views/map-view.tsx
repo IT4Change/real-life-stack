@@ -224,7 +224,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // focused item is fetched scope-aware via useItem (NOT the viewport-bounded
   // query) so a deep-linked item outside the current bbox still resolves — we
   // need its position to pan/zoom there, which then loads its marker.
-  const { itemId: focusedId, focusItem } = useItemFocus()
+  const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
   const { data: focusedItem } = useItem(active ? (focusedId ?? "") : "")
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [searchText, setSearchText] = useState("")
@@ -451,7 +451,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     }),
     [resolveAuthor, mapContentTypes],
   )
-  useRegisterDetail(detailConfig)
+  useRegisterDetail("map", detailConfig)
 
   // Reveal bookkeeping (the detail panel itself is owned by the host now):
   // `openedIdRef` runs the per-id first-reveal once; `settledIdRef` marks the
@@ -601,8 +601,13 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // Composer opens via the app-level host, so its save path survives the
   // round-trip to location picking. The Feed keeps its own fullscreen shell.
   const openComposer = useCallback(() => {
+    // Clear the URL focus first: the create composer replaces the detail panel,
+    // and leaving the same itemId focused makes re-clicking that marker a no-op
+    // (`focusItem` sees the URL already there → detail wouldn't reopen). Mirrors
+    // the calendar's `clearFocusForComposer`.
+    clearFocus()
     openCreateComposer({ contentTypes: mapContentTypes, mapper: mapComposerSubmission })
-  }, [openCreateComposer, mapContentTypes])
+  }, [clearFocus, openCreateComposer, mapContentTypes])
 
   return (
     <div className="relative h-full w-full">
