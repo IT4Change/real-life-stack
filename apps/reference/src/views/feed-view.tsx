@@ -4,6 +4,8 @@ import {
   type ContentTypeConfig,
   type WidgetData,
   ItemDetailView,
+  nominatimGeocode,
+  nominatimReverseGeocode,
   useModulePanel,
   ReactionBar,
   ItemPreview,
@@ -171,6 +173,7 @@ export function FeedView({ groupId }: { groupId: string }) {
           contentTypes={matchedTypes.length ? matchedTypes : FEED_CONTENT_TYPES}
           mapper={mapFeedSubmission}
           editInitialData={feedItemToComposerData(item)}
+          composerProps={{ geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode }}
           renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
           onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
           onClose={clearFocus}
