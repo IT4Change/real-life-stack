@@ -218,6 +218,7 @@ export class WotConnector extends BaseConnector {
   private crossGroupUnsub: (() => void) | null = null
   private spacesSubscriptionUnsub: (() => void) | null = null
   private personalDocUnsub: (() => void) | null = null
+  private privateSpaceReconcile: Promise<void> = Promise.resolve()
   private contactsUnsub: (() => void) | null = null
   private verificationsUnsub: (() => void) | null = null
   private attestationsUnsub: (() => void) | null = null
@@ -806,6 +807,7 @@ export class WotConnector extends BaseConnector {
 
     // In overview mode, create in private space
     if (this.currentGroupId === null) {
+      await this.queuePrivateSpaceReconcile({ createIfMissing: true })
       if (!this.privateSpaceId || !this.replication) {
         throw new Error("Private space not available")
       }
@@ -1105,7 +1107,10 @@ export class WotConnector extends BaseConnector {
       const run = () => {
         const p = this.replication?.restoreSpacesFromMetadata?.()
         if (!p) { restoring = false; pending = false; return }
-        p.catch(() => {})
+        p.then(() => {
+          void this.queuePrivateSpaceReconcile({ createIfMissing: false })
+            .catch((err) => console.error("[WotConnector] private space reconciliation failed", err))
+        }).catch(() => {})
           .finally(() => {
             if (pending) { pending = false; run() }
             else { restoring = false }
@@ -1199,19 +1204,7 @@ export class WotConnector extends BaseConnector {
     this.groupsObservable.markLoaded()
 
     // 12. Ensure private space exists (hidden space for personal items)
-    const allSpaces = this.replication.watchSpaces().getValue()
-    const existingPrivate = allSpaces.find((s) => s.appTag === "rls-private")
-    if (existingPrivate) {
-      this.privateSpaceId = existingPrivate.id
-    } else {
-      const initialDoc = { _type: "rls", items: {} } as unknown as RlsSpaceDoc
-      const created = await this.replication.createSpace("shared", initialDoc, {
-        name: "Privat",
-        appTag: "rls-private",
-        modules: DEFAULT_MODULES,
-      })
-      this.privateSpaceId = created.id
-    }
+    await this.queuePrivateSpaceReconcile({ createIfMissing: true })
 
     // 13. Sync contact profiles from discovery server (non-blocking)
     this.syncContactProfiles().catch(() => {})
@@ -1313,10 +1306,10 @@ export class WotConnector extends BaseConnector {
   private updateGroupsFromSpaces(spaces: SpaceInfo[]): void {
     // All shared spaces are groups — WoT and RLS spaces are fully compatible
     // Track private space ID + filter it from visible groups
-    const privateSpace = spaces.find((s) => s.appTag === "rls-private")
-    if (privateSpace) {
-      this.privateSpaceId = privateSpace.id
-    }
+    const privateSpace = this.selectCanonicalPrivateSpace(spaces)
+    if (privateSpace) this.privateSpaceId = privateSpace.id
+    void this.queuePrivateSpaceReconcile({ createIfMissing: false })
+      .catch((err) => console.error("[WotConnector] private space reconciliation failed", err))
 
     const realGroups = spaces
       .filter((s) => s.type === "shared" && s.appTag !== "rls-private")
@@ -1343,6 +1336,120 @@ export class WotConnector extends BaseConnector {
     if (this.currentGroupId === null) {
       this.notifyAllObservers()
     }
+  }
+
+  private queuePrivateSpaceReconcile(options: { createIfMissing: boolean }): Promise<void> {
+    this.privateSpaceReconcile = this.privateSpaceReconcile
+      .catch(() => {})
+      .then(() => this.reconcilePrivateSpaces(options))
+    return this.privateSpaceReconcile
+  }
+
+  private async reconcilePrivateSpaces(options: { createIfMissing: boolean }): Promise<void> {
+    if (!this.replication) return
+
+    const spaces = this.replication.watchSpaces().getValue()
+    const privateSpaces = this.getPrivateSpaces(spaces)
+
+    if (privateSpaces.length === 0) {
+      if (!options.createIfMissing) {
+        this.privateSpaceId = null
+        return
+      }
+
+      const initialDoc = { _type: RLS_SPACE_TYPE, items: {} } as RlsSpaceDoc
+      const created = await this.replication.createSpace("shared", initialDoc, {
+        name: "Privat",
+        appTag: "rls-private",
+        modules: DEFAULT_MODULES,
+      })
+      this.privateSpaceId = created.id
+      this.crossGroupIndex?.reindexGroup(created.id)
+      return
+    }
+
+    const canonical = this.selectCanonicalPrivateSpace(privateSpaces)
+    if (!canonical) return
+
+    const previousPrivateSpaceId = this.privateSpaceId
+    this.privateSpaceId = canonical.id
+
+    const duplicateIds = privateSpaces
+      .map((space) => space.id)
+      .filter((id) => id !== canonical.id)
+
+    if (duplicateIds.length > 0) {
+      await this.migratePrivateSpaceDuplicates(canonical.id, duplicateIds)
+      return
+    }
+
+    if (previousPrivateSpaceId !== canonical.id && this.currentGroupId === null) {
+      this.notifyAllObservers()
+    }
+  }
+
+  private getPrivateSpaces(spaces: SpaceInfo[]): SpaceInfo[] {
+    return spaces.filter((space) => space.type === "shared" && space.appTag === "rls-private")
+  }
+
+  private selectCanonicalPrivateSpace(spaces: SpaceInfo[]): SpaceInfo | null {
+    return this.getPrivateSpaces(spaces)
+      .sort((a, b) => this.compareSpaceIds(a.id, b.id))[0] ?? null
+  }
+
+  private compareSpaceIds(a: string, b: string): number {
+    if (a === b) return 0
+    return a < b ? -1 : 1
+  }
+
+  private async migratePrivateSpaceDuplicates(canonicalId: string, duplicateIds: string[]): Promise<void> {
+    if (!this.replication) return
+
+    const targetHandle = await this.replication.openSpace<RlsSpaceDoc>(canonicalId)
+    const reindexIds = new Set<string>([canonicalId])
+    let migrated = false
+
+    for (const duplicateId of duplicateIds) {
+      const sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(duplicateId)
+      const sourceItems = sourceHandle.getDoc().items ?? {}
+      const entries = Object.entries(sourceItems) as Array<[string, SerializedItem]>
+      if (entries.length === 0) continue
+
+      const migratedIds = new Set<string>()
+      targetHandle.transact((targetDoc: RlsSpaceDoc) => {
+        if (!targetDoc.items) targetDoc.items = {}
+        for (const [itemId, serialized] of entries) {
+          const targetItemId = targetDoc.items[itemId]
+            ? `${itemId}-private-${crypto.randomUUID()}`
+            : itemId
+          targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId)
+          migratedIds.add(itemId)
+        }
+      })
+
+      sourceHandle.transact((sourceDoc: RlsSpaceDoc) => {
+        for (const itemId of migratedIds) {
+          delete sourceDoc.items[itemId]
+        }
+      })
+
+      reindexIds.add(duplicateId)
+      migrated = true
+    }
+
+    if (!migrated) return
+
+    for (const groupId of reindexIds) {
+      this.crossGroupIndex?.reindexGroup(groupId)
+    }
+    this.notifyAllObservers()
+  }
+
+  private cloneSerializedItem(item: SerializedItem, id: string): SerializedItem {
+    return {
+      ...JSON.parse(JSON.stringify(item)),
+      id,
+    } as SerializedItem
   }
 
   private spaceToGroup(space: SpaceInfo): Group {

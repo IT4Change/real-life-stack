@@ -12,8 +12,10 @@ import {
   type RelayState,
   type User,
 } from "@real-life-stack/data-interface"
+import type { SpaceInfo } from "@real-life/wot-core"
 
 import { WotConnector } from "../src/wot-connector.js"
+import type { RlsSpaceDoc, SerializedItem } from "../src/types.js"
 
 const yjsMockState = vi.hoisted(() => ({
   personalDoc: {} as any,
@@ -335,5 +337,133 @@ describe("WotConnector.deleteStoredIdentity() - real method regression", () => {
     await Promise.reject(new Error("replication.stop failed")).catch(() => {})
 
     expect(del).toHaveBeenCalledTimes(1)
+  })
+})
+
+function createSerializedItem(id: string, title: string): SerializedItem {
+  return {
+    id,
+    type: "task",
+    createdAt: "2026-06-20T10:00:00.000Z",
+    createdBy: "did:key:alice",
+    data: { title },
+  }
+}
+
+function createSpaceInfo(id: string, appTag = "rls-private"): SpaceInfo {
+  return {
+    id,
+    type: "shared",
+    appTag,
+    name: "Privat",
+    modules: ["feed", "kanban", "calendar", "map"],
+    members: ["did:key:alice"],
+    createdAt: "2026-06-20T10:00:00.000Z",
+  }
+}
+
+function createSpaceHandle(doc: RlsSpaceDoc) {
+  return {
+    getDoc: () => doc,
+    transact: (fn: (spaceDoc: RlsSpaceDoc) => void) => fn(doc),
+    close: vi.fn(),
+    onRemoteUpdate: vi.fn(() => () => {}),
+  }
+}
+
+function createFakePrivateSpaceConnector(spaces: SpaceInfo[], docs: Record<string, RlsSpaceDoc>) {
+  const fake = {
+    privateSpaceId: null,
+    currentGroupId: null,
+    privateSpaceReconcile: Promise.resolve(),
+    replication: {
+      watchSpaces: vi.fn(() => ({ getValue: () => spaces })),
+      openSpace: vi.fn(async (id: string) => createSpaceHandle(docs[id])),
+      createSpace: vi.fn(async (_type: string, initialDoc: RlsSpaceDoc, metadata: Partial<SpaceInfo>) => {
+        const id = "created-private"
+        spaces.push(createSpaceInfo(id, metadata.appTag ?? "rls-private"))
+        docs[id] = initialDoc
+        return spaces[spaces.length - 1]
+      }),
+    },
+    crossGroupIndex: { reindexGroup: vi.fn() },
+    notifyAllObservers: vi.fn(),
+  }
+  Object.setPrototypeOf(fake, WotConnector.prototype)
+  return fake
+}
+
+describe("WotConnector private space reconciliation", () => {
+  it("adopts the lexicographically smallest private space as canonical", async () => {
+    const spaces = [
+      createSpaceInfo("private-z"),
+      createSpaceInfo("private-a"),
+      createSpaceInfo("shared-space", "rls"),
+    ]
+    const docs = {
+      "private-z": { _type: "rls", items: {} } as RlsSpaceDoc,
+      "private-a": { _type: "rls", items: {} } as RlsSpaceDoc,
+      "shared-space": { _type: "rls", items: {} } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: false })
+
+    expect(fake.privateSpaceId).toBe("private-a")
+    expect(fake.replication.createSpace).not.toHaveBeenCalled()
+  })
+
+  it("migrates items from duplicate private spaces into the canonical space", async () => {
+    const spaces = [
+      createSpaceInfo("private-b"),
+      createSpaceInfo("private-a"),
+    ]
+    const docs = {
+      "private-a": {
+        _type: "rls",
+        items: {
+          keep: createSerializedItem("keep", "Keep"),
+        },
+      } as RlsSpaceDoc,
+      "private-b": {
+        _type: "rls",
+        items: {
+          move: createSerializedItem("move", "Move"),
+        },
+      } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: false })
+
+    expect(fake.privateSpaceId).toBe("private-a")
+    expect(docs["private-a"].items.keep.data.title).toBe("Keep")
+    expect(docs["private-a"].items.move.data.title).toBe("Move")
+    expect(docs["private-b"].items.move).toBeUndefined()
+    expect(fake.crossGroupIndex.reindexGroup).toHaveBeenCalledWith("private-a")
+    expect(fake.crossGroupIndex.reindexGroup).toHaveBeenCalledWith("private-b")
+    expect(fake.notifyAllObservers).toHaveBeenCalledTimes(1)
+  })
+
+  it("creates a private space only when none exists", async () => {
+    const existingSpaces = [createSpaceInfo("private-a")]
+    const existingDocs = {
+      "private-a": { _type: "rls", items: {} } as RlsSpaceDoc,
+    }
+    const withExisting = createFakePrivateSpaceConnector(existingSpaces, existingDocs)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(withExisting, { createIfMissing: true })
+
+    expect(withExisting.privateSpaceId).toBe("private-a")
+    expect(withExisting.replication.createSpace).not.toHaveBeenCalled()
+
+    const emptySpaces: SpaceInfo[] = []
+    const emptyDocs: Record<string, RlsSpaceDoc> = {}
+    const withoutExisting = createFakePrivateSpaceConnector(emptySpaces, emptyDocs)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(withoutExisting, { createIfMissing: true })
+
+    expect(withoutExisting.privateSpaceId).toBe("created-private")
+    expect(withoutExisting.replication.createSpace).toHaveBeenCalledTimes(1)
   })
 })
