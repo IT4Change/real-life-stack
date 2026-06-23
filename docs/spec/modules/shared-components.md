@@ -159,17 +159,17 @@ Konzept/UX: [concepts/item-edit-delete-2026-06.md](../../concepts/item-edit-dele
 
 ### `ItemDetailView`
 
-**Zweck:** Geteilter Detail-Host — Read-Ansicht **und** ein inline Edit-Composer im **selben** Panel (read↔edit-Umschaltung), plus das gegatete Aktionsmenü. Hält **seinen eigenen `useItemEditor`**, sodass eine aufrufende View nur deklarative Config übergibt (kein Editor-Wiring, keine Hook-Reihenfolge-Fallen im `openDetail`).
+**Zweck:** Geteilte Detail-Ansicht — Read **und** inline Edit-Composer im **selben** Panel (read↔edit-Umschaltung), plus das gegatete Aktionsmenü. Hält **seinen eigenen `useItemEditor`** und abonniert das Item live (`useItem(itemId)`), sodass der Aufrufer nur deklarative Config übergibt. Wird in der Reference App vom app-weiten **Detail-Host** (`DetailHostProvider`, oberhalb des Outlets) gerendert — nicht mehr pro Modul via `openDetail`; Module **registrieren** ihre Config (`useRegisterDetail`). So überlebt die Ansicht Modulwechsel ohne Remount, und Read/Edit gehören demselben Besitzer (siehe [../../concepts/detail-host-2026-06.md](../../concepts/detail-host-2026-06.md)).
 
 **Vertrag:**
 
 ```ts
 interface ItemDetailViewProps {
-  item: Item                                       // initial geöffnetes Item (Fallback bis live geladen)
-  renderRead: (item: Item, actions: ReactNode) => ReactNode  // Read-View; bekommt das **aktuelle** (live) Item + das ⋮/„Bearbeiten" zum Einbetten (ItemPreview actions-Slot)
-  contentTypes: ContentTypeConfig[]                // nur der Item-Typ → kein Type-Switcher
+  itemId: string                                   // abonniert via useItem; Skeleton bis geladen. Upstream auf itemId keyen → anderes Item startet frisch in Read.
+  renderRead: (item: Item, actions: ReactNode) => ReactNode  // Read-View; bekommt das live Item + das ⋮/„Bearbeiten" (ItemPreview actions-Slot)
+  contentTypes: ContentTypeConfig[]                // volle Typ-Liste; die View sperrt intern auf den Item-Typ (kein Switcher in Phase 1)
   mapper: ItemEditorMapper                         // edit-fähig (nutzt existingItem)
-  editInitialData: (item: Item) => Partial<WidgetData>  // Composer-Vorfüllung aus dem (aktuellen) Item
+  editInitialData: (item: Item) => Partial<WidgetData>  // Composer-Vorfüllung aus dem live Item
   composerProps?: Partial<ContentComposerProps>    // Modul-Extras (people/tags/geocode/map-pick/…)
   renderCommentReactions?: (commentId: string) => ReactNode
   onClose: () => void
@@ -180,9 +180,10 @@ interface ItemDetailViewProps {
 **Regeln:**
 
 1. Default ist **Read** (`ItemPreview` + Aktionsmenü via `renderRead`). „Bearbeiten" (gegated über `useItemPermissions`) schaltet auf **Edit** (`ContentComposer`, `editMode`, vorbefüllt). Speichern (`useItemEditor.submit` mit `existingItem`) → zurück auf Read; Abbrechen → zurück auf Read.
-2. Der Host **besitzt den Editor** — Mapper + Vorfüllung kommen als Config; die rufende View hat keine Editor-Abhängigkeit.
-3. Der Host **abonniert das Item live** (`useItem(item.id)`): `renderRead`, das Aktionsmenü und die Edit-Vorfüllung sehen immer das aktuelle Item. Damit ist die Read-Ansicht nach einem Save (und bei externen Updates) **nicht stale** — `item` dient nur als Fallback, bis das Live-Item geladen ist. Den Titel für den Lösch-Dialog leitet der Host selbst aus `item.data.title` ab.
-4. Löschen läuft weiter über das Aktionsmenü (`ItemDetailActions`) im Read-Modus.
+2. Die View **besitzt den Editor** — Mapper + Vorfüllung kommen als Config; der Aufrufer hat keine Editor-Abhängigkeit.
+3. Sie **abonniert das Item live** (`useItem(itemId)`): `renderRead`, Aktionsmenü und Edit-Vorfüllung sehen immer das aktuelle Item → Read nach Save (und bei externen Updates) **nicht stale**. Bis das Item geladen ist, zeigt sie ein `ItemPreviewSkeleton`.
+4. `contentTypes` ist die volle Typ-Liste des Moduls; die View narrowt intern auf den Item-Typ (`item.type`) → kein Type-Switcher.
+5. Löschen läuft über das Aktionsmenü (`ItemDetailActions`) im Read-Modus.
 
 ### `CommentSection`
 
