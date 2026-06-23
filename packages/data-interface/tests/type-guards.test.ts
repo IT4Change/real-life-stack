@@ -12,6 +12,7 @@ import {
   hasConfirmations,
   hasConfirmationWriter,
   hasEncounterVerification,
+  hasAuthorization,
   BaseConnector,
   createObservable,
 } from "../src/index.js"
@@ -47,6 +48,20 @@ describe("Type Guards", () => {
         deleteItem: async () => {},
       })
       expect(isWritable(connector)).toBe(true)
+    })
+  })
+
+  describe("hasAuthorization", () => {
+    it("returns false for plain DataInterface", () => {
+      expect(hasAuthorization(createStub())).toBe(false)
+    })
+
+    it("returns false when `can` is present but not a function", () => {
+      expect(hasAuthorization(createStub({ can: true }))).toBe(false)
+    })
+
+    it("returns true when `can` is a function", () => {
+      expect(hasAuthorization(createStub({ can: () => true }))).toBe(true)
     })
   })
 
