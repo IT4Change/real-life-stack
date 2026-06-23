@@ -57,7 +57,7 @@ export function ComposerHostProvider({
   currentUserId?: string
 }) {
   const modulePanel = useModulePanel()
-  const { startPick, confirmPick, isPicking } = useLocationPick()
+  const { startPick, confirmPick, isPicking, returnOnConfirm } = useLocationPick()
   const mapperRef = useRef<ItemEditorMapper>(() => null)
   const mapSubmission = useCallback<ItemEditorMapper>(
     (submission, ctx) => mapperRef.current(submission, ctx),
@@ -83,13 +83,16 @@ export function ComposerHostProvider({
   // date) without remounting — set by the composer's own mount effect.
   const composerApiRef = useRef<ContentComposerHandle | null>(null)
 
-  // If the composer is replaced by other panel content (or closed) while a pick
-  // is in flight, the entry's onClose does not fire on a content-swap — so end
-  // the pick here to avoid a stuck state (composer suspended / map stuck in
-  // pick mode).
+  // If the *create* composer is replaced by other panel content (or closed)
+  // while its pick is in flight, the entry's onClose does not fire on a
+  // content-swap — so end the pick here to avoid a stuck state (composer
+  // suspended / map stuck in pick mode). Scoped to create picks: an *edit* pick
+  // (`returnOnConfirm`) deliberately runs from a `kind: "detail"` panel and
+  // manages its own lifecycle (reveal-gate + adopt on return), so this guard
+  // must NOT fire for it — otherwise it would confirm the pick instantly.
   useEffect(() => {
-    if (isPicking && modulePanel.current?.kind !== "composer") confirmPick()
-  }, [isPicking, modulePanel, confirmPick])
+    if (isPicking && !returnOnConfirm && modulePanel.current?.kind !== "composer") confirmPick()
+  }, [isPicking, returnOnConfirm, modulePanel, confirmPick])
 
   const openComposer = useCallback(
     (config: OpenComposerConfig) => {
