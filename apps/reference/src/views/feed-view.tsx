@@ -2,7 +2,6 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import {
   ContentComposer,
   type ContentTypeConfig,
-  type WidgetData,
   ItemDetailView,
   nominatimGeocode,
   nominatimReverseGeocode,
@@ -28,12 +27,12 @@ import {
   useItemGroupColorResolver,
   useItemGroupResolver,
   getActivePanelGlow,
-  type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import { Calendar, FileText, Search, SearchX } from "lucide-react"
 import { Input } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
+import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
 
 const FEED_TYPES: FilterTypeOption[] = [
   { id: "post", label: "Posts", icon: FileText },
@@ -44,47 +43,6 @@ const FEED_CONTENT_TYPES: ContentTypeConfig[] = [
   { id: "post", label: "Post", defaultWidgets: ["text"], submitLabel: "Posten" },
   { id: "event", label: "Veranstaltung", defaultWidgets: ["title", "text", "date", "location"], submitLabel: "Erstellen" },
 ]
-
-// ContentComposer surfaces the free-text field as `text`; spec base/v1 uses
-// `content` for posts and `description` for events. Strips empty composer
-// defaults (status/title/… init to "" / []) so a post doesn't ship `status: ""`
-// (which would leak it onto the Kanban board). Edit-aware: on `existingItem` it
-// merges onto the existing data and keeps the item's type/tags.
-const mapFeedSubmission: ItemEditorMapper = (submission, { existingItem }) => {
-  const { text, tags: submittedTags, ...rest } = submission.data
-  const cleaned = Object.fromEntries(
-    Object.entries(rest).filter(([, v]) => {
-      if (v === "" || v === null || v === undefined) return false
-      if (Array.isArray(v) && v.length === 0) return false
-      return true
-    }),
-  )
-  const type = existingItem?.type ?? submission.contentType
-  const textField = type === "post" ? "content" : "description"
-  const itemData = {
-    ...(existingItem?.data ?? {}),
-    ...cleaned,
-    ...(text ? { [textField]: text } : {}),
-  }
-  const tags = Array.isArray(submittedTags) && submittedTags.length > 0 ? submittedTags : existingItem?.tags
-  return { type, data: itemData, ...(tags ? { tags } : {}) }
-}
-
-/** Pre-fill the edit composer from a feed item's stored data. */
-function feedItemToComposerData(item: Item): Partial<WidgetData> {
-  const d = item.data as Record<string, unknown>
-  const text = item.type === "post" ? d.content : d.description
-  return {
-    ...(typeof d.title === "string" ? { title: d.title } : {}),
-    ...(typeof text === "string" ? { text } : {}),
-    ...(typeof d.start === "string" ? { start: d.start } : {}),
-    ...(typeof d.end === "string" ? { end: d.end } : {}),
-    ...(typeof d.address === "string" ? { address: d.address } : {}),
-    ...(typeof d.locationName === "string" ? { locationName: d.locationName } : {}),
-    ...(d.position && typeof d.position === "object" ? { position: d.position as WidgetData["position"] } : {}),
-    tags: item.tags ?? [],
-  }
-}
 
 export function FeedView({ groupId }: { groupId: string }) {
   // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
@@ -171,8 +129,8 @@ export function FeedView({ groupId }: { groupId: string }) {
             />
           )}
           contentTypes={matchedTypes.length ? matchedTypes : FEED_CONTENT_TYPES}
-          mapper={mapFeedSubmission}
-          editInitialData={feedItemToComposerData}
+          mapper={mapComposerSubmission}
+          editInitialData={itemToComposerData}
           composerProps={{ geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode }}
           renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
           onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
@@ -241,7 +199,7 @@ export function FeedView({ groupId }: { groupId: string }) {
   // Content type configs for the composer
   const editor = useItemEditor({
     currentUserId: currentUser?.id,
-    mapSubmission: mapFeedSubmission,
+    mapSubmission: mapComposerSubmission,
   })
 
   // Feed footer convention: a ReactionBar on the left and a comment

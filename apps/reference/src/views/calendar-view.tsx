@@ -3,21 +3,23 @@ import {
   CalendarView as ToolkitCalendarView,
   CreateFab,
   type ContentTypeConfig,
-  ItemDetailPanel,
+  ItemDetailView,
   ItemPreview,
   ItemTypeBadge,
   ItemTimeRange,
   ReactionBar,
+  nominatimGeocode,
+  nominatimReverseGeocode,
   useItems,
   useMembers,
   useCurrentUser,
   useModulePanel,
   useItemGroupColorResolver,
-  type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useItemFocus } from "../hooks/use-item-focus"
+import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
 
 const pad2 = (n: number) => String(n).padStart(2, "0")
 /** Local `datetime-local` string (YYYY-MM-DDTHH:mm) — used for a time-slot click. */
@@ -61,24 +63,6 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     },
   ], [])
 
-  const mapSubmission = useCallback<ItemEditorMapper>((submission) => {
-    const { text, tags: submittedTags, ...rest } = submission.data
-    const cleaned = Object.fromEntries(
-      Object.entries(rest).filter(([, v]) => {
-        if (v === "" || v === null || v === undefined) return false
-        if (Array.isArray(v) && v.length === 0) return false
-        return true
-      }),
-    )
-    const itemData = { ...cleaned, ...(text ? { description: text } : {}) }
-    const tags = Array.isArray(submittedTags) && submittedTags.length > 0 ? submittedTags : undefined
-    return {
-      type: submission.contentType,
-      data: itemData,
-      ...(tags ? { tags } : {}),
-    }
-  }, [])
-
   const { openComposer: openCreateComposer, patchData: patchComposerData } = useComposerHost()
 
   // Resolve event author for the detail-panel ItemPreview. Calendar
@@ -97,26 +81,32 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
       kind: "detail",
       itemId: event.id,
       content: (
-        <ItemDetailPanel
-          itemId={event.id}
-          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-        >
-          <div className="p-4">
+        <ItemDetailView
+          item={event}
+          renderRead={(current, actions) => (
             <ItemPreview
-              item={event}
-              author={resolveAuthor(event.createdBy)}
-              headerAdornment={<ItemTypeBadge type={event.type} />}
-              metaAdornment={<ItemTimeRange item={event} />}
+              item={current}
+              author={resolveAuthor(current.createdBy)}
+              headerAdornment={<ItemTypeBadge type={current.type} />}
+              actions={actions}
+              metaAdornment={<ItemTimeRange item={current} />}
               footerAdornment={
-                event.type !== "task" ? <ReactionBar itemId={event.id} /> : undefined
+                current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
               }
             />
-          </div>
-        </ItemDetailPanel>
+          )}
+          contentTypes={calendarContentTypes}
+          mapper={mapComposerSubmission}
+          editInitialData={itemToComposerData}
+          composerProps={{ geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode }}
+          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
+          onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
+          onClose={clearFocus}
+        />
       ),
       onClose: clearFocus,
     })
-  }, [modulePanel, members, currentUser, clearFocus])
+  }, [modulePanel, members, currentUser, clearFocus, calendarContentTypes])
 
   // The URL-focused event (from the loaded list) + the month to reveal it in.
   const focusedEvent = useMemo(
@@ -173,8 +163,8 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // fullscreen-morph shell.
   const openComposer = useCallback(() => {
     clearFocusForComposer()
-    openCreateComposer({ contentTypes: calendarContentTypes, mapper: mapSubmission })
-  }, [clearFocusForComposer, openCreateComposer, calendarContentTypes, mapSubmission])
+    openCreateComposer({ contentTypes: calendarContentTypes, mapper: mapComposerSubmission })
+  }, [clearFocusForComposer, openCreateComposer, calendarContentTypes])
 
   // Click on an empty day/slot → composer prefilled with that date/time. A bare
   // day click (month) lands at local midnight → keep it date-only so no time is
@@ -190,11 +180,11 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     } else {
       openCreateComposer({
         contentTypes: calendarContentTypes,
-        mapper: mapSubmission,
+        mapper: mapComposerSubmission,
         initialData: { start },
       })
     }
-  }, [clearFocusForComposer, openCreateComposer, patchComposerData, modulePanel, calendarContentTypes, mapSubmission])
+  }, [clearFocusForComposer, openCreateComposer, patchComposerData, modulePanel, calendarContentTypes])
 
   return (
     <>

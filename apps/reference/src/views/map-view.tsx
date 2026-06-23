@@ -7,16 +7,17 @@ import {
   useModulePanel,
   useIsCompact,
   type ContentTypeConfig,
-  ItemDetailPanel,
+  ItemDetailView,
   ItemPreview,
   ItemTypeBadge,
   ItemMetaRow,
   ReactionBar,
+  nominatimGeocode,
+  nominatimReverseGeocode,
   CreateFab,
   FilterBar,
   emptyFilterBarValue,
   useFilterableItems,
-  type ItemEditorMapper,
   getItemColor,
   useItemGroupColorResolver,
   Button,
@@ -34,6 +35,7 @@ import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useLocationPick } from "../location-pick"
 import { useItemFocus } from "../hooks/use-item-focus"
+import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
 
 const MAP_TYPES: FilterTypeOption[] = [
   { id: "event", label: "Events", icon: Calendar },
@@ -71,8 +73,8 @@ function itemInBbox(item: Item, bbox: [number, number, number, number]): boolean
  * Point). This is the cross-module case: a workshop with `type=event` and a
  * `position` appears on both the calendar and the map.
  *
- * Marker click opens the same AdaptivePanel + ItemDetailPanel + ItemPreview
- * stack that Feed / Kanban / Calendar use. A map popup with the ItemPreview
+ * Marker click opens the same AdaptivePanel + ItemDetailView + ItemPreview
+ * stack that Feed / Calendar use (read↔edit + actions). A map popup with the ItemPreview
  * inline (and detail-open as a secondary action) is the obvious alternative —
  * UX discussion is open, see `docs/spec/modules/map.md` § Offene Punkte.
  */
@@ -258,24 +260,6 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     },
   ], [])
 
-  const mapSubmission = useCallback<ItemEditorMapper>((submission) => {
-    const { text, tags: submittedTags, ...rest } = submission.data
-    const cleaned = Object.fromEntries(
-      Object.entries(rest).filter(([, v]) => {
-        if (v === "" || v === null || v === undefined) return false
-        if (Array.isArray(v) && v.length === 0) return false
-        return true
-      }),
-    )
-    const itemData = { ...cleaned, ...(text ? { description: text } : {}) }
-    const tags = Array.isArray(submittedTags) && submittedTags.length > 0 ? submittedTags : undefined
-    return {
-      type: submission.contentType,
-      data: itemData,
-      ...(tags ? { tags } : {}),
-    }
-  }, [])
-
   const { openComposer: openCreateComposer } = useComposerHost()
   const { isPicking, updatePick, confirmPick, cancelPick } = useLocationPick()
   const [pickPos, setPickPos] = useState<{ lat: number; lng: number } | null>(null)
@@ -439,32 +423,40 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   )
 
   const openDetail = useCallback((item: Item) => {
+    // Phase 1: edit stays on the item's own type (no type switcher).
+    const matchedTypes = mapContentTypes.filter((t) => t.id === item.type)
     modulePanel.open({
       kind: "detail",
       itemId: item.id,
       // No dimming backdrop on the map — the map below stays visible and pannable.
       backdrop: false,
       content: (
-        <ItemDetailPanel
-          itemId={item.id}
-          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-        >
-          <div className="p-4">
+        <ItemDetailView
+          item={item}
+          renderRead={(current, actions) => (
             <ItemPreview
-              item={item}
-              author={resolveAuthor(item.createdBy)}
-              headerAdornment={<ItemTypeBadge type={item.type} />}
-              metaAdornment={<ItemMetaRow item={item} />}
+              item={current}
+              author={resolveAuthor(current.createdBy)}
+              headerAdornment={<ItemTypeBadge type={current.type} />}
+              actions={actions}
+              metaAdornment={<ItemMetaRow item={current} />}
               footerAdornment={
-                item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined
+                current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
               }
             />
-          </div>
-        </ItemDetailPanel>
+          )}
+          contentTypes={matchedTypes.length ? matchedTypes : mapContentTypes}
+          mapper={mapComposerSubmission}
+          editInitialData={itemToComposerData}
+          composerProps={{ geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode }}
+          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
+          onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
+          onClose={clearFocus}
+        />
       ),
       onClose: clearFocus,
     })
-  }, [modulePanel, resolveAuthor, clearFocus])
+  }, [modulePanel, resolveAuthor, clearFocus, mapContentTypes])
 
   // Focus bookkeeping: `panelOwnedRef` so we only ever close a detail WE opened
   // (the panel persists across module switches); `openedIdRef` opens the detail
@@ -621,8 +613,8 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // Composer opens via the app-level host, so its save path survives the
   // round-trip to location picking. The Feed keeps its own fullscreen shell.
   const openComposer = useCallback(() => {
-    openCreateComposer({ contentTypes: mapContentTypes, mapper: mapSubmission })
-  }, [openCreateComposer, mapContentTypes, mapSubmission])
+    openCreateComposer({ contentTypes: mapContentTypes, mapper: mapComposerSubmission })
+  }, [openCreateComposer, mapContentTypes])
 
   return (
     <div className="relative h-full w-full">
