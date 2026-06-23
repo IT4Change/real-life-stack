@@ -39,6 +39,7 @@ if (isWritable(connector)) {
 | `ProfileCapable` | `hasProfile()` | eigenes Profil, öffentliche Profile und Profil-Sync |
 | `EventListenerCapable` | `hasEventListener()` | eingehende Connector-Ereignisse abonnieren |
 | `ItemGroupCapable` | `hasItemGroups()` | Item-zu-Group-Zuordnung lesen oder verschieben |
+| `AuthorizationCapable` | `hasAuthorization()` | per-Resource-Autorisierung (UCAN/RLS) für Create/Edit/Delete |
 
 Neue Capabilities dürfen nur eingeführt werden, wenn ein UI- oder Connector-Vertrag nicht sinnvoll über bestehende Capabilities ausdrückbar ist.
 
@@ -50,6 +51,29 @@ Neue Capabilities dürfen nur eingeführt werden, wenn ein UI- oder Connector-Ve
 4. Hooks müssen fehlende Capabilities explizit behandeln.
 5. UI darf aus dem Vorhandensein einer Capability keine Trust-Stufe ableiten.
 6. Trust-Stufen gehören zu `ConfirmationView`, nicht zur Connector-Klasse.
+
+## AuthorizationCapable
+
+`AuthorizationCapable` drückt aus, ob ein Actor eine Aktion auf einer Resource ausführen darf — als UCAN-förmige Capability (`{ can, with }`). Damit deckt derselbe Vertrag das WoT/UCAN-Modell (gehaltene Capability-Kette, lokal geprüft) und GraphQL-RBAC/RLS (Server-Policy, per-Row-Flags mit den Daten) ab.
+
+```ts
+type Ability = "item/create" | "item/edit" | "item/delete"
+type AuthorizationResource = Item | { space: string; type?: string }
+
+interface AuthorizationCapable {
+  can(ability: Ability, resource: AuthorizationResource): boolean
+}
+```
+
+Regeln:
+
+1. `can` ist **synchron** und löst nur aus bereits geladenem Zustand auf (gehaltene UCANs, per-Row-Permission-Flags, owner-Spalte) — nie ein Netzwerk-Roundtrip. So kann die UI pro Item in einer Liste gaten, ohne N Aufrufe.
+2. Die Resource ist, **worauf die Aktion zielt:** das Item bei `item/edit`/`item/delete`, der Space (+ optional Typ) bei `item/create`. `Item` hat kein Top-Level-`space` → `"space" in resource` diskriminiert.
+3. **Durchsetzung** liegt im Backend/Protokoll (Relay/Peer lehnt nicht-autorisierte Writes ab; RLS lehnt ab). `can` ist eine **UI-Affordance**, keine Sicherheitsgrenze.
+4. Connectors ohne Autorisierungsmodell lassen die Capability weg (`hasAuthorization()` ⇒ `false`). Die UI fällt dann über `useItemPermissions`/`useCanCreate` auf einen **creator-owns**-Default zurück (eigenes Item editier-/löschbar; jeder schreibfähige Connector darf erstellen).
+5. `!isWritable()` ⇒ keine Edit/Delete/Create-Rechte.
+
+Konzept + UX: [concepts/item-edit-delete-2026-06.md](../concepts/item-edit-delete-2026-06.md). Hooks: toolkit `useItemPermissions(item)` → `{ canEdit, canDelete }`, `useCanCreate(space, type?)`.
 
 ## FullConnector
 

@@ -152,6 +152,36 @@ export interface ItemWriter {
   deleteItem(id: string): Promise<void>
 }
 
+/**
+ * UCAN-style abilities for item authorization. Strings, so they map onto UCAN
+ * `can` capabilities directly; extend as new actions appear.
+ */
+export type Ability = "item/create" | "item/edit" | "item/delete"
+
+/**
+ * What an authorization check targets: an existing item (edit/delete), or a
+ * space context (create, where no item exists yet — optionally scoped to a type).
+ * An `Item` has no top-level `space`, so `"space" in resource` discriminates.
+ */
+export type AuthorizationResource = Item | { space: string; type?: string }
+
+/**
+ * Optional capability: per-resource authorization. Models permissions as a
+ * UCAN-style capability — "may the actor perform `ability` on `resource`" —
+ * which maps to both WoT/UCAN (held capability chain, checked locally) and
+ * GraphQL RBAC/RLS (server policy, per-row flags delivered with the data).
+ *
+ * MUST be synchronous: it resolves from already-loaded state (held UCANs,
+ * per-row permission flags, owner column), never a network round-trip — so the
+ * UI can gate affordances per item in a list without N calls. Enforcement lives
+ * in the backend/protocol; `can` only drives UI affordances, it is NOT a
+ * security boundary. Connectors without an authorization model omit it; callers
+ * then fall back to a creator-owns default (see toolkit `useItemPermissions`).
+ */
+export interface AuthorizationCapable {
+  can(ability: Ability, resource: AuthorizationResource): boolean
+}
+
 export interface RelationCapable {
   getRelatedItems(
     itemId: string,
@@ -371,6 +401,10 @@ export type FullConnector = DataInterface & ItemWriter & RelationCapable & Group
 
 export function isWritable(c: DataInterface): c is DataInterface & ItemWriter {
   return "createItem" in c && "updateItem" in c && "deleteItem" in c
+}
+
+export function hasAuthorization(c: DataInterface): c is DataInterface & AuthorizationCapable {
+  return "can" in c && typeof (c as { can?: unknown }).can === "function"
 }
 
 export function hasRelations(c: DataInterface): c is DataInterface & RelationCapable {
