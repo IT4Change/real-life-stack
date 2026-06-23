@@ -518,7 +518,8 @@ describe("WotConnector private space reconciliation", () => {
     expect(migratedChildId).toBeTruthy()
     expect(docs["private-a"].items[migratedParentId!].relations).toEqual([
       { predicate: "blocks", target: `item:${migratedChildId}` },
-      { predicate: "mentions", target: `global:${migratedChildId}` },
+      // `global:` is a user/DID reference, not a local item → must stay stable.
+      { predicate: "mentions", target: "global:child" },
       { predicate: "external", target: "space:other/item:child" },
     ])
   })

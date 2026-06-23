@@ -1471,12 +1471,15 @@ export class WotConnector extends BaseConnector {
   }
 
   private remapRelationTarget(target: string, idRemap: Map<string, string>): string {
-    const match = /^(item:|global:)(.+)$/.exec(target)
+    // Only `item:<id>` targets reference a local item that may have been
+    // re-keyed during migration. `global:<userId/DID>` is a user reference (not
+    // an item) and `space:.../item:...` points into another space — both must
+    // stay stable, never remapped to a freshly created duplicate item id.
+    const match = /^item:(.+)$/.exec(target)
     if (!match) return target
 
-    const [, prefix, id] = match
-    const remappedId = idRemap.get(id)
-    return remappedId ? `${prefix}${remappedId}` : target
+    const remappedId = idRemap.get(match[1])
+    return remappedId ? `item:${remappedId}` : target
   }
 
   private spaceToGroup(space: SpaceInfo): Group {
