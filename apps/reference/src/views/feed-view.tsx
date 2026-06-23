@@ -2,7 +2,6 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import {
   ContentComposer,
   type ContentTypeConfig,
-  ItemDetailView,
   nominatimGeocode,
   nominatimReverseGeocode,
   useModulePanel,
@@ -32,6 +31,7 @@ import { Calendar, FileText, Search, SearchX } from "lucide-react"
 import { Input } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
+import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
 
 const FEED_TYPES: FilterTypeOption[] = [
@@ -102,74 +102,57 @@ export function FeedView({ groupId }: { groupId: string }) {
   // URL is the single source of truth for the focused item: a click writes
   // `/{scope}/feed/{id}` and an effect below opens the detail + scrolls to it;
   // browser-back clears the URL and closes the panel.
-  const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
+  const { itemId: focusedId, focusItem } = useItemFocus()
   // Active-item glow uses the colour of each item's origin group.
   const isOverview = groupId === "__overview__"
   const resolveItemGroupColor = useItemGroupColorResolver(isOverview ? undefined : groupId)
   // Origin group per item — only surfaced as a badge in the aggregate view.
   const resolveItemGroup = useItemGroupResolver()
-  const openDetail = useCallback((item: Item) => {
-    const matchedTypes = FEED_CONTENT_TYPES.filter((t) => t.id === item.type)
-    modulePanel.open({
-      kind: "detail",
-      itemId: item.id,
-      content: (
-        <ItemDetailView
-          item={item}
-          renderRead={(current, actions) => (
-            <ItemPreview
-              item={current}
-              author={resolveAuthor(current.createdBy)}
-              headerAdornment={<ItemTypeBadge type={current.type} />}
-              actions={actions}
-              metaAdornment={<ItemMetaRow item={current} />}
-              footerAdornment={
-                current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
-              }
-            />
-          )}
-          contentTypes={matchedTypes.length ? matchedTypes : FEED_CONTENT_TYPES}
-          mapper={mapComposerSubmission}
-          editInitialData={itemToComposerData}
-          composerProps={{ geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode }}
-          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-          onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
-          onClose={clearFocus}
+  // Register the feed's detail config with the host (which owns the panel + the
+  // read↔edit lifecycle for the focused item). Memoised so it only re-registers
+  // when author resolution changes.
+  const detailConfig = useMemo<DetailConfig>(
+    () => ({
+      renderRead: (current, actions) => (
+        <ItemPreview
+          item={current}
+          author={resolveAuthor(current.createdBy)}
+          headerAdornment={<ItemTypeBadge type={current.type} />}
+          actions={actions}
+          metaAdornment={<ItemMetaRow item={current} />}
+          footerAdornment={
+            current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
+          }
         />
       ),
-      onClose: clearFocus,
-    })
-  }, [modulePanel, resolveAuthor, clearFocus])
+      contentTypes: FEED_CONTENT_TYPES,
+      mapper: mapComposerSubmission,
+      editInitialData: itemToComposerData,
+      composerProps: { geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode },
+      renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
+      onShare: () => {
+        void navigator.clipboard?.writeText(window.location.href)
+      },
+    }),
+    [resolveAuthor],
+  )
+  useRegisterDetail("feed", detailConfig)
 
-  // Drive the detail panel + scroll-reveal from the URL focus. Opens once per
-  // id (waiting for the item to load into the feed), scrolls the card into
-  // view, and closes again when the focus clears (X button → clearFocus, or
-  // browser-back). `panelOwnedRef` ensures we only ever close a detail WE
-  // opened — never one another module left open across a module switch.
-  const panelOwnedRef = useRef(false)
-  const openedIdRef = useRef<string | null>(null)
+  // Reveal: scroll the focused card into view once it is in the rendered
+  // (filtered) list. The host opens the detail panel itself; this only handles
+  // the feed-specific scroll. Filtered out → the panel still opens, scroll no-ops.
+  const revealedIdRef = useRef<string | null>(null)
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   useEffect(() => {
-    if (focusedId) {
-      if (openedIdRef.current === focusedId) return
-      const item = feedItems.find((i) => i.id === focusedId)
-      if (!item) return // not loaded yet — re-runs when feedItems updates
-      openedIdRef.current = focusedId
-      panelOwnedRef.current = true
-      openDetail(item)
-      // Reveal: scroll the card into view if it is in the rendered (filtered)
-      // list. Filtered out → the panel still opens, the scroll just no-ops.
-      itemRefs.current.get(focusedId)?.scrollIntoView({ behavior: "smooth", block: "center" })
-    } else {
-      openedIdRef.current = null
-      if (panelOwnedRef.current) {
-        panelOwnedRef.current = false
-        modulePanel.close()
-      }
+    if (!focusedId) {
+      revealedIdRef.current = null
+      return
     }
-    // openDetail is intentionally omitted: it changes identity when author data
-    // loads, which must not re-open the panel. feedItems drives the load-retry.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (revealedIdRef.current === focusedId) return
+    const el = itemRefs.current.get(focusedId)
+    if (!el) return // not rendered yet — re-runs when feedItems updates
+    revealedIdRef.current = focusedId
+    el.scrollIntoView({ behavior: "smooth", block: "center" })
   }, [focusedId, feedItems])
 
   // FilterBar state — controlled, lives in the view

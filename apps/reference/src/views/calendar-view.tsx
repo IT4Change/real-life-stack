@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef } from "react"
+import { useCallback, useMemo } from "react"
 import {
   CalendarView as ToolkitCalendarView,
   CreateFab,
   type ContentTypeConfig,
-  ItemDetailView,
   ItemPreview,
   ItemTypeBadge,
   ItemTimeRange,
@@ -16,9 +15,10 @@ import {
   useModulePanel,
   useItemGroupColorResolver,
 } from "@real-life-stack/toolkit"
-import type { Item, User } from "@real-life-stack/data-interface"
+import type { User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useItemFocus } from "../hooks/use-item-focus"
+import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
 
 const pad2 = (n: number) => String(n).padStart(2, "0")
@@ -69,44 +69,45 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // list cards themselves render with `author={null}` (the date group
   // already carries temporal context), so the panel is the only place
   // we need a User.
-  const resolveAuthor = (createdBy: string): User | undefined => {
-    const member = members.find((m) => m.id === createdBy)
-    if (member) return member
-    if (currentUser?.id === createdBy) return currentUser
-    return undefined
-  }
+  const resolveAuthor = useCallback(
+    (createdBy: string): User | undefined => {
+      const member = members.find((m) => m.id === createdBy)
+      if (member) return member
+      if (currentUser?.id === createdBy) return currentUser
+      return undefined
+    },
+    [members, currentUser],
+  )
 
-  const openDetail = useCallback((event: Item) => {
-    modulePanel.open({
-      kind: "detail",
-      itemId: event.id,
-      content: (
-        <ItemDetailView
-          item={event}
-          renderRead={(current, actions) => (
-            <ItemPreview
-              item={current}
-              author={resolveAuthor(current.createdBy)}
-              headerAdornment={<ItemTypeBadge type={current.type} />}
-              actions={actions}
-              metaAdornment={<ItemTimeRange item={current} />}
-              footerAdornment={
-                current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
-              }
-            />
-          )}
-          contentTypes={calendarContentTypes}
-          mapper={mapComposerSubmission}
-          editInitialData={itemToComposerData}
-          composerProps={{ geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode }}
-          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-          onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
-          onClose={clearFocus}
+  // Register the calendar's detail config with the host (which owns the panel +
+  // read↔edit for the focused item). Memoised so it only re-registers when
+  // author resolution changes.
+  const detailConfig = useMemo<DetailConfig>(
+    () => ({
+      renderRead: (current, actions) => (
+        <ItemPreview
+          item={current}
+          author={resolveAuthor(current.createdBy)}
+          headerAdornment={<ItemTypeBadge type={current.type} />}
+          actions={actions}
+          metaAdornment={<ItemTimeRange item={current} />}
+          footerAdornment={
+            current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
+          }
         />
       ),
-      onClose: clearFocus,
-    })
-  }, [modulePanel, members, currentUser, clearFocus, calendarContentTypes])
+      contentTypes: calendarContentTypes,
+      mapper: mapComposerSubmission,
+      editInitialData: itemToComposerData,
+      composerProps: { geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode },
+      renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
+      onShare: () => {
+        void navigator.clipboard?.writeText(window.location.href)
+      },
+    }),
+    [resolveAuthor, calendarContentTypes],
+  )
+  useRegisterDetail("calendar", detailConfig)
 
   // The URL-focused event (from the loaded list) + the month to reveal it in.
   const focusedEvent = useMemo(
@@ -120,41 +121,14 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
     return Number.isNaN(d.getTime()) ? undefined : d
   }, [focusedEvent])
 
-  // Drive the detail panel from the URL focus: open once per id (waiting for the
-  // event to load), close when the focus clears (X → clearFocus, or browser-
-  // back). `panelOwnedRef` so we only ever close a detail WE opened — never one
-  // another module left open across a module switch. The month jump itself is
-  // declarative via the `focusDate` prop below.
-  const panelOwnedRef = useRef(false)
-  const openedIdRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (focusedId) {
-      if (openedIdRef.current === focusedId) return
-      const event = events.find((e) => e.id === focusedId)
-      if (!event) return // not loaded yet — re-runs when events updates
-      openedIdRef.current = focusedId
-      panelOwnedRef.current = true
-      openDetail(event)
-    } else {
-      openedIdRef.current = null
-      if (panelOwnedRef.current) {
-        panelOwnedRef.current = false
-        modulePanel.close()
-      }
-    }
-    // openDetail omitted: it changes identity when member/user data loads, which
-    // must not re-open the panel. `events` drives the load-retry.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedId, events])
+  // The detail panel is owned by the host; the calendar only drives the month
+  // reveal (focusDate prop) from the URL focus.
 
   const clearFocusForComposer = useCallback(() => {
-    // Opening the composer replaces the calendar-owned detail panel, so the URL
-    // focus must be cleared too. Otherwise clicking the same event again is a
-    // no-op (`focusItem` sees the URL already points at that id) and the detail
-    // panel does not re-open. Mark the detail as no longer calendar-owned before
-    // navigating, so the focus-clearing effect doesn't close the composer.
-    openedIdRef.current = null
-    panelOwnedRef.current = false
+    // Opening the create composer replaces the detail panel, so clear the URL
+    // focus too — otherwise re-clicking the same event is a no-op (`focusItem`
+    // sees the URL already there). The host releases the panel without closing
+    // the composer (it only closes its own `kind: "detail"`).
     clearFocus()
   }, [clearFocus])
 

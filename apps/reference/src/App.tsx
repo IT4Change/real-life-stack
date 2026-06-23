@@ -61,6 +61,7 @@ import { useWorkspaceRouting, STORAGE_KEY_GROUP } from "./hooks/use-workspace-ro
 import { ItemFocusProvider } from "./hooks/use-item-focus"
 import { LocationPickProvider, useLocationPick } from "./location-pick"
 import { ComposerHostProvider } from "./composer-host"
+import { DetailHostProvider, DetailHostController } from "./detail-host"
 
 /**
  * Renders the single app-level ModulePanel and suspends it (hidden, kept
@@ -414,9 +415,11 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
   return (
     <OpenProfileProvider openProfile={openProfile}>
+    <DetailHostProvider>
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
     <ModulePanelHost>
     <ComposerHostProvider currentUserId={currentUser?.id}>
+    <DetailHostController activeModule={activeModule} />
     <AppShell>
       <Navbar>
         <NavbarStart>
@@ -579,6 +582,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     </ComposerHostProvider>
     </ModulePanelHost>
     </LocationPickProvider>
+    </DetailHostProvider>
     </OpenProfileProvider>
   )
 }

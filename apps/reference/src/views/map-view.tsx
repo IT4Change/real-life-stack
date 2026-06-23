@@ -7,7 +7,6 @@ import {
   useModulePanel,
   useIsCompact,
   type ContentTypeConfig,
-  ItemDetailView,
   ItemPreview,
   ItemTypeBadge,
   ItemMetaRow,
@@ -35,6 +34,7 @@ import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useLocationPick } from "../location-pick"
 import { useItemFocus } from "../hooks/use-item-focus"
+import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
 
 const MAP_TYPES: FilterTypeOption[] = [
@@ -422,48 +422,42 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     [members, currentUser],
   )
 
-  const openDetail = useCallback((item: Item) => {
-    // Phase 1: edit stays on the item's own type (no type switcher).
-    const matchedTypes = mapContentTypes.filter((t) => t.id === item.type)
-    modulePanel.open({
-      kind: "detail",
-      itemId: item.id,
-      // No dimming backdrop on the map — the map below stays visible and pannable.
-      backdrop: false,
-      content: (
-        <ItemDetailView
-          item={item}
-          renderRead={(current, actions) => (
-            <ItemPreview
-              item={current}
-              author={resolveAuthor(current.createdBy)}
-              headerAdornment={<ItemTypeBadge type={current.type} />}
-              actions={actions}
-              metaAdornment={<ItemMetaRow item={current} />}
-              footerAdornment={
-                current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
-              }
-            />
-          )}
-          contentTypes={matchedTypes.length ? matchedTypes : mapContentTypes}
-          mapper={mapComposerSubmission}
-          editInitialData={itemToComposerData}
-          composerProps={{ geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode }}
-          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-          onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
-          onClose={clearFocus}
+  // Register the map's detail config with the host (which owns the panel +
+  // read↔edit). `backdrop: false` keeps the map below visible and pannable.
+  // Memoised so it only re-registers when author resolution changes.
+  const detailConfig = useMemo<DetailConfig>(
+    () => ({
+      renderRead: (current, actions) => (
+        <ItemPreview
+          item={current}
+          author={resolveAuthor(current.createdBy)}
+          headerAdornment={<ItemTypeBadge type={current.type} />}
+          actions={actions}
+          metaAdornment={<ItemMetaRow item={current} />}
+          footerAdornment={
+            current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
+          }
         />
       ),
-      onClose: clearFocus,
-    })
-  }, [modulePanel, resolveAuthor, clearFocus, mapContentTypes])
+      contentTypes: mapContentTypes,
+      mapper: mapComposerSubmission,
+      editInitialData: itemToComposerData,
+      composerProps: { geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode },
+      renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
+      onShare: () => {
+        void navigator.clipboard?.writeText(window.location.href)
+      },
+      backdrop: false,
+    }),
+    [resolveAuthor, mapContentTypes],
+  )
+  useRegisterDetail("map", detailConfig)
 
-  // Focus bookkeeping: `panelOwnedRef` so we only ever close a detail WE opened
-  // (the panel persists across module switches); `openedIdRef` opens the detail
-  // once per id; `settledIdRef` marks the final density-zoom done; `approachedIdRef`
-  // marks the one-off approach for a far deep-link; `fromMarkerClickRef` marks an
-  // in-view tap (no zoom yank) vs. a deep-link / cross-module arrival.
-  const panelOwnedRef = useRef(false)
+  // Reveal bookkeeping (the detail panel itself is owned by the host now):
+  // `openedIdRef` runs the per-id first-reveal once; `settledIdRef` marks the
+  // final density-zoom done; `approachedIdRef` marks the one-off approach for a
+  // far deep-link; `fromMarkerClickRef` marks an in-view tap (no zoom yank) vs. a
+  // deep-link / cross-module arrival.
   const openedIdRef = useRef<string | null>(null)
   const settledIdRef = useRef<string | null>(null)
   const approachedIdRef = useRef<string | null>(null)
@@ -531,10 +525,6 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       openedIdRef.current = null
       settledIdRef.current = null
       approachedIdRef.current = null
-      if (panelOwnedRef.current) {
-        panelOwnedRef.current = false
-        modulePanel.close()
-      }
       return
     }
     if (!focusedItem || !adapter) return // wait for the item + the map
@@ -543,11 +533,10 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     const hasPos = !!c && typeof c[0] === "number" && typeof c[1] === "number"
     const bottomInset = isCompact ? window.innerHeight * MAP_SHEET_FRACTION : 0
 
-    // (1) Open the panel once.
+    // (1) First reveal of this id: the host opened the panel; here we just decide
+    // how to bring the marker into view.
     if (openedIdRef.current !== focusedId) {
       openedIdRef.current = focusedId
-      panelOwnedRef.current = true
-      openDetail(focusedItem)
       // Consume the marker-click flag, honouring it only when it matches THIS id.
       const fromClick = fromMarkerClickRef.current === focusedId
       fromMarkerClickRef.current = null
@@ -586,8 +575,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       const zoom = Math.max(adapter.getView().zoom, MIN_REVEAL_ZOOM)
       adapter.focusOn([c![0], c![1]], { zoom, bottomInset, animate: true })
     }
-    // openDetail omitted: re-opening on its identity change (author load) is
-    // unwanted; focusedItem/items drive the open + the density fly.
+    // focusedItem/items drive the density fly; the panel itself is host-owned.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, focusedId, focusedItem, adapter, items, bbox, itemsLoading])
 
@@ -613,8 +601,13 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // Composer opens via the app-level host, so its save path survives the
   // round-trip to location picking. The Feed keeps its own fullscreen shell.
   const openComposer = useCallback(() => {
+    // Clear the URL focus first: the create composer replaces the detail panel,
+    // and leaving the same itemId focused makes re-clicking that marker a no-op
+    // (`focusItem` sees the URL already there → detail wouldn't reopen). Mirrors
+    // the calendar's `clearFocusForComposer`.
+    clearFocus()
     openCreateComposer({ contentTypes: mapContentTypes, mapper: mapComposerSubmission })
-  }, [openCreateComposer, mapContentTypes])
+  }, [clearFocus, openCreateComposer, mapContentTypes])
 
   return (
     <div className="relative h-full w-full">
