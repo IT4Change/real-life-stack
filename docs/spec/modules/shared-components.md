@@ -126,7 +126,9 @@ interface ItemDetailPanelProps {
 
 ### `ItemDetailActions`
 
-**Zweck:** Aktionsleiste im Detail-Header eines Items: prominenter „Bearbeiten"-Button + ⋮-Menü (Teilen / Löschen). Berechtigungs-gegated über `useItemPermissions(item)` (siehe [03-capabilities.md → AuthorizationCapable](../03-capabilities.md)).
+**Zweck:** Item-Aktionen im **Card-Header** (rechtsbündig über `ItemPreview`s `actions`-Slot, nicht in der Panel-Chrome): prominenter „Bearbeiten"-Button + ⋮-Menü (Teilen / Löschen). Berechtigungs-gegated über `useItemPermissions(item)` (siehe [03-capabilities.md → AuthorizationCapable](../03-capabilities.md)).
+
+> **Trennung Inhalt vs. Fenster:** Item-Aktionen (⋮) gehören zum Item (Card-Header). Die Panel-Chrome (`AdaptivePanel`) trägt nur noch **Schließen** (+ mobiler Drag-Griff) — Pin und Maximieren wurden entfernt (kein realer Nutzen: Pin wirkt in der Sidebar nicht, Maximieren verdeckt den Kontext).
 
 **Vertrag:**
 
@@ -228,6 +230,10 @@ interface ItemPreviewProps {
   onClick?: () => void
   /** Slot neben dem Author-Namen (z.B. Type-Badge, Status-Chip). */
   headerAdornment?: ReactNode
+  /** Rechtsbündige Aktionen am Ende der Header-Zeile (z.B. das Detail-⋮ via
+   *  `ItemDetailActions`). Nur Detail-Ansichten füllen ihn; Listen-Cards lassen
+   *  ihn leer, damit Cards aktionsfrei bleiben. */
+  actions?: ReactNode
   /** Slot zwischen Title und Description (z.B. Date-Hint, Distance). */
   metaAdornment?: ReactNode
   /** Slot unter den Tag-Chips (z.B. Assignees, Comment-Count, ReactionBar). */

@@ -67,6 +67,10 @@ export interface ItemPreviewProps {
   onClick?: () => void
   /** Slot next to the author name. */
   headerAdornment?: ReactNode
+  /** Right-aligned actions at the end of the header row (e.g. the detail ⋮
+   *  menu). Detail views pass it; list cards leave it empty so cards stay
+   *  action-free. */
+  actions?: ReactNode
   /** Slot between title and description. */
   metaAdornment?: ReactNode
   /** Slot below the tag chips. */
@@ -98,6 +102,7 @@ export function ItemPreview({
   author,
   onClick,
   headerAdornment,
+  actions,
   metaAdornment,
   footerAdornment,
   density = "comfortable",
@@ -166,15 +171,17 @@ export function ItemPreview({
             </div>
             {!isCompact && <RelativeTime date={item.createdAt} className="text-xs" />}
           </div>
+          {actions && <div className="-mr-1 shrink-0">{actions}</div>}
         </div>
       )}
 
       {/* Header-only block — only when the author row is suppressed but a
           header adornment is still provided (e.g. type badge on a kanban
           card without an author header). */}
-      {author === null && headerAdornment && (
-        <div className={cn("flex items-center gap-2 flex-wrap", isCompact ? "px-3 pt-2 pb-0.5" : "px-4 pt-3 pb-1")}>
-          {headerAdornment}
+      {author === null && (headerAdornment || actions) && (
+        <div className={cn("flex items-center gap-2", isCompact ? "px-3 pt-2 pb-0.5" : "px-4 pt-3 pb-1")}>
+          <div className="flex flex-1 flex-wrap items-center gap-2">{headerAdornment}</div>
+          {actions && <div className="-mr-1 shrink-0">{actions}</div>}
         </div>
       )}
 

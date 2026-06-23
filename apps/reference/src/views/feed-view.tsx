@@ -112,16 +112,18 @@ export function FeedView({ groupId }: { groupId: string }) {
           renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
         >
           <div className="p-4">
-            <ItemDetailActions
-              item={item}
-              title={typeof item.data.title === "string" ? item.data.title : undefined}
-              onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
-              onDeleted={clearFocus}
-            />
             <ItemPreview
               item={item}
               author={resolveAuthor(item.createdBy)}
               headerAdornment={<ItemTypeBadge type={item.type} />}
+              actions={
+                <ItemDetailActions
+                  item={item}
+                  title={typeof item.data.title === "string" ? item.data.title : undefined}
+                  onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
+                  onDeleted={clearFocus}
+                />
+              }
               metaAdornment={<ItemMetaRow item={item} />}
               footerAdornment={
                 item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined
