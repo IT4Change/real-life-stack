@@ -45,8 +45,9 @@ import { Input } from "@real-life-stack/toolkit"
 import { Search, Settings } from "lucide-react"
 import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
 import { hasItemGroups } from "@real-life-stack/data-interface"
+import { useEditMapPick, useLocationPick } from "../location-pick"
 
-function TaskEditPanel({ item, taskContentType, onSubmit, onDelete, connector, activeWorkspaceId, members, availableTags }: {
+function TaskEditPanel({ item, taskContentType, onSubmit, onDelete, connector, activeWorkspaceId, members, availableTags, requestMapPick }: {
   item: Item
   taskContentType: ContentTypeConfig
   onSubmit: (data: ContentComposerSubmitData) => void
@@ -55,6 +56,7 @@ function TaskEditPanel({ item, taskContentType, onSubmit, onDelete, connector, a
   activeWorkspaceId: string | null
   members: User[]
   availableTags: string[]
+  requestMapPick: (handlers: { onPick: (pos: { lat: number; lng: number }) => void; onCancel?: () => void }) => void
 }) {
   return (
     <ItemDetailPanel
@@ -70,6 +72,7 @@ function TaskEditPanel({ item, taskContentType, onSubmit, onDelete, connector, a
         editMode
         onSubmit={onSubmit}
         onDelete={onDelete}
+        requestMapPick={requestMapPick}
         showVisibility={false}
         showPreview={false}
         initialData={{
@@ -133,6 +136,15 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
   const [searchText, setSearchText] = useState("")
   const [panelState, setPanelState] = useState<KanbanPanelState>({ mode: "closed" })
   const modulePanel = useModulePanel()
+  // Edit composers can hand position picking to the Map module and return here.
+  const requestMapPick = useEditMapPick()
+  const { consumeEditPickReturn } = useLocationPick()
+  // Kanban's TaskEditPanel is live-update + persists across the map round-trip,
+  // so a returning pick needs no adopt logic here — but drain the one-shot signal
+  // on (re)mount so it can't leak an adopt into the next module visited.
+  useEffect(() => {
+    consumeEditPickReturn()
+  }, [consumeEditPickReturn])
 
   // Open item panel from URL deep-link
   useEffect(() => {
@@ -253,6 +265,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
             activeWorkspaceId={activeWorkspaceId}
             members={members}
             availableTags={availableTags}
+            requestMapPick={requestMapPick}
           />
         ),
         onClose: handleForceClosePanel,
@@ -262,7 +275,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
       modulePanel.close()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panelState, taskContentType, members, availableTags, activeWorkspaceId])
+  }, [panelState, taskContentType, members, availableTags, activeWorkspaceId, requestMapPick])
 
   // Group tasks by their group for the grouped view
   const tasksByGroup = useMemo(() => {

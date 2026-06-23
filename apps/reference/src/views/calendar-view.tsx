@@ -18,6 +18,7 @@ import {
 } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
+import { useEditMapPick, useLocationPick } from "../location-pick"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
 
@@ -53,6 +54,9 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // `/{scope}/calendar/{id}`, the effect below opens the detail and the calendar
   // jumps to its month (focusDate); browser-back clears it and closes the panel.
   const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
+  // Edit composers can hand position picking to the Map module and return here.
+  const requestMapPick = useEditMapPick()
+  const { consumeEditPickReturn } = useLocationPick()
 
   const calendarContentTypes: ContentTypeConfig[] = useMemo(() => [
     {
@@ -98,7 +102,11 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
           contentTypes={calendarContentTypes}
           mapper={mapComposerSubmission}
           editInitialData={itemToComposerData}
-          composerProps={{ geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode }}
+          composerProps={{
+            geocode: nominatimGeocode,
+            reverseGeocode: nominatimReverseGeocode,
+            requestMapPick,
+          }}
           renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
           onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
           onClose={clearFocus}
@@ -106,7 +114,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
       ),
       onClose: clearFocus,
     })
-  }, [modulePanel, members, currentUser, clearFocus, calendarContentTypes])
+  }, [modulePanel, members, currentUser, clearFocus, calendarContentTypes, requestMapPick])
 
   // The URL-focused event (from the loaded list) + the month to reveal it in.
   const focusedEvent = useMemo(
@@ -130,6 +138,13 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   useEffect(() => {
     if (focusedId) {
       if (openedIdRef.current === focusedId) return
+      // Returned from a map-pick: the edit composer is still open in the panel.
+      // Adopt it instead of replacing it with a fresh read view.
+      if (consumeEditPickReturn() && modulePanel.current?.itemId === focusedId) {
+        openedIdRef.current = focusedId
+        panelOwnedRef.current = true
+        return
+      }
       const event = events.find((e) => e.id === focusedId)
       if (!event) return // not loaded yet — re-runs when events updates
       openedIdRef.current = focusedId

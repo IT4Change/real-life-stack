@@ -33,7 +33,7 @@ import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 import { Calendar, Globe, Loader2, MapPin, Search } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
-import { useLocationPick } from "../location-pick"
+import { useLocationPick, useEditMapPick } from "../location-pick"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
 
@@ -261,7 +261,9 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   ], [])
 
   const { openComposer: openCreateComposer } = useComposerHost()
-  const { isPicking, updatePick, confirmPick, cancelPick } = useLocationPick()
+  const { isPicking, returnOnConfirm, updatePick, confirmPick, cancelPick } = useLocationPick()
+  // Edit composers hand position picking back to this same map and return here.
+  const requestMapPick = useEditMapPick()
   const [pickPos, setPickPos] = useState<{ lat: number; lng: number } | null>(null)
   // "Fertig" (return the composer) is only needed when the composer is hidden,
   // i.e. as a drawer on compact screens. On desktop the sidebar stays visible.
@@ -448,7 +450,11 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
           contentTypes={matchedTypes.length ? matchedTypes : mapContentTypes}
           mapper={mapComposerSubmission}
           editInitialData={itemToComposerData}
-          composerProps={{ geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode }}
+          composerProps={{
+            geocode: nominatimGeocode,
+            reverseGeocode: nominatimReverseGeocode,
+            requestMapPick,
+          }}
           renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
           onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
           onClose={clearFocus}
@@ -456,7 +462,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       ),
       onClose: clearFocus,
     })
-  }, [modulePanel, resolveAuthor, clearFocus, mapContentTypes])
+  }, [modulePanel, resolveAuthor, clearFocus, mapContentTypes, requestMapPick])
 
   // Focus bookkeeping: `panelOwnedRef` so we only ever close a detail WE opened
   // (the panel persists across module switches); `openedIdRef` opens the detail
@@ -527,6 +533,11 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   }, [active])
   useEffect(() => {
     if (!active) return
+    // While a location pick is in flight, leave the panel exactly as it is: the
+    // edit composer that launched the pick lives in it, and the focused item is
+    // carried in the URL only to return here afterwards. Revealing or closing now
+    // would clobber that composer.
+    if (isPicking) return
     if (!focusedId) {
       openedIdRef.current = null
       settledIdRef.current = null
@@ -589,7 +600,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     // openDetail omitted: re-opening on its identity change (author load) is
     // unwanted; focusedItem/items drive the open + the density fly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, focusedId, focusedItem, adapter, items, bbox, itemsLoading])
+  }, [active, focusedId, focusedItem, adapter, items, bbox, itemsLoading, isPicking])
 
   // While picking, a map click commits the position immediately (so "Erstellen"
   // always has it) and drops the marker where clicked. No recenter: the click
@@ -671,7 +682,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
                 ? "Position gewählt."
                 : "Tippe auf die Karte, um die Position zu setzen."}
             </span>
-            {isCompact && pickPos && (
+            {(isCompact || returnOnConfirm) && pickPos && (
               <Button size="sm" className="h-7 px-2 text-xs" onClick={confirmPick}>
                 Fertig
               </Button>

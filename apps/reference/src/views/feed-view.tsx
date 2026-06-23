@@ -32,6 +32,7 @@ import { Calendar, FileText, Search, SearchX } from "lucide-react"
 import { Input } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
+import { useEditMapPick, useLocationPick } from "../location-pick"
 import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
 
 const FEED_TYPES: FilterTypeOption[] = [
@@ -103,6 +104,9 @@ export function FeedView({ groupId }: { groupId: string }) {
   // `/{scope}/feed/{id}` and an effect below opens the detail + scrolls to it;
   // browser-back clears the URL and closes the panel.
   const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
+  // Edit composers can hand position picking to the Map module and return here.
+  const requestMapPick = useEditMapPick()
+  const { consumeEditPickReturn } = useLocationPick()
   // Active-item glow uses the colour of each item's origin group.
   const isOverview = groupId === "__overview__"
   const resolveItemGroupColor = useItemGroupColorResolver(isOverview ? undefined : groupId)
@@ -131,7 +135,11 @@ export function FeedView({ groupId }: { groupId: string }) {
           contentTypes={matchedTypes.length ? matchedTypes : FEED_CONTENT_TYPES}
           mapper={mapComposerSubmission}
           editInitialData={itemToComposerData}
-          composerProps={{ geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode }}
+          composerProps={{
+            geocode: nominatimGeocode,
+            reverseGeocode: nominatimReverseGeocode,
+            requestMapPick,
+          }}
           renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
           onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
           onClose={clearFocus}
@@ -139,7 +147,7 @@ export function FeedView({ groupId }: { groupId: string }) {
       ),
       onClose: clearFocus,
     })
-  }, [modulePanel, resolveAuthor, clearFocus])
+  }, [modulePanel, resolveAuthor, clearFocus, requestMapPick])
 
   // Drive the detail panel + scroll-reveal from the URL focus. Opens once per
   // id (waiting for the item to load into the feed), scrolls the card into
@@ -152,6 +160,13 @@ export function FeedView({ groupId }: { groupId: string }) {
   useEffect(() => {
     if (focusedId) {
       if (openedIdRef.current === focusedId) return
+      // Returned from a map-pick: the edit composer is still open in the panel.
+      // Adopt it instead of replacing it with a fresh read view + scroll.
+      if (consumeEditPickReturn() && modulePanel.current?.itemId === focusedId) {
+        openedIdRef.current = focusedId
+        panelOwnedRef.current = true
+        return
+      }
       const item = feedItems.find((i) => i.id === focusedId)
       if (!item) return // not loaded yet — re-runs when feedItems updates
       openedIdRef.current = focusedId
