@@ -11,6 +11,7 @@ import {
   EmptyState,
   ItemTypeBadge,
   ItemGroupBadge,
+  ItemPrivateBadge,
   ItemMetaRow,
   ItemCommentCount,
   FeedComposerTrigger,
@@ -27,6 +28,7 @@ import {
   useItemEditor,
   useItemGroupColorResolver,
   useItemGroupResolver,
+  useItemPrivacyResolver,
   getActivePanelGlow,
 } from "@real-life-stack/toolkit"
 import { Calendar, FileText, Search, SearchX } from "lucide-react"
@@ -110,6 +112,8 @@ export function FeedView({ groupId }: { groupId: string }) {
   const resolveItemGroupColor = useItemGroupColorResolver(isOverview ? undefined : groupId)
   // Origin group per item — only surfaced as a badge in the aggregate view.
   const resolveItemGroup = useItemGroupResolver()
+  // Private items (in the personal space, shared with nobody) get a „Privat" badge.
+  const isItemPrivate = useItemPrivacyResolver()
   // Groups + personal space for the sharing-scope picker in the composer.
   const { data: groups } = useGroups()
   const personalGroupId = usePersonalGroupId()
@@ -126,7 +130,12 @@ export function FeedView({ groupId }: { groupId: string }) {
         <ItemPreview
           item={current}
           author={resolveAuthor(current.createdBy)}
-          headerAdornment={<ItemTypeBadge type={current.type} />}
+          headerAdornment={
+            <>
+              <ItemTypeBadge type={current.type} />
+              {isItemPrivate(current) && <ItemPrivateBadge />}
+            </>
+          }
           actions={actions}
           metaAdornment={<ItemMetaRow item={current} />}
           footerAdornment={
@@ -143,7 +152,7 @@ export function FeedView({ groupId }: { groupId: string }) {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, feedContentTypes],
+    [resolveAuthor, feedContentTypes, isItemPrivate],
   )
   useRegisterDetail("feed", detailConfig)
 
@@ -295,6 +304,7 @@ export function FeedView({ groupId }: { groupId: string }) {
                   <>
                     <ItemTypeBadge type={item.type} />
                     {group && <ItemGroupBadge name={group.name} color={resolveItemGroupColor(item)} />}
+                    {isItemPrivate(item) && <ItemPrivateBadge />}
                   </>
                 }
                 metaAdornment={<ItemMetaRow item={item} />}

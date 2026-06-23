@@ -5,6 +5,7 @@ import {
   type ContentTypeConfig,
   ItemPreview,
   ItemTypeBadge,
+  ItemPrivateBadge,
   ItemTimeRange,
   ReactionBar,
   nominatimGeocode,
@@ -16,6 +17,7 @@ import {
   usePersonalGroupId,
   useModulePanel,
   useItemGroupColorResolver,
+  useItemPrivacyResolver,
 } from "@real-life-stack/toolkit"
 import type { User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
@@ -53,6 +55,8 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   const resolveItemGroupColor = useItemGroupColorResolver(
     groupId === "__overview__" ? undefined : groupId,
   )
+  // Private events (in the personal space) get a „Privat" badge in the detail.
+  const isItemPrivate = useItemPrivacyResolver()
 
   const modulePanel = useModulePanel()
   // URL is the single source of truth for the focused event: a click writes
@@ -103,7 +107,12 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         <ItemPreview
           item={current}
           author={resolveAuthor(current.createdBy)}
-          headerAdornment={<ItemTypeBadge type={current.type} />}
+          headerAdornment={
+            <>
+              <ItemTypeBadge type={current.type} />
+              {isItemPrivate(current) && <ItemPrivateBadge />}
+            </>
+          }
           actions={actions}
           metaAdornment={<ItemTimeRange item={current} />}
           footerAdornment={
@@ -120,7 +129,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, calendarContentTypes],
+    [resolveAuthor, calendarContentTypes, isItemPrivate],
   )
   useRegisterDetail("calendar", detailConfig)
 

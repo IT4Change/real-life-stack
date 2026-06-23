@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react"
 import { hasItemGroups, type Group, type Item } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
-import { useGroups } from "./use-groups"
+import { useGroups, usePersonalGroupId } from "./use-groups"
 import { getSpacePrimaryColor } from "../lib/utils"
 
 /**
@@ -55,5 +55,26 @@ export function useItemGroupResolver(): (item: Item) => Group | undefined {
       return originId ? groupById.get(originId) : undefined
     },
     [connector, groupById],
+  )
+}
+
+/**
+ * Returns a resolver `(item) => boolean` telling whether an item is private — it
+ * lives in the user's personal space (its group equals the personal-space id),
+ * i.e. shared with nobody. Used to mark such items with an
+ * {@link ItemPrivateBadge} in previews and detail views. Always `false` for
+ * connectors without a personal space (Mock/Local).
+ */
+export function useItemPrivacyResolver(): (item: Item) => boolean {
+  const connector = useConnector()
+  const personalGroupId = usePersonalGroupId()
+
+  return useCallback(
+    (item: Item) => {
+      if (!personalGroupId) return false
+      const groupId = hasItemGroups(connector) ? connector.getItemGroupId(item.id) : null
+      return groupId === personalGroupId
+    },
+    [connector, personalGroupId],
   )
 }

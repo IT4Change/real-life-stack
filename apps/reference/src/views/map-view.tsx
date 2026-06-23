@@ -11,6 +11,7 @@ import {
   type ContentTypeConfig,
   ItemPreview,
   ItemTypeBadge,
+  ItemPrivateBadge,
   ItemMetaRow,
   ReactionBar,
   nominatimGeocode,
@@ -21,6 +22,7 @@ import {
   useFilterableItems,
   getItemColor,
   useItemGroupColorResolver,
+  useItemPrivacyResolver,
   Button,
   Input,
   hasGlobe,
@@ -223,6 +225,8 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   const resolveItemGroupColor = useItemGroupColorResolver(
     groupId === "__overview__" ? undefined : groupId,
   )
+  // Private places (in the personal space) get a „Privat" badge in the detail.
+  const isItemPrivate = useItemPrivacyResolver()
 
   const modulePanel = useModulePanel()
   // URL-driven focus: a marker click / deep-link writes `/{scope}/map/{id}`; the
@@ -446,7 +450,12 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         <ItemPreview
           item={current}
           author={resolveAuthor(current.createdBy)}
-          headerAdornment={<ItemTypeBadge type={current.type} />}
+          headerAdornment={
+            <>
+              <ItemTypeBadge type={current.type} />
+              {isItemPrivate(current) && <ItemPrivateBadge />}
+            </>
+          }
           actions={actions}
           metaAdornment={<ItemMetaRow item={current} />}
           footerAdornment={
@@ -464,7 +473,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       },
       backdrop: false,
     }),
-    [resolveAuthor, mapContentTypes],
+    [resolveAuthor, mapContentTypes, isItemPrivate],
   )
   useRegisterDetail("map", detailConfig)
 

@@ -6,6 +6,7 @@ export {
   type ItemTypeBadgeConfig,
 } from "./item-type-badge"
 export { ItemGroupBadge, type ItemGroupBadgeProps } from "./item-group-badge"
+export { ItemPrivateBadge, type ItemPrivateBadgeProps } from "./item-private-badge"
 export { ItemMetaRow, formatEventRange, type ItemMetaRowProps } from "./item-meta-row"
 export { ItemCommentCount, type ItemCommentCountProps } from "./item-comment-count"
 export { ItemAssignees, type ItemAssigneesProps } from "./item-assignees"
