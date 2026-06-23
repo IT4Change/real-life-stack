@@ -69,12 +69,15 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // list cards themselves render with `author={null}` (the date group
   // already carries temporal context), so the panel is the only place
   // we need a User.
-  const resolveAuthor = (createdBy: string): User | undefined => {
-    const member = members.find((m) => m.id === createdBy)
-    if (member) return member
-    if (currentUser?.id === createdBy) return currentUser
-    return undefined
-  }
+  const resolveAuthor = useCallback(
+    (createdBy: string): User | undefined => {
+      const member = members.find((m) => m.id === createdBy)
+      if (member) return member
+      if (currentUser?.id === createdBy) return currentUser
+      return undefined
+    },
+    [members, currentUser],
+  )
 
   // Register the calendar's detail config with the host (which owns the panel +
   // read↔edit for the focused item). Memoised so it only re-registers when

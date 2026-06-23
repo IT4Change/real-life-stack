@@ -2,9 +2,8 @@ import {
   createContext,
   useContext,
   useEffect,
-  useMemo,
   useRef,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react"
 import {
@@ -30,7 +29,7 @@ const HOST_MODULES = ["feed", "calendar", "map"]
 export interface DetailConfig {
   /** Read-view body: the live item + the gated action menu (⋮ + „Bearbeiten"). */
   renderRead: (item: Item, actions: ReactNode) => ReactNode
-  /** Composer types for editing (the item's own type → no switcher). */
+  /** Composer types for editing (full list; the view locks to the item's type). */
   contentTypes: ContentTypeConfig[]
   /** Edit-aware submission mapper. */
   mapper: ItemEditorMapper
@@ -46,28 +45,61 @@ export interface DetailConfig {
   backdrop?: boolean
 }
 
-interface DetailHostValue {
-  config: DetailConfig | null
-  setConfig: (config: DetailConfig) => void
+/**
+ * External store for the active module's detail config. A plain subscribable —
+ * NOT React state — so registering a config does NOT re-render the whole
+ * subtree (which, with an unstable config, would loop). Only the host's outlet
+ * + controller subscribe (via `useSyncExternalStore`); modules just call
+ * `setConfig` through the stable store ref.
+ */
+interface ConfigStore {
+  setConfig: (config: DetailConfig | null) => void
+  getConfig: () => DetailConfig | null
+  subscribe: (listener: () => void) => () => void
 }
 
-const DetailHostContext = createContext<DetailHostValue | null>(null)
+function createConfigStore(): ConfigStore {
+  let config: DetailConfig | null = null
+  const listeners = new Set<() => void>()
+  return {
+    setConfig(next) {
+      if (next === config) return
+      config = next
+      for (const l of listeners) l()
+    },
+    getConfig() {
+      return config
+    },
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+  }
+}
 
-function useDetailHost(): DetailHostValue {
+const DetailHostContext = createContext<ConfigStore | null>(null)
+
+function useConfigStore(): ConfigStore {
   const ctx = useContext(DetailHostContext)
-  if (!ctx) throw new Error("useDetailHost must be used within <DetailHostProvider>")
+  if (!ctx) throw new Error("useConfigStore must be used within <DetailHostProvider>")
   return ctx
 }
 
+function useDetailConfig(): DetailConfig | null {
+  const store = useConfigStore()
+  return useSyncExternalStore(store.subscribe, store.getConfig, store.getConfig)
+}
+
 /**
- * Holds the active module's detail config. Lives ABOVE the ModulePanel so the
- * panel content (`DetailHostOutlet`) can read it; the open/close itself happens
- * in `DetailHostController` (which needs `useModulePanel`, i.e. below the panel).
+ * Holds the config store (a stable ref — the provider never re-renders on a
+ * config change). Lives ABOVE the ModulePanel so the panel content
+ * (`DetailHostOutlet`) can read it; the open/close itself happens in
+ * `DetailHostController` (which needs `useModulePanel`, i.e. below the panel).
  */
 export function DetailHostProvider({ children }: { children: ReactNode }) {
-  const [config, setConfig] = useState<DetailConfig | null>(null)
-  const value = useMemo<DetailHostValue>(() => ({ config, setConfig }), [config])
-  return <DetailHostContext.Provider value={value}>{children}</DetailHostContext.Provider>
+  const storeRef = useRef<ConfigStore | null>(null)
+  if (!storeRef.current) storeRef.current = createConfigStore()
+  return <DetailHostContext.Provider value={storeRef.current}>{children}</DetailHostContext.Provider>
 }
 
 /**
@@ -78,22 +110,22 @@ export function DetailHostProvider({ children }: { children: ReactNode }) {
  * harmless).
  */
 export function useRegisterDetail(config: DetailConfig): void {
-  const { setConfig } = useDetailHost()
+  const store = useConfigStore()
   useEffect(() => {
-    setConfig(config)
-  }, [config, setConfig])
+    store.setConfig(config)
+  }, [config, store])
 }
 
 /**
  * Panel content: renders the shared `ItemDetailView` for the focused item from
  * the live registered config. Stable element (set once into the panel) that
- * re-renders on context change — so a module switch updates the read rendering
+ * re-renders on config change — so a module switch updates the read rendering
  * without remounting (edit state survives). Keyed on the item id, so a
  * *different* item starts fresh in read mode.
  */
 function DetailHostOutlet() {
   const { itemId: focusedId, clearFocus } = useItemFocus()
-  const { config } = useDetailHost()
+  const config = useDetailConfig()
   if (!focusedId || !config) return null
   return (
     <ItemDetailView
@@ -121,7 +153,7 @@ function DetailHostOutlet() {
 export function DetailHostController({ activeModule }: { activeModule: string }) {
   const modulePanel = useModulePanel()
   const { itemId: focusedId, clearFocus } = useItemFocus()
-  const { config } = useDetailHost()
+  const config = useDetailConfig()
   const hostOwns = HOST_MODULES.includes(activeModule)
   const panelOwnedRef = useRef(false)
   const openedIdRef = useRef<string | null>(null)
@@ -129,7 +161,7 @@ export function DetailHostController({ activeModule }: { activeModule: string })
   useEffect(() => {
     if (hostOwns && focusedId && config) {
       // Already showing this item → leave it (config/module changes flow into the
-      // outlet via context without a remount, so the edit composer survives).
+      // outlet via the store without a remount, so the edit composer survives).
       if (openedIdRef.current === focusedId && panelOwnedRef.current) return
       openedIdRef.current = focusedId
       panelOwnedRef.current = true
