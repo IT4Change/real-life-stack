@@ -123,9 +123,12 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
   // Personal space → „Privat" option in the picker + a „Privat" badge on the card.
   const personalGroupId = usePersonalGroupId()
   const isItemPrivate = useItemPrivacyResolver()
+  // „Privat"-Badge nur in der Meta-Gruppe („Mein Netzwerk") — in einem konkreten
+  // Space ist der Scope ohnehin klar, dort wäre das Badge überflüssig.
   const renderTaskAdornment = useCallback(
-    (item: Item) => (isItemPrivate(item) ? <ItemPrivateBadge /> : null),
-    [isItemPrivate],
+    (item: Item) =>
+      activeWorkspaceId === "__overview__" && isItemPrivate(item) ? <ItemPrivateBadge /> : null,
+    [activeWorkspaceId, isItemPrivate],
   )
   // Kanban activates on data.status (task/v1). After the PR-1a status
   // migration only tasks carry this field, so no event/place leakage.

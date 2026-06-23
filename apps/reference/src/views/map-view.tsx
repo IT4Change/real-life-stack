@@ -11,7 +11,7 @@ import {
   type ContentTypeConfig,
   ItemPreview,
   ItemTypeBadge,
-  ItemPrivateBadge,
+  ItemScopeBadge,
   ItemMetaRow,
   ReactionBar,
   nominatimGeocode,
@@ -22,7 +22,6 @@ import {
   useFilterableItems,
   getItemColor,
   useItemGroupColorResolver,
-  useItemPrivacyResolver,
   Button,
   Input,
   hasGlobe,
@@ -219,14 +218,14 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   const { data: groups } = useGroups()
   const personalGroupId = usePersonalGroupId()
   const currentSpace = groupId === "__overview__" ? undefined : groupId
+  // Scope badge (group/„Privat") only in the aggregate („Mein Netzwerk").
+  const isOverview = groupId === "__overview__"
   // Marker colour falls back to the colour of the group an item was *created* in
   // (origin group) — so the aggregate ("Mein Netzwerk") view shows each marker in
   // its origin group's colour. Shared resolver, also used for the active glow.
   const resolveItemGroupColor = useItemGroupColorResolver(
     groupId === "__overview__" ? undefined : groupId,
   )
-  // Private places (in the personal space) get a „Privat" badge in the detail.
-  const isItemPrivate = useItemPrivacyResolver()
 
   const modulePanel = useModulePanel()
   // URL-driven focus: a marker click / deep-link writes `/{scope}/map/{id}`; the
@@ -453,7 +452,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
           headerAdornment={
             <>
               <ItemTypeBadge type={current.type} />
-              {isItemPrivate(current) && <ItemPrivateBadge />}
+              {isOverview && <ItemScopeBadge item={current} />}
             </>
           }
           actions={actions}
@@ -473,7 +472,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       },
       backdrop: false,
     }),
-    [resolveAuthor, mapContentTypes, isItemPrivate],
+    [resolveAuthor, mapContentTypes, isOverview],
   )
   useRegisterDetail("map", detailConfig)
 

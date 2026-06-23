@@ -5,7 +5,7 @@ import {
   type ContentTypeConfig,
   ItemPreview,
   ItemTypeBadge,
-  ItemPrivateBadge,
+  ItemScopeBadge,
   ItemTimeRange,
   ReactionBar,
   nominatimGeocode,
@@ -17,7 +17,6 @@ import {
   usePersonalGroupId,
   useModulePanel,
   useItemGroupColorResolver,
-  useItemPrivacyResolver,
 } from "@real-life-stack/toolkit"
 import type { User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
@@ -48,6 +47,9 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   const { data: groups } = useGroups()
   const personalGroupId = usePersonalGroupId()
   const currentSpace = groupId === "__overview__" ? undefined : groupId
+  // Scope badge (group/„Privat") is only shown in the aggregate („Mein Netzwerk")
+  // — inside a single space it would be redundant.
+  const isOverview = groupId === "__overview__"
 
   // Item colour falls back to the colour of the group an item was *created* in
   // (origin group) — so the aggregate ("Mein Netzwerk") view shows each item in
@@ -55,8 +57,6 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   const resolveItemGroupColor = useItemGroupColorResolver(
     groupId === "__overview__" ? undefined : groupId,
   )
-  // Private events (in the personal space) get a „Privat" badge in the detail.
-  const isItemPrivate = useItemPrivacyResolver()
 
   const modulePanel = useModulePanel()
   // URL is the single source of truth for the focused event: a click writes
@@ -110,7 +110,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
           headerAdornment={
             <>
               <ItemTypeBadge type={current.type} />
-              {isItemPrivate(current) && <ItemPrivateBadge />}
+              {isOverview && <ItemScopeBadge item={current} />}
             </>
           }
           actions={actions}
@@ -129,7 +129,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, calendarContentTypes, isItemPrivate],
+    [resolveAuthor, calendarContentTypes, isOverview],
   )
   useRegisterDetail("calendar", detailConfig)
 

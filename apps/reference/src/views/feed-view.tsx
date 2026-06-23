@@ -12,6 +12,7 @@ import {
   ItemTypeBadge,
   ItemGroupBadge,
   ItemPrivateBadge,
+  ItemScopeBadge,
   ItemMetaRow,
   ItemCommentCount,
   FeedComposerTrigger,
@@ -133,7 +134,7 @@ export function FeedView({ groupId }: { groupId: string }) {
           headerAdornment={
             <>
               <ItemTypeBadge type={current.type} />
-              {isItemPrivate(current) && <ItemPrivateBadge />}
+              {isOverview && <ItemScopeBadge item={current} />}
             </>
           }
           actions={actions}
@@ -152,7 +153,7 @@ export function FeedView({ groupId }: { groupId: string }) {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, feedContentTypes, isItemPrivate],
+    [resolveAuthor, feedContentTypes, isOverview],
   )
   useRegisterDetail("feed", detailConfig)
 
@@ -304,7 +305,7 @@ export function FeedView({ groupId }: { groupId: string }) {
                   <>
                     <ItemTypeBadge type={item.type} />
                     {group && <ItemGroupBadge name={group.name} color={resolveItemGroupColor(item)} />}
-                    {isItemPrivate(item) && <ItemPrivateBadge />}
+                    {isOverview && isItemPrivate(item) && <ItemPrivateBadge />}
                   </>
                 }
                 metaAdornment={<ItemMetaRow item={item} />}
