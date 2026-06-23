@@ -126,7 +126,7 @@ interface ItemDetailPanelProps {
 
 ### `ItemDetailActions`
 
-**Zweck:** Item-Aktionen im **Card-Header** (rechtsbündig über `ItemPreview`s `actions`-Slot, nicht in der Panel-Chrome): prominenter „Bearbeiten"-Button + ⋮-Menü (Teilen / Löschen). Berechtigungs-gegated über `useItemPermissions(item)` (siehe [03-capabilities.md → AuthorizationCapable](../03-capabilities.md)).
+**Zweck:** Item-Aktionen im **Card-Header** (rechtsbündig über `ItemPreview`s `actions`-Slot, nicht in der Panel-Chrome): ein **⋮-Menü** mit Bearbeiten / Teilen / Löschen. Berechtigungs-gegated über `useItemPermissions(item)` (siehe [03-capabilities.md → AuthorizationCapable](../03-capabilities.md)).
 
 > **Trennung Inhalt vs. Fenster:** Item-Aktionen (⋮) gehören zum Item (Card-Header). Die Panel-Chrome (`AdaptivePanel`) trägt nur noch **Schließen** (+ mobiler Drag-Griff) — Pin und Maximieren wurden entfernt (kein realer Nutzen: Pin wirkt in der Sidebar nicht, Maximieren verdeckt den Kontext).
 
@@ -145,10 +145,9 @@ interface ItemDetailActionsProps {
 **Regeln:**
 
 1. Sichtbarkeit folgt `useItemPermissions(item)`: nicht erlaubte Aktionen werden **ausgeblendet** (nicht disabled). Gibt es keine erlaubte Aktion, rendert die Komponente nichts.
-2. **Bearbeiten** ist ein prominenter Button (read-first, ein Tap), nur bei `canEdit` **und** vorhandenem `onEdit`.
-3. **Löschen** liegt im ⋮-Menü, läuft hinter `DeleteConfirmDialog` und führt die Löschung selbst aus (`connector.deleteItem`, defensiv auf `isWritable` gegated); danach `onDeleted`.
-4. **Teilen** erscheint im ⋮-Menü, wenn `onShare` verdrahtet ist.
-5. Das Gating ist eine **UI-Affordance**, keine Sicherheitsgrenze — Durchsetzung backend-/protokollseitig.
+2. Alle Aktionen liegen im **⋮-Menü**: **Bearbeiten** bei `canEdit` **und** vorhandenem `onEdit`; **Teilen** bei vorhandenem `onShare`; **Löschen** bei `canDelete`.
+3. **Löschen** läuft hinter `DeleteConfirmDialog` und führt die Löschung selbst aus (`connector.deleteItem`, defensiv auf `isWritable` gegated); `onDeleted` nur nach echtem Delete.
+4. Das Gating ist eine **UI-Affordance**, keine Sicherheitsgrenze — Durchsetzung backend-/protokollseitig.
 
 Die reine Sichtbarkeitslogik ist als `visibleDetailActions(perms, hasOnEdit, hasOnShare)` ausgelagert (testbar).
 
@@ -156,7 +155,34 @@ Die reine Sichtbarkeitslogik ist als `visibleDetailActions(perms, hasOnEdit, has
 
 **Zweck:** Bestätigung vor dem Löschen („… wird gelöscht. Das kann nicht rückgängig gemacht werden.") mit Busy-State. `onConfirm` führt die Löschung aus, der Dialog schließt danach. Wird intern von `ItemDetailActions` benutzt, ist aber eigenständig einbindbar.
 
-Konzept/UX: [concepts/item-edit-delete-2026-06.md](../../concepts/item-edit-delete-2026-06.md). Das vollständige Edit-in-Panel (read↔edit-Host) folgt in einer späteren Phase.
+Konzept/UX: [concepts/item-edit-delete-2026-06.md](../../concepts/item-edit-delete-2026-06.md).
+
+### `ItemDetailView`
+
+**Zweck:** Geteilter Detail-Host — Read-Ansicht **und** ein inline Edit-Composer im **selben** Panel (read↔edit-Umschaltung), plus das gegatete Aktionsmenü. Hält **seinen eigenen `useItemEditor`**, sodass eine aufrufende View nur deklarative Config übergibt (kein Editor-Wiring, keine Hook-Reihenfolge-Fallen im `openDetail`).
+
+**Vertrag:**
+
+```ts
+interface ItemDetailViewProps {
+  item: Item                                       // initial geöffnetes Item (Fallback bis live geladen)
+  renderRead: (item: Item, actions: ReactNode) => ReactNode  // Read-View; bekommt das **aktuelle** (live) Item + das ⋮/„Bearbeiten" zum Einbetten (ItemPreview actions-Slot)
+  contentTypes: ContentTypeConfig[]                // nur der Item-Typ → kein Type-Switcher
+  mapper: ItemEditorMapper                         // edit-fähig (nutzt existingItem)
+  editInitialData: (item: Item) => Partial<WidgetData>  // Composer-Vorfüllung aus dem (aktuellen) Item
+  composerProps?: Partial<ContentComposerProps>    // Modul-Extras (people/tags/geocode/map-pick/…)
+  renderCommentReactions?: (commentId: string) => ReactNode
+  onClose: () => void
+  onShare?: () => void
+}
+```
+
+**Regeln:**
+
+1. Default ist **Read** (`ItemPreview` + Aktionsmenü via `renderRead`). „Bearbeiten" (gegated über `useItemPermissions`) schaltet auf **Edit** (`ContentComposer`, `editMode`, vorbefüllt). Speichern (`useItemEditor.submit` mit `existingItem`) → zurück auf Read; Abbrechen → zurück auf Read.
+2. Der Host **besitzt den Editor** — Mapper + Vorfüllung kommen als Config; die rufende View hat keine Editor-Abhängigkeit.
+3. Der Host **abonniert das Item live** (`useItem(item.id)`): `renderRead`, das Aktionsmenü und die Edit-Vorfüllung sehen immer das aktuelle Item. Damit ist die Read-Ansicht nach einem Save (und bei externen Updates) **nicht stale** — `item` dient nur als Fallback, bis das Live-Item geladen ist. Den Titel für den Lösch-Dialog leitet der Host selbst aus `item.data.title` ab.
+4. Löschen läuft weiter über das Aktionsmenü (`ItemDetailActions`) im Read-Modus.
 
 ### `CommentSection`
 
