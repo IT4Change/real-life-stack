@@ -44,7 +44,11 @@ export function resolveCanCreate(
   type: string | undefined,
 ): boolean {
   if (!isWritable(connector)) return false
-  if (hasAuthorization(connector) && spaceId) {
+  if (hasAuthorization(connector)) {
+    // The authorization model is the source of truth. Without a space context
+    // (loading / no-access / overview) we cannot ask it — fail closed rather
+    // than optimistically allow.
+    if (!spaceId) return false
     return connector.can("item/create", { space: spaceId, ...(type ? { type } : {}) })
   }
   return true

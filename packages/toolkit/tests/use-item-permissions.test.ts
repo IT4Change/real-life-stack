@@ -84,9 +84,13 @@ describe("resolveCanCreate", () => {
     expect(can).toHaveBeenCalledWith("item/create", { space: "space-1", type: "event" })
   })
 
-  it("falls back to writable=true when no space id is given", () => {
-    const can = vi.fn(() => false)
-    expect(resolveCanCreate(connector({ ...WRITE, can }), null, undefined)).toBe(true)
+  it("fails closed for an authorization connector without a space id", () => {
+    const can = vi.fn(() => true)
+    expect(resolveCanCreate(connector({ ...WRITE, can }), null, undefined)).toBe(false)
     expect(can).not.toHaveBeenCalled()
+  })
+
+  it("allows create (fallback) for a writable connector without an auth model + no space", () => {
+    expect(resolveCanCreate(connector(WRITE), null, undefined)).toBe(true)
   })
 })
