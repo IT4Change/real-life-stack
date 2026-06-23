@@ -2,8 +2,8 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import {
   ContentComposer,
   type ContentTypeConfig,
-  ItemDetailPanel,
-  ItemDetailActions,
+  type WidgetData,
+  ItemDetailView,
   useModulePanel,
   ReactionBar,
   ItemPreview,
@@ -37,6 +37,52 @@ const FEED_TYPES: FilterTypeOption[] = [
   { id: "post", label: "Posts", icon: FileText },
   { id: "event", label: "Events", icon: Calendar },
 ]
+
+const FEED_CONTENT_TYPES: ContentTypeConfig[] = [
+  { id: "post", label: "Post", defaultWidgets: ["text"], submitLabel: "Posten" },
+  { id: "event", label: "Veranstaltung", defaultWidgets: ["title", "text", "date", "location"], submitLabel: "Erstellen" },
+]
+
+// ContentComposer surfaces the free-text field as `text`; spec base/v1 uses
+// `content` for posts and `description` for events. Strips empty composer
+// defaults (status/title/… init to "" / []) so a post doesn't ship `status: ""`
+// (which would leak it onto the Kanban board). Edit-aware: on `existingItem` it
+// merges onto the existing data and keeps the item's type/tags.
+const mapFeedSubmission: ItemEditorMapper = (submission, { existingItem }) => {
+  const { text, tags: submittedTags, ...rest } = submission.data
+  const cleaned = Object.fromEntries(
+    Object.entries(rest).filter(([, v]) => {
+      if (v === "" || v === null || v === undefined) return false
+      if (Array.isArray(v) && v.length === 0) return false
+      return true
+    }),
+  )
+  const type = existingItem?.type ?? submission.contentType
+  const textField = type === "post" ? "content" : "description"
+  const itemData = {
+    ...(existingItem?.data ?? {}),
+    ...cleaned,
+    ...(text ? { [textField]: text } : {}),
+  }
+  const tags = Array.isArray(submittedTags) && submittedTags.length > 0 ? submittedTags : existingItem?.tags
+  return { type, data: itemData, ...(tags ? { tags } : {}) }
+}
+
+/** Pre-fill the edit composer from a feed item's stored data. */
+function feedItemToComposerData(item: Item): Partial<WidgetData> {
+  const d = item.data as Record<string, unknown>
+  const text = item.type === "post" ? d.content : d.description
+  return {
+    ...(typeof d.title === "string" ? { title: d.title } : {}),
+    ...(typeof text === "string" ? { text } : {}),
+    ...(typeof d.start === "string" ? { start: d.start } : {}),
+    ...(typeof d.end === "string" ? { end: d.end } : {}),
+    ...(typeof d.address === "string" ? { address: d.address } : {}),
+    ...(typeof d.locationName === "string" ? { locationName: d.locationName } : {}),
+    ...(d.position && typeof d.position === "object" ? { position: d.position as WidgetData["position"] } : {}),
+    tags: item.tags ?? [],
+  }
+}
 
 export function FeedView({ groupId }: { groupId: string }) {
   // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
@@ -103,34 +149,33 @@ export function FeedView({ groupId }: { groupId: string }) {
   // Origin group per item — only surfaced as a badge in the aggregate view.
   const resolveItemGroup = useItemGroupResolver()
   const openDetail = useCallback((item: Item) => {
+    const matchedTypes = FEED_CONTENT_TYPES.filter((t) => t.id === item.type)
     modulePanel.open({
       kind: "detail",
       itemId: item.id,
       content: (
-        <ItemDetailPanel
-          itemId={item.id}
-          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-        >
-          <div className="p-4">
+        <ItemDetailView
+          item={item}
+          renderRead={(actions) => (
             <ItemPreview
               item={item}
               author={resolveAuthor(item.createdBy)}
               headerAdornment={<ItemTypeBadge type={item.type} />}
-              actions={
-                <ItemDetailActions
-                  item={item}
-                  title={typeof item.data.title === "string" ? item.data.title : undefined}
-                  onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
-                  onDeleted={clearFocus}
-                />
-              }
+              actions={actions}
               metaAdornment={<ItemMetaRow item={item} />}
               footerAdornment={
                 item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined
               }
             />
-          </div>
-        </ItemDetailPanel>
+          )}
+          contentTypes={matchedTypes.length ? matchedTypes : FEED_CONTENT_TYPES}
+          mapper={mapFeedSubmission}
+          editInitialData={feedItemToComposerData(item)}
+          renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
+          onShare={() => { void navigator.clipboard?.writeText(window.location.href) }}
+          onClose={clearFocus}
+          title={typeof item.data.title === "string" ? item.data.title : undefined}
+        />
       ),
       onClose: clearFocus,
     })
@@ -192,54 +237,9 @@ export function FeedView({ groupId }: { groupId: string }) {
     searchText.trim() !== "" || filterBarValue.tags.length > 0 || filterBarValue.types.length > 0
 
   // Content type configs for the composer
-  const feedContentTypes: ContentTypeConfig[] = useMemo(() => [
-    {
-      id: "post",
-      label: "Post",
-      defaultWidgets: ["text"],
-      submitLabel: "Posten",
-    },
-    {
-      id: "event",
-      label: "Veranstaltung",
-      defaultWidgets: ["title", "text", "date", "location"],
-      submitLabel: "Erstellen",
-    },
-  ], [])
-
-  // ContentComposer surfaces the free-text field as `text`; spec base/v1
-  // uses `content` for posts and `description` for items that already
-  // carry a structured payload (events here). Without this mapping a
-  // composer-created post lands in `data.text`, which ItemPreview doesn't
-  // render and `hasField: ["content"]` doesn't match.
-  //
-  // We also strip empty defaults from the composer state (it initializes
-  // status/group/title/text/media/people/tags to "" or []). Without this
-  // a post would ship with `data.status = ""` and match the Kanban
-  // filter `hasField: ["status"]`, leaking it onto the board.
-  const mapSubmission = useCallback<ItemEditorMapper>((submission) => {
-    const { text, tags: submittedTags, ...rest } = submission.data
-    const cleaned = Object.fromEntries(
-      Object.entries(rest).filter(([, v]) => {
-        if (v === "" || v === null || v === undefined) return false
-        if (Array.isArray(v) && v.length === 0) return false
-        return true
-      }),
-    )
-    const itemData = submission.contentType === "post"
-      ? { ...cleaned, ...(text ? { content: text } : {}) }
-      : { ...cleaned, ...(text ? { description: text } : {}) }
-    const tags = Array.isArray(submittedTags) && submittedTags.length > 0 ? submittedTags : undefined
-    return {
-      type: submission.contentType,
-      data: itemData,
-      ...(tags ? { tags } : {}),
-    }
-  }, [])
-
   const editor = useItemEditor({
     currentUserId: currentUser?.id,
-    mapSubmission,
+    mapSubmission: mapFeedSubmission,
   })
 
   // Feed footer convention: a ReactionBar on the left and a comment
@@ -293,7 +293,7 @@ export function FeedView({ groupId }: { groupId: string }) {
           <div className="flex flex-col h-full">
             <ContentComposer
               className="p-4 sm:p-6 flex-1"
-              contentTypes={feedContentTypes}
+              contentTypes={FEED_CONTENT_TYPES}
               initialData={initialText ? { text: initialText } : undefined}
               onSubmit={async (data) => {
                 const result = await editor.submit(data)

@@ -156,7 +156,34 @@ Die reine Sichtbarkeitslogik ist als `visibleDetailActions(perms, hasOnEdit, has
 
 **Zweck:** Bestätigung vor dem Löschen („… wird gelöscht. Das kann nicht rückgängig gemacht werden.") mit Busy-State. `onConfirm` führt die Löschung aus, der Dialog schließt danach. Wird intern von `ItemDetailActions` benutzt, ist aber eigenständig einbindbar.
 
-Konzept/UX: [concepts/item-edit-delete-2026-06.md](../../concepts/item-edit-delete-2026-06.md). Das vollständige Edit-in-Panel (read↔edit-Host) folgt in einer späteren Phase.
+Konzept/UX: [concepts/item-edit-delete-2026-06.md](../../concepts/item-edit-delete-2026-06.md).
+
+### `ItemDetailView`
+
+**Zweck:** Geteilter Detail-Host — Read-Ansicht **und** ein inline Edit-Composer im **selben** Panel (read↔edit-Umschaltung), plus das gegatete Aktionsmenü. Hält **seinen eigenen `useItemEditor`**, sodass eine aufrufende View nur deklarative Config übergibt (kein Editor-Wiring, keine Hook-Reihenfolge-Fallen im `openDetail`).
+
+**Vertrag:**
+
+```ts
+interface ItemDetailViewProps {
+  item: Item
+  renderRead: (actions: ReactNode) => ReactNode   // Read-View; bekommt das ⋮/„Bearbeiten" zum Einbetten (ItemPreview actions-Slot)
+  contentTypes: ContentTypeConfig[]                // nur der Item-Typ → kein Type-Switcher
+  mapper: ItemEditorMapper                         // edit-fähig (nutzt existingItem)
+  editInitialData: Partial<WidgetData>             // Composer-Vorfüllung aus dem Item
+  composerProps?: Partial<ContentComposerProps>    // Modul-Extras (people/tags/geocode/map-pick/…)
+  renderCommentReactions?: (commentId: string) => ReactNode
+  onClose: () => void
+  onShare?: () => void
+  title?: string
+}
+```
+
+**Regeln:**
+
+1. Default ist **Read** (`ItemPreview` + Aktionsmenü via `renderRead`). „Bearbeiten" (gegated über `useItemPermissions`) schaltet auf **Edit** (`ContentComposer`, `editMode`, vorbefüllt). Speichern (`useItemEditor.submit` mit `existingItem`) → zurück auf Read; Abbrechen → zurück auf Read.
+2. Der Host **besitzt den Editor** — Mapper + Vorfüllung kommen als Config; die rufende View hat keine Editor-Abhängigkeit.
+3. Löschen läuft weiter über das Aktionsmenü (`ItemDetailActions`) im Read-Modus.
 
 ### `CommentSection`
 
