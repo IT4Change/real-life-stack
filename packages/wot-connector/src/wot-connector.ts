@@ -894,6 +894,13 @@ export class WotConnector extends BaseConnector {
 
   // ==================== Item-Group Assignment (ItemGroupCapable) ====================
 
+  /** The user's personal/private space — the "share with nobody" target. Items
+   *  created in overview mode land here; pass this id to moveItemToGroup to make
+   *  an item private. */
+  getPersonalGroupId(): string | null {
+    return this.privateSpaceId
+  }
+
   getItemGroupId(itemId: string): string | null {
     if (this.crossGroupIndex) {
       return this.crossGroupIndex.getItemGroupId(itemId)

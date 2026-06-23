@@ -21,6 +21,7 @@ import {
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
   ItemDetailPanel,
+  ItemPrivateBadge,
   ReactionBar,
   CreateFab,
   Skeleton,
@@ -39,6 +40,8 @@ import {
   useConnector,
   useItemEditor,
   useItemGroupColorResolver,
+  useItemPrivacyResolver,
+  usePersonalGroupId,
   type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import { Input } from "@real-life-stack/toolkit"
@@ -116,6 +119,16 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
   // Active-item glow uses the colour of each card's origin group.
   const resolveItemGroupColor = useItemGroupColorResolver(
     activeWorkspaceId === "__overview__" ? undefined : (activeWorkspaceId ?? undefined),
+  )
+  // Personal space → „Privat" option in the picker + a „Privat" badge on the card.
+  const personalGroupId = usePersonalGroupId()
+  const isItemPrivate = useItemPrivacyResolver()
+  // „Privat"-Badge nur in der Meta-Gruppe („Mein Netzwerk") — in einem konkreten
+  // Space ist der Scope ohnehin klar, dort wäre das Badge überflüssig.
+  const renderTaskAdornment = useCallback(
+    (item: Item) =>
+      activeWorkspaceId === "__overview__" && isItemPrivate(item) ? <ItemPrivateBadge /> : null,
+    [activeWorkspaceId, isItemPrivate],
   )
   // Kanban activates on data.status (task/v1). After the PR-1a status
   // migration only tasks carry this field, so no event/place leakage.
@@ -225,9 +238,15 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
       label: col.label,
     })),
     defaultStatus: "open",
-    groupOptions: concreteGroups.map((g) => ({ id: g.id, name: g.name })),
+    // „Privat" (personal space, shared with nobody) first, then the shared
+    // groups — same sharing-scope picker as the other modules. The composer
+    // only shows the widget when there are ≥2 options (a real choice).
+    groupOptions: [
+      ...(personalGroupId ? [{ id: personalGroupId, name: "Privat" }] : []),
+      ...concreteGroups.map((g) => ({ id: g.id, name: g.name })),
+    ],
     groupRequired: true,
-  }), [concreteGroups])
+  }), [concreteGroups, personalGroupId])
 
   // Bridge local panelState ↔ shared ModulePanel. Whenever the
   // task-edit state changes, push the TaskEditPanel into the shared
@@ -590,6 +609,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
                     onItemClick={handleItemClick}
                     activeItemId={modulePanel.current?.itemId}
                     resolveItemGroupColor={resolveItemGroupColor}
+                    renderCardAdornment={renderTaskAdornment}
                     onExternalDrop={externalDropHandlers.get(group.id)}
                   />
                 )}
@@ -618,6 +638,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
                   onItemClick={handleItemClick}
                   activeItemId={modulePanel.current?.itemId}
                   resolveItemGroupColor={resolveItemGroupColor}
+                  renderCardAdornment={renderTaskAdornment}
                 />
               )}
             </div>
@@ -631,6 +652,7 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
           onItemClick={handleItemClick}
           activeItemId={modulePanel.current?.itemId}
           resolveItemGroupColor={resolveItemGroupColor}
+          renderCardAdornment={renderTaskAdornment}
         />
       )}
 

@@ -11,6 +11,8 @@ import {
   EmptyState,
   ItemTypeBadge,
   ItemGroupBadge,
+  ItemPrivateBadge,
+  ItemScopeBadge,
   ItemMetaRow,
   ItemCommentCount,
   FeedComposerTrigger,
@@ -22,9 +24,12 @@ import {
   useItems,
   useMembers,
   useCurrentUser,
+  useGroups,
+  usePersonalGroupId,
   useItemEditor,
   useItemGroupColorResolver,
   useItemGroupResolver,
+  useItemPrivacyResolver,
   getActivePanelGlow,
 } from "@real-life-stack/toolkit"
 import { Calendar, FileText, Search, SearchX } from "lucide-react"
@@ -32,7 +37,7 @@ import { Input } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
-import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
+import { mapComposerSubmission, itemToComposerData, withGroupOptions } from "../composer-mapping"
 
 const FEED_TYPES: FilterTypeOption[] = [
   { id: "post", label: "Posts", icon: FileText },
@@ -108,6 +113,15 @@ export function FeedView({ groupId }: { groupId: string }) {
   const resolveItemGroupColor = useItemGroupColorResolver(isOverview ? undefined : groupId)
   // Origin group per item — only surfaced as a badge in the aggregate view.
   const resolveItemGroup = useItemGroupResolver()
+  // Private items (in the personal space, shared with nobody) get a „Privat" badge.
+  const isItemPrivate = useItemPrivacyResolver()
+  // Groups + personal space for the sharing-scope picker in the composer.
+  const { data: groups } = useGroups()
+  const personalGroupId = usePersonalGroupId()
+  const feedContentTypes = useMemo(
+    () => withGroupOptions(FEED_CONTENT_TYPES, groups, isOverview ? undefined : groupId, personalGroupId),
+    [groups, isOverview, groupId, personalGroupId],
+  )
   // Register the feed's detail config with the host (which owns the panel + the
   // read↔edit lifecycle for the focused item). Memoised so it only re-registers
   // when author resolution changes.
@@ -117,7 +131,12 @@ export function FeedView({ groupId }: { groupId: string }) {
         <ItemPreview
           item={current}
           author={resolveAuthor(current.createdBy)}
-          headerAdornment={<ItemTypeBadge type={current.type} />}
+          headerAdornment={
+            <>
+              <ItemTypeBadge type={current.type} />
+              {isOverview && <ItemScopeBadge item={current} />}
+            </>
+          }
           actions={actions}
           metaAdornment={<ItemMetaRow item={current} />}
           footerAdornment={
@@ -125,7 +144,7 @@ export function FeedView({ groupId }: { groupId: string }) {
           }
         />
       ),
-      contentTypes: FEED_CONTENT_TYPES,
+      contentTypes: feedContentTypes,
       mapper: mapComposerSubmission,
       editInitialData: itemToComposerData,
       composerProps: { geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode },
@@ -134,7 +153,7 @@ export function FeedView({ groupId }: { groupId: string }) {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor],
+    [resolveAuthor, feedContentTypes, isOverview],
   )
   useRegisterDetail("feed", detailConfig)
 
@@ -236,7 +255,7 @@ export function FeedView({ groupId }: { groupId: string }) {
           <div className="flex flex-col h-full">
             <ContentComposer
               className="p-4 sm:p-6 flex-1"
-              contentTypes={FEED_CONTENT_TYPES}
+              contentTypes={feedContentTypes}
               initialData={initialText ? { text: initialText } : undefined}
               onSubmit={async (data) => {
                 const result = await editor.submit(data)
@@ -286,6 +305,7 @@ export function FeedView({ groupId }: { groupId: string }) {
                   <>
                     <ItemTypeBadge type={item.type} />
                     {group && <ItemGroupBadge name={group.name} color={resolveItemGroupColor(item)} />}
+                    {isOverview && isItemPrivate(item) && <ItemPrivateBadge />}
                   </>
                 }
                 metaAdornment={<ItemMetaRow item={item} />}

@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react"
-import type { Item, Relation } from "@real-life-stack/data-interface"
-import { deriveContext } from "@real-life-stack/data-interface"
+import type { DataInterface, Item, Relation } from "@real-life-stack/data-interface"
+import { deriveContext, hasItemGroups } from "@real-life-stack/data-interface"
 import { useCreateItem, useUpdateItem, useDeleteItem } from "./use-mutations"
+import { useConnector } from "./connector-context"
 import type { ContentComposerSubmitData } from "../components/composer/content-composer"
 
 /**
@@ -149,8 +150,27 @@ export function buildUpdatePayload(
   }
 }
 
+/**
+ * Apply the composer's `group` selection as the item's group/space association.
+ * The group is NOT item data — it's a connector association (`moveItemToGroup`),
+ * so mappers omit `data.group` and we persist it here, for every module that
+ * surfaces the group widget. No-ops when the connector has no groups, the
+ * value is blank, or it already matches.
+ */
+async function applyItemGroup(
+  connector: DataInterface,
+  itemId: string,
+  group: unknown,
+): Promise<void> {
+  if (typeof group !== "string" || group === "") return
+  if (!hasItemGroups(connector)) return
+  if (connector.getItemGroupId(itemId) === group) return
+  await connector.moveItemToGroup(itemId, group)
+}
+
 export function useItemEditor(options: UseItemEditorOptions): UseItemEditorResult {
   const { currentUserId, mapSubmission, onCreated, onUpdated, onDeleted } = options
+  const connector = useConnector()
   const { mutate: createItem } = useCreateItem()
   const { mutate: updateItem } = useUpdateItem()
   const { mutate: deleteItem } = useDeleteItem()
@@ -200,12 +220,14 @@ export function useItemEditor(options: UseItemEditorOptions): UseItemEditorResul
         if (activeMode === "create") {
           const payload = buildCreatePayload(mapped, currentUserId)
           const created = await createItem(payload)
+          await applyItemGroup(connector, created.id, submission.data.group)
           await onCreated?.(created)
           return created
         }
 
         const update = buildUpdatePayload(mapped, existingItem!)
         const updated = await updateItem(existingItem!.id, update)
+        await applyItemGroup(connector, updated.id, submission.data.group)
         if (currentItem && currentItem.id === existingItem!.id) {
           setCurrentItem(updated)
         }
@@ -219,7 +241,7 @@ export function useItemEditor(options: UseItemEditorOptions): UseItemEditorResul
         setIsSubmitting(false)
       }
     },
-    [currentItem, mapSubmission, currentUserId, createItem, updateItem, onCreated, onUpdated],
+    [currentItem, mapSubmission, currentUserId, createItem, updateItem, onCreated, onUpdated, connector],
   )
 
   const remove = useCallback(async (itemId?: string) => {

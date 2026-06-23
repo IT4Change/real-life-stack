@@ -5,6 +5,7 @@ import {
   type ContentTypeConfig,
   ItemPreview,
   ItemTypeBadge,
+  ItemScopeBadge,
   ItemTimeRange,
   ReactionBar,
   nominatimGeocode,
@@ -12,6 +13,8 @@ import {
   useItems,
   useMembers,
   useCurrentUser,
+  useGroups,
+  usePersonalGroupId,
   useModulePanel,
   useItemGroupColorResolver,
 } from "@real-life-stack/toolkit"
@@ -19,7 +22,7 @@ import type { User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
-import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
+import { mapComposerSubmission, itemToComposerData, withGroupOptions } from "../composer-mapping"
 
 const pad2 = (n: number) => String(n).padStart(2, "0")
 /** Local `datetime-local` string (YYYY-MM-DDTHH:mm) — used for a time-slot click. */
@@ -40,6 +43,13 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // from other spaces still resolve to their User.
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
+  // Groups + personal space for the sharing-scope picker in the composer.
+  const { data: groups } = useGroups()
+  const personalGroupId = usePersonalGroupId()
+  const currentSpace = groupId === "__overview__" ? undefined : groupId
+  // Scope badge (group/„Privat") is only shown in the aggregate („Mein Netzwerk")
+  // — inside a single space it would be redundant.
+  const isOverview = groupId === "__overview__"
 
   // Item colour falls back to the colour of the group an item was *created* in
   // (origin group) — so the aggregate ("Mein Netzwerk") view shows each item in
@@ -54,14 +64,23 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // jumps to its month (focusDate); browser-back clears it and closes the panel.
   const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
 
-  const calendarContentTypes: ContentTypeConfig[] = useMemo(() => [
-    {
-      id: "event",
-      label: "Veranstaltung",
-      defaultWidgets: ["title", "text", "date", "location"],
-      submitLabel: "Erstellen",
-    },
-  ], [])
+  const calendarContentTypes: ContentTypeConfig[] = useMemo(
+    () =>
+      withGroupOptions(
+        [
+          {
+            id: "event",
+            label: "Veranstaltung",
+            defaultWidgets: ["title", "text", "date", "location"],
+            submitLabel: "Erstellen",
+          },
+        ],
+        groups,
+        currentSpace,
+        personalGroupId,
+      ),
+    [groups, currentSpace, personalGroupId],
+  )
 
   const { openComposer: openCreateComposer, patchData: patchComposerData } = useComposerHost()
 
@@ -88,7 +107,12 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         <ItemPreview
           item={current}
           author={resolveAuthor(current.createdBy)}
-          headerAdornment={<ItemTypeBadge type={current.type} />}
+          headerAdornment={
+            <>
+              <ItemTypeBadge type={current.type} />
+              {isOverview && <ItemScopeBadge item={current} />}
+            </>
+          }
           actions={actions}
           metaAdornment={<ItemTimeRange item={current} />}
           footerAdornment={
@@ -105,7 +129,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, calendarContentTypes],
+    [resolveAuthor, calendarContentTypes, isOverview],
   )
   useRegisterDetail("calendar", detailConfig)
 

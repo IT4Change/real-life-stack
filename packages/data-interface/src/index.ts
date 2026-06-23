@@ -391,6 +391,13 @@ export interface EventListenerCapable {
 export interface ItemGroupCapable {
   getItemGroupId(itemId: string): string | null
   moveItemToGroup(itemId: string, targetGroupId: string): void | Promise<void>
+  /**
+   * The id of the user's personal/private space — the "share with nobody" target
+   * (items here are not in any shared group). Used by the sharing-scope picker to
+   * offer a „Privat" option. `null` for connectors without a personal space.
+   * Pass this id to `moveItemToGroup` to make an item private.
+   */
+  getPersonalGroupId?(): string | null
 }
 
 // --- Convenience: Full-Featured Connector ---

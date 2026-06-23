@@ -14,6 +14,8 @@ import {
 import { useItemEditor, type ItemEditorMapper } from "../../hooks/use-item-editor"
 import { useCurrentUser } from "../../hooks/use-auth"
 import { useItem } from "../../hooks/use-items"
+import { useConnector } from "../../hooks/connector-context"
+import { hasItemGroups } from "@real-life-stack/data-interface"
 
 export interface ItemDetailViewProps {
   /** The item to show. The view subscribes via `useItem`, so it always renders
@@ -63,6 +65,7 @@ export function ItemDetailView({
 }: ItemDetailViewProps) {
   const { data: currentUser } = useCurrentUser()
   const { data: item } = useItem(itemId)
+  const connector = useConnector()
   const editor = useItemEditor({ currentUserId: currentUser?.id, mapSubmission: mapper })
   const [mode, setMode] = useState<"read" | "edit">("read")
 
@@ -82,6 +85,15 @@ export function ItemDetailView({
   // simply not offered (a fallback would show a wrong type switcher / form).
   const composerTypes = contentTypes.filter((t) => t.id === item.type)
   const canEdit = composerTypes.length > 0
+
+  // Pre-fill the group widget with the item's ACTUAL group/space (not just the
+  // config's defaultGroup = current space) so editing in the aggregate view
+  // shows where the item really lives. Persisted back via useItemEditor.
+  const itemGroup = hasItemGroups(connector) ? connector.getItemGroupId(item.id) : null
+  const initialData = {
+    ...editInitialData(item),
+    ...(itemGroup ? { group: itemGroup } : {}),
+  }
 
   const title = typeof item.data.title === "string" ? item.data.title : undefined
   const actions = (
@@ -106,7 +118,7 @@ export function ItemDetailView({
           {...composerProps}
           contentTypes={composerTypes}
           initialContentType={item.type}
-          initialData={editInitialData(item)}
+          initialData={initialData}
           editMode
           onSubmit={async (data) => {
             const updated = await editor.submit(data, { existingItem: item })
