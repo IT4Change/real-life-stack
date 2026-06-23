@@ -474,7 +474,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
             onProfile={() => { if (currentUser?.id) openProfile(currentUser.id) }}
             onContacts={supportsContacts ? () => openDialog("contacts") : undefined}
             contactCount={activeContacts.length}
-            onVerify={() => openDialog("verify")}
+            onVerify={hasEncounterVerification(connector) ? () => openDialog("verify") : undefined}
             onLogout={isAuthenticatable(connector) ? async () => {
               await connector.logout()
               window.location.reload()
@@ -557,7 +557,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
       />
 
       <VerificationDialog
-        open={topDialog === "verify"}
+        open={topDialog === "verify" && hasEncounterVerification(connector)}
         onOpenChange={(open) => { if (!open) popDialog() }}
         challenge={verification.challenge}
         peerInfo={verification.peerInfo}
