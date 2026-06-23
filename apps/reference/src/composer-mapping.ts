@@ -1,5 +1,5 @@
 import type { Item } from "@real-life-stack/data-interface"
-import type { ItemEditorMapper, WidgetData } from "@real-life-stack/toolkit"
+import type { ContentTypeConfig, ItemEditorMapper, WidgetData } from "@real-life-stack/toolkit"
 
 // The composer surfaces free text as `data.text`, but the spec stores it as
 // `content` for posts (base/v1) and `description` for everything else (events,
@@ -17,7 +17,9 @@ function textFieldFor(type: string): "content" | "description" {
  * fields the user didn't touch.
  */
 export const mapComposerSubmission: ItemEditorMapper = (submission, { existingItem }) => {
-  const { text, tags: submittedTags, ...rest } = submission.data
+  // `group` is the item's group/space association, persisted via the connector
+  // (moveItemToGroup in useItemEditor) — never written into item.data.
+  const { text, tags: submittedTags, group: _group, ...rest } = submission.data
   const cleaned = Object.fromEntries(
     Object.entries(rest).filter(([, v]) => {
       if (v === "" || v === null || v === undefined) return false
@@ -34,6 +36,36 @@ export const mapComposerSubmission: ItemEditorMapper = (submission, { existingIt
   const tags =
     Array.isArray(submittedTags) && submittedTags.length > 0 ? submittedTags : existingItem?.tags
   return { type, data: itemData, ...(tags ? { tags } : {}) }
+}
+
+/**
+ * Inject the group/sharing-scope widget into content types: the available groups
+ * as options + the current space as default. The composer auto-shows the `group`
+ * widget in edit mode when ≥2 options exist. The chosen group is persisted as the
+ * item's group association by `useItemEditor` (not as item data). Shared across
+ * modules so every item type gets the same sharing-scope picker.
+ */
+export function withGroupOptions(
+  types: ContentTypeConfig[],
+  groups: { id: string; name: string }[],
+  currentGroupId?: string,
+): ContentTypeConfig[] {
+  if (groups.length === 0) return types
+  const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }))
+  const defaultGroup =
+    currentGroupId && groups.some((g) => g.id === currentGroupId) ? currentGroupId : undefined
+  // Only surface the picker when there's an actual choice (≥2), matching the
+  // composer's own edit-mode threshold. Adding "group" to defaultWidgets shows it
+  // at create time too (not only in edit), so a new item's group is selectable.
+  const showWidget = groups.length >= 2
+  return types.map((t) => ({
+    ...t,
+    groupOptions,
+    ...(defaultGroup ? { defaultGroup } : {}),
+    ...(showWidget && !t.defaultWidgets.includes("group")
+      ? { defaultWidgets: [...t.defaultWidgets, "group"] }
+      : {}),
+  }))
 }
 
 /** Pre-fill the edit composer from an item's stored data (inverse of the mapper). */

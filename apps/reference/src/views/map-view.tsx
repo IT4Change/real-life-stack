@@ -4,6 +4,7 @@ import {
   useItem,
   useMembers,
   useCurrentUser,
+  useGroups,
   useModulePanel,
   useIsCompact,
   type ContentTypeConfig,
@@ -35,7 +36,7 @@ import { useComposerHost } from "../composer-host"
 import { useLocationPick } from "../location-pick"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
-import { mapComposerSubmission, itemToComposerData } from "../composer-mapping"
+import { mapComposerSubmission, itemToComposerData, withGroupOptions } from "../composer-mapping"
 
 const MAP_TYPES: FilterTypeOption[] = [
   { id: "event", label: "Events", icon: Calendar },
@@ -211,6 +212,9 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // in from other spaces still resolve to their User.
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
+  // Groups for the sharing-scope (group) picker in the composer.
+  const { data: groups } = useGroups()
+  const currentSpace = groupId === "__overview__" ? undefined : groupId
   // Marker colour falls back to the colour of the group an item was *created* in
   // (origin group) — so the aggregate ("Mein Netzwerk") view shows each marker in
   // its origin group's colour. Shared resolver, also used for the active glow.
@@ -245,20 +249,28 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     return Array.from(seen).sort()
   }, [accumulatedItems])
 
-  const mapContentTypes: ContentTypeConfig[] = useMemo(() => [
-    {
-      id: "place",
-      label: "Ort",
-      defaultWidgets: ["title", "text", "location"],
-      submitLabel: "Erstellen",
-    },
-    {
-      id: "event",
-      label: "Veranstaltung",
-      defaultWidgets: ["title", "text", "date", "location"],
-      submitLabel: "Erstellen",
-    },
-  ], [])
+  const mapContentTypes: ContentTypeConfig[] = useMemo(
+    () =>
+      withGroupOptions(
+        [
+          {
+            id: "place",
+            label: "Ort",
+            defaultWidgets: ["title", "text", "location"],
+            submitLabel: "Erstellen",
+          },
+          {
+            id: "event",
+            label: "Veranstaltung",
+            defaultWidgets: ["title", "text", "date", "location"],
+            submitLabel: "Erstellen",
+          },
+        ],
+        groups,
+        currentSpace,
+      ),
+    [groups, currentSpace],
+  )
 
   const { openComposer: openCreateComposer } = useComposerHost()
   const { isPicking, updatePick, confirmPick, cancelPick } = useLocationPick()
