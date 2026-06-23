@@ -86,7 +86,11 @@ export function ItemDetailActions({ item, onEdit, onDeleted, onShare, title }: I
           title={title}
           onConfirm={async () => {
             // canDelete already gated the UI; re-check writability defensively.
-            if (isWritable(connector)) await connector.deleteItem(item.id)
+            // Signal onDeleted (e.g. close the panel) ONLY after a real delete —
+            // otherwise a not-writable connector would close the detail/URL while
+            // the item still exists.
+            if (!isWritable(connector)) return
+            await connector.deleteItem(item.id)
             onDeleted?.()
           }}
         />
