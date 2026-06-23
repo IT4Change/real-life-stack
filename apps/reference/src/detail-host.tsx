@@ -209,10 +209,18 @@ export function DetailHostController({ activeModule }: { activeModule: string })
       // close when our detail is still showing: a create composer (kind
       // "composer", opened by the composer-host) may have replaced it, and we
       // must not close that.
+      //
+      // SILENT close: leaving for a module that can't show the item (e.g.
+      // Kanban) must NOT clear the URL focus — otherwise switching back to a
+      // host module would no longer re-reveal the item. The focus is owned by
+      // the URL (`handleModuleChange` carries the itemId across every switch);
+      // the controller only opens/closes the panel as a consequence of it. A
+      // real user dismissal (X / backdrop) flows through AdaptivePanel →
+      // `close()` (non-silent) and clears the focus there.
       openedIdRef.current = null
       if (panelOwnedRef.current) {
         panelOwnedRef.current = false
-        if (modulePanel.current?.kind === "detail") modulePanel.close()
+        if (modulePanel.current?.kind === "detail") modulePanel.close({ silent: true })
       }
     }
   }, [hostOwns, focusedId, config, modulePanel, clearFocus])

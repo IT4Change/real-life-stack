@@ -42,8 +42,13 @@ export interface ModulePanelContextValue {
   current: ModulePanelEntry | null
   /** Open or replace the panel content. */
   open(entry: ModulePanelEntry): void
-  /** Close the panel. Caller's `onClose` is invoked. */
-  close(): void
+  /**
+   * Close the panel. The current entry's `onClose` fires — UNLESS `silent`.
+   * Pass `silent` for a programmatic release that must NOT run the owner's
+   * `onClose` (e.g. a host releasing its panel on a module switch while the
+   * URL keeps the item focused — firing `onClose` there would clear the focus).
+   */
+  close(opts?: { silent?: boolean }): void
 }
 
 const ModulePanelContext = createContext<ModulePanelContextValue | null>(null)
@@ -98,11 +103,11 @@ export function ModulePanelProvider({
     setCurrent(entry)
   }, [])
 
-  const close = useCallback(() => {
+  const close = useCallback((opts?: { silent?: boolean }) => {
     const owner = currentOnCloseRef.current
     currentOnCloseRef.current = undefined
     setCurrent(null)
-    if (owner) owner()
+    if (owner && !opts?.silent) owner()
   }, [])
 
   const value = useMemo<ModulePanelContextValue>(
@@ -115,7 +120,7 @@ export function ModulePanelProvider({
       {children}
       <AdaptivePanel
         open={current !== null}
-        onClose={close}
+        onClose={() => close()}
         allowedModes={allowedModes}
         side={side}
         sidebarWidth={sidebarWidth}
