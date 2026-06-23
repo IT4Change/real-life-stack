@@ -199,7 +199,10 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
   }
 
   const handleItemClick = useCallback((item: Item) => {
-    setPanelState({ mode: "edit", item })
+    // URL focus is the single source for the panel — the deep-link effect below
+    // opens it. Setting panelState here too raced the URL update (panelState
+    // went `edit` while selectedItemId briefly lagged → the close-branch flashed
+    // the panel shut). Drive it through the URL only.
     onItemSelect?.(item.id)
   }, [onItemSelect])
 
@@ -332,7 +335,9 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
     currentUserId: currentUser?.id,
     mapSubmission: mapTaskSubmission,
     onCreated: (item) => {
-      setPanelState({ mode: "edit", item })
+      // Open via the URL focus (single source) — the deep-link effect shows the
+      // panel once the new task lands in the reactive list. (No direct
+      // setPanelState: that raced the URL update and flashed the panel.)
       onItemSelect?.(item.id)
     },
     onDeleted: () => setPanelState({ mode: "closed" }),
