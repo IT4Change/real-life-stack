@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useMemo, useReducer, startTransition } from "react"
 import type { Group } from "@real-life-stack/data-interface"
-import { hasGroups } from "@real-life-stack/data-interface"
+import { hasGroups, hasItemGroups } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
+
+/**
+ * Id of the user's personal/private space („share with nobody"), or `null` for
+ * connectors without one. Used by the sharing-scope picker to offer a „Privat"
+ * option (pass the id to `moveItemToGroup` to make an item private).
+ */
+export function usePersonalGroupId(): string | null {
+  const connector = useConnector()
+  if (!hasItemGroups(connector)) return null
+  return connector.getPersonalGroupId?.() ?? null
+}
 
 function useGroupConnector() {
   const connector = useConnector()

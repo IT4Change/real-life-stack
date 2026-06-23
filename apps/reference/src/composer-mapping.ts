@@ -49,17 +49,26 @@ export function withGroupOptions(
   types: ContentTypeConfig[],
   groups: { id: string; name: string }[],
   currentGroupId?: string,
+  personalGroupId?: string | null,
 ): ContentTypeConfig[] {
-  // Only surface a picker when there's an actual choice (≥2 groups), matching
-  // the composer's own edit-mode threshold. With 0 or 1 group the item simply
-  // lands in that group; no widget at all (not shown, not toggleable).
-  if (groups.length < 2) return types
-  const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }))
+  // Options = the user's personal/private space („Privat", the „share with
+  // nobody" target) + the shared groups. Only surface a picker when there's a
+  // real choice (≥2 options): private vs. one group, or two groups. With a single
+  // option the item just lands there (no widget — not shown, not toggleable).
+  const options: { id: string; name: string }[] = []
+  if (personalGroupId) options.push({ id: personalGroupId, name: "Privat" })
+  options.push(...groups.map((g) => ({ id: g.id, name: g.name })))
+  if (options.length < 2) return types
+
+  // Default to the current space; in the personal/overview view (no concrete
+  // space) default to „Privat" so a new item stays private unless shared.
   const defaultGroup =
-    currentGroupId && groups.some((g) => g.id === currentGroupId) ? currentGroupId : undefined
+    currentGroupId && options.some((o) => o.id === currentGroupId)
+      ? currentGroupId
+      : personalGroupId ?? undefined
   return types.map((t) => ({
     ...t,
-    groupOptions,
+    groupOptions: options,
     ...(defaultGroup ? { defaultGroup } : {}),
     // Add "group" to defaultWidgets so it shows at create time too (not only edit).
     ...(t.defaultWidgets.includes("group")

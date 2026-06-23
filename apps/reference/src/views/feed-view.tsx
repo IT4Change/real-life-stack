@@ -23,6 +23,7 @@ import {
   useMembers,
   useCurrentUser,
   useGroups,
+  usePersonalGroupId,
   useItemEditor,
   useItemGroupColorResolver,
   useItemGroupResolver,
@@ -109,11 +110,12 @@ export function FeedView({ groupId }: { groupId: string }) {
   const resolveItemGroupColor = useItemGroupColorResolver(isOverview ? undefined : groupId)
   // Origin group per item — only surfaced as a badge in the aggregate view.
   const resolveItemGroup = useItemGroupResolver()
-  // Groups for the sharing-scope (group) picker in the composer.
+  // Groups + personal space for the sharing-scope picker in the composer.
   const { data: groups } = useGroups()
+  const personalGroupId = usePersonalGroupId()
   const feedContentTypes = useMemo(
-    () => withGroupOptions(FEED_CONTENT_TYPES, groups, isOverview ? undefined : groupId),
-    [groups, isOverview, groupId],
+    () => withGroupOptions(FEED_CONTENT_TYPES, groups, isOverview ? undefined : groupId, personalGroupId),
+    [groups, isOverview, groupId, personalGroupId],
   )
   // Register the feed's detail config with the host (which owns the panel + the
   // read↔edit lifecycle for the focused item). Memoised so it only re-registers

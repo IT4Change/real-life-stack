@@ -13,6 +13,7 @@ import {
   useMembers,
   useCurrentUser,
   useGroups,
+  usePersonalGroupId,
   useModulePanel,
   useItemGroupColorResolver,
 } from "@real-life-stack/toolkit"
@@ -41,8 +42,9 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // from other spaces still resolve to their User.
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
-  // Groups for the sharing-scope (group) picker in the composer.
+  // Groups + personal space for the sharing-scope picker in the composer.
   const { data: groups } = useGroups()
+  const personalGroupId = usePersonalGroupId()
   const currentSpace = groupId === "__overview__" ? undefined : groupId
 
   // Item colour falls back to the colour of the group an item was *created* in
@@ -71,8 +73,9 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         ],
         groups,
         currentSpace,
+        personalGroupId,
       ),
-    [groups, currentSpace],
+    [groups, currentSpace, personalGroupId],
   )
 
   const { openComposer: openCreateComposer, patchData: patchComposerData } = useComposerHost()

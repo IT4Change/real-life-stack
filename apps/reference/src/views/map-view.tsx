@@ -5,6 +5,7 @@ import {
   useMembers,
   useCurrentUser,
   useGroups,
+  usePersonalGroupId,
   useModulePanel,
   useIsCompact,
   type ContentTypeConfig,
@@ -214,6 +215,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   const { data: currentUser } = useCurrentUser()
   // Groups for the sharing-scope (group) picker in the composer.
   const { data: groups } = useGroups()
+  const personalGroupId = usePersonalGroupId()
   const currentSpace = groupId === "__overview__" ? undefined : groupId
   // Marker colour falls back to the colour of the group an item was *created* in
   // (origin group) — so the aggregate ("Mein Netzwerk") view shows each marker in
@@ -268,8 +270,9 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         ],
         groups,
         currentSpace,
+        personalGroupId,
       ),
-    [groups, currentSpace],
+    [groups, currentSpace, personalGroupId],
   )
 
   const { openComposer: openCreateComposer } = useComposerHost()
