@@ -17,7 +17,7 @@ import {
   useFilterableItems,
   type FilterBarValue,
   type FilterTypeOption,
-  useItems,
+  useItemsWithDraft,
   useMembers,
   useCurrentUser,
   useGroups,
@@ -50,8 +50,8 @@ export function FeedView({ groupId }: { groupId: string }) {
   // - Events carry data.start (event/v1)
   // Cross-context items (e.g. an event-with-place) naturally show up in
   // multiple modules without any extra handling.
-  const { data: posts, isLoading: postsLoading } = useItems({ hasField: ["content"] })
-  const { data: events, isLoading: eventsLoading } = useItems({ hasField: ["start"] })
+  const { data: posts, isLoading: postsLoading } = useItemsWithDraft({ hasField: ["content"] })
+  const { data: events, isLoading: eventsLoading } = useItemsWithDraft({ hasField: ["start"] })
   // Feed is the union of both queries → it has "loaded" only once both have.
   const isLoading = postsLoading || eventsLoading
   // `groupId === "__overview__"` is the cross-space aggregate view

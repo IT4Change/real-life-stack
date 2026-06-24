@@ -185,6 +185,9 @@ export interface ContentComposerProps {
   renderPreview?: (data: WidgetData, contentType: string) => React.ReactNode
   /** When true, every data change immediately calls onSubmit and the footer is hidden */
   liveUpdate?: boolean
+  /** Fires on every data/type change (and on mount) — for a live preview of the
+   *  in-progress item without persisting it. */
+  onChange?: (submission: ContentComposerSubmitData) => void
   className?: string
 }
 
@@ -287,6 +290,7 @@ export function ContentComposer({
   showPreview = true,
   renderPreview,
   liveUpdate = false,
+  onChange,
   className,
 }: ContentComposerProps) {
   const isEditMode = editModeProp ?? !!onDelete
@@ -381,6 +385,12 @@ export function ContentComposer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, liveUpdate])
+
+  // Live preview: publish the current draft on every data/type change (and on
+  // mount), so modules can show the in-progress item before it's saved.
+  React.useEffect(() => {
+    onChange?.({ contentType: selectedType, isPublic, data })
+  }, [onChange, selectedType, isPublic, data])
 
   // Active widgets = defaults + manually added
   const defaultWidgets = new Set(currentConfig.defaultWidgets)

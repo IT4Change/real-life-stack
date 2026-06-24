@@ -1,14 +1,17 @@
 "use client"
 
+import { useCallback, useEffect } from "react"
 import type { Item } from "@real-life-stack/data-interface"
 import {
   ContentComposer,
   type ContentComposerProps,
+  type ContentComposerSubmitData,
   type ContentTypeConfig,
   type WidgetData,
 } from "./content-composer"
 import { useItemEditor, type ItemEditorMapper } from "../../hooks/use-item-editor"
 import { useCurrentUser } from "../../hooks/use-auth"
+import { useSetDraftItem, DRAFT_ITEM_ID } from "../../hooks/use-draft-item"
 
 export interface ItemComposerProps {
   /** Types offered. Create: a module's subset; edit: locked to the item's type. */
@@ -54,6 +57,35 @@ export function ItemComposer({
 }: ItemComposerProps) {
   const { data: currentUser } = useCurrentUser()
   const editor = useItemEditor({ currentUserId: currentUser?.id, mapSubmission: mapper })
+
+  // Live preview: publish the in-progress item as a draft (via the same mapper
+  // used for saving) so modules show it before it's saved. Cleared on unmount
+  // (save/cancel/navigate-away all unmount the composer).
+  const setDraft = useSetDraftItem()
+  const currentUserId = currentUser?.id
+  const publishDraft = useCallback(
+    (submission: ContentComposerSubmitData) => {
+      const payload = mapper(submission, {
+        mode: existingItem ? "edit" : "create",
+        existingItem: existingItem ?? null,
+      })
+      if (!payload) return // mapper aborted (validation) → keep last preview
+      const tags = payload.tags ?? existingItem?.tags
+      const relations = payload.relations ?? existingItem?.relations
+      setDraft({
+        id: existingItem?.id ?? DRAFT_ITEM_ID,
+        type: payload.type,
+        createdAt: existingItem?.createdAt ?? new Date().toISOString(),
+        createdBy: payload.createdBy ?? existingItem?.createdBy ?? currentUserId ?? "anonymous",
+        data: payload.data,
+        ...(tags ? { tags } : {}),
+        ...(relations ? { relations } : {}),
+      })
+    },
+    [mapper, existingItem, currentUserId, setDraft],
+  )
+  useEffect(() => () => setDraft(null), [setDraft])
+
   return (
     <ContentComposer
       apiRef={apiRef}
@@ -64,6 +96,7 @@ export function ItemComposer({
       editMode={!!existingItem}
       showPreview={false}
       {...composerProps}
+      onChange={publishDraft}
       onSubmit={async (data) => {
         const saved = await editor.submit(data, existingItem ? { existingItem } : undefined)
         if (saved) onDone(saved)

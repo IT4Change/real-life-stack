@@ -32,7 +32,7 @@ import {
   emptyFilterBarValue,
   useFilterableItems,
   type FilterBarValue,
-  useItems,
+  useItemsWithDraft,
   useUpdateItem,
   useMembers,
   useCurrentUser,
@@ -82,7 +82,7 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   )
   // Kanban activates on data.status (task/v1). After the PR-1a status
   // migration only tasks carry this field, so no event/place leakage.
-  const { data: tasks, isLoading: tasksLoading } = useItems({ hasField: ["status"] })
+  const { data: tasks, isLoading: tasksLoading } = useItemsWithDraft({ hasField: ["status"] })
   const { data: members } = useMembers(activeWorkspaceId === "__overview__" ? null : (activeWorkspaceId ?? "group-1"))
   const { data: currentUser } = useCurrentUser()
   const { mutate: updateItem } = useUpdateItem()

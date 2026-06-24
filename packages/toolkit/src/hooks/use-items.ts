@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useReducer, startTransition } from "react"
 import type { ItemFilter } from "@real-life-stack/data-interface"
+import { matchesFilter } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
+import { useDraftItem } from "./use-draft-item"
 
 export function useItems(filter?: ItemFilter) {
   const connector = useConnector()
@@ -26,6 +28,25 @@ export function useItems(filter?: ItemFilter) {
   // genuinely empty result reads as loaded. `loaded === undefined` (sources
   // without the flag) counts as loaded.
   return { data: observable.current, isLoading: observable.loaded === false }
+}
+
+/**
+ * Like {@link useItems}, but merges the live draft item (an in-progress
+ * create/edit) when it matches the filter — so a module previews it before it's
+ * saved. The draft replaces the real item on edit (same id) and is prepended on
+ * create. The module's own sort/group/filter then places it (right column, date,
+ * marker) for free. Nothing is persisted; on save/cancel the draft vanishes.
+ */
+export function useItemsWithDraft(filter?: ItemFilter) {
+  const { data, isLoading } = useItems(filter)
+  const draft = useDraftItem()
+  const filterKey = JSON.stringify(filter)
+  const merged = useMemo(() => {
+    if (!draft || !matchesFilter(draft, filter ?? {})) return data
+    return [draft, ...data.filter((it) => it.id !== draft.id)]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, draft, filterKey])
+  return { data: merged, isLoading }
 }
 
 export function useItem(id: string) {

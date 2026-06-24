@@ -22,6 +22,7 @@ import {
   GroupDialog,
   AdaptivePanel,
   OpenProfileProvider,
+  DraftItemProvider,
   ModulePanelProvider,
   useModulePanel,
   DebugDashboard,
@@ -415,6 +416,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
   return (
     <OpenProfileProvider openProfile={openProfile}>
+    <DraftItemProvider>
     <DetailHostProvider>
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
     <CreateHostProvider>
@@ -584,6 +586,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     </CreateHostProvider>
     </LocationPickProvider>
     </DetailHostProvider>
+    </DraftItemProvider>
     </OpenProfileProvider>
   )
 }

@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
+import { DRAFT_ITEM_ID } from "@real-life-stack/toolkit"
 import { VALID_MODULES } from "./use-workspace-routing"
 
 export interface ItemFocus {
@@ -76,6 +77,9 @@ export function ItemFocusProvider({ children }: { children: ReactNode }) {
   searchRef.current = location.search
 
   const focusItem = useCallback((id: string) => {
+    // The live preview draft (a create's synthetic id) isn't a real focusable
+    // item — clicking its preview should do nothing.
+    if (id === DRAFT_ITEM_ID) return
     const { scope, module } = parsePath(pathRef.current)
     if (!scope || !module) return
     // Focusing an item is the read view — drop any stale `?edit`, keep other query.

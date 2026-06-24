@@ -7,7 +7,7 @@ import {
   ItemScopeBadge,
   ItemTimeRange,
   ReactionBar,
-  useItems,
+  useItemsWithDraft,
   useMembers,
   useCurrentUser,
   useGroups,
@@ -37,7 +37,7 @@ function toLocalDate(d: Date): string {
 export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // Calendar activates on data.start (event/v1). Cross-context items
   // (e.g. an event with a place) appear here too.
-  const { data: events } = useItems({ hasField: ["start"] })
+  const { data: events } = useItemsWithDraft({ hasField: ["start"] })
   // Cross-space aggregate ("Mein Netzwerk"): useMembers(null) yields
   // the union of all known members, so authors of items pulled in
   // from other spaces still resolve to their User.

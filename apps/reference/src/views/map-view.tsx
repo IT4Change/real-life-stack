@@ -18,6 +18,7 @@ import {
   emptyFilterBarValue,
   useFilterableItems,
   getItemColor,
+  useDraftItem,
   useItemGroupColorResolver,
   Button,
   Input,
@@ -277,13 +278,25 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // Id of the item open in the shared panel → its marker is highlighted.
   const activeItemId = modulePanel.current?.itemId
 
+  // Live preview: a place/event being created/edited shows its marker as soon as
+  // it has a position. Merged into the marker source only (NOT the accumulated
+  // set), so it appears/moves live and vanishes on save/cancel without leaving a
+  // stale marker. For edit (draft.id === real id) it replaces the real marker.
+  const draft = useDraftItem()
+  const markerItems = useMemo(() => {
+    // While picking, the provisional pick marker already shows the position — skip
+    // the draft marker to avoid two markers on the same spot.
+    if (!draft || isPicking) return filteredItems
+    return [...filteredItems.filter((i) => i.id !== draft.id), draft]
+  }, [filteredItems, draft, isPicking])
+
   // Build the markers and an id → item lookup in one pass — marker
   // clicks come back with just the id, and we need the full item to
   // open the detail panel.
   const { markers, itemsById } = useMemo(() => {
     const markerList: MapMarkerSpec[] = []
     const byId = new Map<string, Item>()
-    for (const item of filteredItems) {
+    for (const item of markerItems) {
       const pos = item.data.position as { type?: string; coordinates?: number[] } | undefined
       if (!pos || pos.type !== "Point" || !Array.isArray(pos.coordinates) || pos.coordinates.length < 2) continue
       const [lng, lat] = pos.coordinates
@@ -297,15 +310,17 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         // Glyph: an explicit item icon, else the first tag's name (which resolves
         // to a curated icon when it matches, e.g. "cafe"); unknown → a dot.
         icon: (item.data.icon as string | undefined) ?? firstTag,
-        // Highlight the marker whose item is open in the shared panel — a soft
-        // glow in the item's origin-group colour (analogous to the cards).
-        selected: item.id === activeItemId,
+        // Highlight the marker whose item is open in the shared panel, or the
+        // live draft being composed — a soft glow in the origin-group colour.
+        selected: item.id === activeItemId || (draft != null && item.id === draft.id),
         glowColor: resolveItemGroupColor(item),
       })
-      byId.set(item.id, item)
+      // The draft marker is a preview — not clickable into a detail (its item
+      // isn't persisted; for create the id is synthetic).
+      if (!draft || item.id !== draft.id) byId.set(item.id, item)
     }
     return { markers: markerList, itemsById: byId }
-  }, [filteredItems, resolveItemGroupColor, activeItemId])
+  }, [markerItems, resolveItemGroupColor, activeItemId, draft])
 
   // Mount the adapter once. The lazy-loaded map library means mount() is
   // properly async, which exposes a classic StrictMode race: both effect
