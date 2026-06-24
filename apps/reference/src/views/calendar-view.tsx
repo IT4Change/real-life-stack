@@ -191,6 +191,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
         events={events}
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
+        showScopeBadge={groupId === "__overview__"}
         currentUserId={currentUser?.id}
         resolveItemGroupColor={resolveItemGroupColor}
         activeItemId={modulePanel.current?.itemId}

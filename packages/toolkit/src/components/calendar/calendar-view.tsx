@@ -18,6 +18,7 @@ import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 import { ItemPreview } from "../preview/item-preview"
 import { ItemTypeBadge } from "../preview/item-type-badge"
 import { ItemTimeRange } from "../preview/item-time-range"
+import { ItemScopeBadge } from "../preview/item-scope-badge"
 import { FilterBar } from "../filter/filter-bar"
 import { FilterSection, FilterToggle, FilterMultiSelect } from "../filter/filter-building-blocks"
 import { emptyFilterBarValue, type FilterBarValue, type FilterTypeOption } from "../filter/types"
@@ -44,6 +45,11 @@ const CalendarGroupColorContext = createContext<GroupColorResolver>(() => "#2563
 /** Id of the item currently open in the shared panel, so its pill/card is
  *  highlighted across the calendar (and stays in sync with map/feed/kanban). */
 const CalendarActiveItemContext = createContext<string | undefined>(undefined)
+
+/** Whether list/day cards show the sharing-scope tag (Privat/group). On only in
+ *  the aggregate "Mein Netzwerk" view — in a concrete space the scope is implied,
+ *  so the tag would be redundant. Matches the kanban/feed cards. */
+const CalendarScopeBadgeContext = createContext<boolean>(false)
 
 /** Min horizontal travel (px) to commit a period swipe — PR spec contract. */
 const SWIPE_COMMIT_PX = 60
@@ -296,6 +302,9 @@ export interface CalendarViewProps {
   resolveItemGroupColor?: (item: Item) => string
   /** Id of the item currently open in the shared panel — its pill/card is highlighted. */
   activeItemId?: string
+  /** Show the sharing-scope tag (Privat/group) on list/day cards — set true only
+   *  in the aggregate view, where items come from different spaces. */
+  showScopeBadge?: boolean
   /** One-way: jump the visible period to this date when it changes (e.g. to reveal
    *  a URL-focused event's month). Doesn't fight the user's manual navigation. */
   focusDate?: Date
@@ -314,6 +323,7 @@ export function CalendarView({
   groupColor = "#2563eb",
   resolveItemGroupColor,
   activeItemId,
+  showScopeBadge = false,
   focusDate,
   onEventClick,
   onCreateEvent,
@@ -597,6 +607,7 @@ export function CalendarView({
   return (
     <CalendarGroupColorContext.Provider value={resolveGroupColor}>
     <CalendarActiveItemContext.Provider value={activeItemId}>
+    <CalendarScopeBadgeContext.Provider value={showScopeBadge}>
     <div className={cn("flex w-full flex-col gap-3 min-h-0", className)}>
       <FilterBar
         value={filterBarValue}
@@ -766,6 +777,7 @@ export function CalendarView({
       </div>
       </div>
     </div>
+    </CalendarScopeBadgeContext.Provider>
     </CalendarActiveItemContext.Provider>
     </CalendarGroupColorContext.Provider>
   )
@@ -1182,6 +1194,7 @@ interface EventCardProps {
 function EventCard({ event, onClick }: EventCardProps) {
   const activeItemId = useContext(CalendarActiveItemContext)
   const resolveGroupColor = useContext(CalendarGroupColorContext)
+  const showScopeBadge = useContext(CalendarScopeBadgeContext)
   const isActive = activeItemId === event.item.id
   // The calendar list-view card uses ItemPreview with `author={null}`
   // (the date group header above already carries the temporal context),
@@ -1201,7 +1214,10 @@ function EventCard({ event, onClick }: EventCardProps) {
       style={isActive ? getActivePanelGlow(resolveGroupColor(event.item)) : undefined}
       onClick={onClick ? () => onClick(event.item) : undefined}
       headerAdornment={
-        <ItemTypeBadge type={event.item.type} />
+        <>
+          <ItemTypeBadge type={event.item.type} />
+          {showScopeBadge && <ItemScopeBadge item={event.item} />}
+        </>
       }
       metaAdornment={<ItemTimeRange item={event.item} locationLabel={event.location} />}
     />
