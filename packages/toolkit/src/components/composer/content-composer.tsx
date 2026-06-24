@@ -225,6 +225,42 @@ const DEFAULT_DATA: WidgetData = {
   group: "",
 }
 
+/**
+ * Which widget a data field belongs to — used to reveal a widget initially when
+ * the item already carries a value for it (so editing a task that has a date /
+ * place shows those fields instead of hiding them behind the "+" toggles).
+ * `status`/`group` are intentionally excluded: they are config-gated (need
+ * statusOptions/groupOptions) and handled separately.
+ */
+const PRESENCE_WIDGET_BY_FIELD: Record<string, WidgetType> = {
+  title: "title",
+  text: "text",
+  media: "media",
+  start: "date",
+  end: "date",
+  rrule: "date",
+  address: "location",
+  locationName: "location",
+  position: "location",
+  meetingLink: "location",
+  people: "people",
+  tags: "tags",
+}
+
+/** Widgets that have a non-empty value in `data` — shown initially when present. */
+function widgetsWithValue(data: Partial<WidgetData> | undefined): Set<string> {
+  const set = new Set<string>()
+  if (!data) return set
+  for (const [field, widget] of Object.entries(PRESENCE_WIDGET_BY_FIELD)) {
+    const value = (data as Record<string, unknown>)[field]
+    if (value == null) continue
+    if (typeof value === "string" && value.trim() === "") continue
+    if (Array.isArray(value) && value.length === 0) continue
+    set.add(widget)
+  }
+  return set
+}
+
 // ── Component ────────────────────────────────────────────────────────────
 
 export function ContentComposer({
@@ -275,8 +311,10 @@ export function ContentComposer({
       apiRef.current = null
     }
   }, [apiRef])
+  // Start with the widgets the item already has a value for, so editing reveals
+  // its set fields (a task's date/place) instead of hiding them behind toggles.
   const [manualWidgets, setManualWidgets] = React.useState<Set<string>>(
-    () => new Set(),
+    () => widgetsWithValue(initialData),
   )
   const [isPublic, setIsPublic] = React.useState(defaultPublic)
   const [isPreviewing, setIsPreviewing] = React.useState(false)
