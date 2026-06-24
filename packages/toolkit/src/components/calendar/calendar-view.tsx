@@ -912,14 +912,31 @@ function WeekCalendar({
   // midnight, below the 06:00 first slot), so this row is where they appear.
   const dayIndex = (d: Date) =>
     Math.max(0, Math.min(6, Math.round((atStartOfDay(d).getTime() - weekStart.getTime()) / 86_400_000)))
-  const allDayBars = events
+  const spanningBars = events
     .filter((e) => e.allDay && atStartOfDay(e.start) <= weekEnd && atStartOfDay(e.end ?? e.start) >= weekStart)
     .sort(compareEvents)
     .map((e) => {
       const startCol = dayIndex(e.start)
       const endCol = dayIndex(e.end ?? e.start)
-      return { event: e, startCol, span: endCol - startCol + 1 }
+      return { event: e, startCol, endCol, span: endCol - startCol + 1 }
     })
+  // Pack bars into lanes (rows): bars that don't overlap by column (different
+  // days) share a lane instead of each claiming its own row — otherwise they
+  // cascade into a diagonal staircase. Greedy first-fit over the start-sorted
+  // bars yields the minimal number of lanes; only same-day/overlapping bars
+  // stack onto extra rows.
+  const laneEnds: number[] = []
+  const allDayBars = spanningBars.map((bar) => {
+    let lane = laneEnds.findIndex((end) => bar.startCol > end)
+    if (lane === -1) {
+      lane = laneEnds.length
+      laneEnds.push(bar.endCol)
+    } else {
+      laneEnds[lane] = bar.endCol
+    }
+    return { ...bar, lane }
+  })
+  const allDayLaneCount = laneEnds.length
 
   return (
     <div>
@@ -941,19 +958,19 @@ function WeekCalendar({
       {allDayBars.length > 0 && (
         <div
           className={cn("grid gap-y-0.5 border-b bg-background py-0.5", WEEK_COLS)}
-          style={{ gridTemplateRows: `repeat(${allDayBars.length}, minmax(22px, auto))` }}
+          style={{ gridTemplateRows: `repeat(${allDayLaneCount}, minmax(22px, auto))` }}
         >
           <div
             className="flex items-center justify-center border-r bg-muted/20 px-0.5 text-center text-[9px] leading-tight text-muted-foreground"
-            style={{ gridColumn: 1, gridRow: `1 / ${allDayBars.length + 1}` }}
+            style={{ gridColumn: 1, gridRow: `1 / ${allDayLaneCount + 1}` }}
           >
             Ganztägig
           </div>
-          {allDayBars.map(({ event, startCol, span }, index) => (
+          {allDayBars.map(({ event, startCol, span, lane }) => (
             <div
               key={event.item.id}
               className="px-0.5"
-              style={{ gridColumn: `${startCol + 2} / span ${span}`, gridRow: index + 1 }}
+              style={{ gridColumn: `${startCol + 2} / span ${span}`, gridRow: lane + 1 }}
             >
               <EventPill event={event} onClick={onEventClick} />
             </div>
@@ -1009,6 +1026,11 @@ interface DayCalendarProps {
 
 function DayCalendar({ visibleDate, eventsByDay, onEventClick, onCreateEvent }: DayCalendarProps) {
   const dayEvents = getEventsForDay(eventsByDay, visibleDate)
+  // All-day events start at local midnight, below the 06:00 first slot, so they
+  // never matched an hour row and went missing. Surface them in their own
+  // section above the timed grid (like the week view's all-day bar).
+  const allDayEvents = dayEvents.filter((event) => event.allDay)
+  const timedEvents = dayEvents.filter((event) => !event.allDay)
 
   return (
     <div>
@@ -1019,9 +1041,22 @@ function DayCalendar({ visibleDate, eventsByDay, onEventClick, onCreateEvent }: 
         </p>
       </div>
 
+      {allDayEvents.length > 0 && (
+        <div className="grid grid-cols-[72px_1fr] border-b">
+          <div className="flex items-center justify-end border-r bg-muted/20 px-2 py-2 text-right text-xs text-muted-foreground">
+            Ganztägig
+          </div>
+          <div className="space-y-1 p-2">
+            {allDayEvents.map((event) => (
+              <EventCard key={event.item.id} event={event} onClick={onEventClick} />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         {TIME_SLOTS.map((hour) => {
-          const slotEvents = dayEvents.filter((event) => event.start.getHours() === hour)
+          const slotEvents = timedEvents.filter((event) => event.start.getHours() === hour)
           const canCreateInSlot = slotEvents.length === 0 && onCreateEvent
           const SlotElement = canCreateInSlot ? "button" : "div"
           return (
