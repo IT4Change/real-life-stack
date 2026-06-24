@@ -845,7 +845,16 @@ export class WotConnector extends BaseConnector {
 
       if (updates.type) existing.type = updates.type
       if (updates.data) {
-        // Merge field-by-field; deep-clone values to avoid CRDT reference errors
+        // `updates.data` is the item's COMPLETE new data (callers rebuild it from
+        // the existing data — the editor mapper and the kanban reorder both spread
+        // it), so reconcile the CRDT map TO it: drop keys that are gone, then
+        // set/update the rest. A plain field-by-field merge can never remove a
+        // field, so a date/place the user cleared in the edit form would stick.
+        // Matches the replace semantics of the local/mock connectors. Deep-clone
+        // object values to avoid CRDT cross-reference errors.
+        for (const key of Object.keys(existing.data)) {
+          if (!(key in updates.data)) delete existing.data[key]
+        }
         for (const [key, value] of Object.entries(updates.data)) {
           existing.data[key] = (typeof value === "object" && value !== null)
             ? JSON.parse(JSON.stringify(value))
