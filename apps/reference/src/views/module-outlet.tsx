@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button, type Workspace } from "@real-life-stack/toolkit"
 import type { Group } from "@real-life-stack/data-interface"
-import { scopeToSlug } from "../hooks/use-workspace-routing"
 import { FeedView } from "./feed-view"
 import { MapView } from "./map-view"
 import { CalendarViewWrapper } from "./calendar-view"
@@ -26,15 +25,8 @@ export interface ModuleOutletProps {
  * others = centered container) lives here; everything else stays with
  * the views.
  */
-export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId, urlItemId }: ModuleOutletProps) {
+export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId }: ModuleOutletProps) {
   const navigate = useNavigate()
-
-  // The app-level panel persists across module switches, so a panel entry's
-  // onClose can fire after its owning module unmounted. Read the live route
-  // via a ref (not the stale render closure) so Kanban's close handler only
-  // syncs the URL while the user is actually still on the Kanban route.
-  const routeRef = useRef({ module: activeModule, spaceId: activeWorkspace?.id })
-  routeRef.current = { module: activeModule, spaceId: activeWorkspace?.id }
 
   const noAccess = !!urlSpaceId && !activeWorkspace
   const isMap = activeModule === "map" && !noAccess
@@ -74,22 +66,7 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
         </div>
       ) : activeModule === "kanban" ? (
         <div className={containerClass}>
-          <KanbanView
-            activeWorkspaceId={activeWorkspace?.id ?? null}
-            groups={groups}
-            selectedItemId={urlItemId}
-            onItemSelect={(id) => navigate(`/${scopeToSlug(activeWorkspace?.id ?? "")}/${activeModule}/${id}`)}
-            onItemClose={() => {
-              // Guard against the persisted shared panel firing this after the
-              // user already left Kanban (would otherwise yank the route back).
-              // Also require a real spaceId — on a no-access route activeWorkspace
-              // is null, and we must not navigate to /undefined/kanban.
-              const { module, spaceId } = routeRef.current
-              if (module === "kanban" && spaceId) {
-                navigate(`/${scopeToSlug(spaceId)}/kanban`)
-              }
-            }}
-          />
+          <KanbanView activeWorkspaceId={activeWorkspace?.id ?? null} groups={groups} />
         </div>
       ) : activeModule === "feed" ? (
         <div className={containerClass}>

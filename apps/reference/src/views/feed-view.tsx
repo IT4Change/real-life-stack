@@ -1,9 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import {
   ContentComposer,
-  type ContentTypeConfig,
-  nominatimGeocode,
-  nominatimReverseGeocode,
   useModulePanel,
   ReactionBar,
   ItemPreview,
@@ -37,16 +34,13 @@ import { Input } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
-import { mapComposerSubmission, itemToComposerData, withGroupOptions } from "../composer-mapping"
+import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
+import { FEED_CREATE_TYPES } from "../content-types"
+import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 
 const FEED_TYPES: FilterTypeOption[] = [
   { id: "post", label: "Posts", icon: FileText },
   { id: "event", label: "Events", icon: Calendar },
-]
-
-const FEED_CONTENT_TYPES: ContentTypeConfig[] = [
-  { id: "post", label: "Post", defaultWidgets: ["text"], submitLabel: "Posten" },
-  { id: "event", label: "Veranstaltung", defaultWidgets: ["title", "text", "date", "location"], submitLabel: "Erstellen" },
 ]
 
 export function FeedView({ groupId }: { groupId: string }) {
@@ -118,10 +112,13 @@ export function FeedView({ groupId }: { groupId: string }) {
   // Groups + personal space for the sharing-scope picker in the composer.
   const { data: groups } = useGroups()
   const personalGroupId = usePersonalGroupId()
-  const feedContentTypes = useMemo(
-    () => withGroupOptions(FEED_CONTENT_TYPES, groups, isOverview ? undefined : groupId, personalGroupId),
+  // Create offers the feed's own types (post/event); the detail edit uses the
+  // full registry (shared hook) so any item is editable with its own fields.
+  const feedCreateTypes = useMemo(
+    () => withGroupOptions(FEED_CREATE_TYPES, groups, isOverview ? undefined : groupId, personalGroupId),
     [groups, isOverview, groupId, personalGroupId],
   )
+  const editConfig = useItemDetailEdit(members)
   // Register the feed's detail config with the host (which owns the panel + the
   // read↔edit lifecycle for the focused item). Memoised so it only re-registers
   // when author resolution changes.
@@ -144,16 +141,13 @@ export function FeedView({ groupId }: { groupId: string }) {
           }
         />
       ),
-      contentTypes: feedContentTypes,
-      mapper: mapComposerSubmission,
-      editInitialData: itemToComposerData,
-      composerProps: { geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode },
+      ...editConfig,
       renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
       onShare: () => {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, feedContentTypes, isOverview],
+    [resolveAuthor, editConfig, isOverview],
   )
   useRegisterDetail("feed", detailConfig)
 
@@ -255,7 +249,7 @@ export function FeedView({ groupId }: { groupId: string }) {
           <div className="flex flex-col h-full">
             <ContentComposer
               className="p-4 sm:p-6 flex-1"
-              contentTypes={feedContentTypes}
+              contentTypes={feedCreateTypes}
               initialData={initialText ? { text: initialText } : undefined}
               onSubmit={async (data) => {
                 const result = await editor.submit(data)

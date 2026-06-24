@@ -8,14 +8,11 @@ import {
   usePersonalGroupId,
   useModulePanel,
   useIsCompact,
-  type ContentTypeConfig,
   ItemPreview,
   ItemTypeBadge,
   ItemScopeBadge,
   ItemMetaRow,
   ReactionBar,
-  nominatimGeocode,
-  nominatimReverseGeocode,
   CreateFab,
   FilterBar,
   emptyFilterBarValue,
@@ -38,7 +35,9 @@ import { useComposerHost } from "../composer-host"
 import { useLocationPick } from "../location-pick"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
-import { mapComposerSubmission, itemToComposerData, withGroupOptions } from "../composer-mapping"
+import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
+import { MAP_CREATE_TYPES } from "../content-types"
+import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 
 const MAP_TYPES: FilterTypeOption[] = [
   { id: "event", label: "Events", icon: Calendar },
@@ -254,29 +253,12 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     return Array.from(seen).sort()
   }, [accumulatedItems])
 
-  const mapContentTypes: ContentTypeConfig[] = useMemo(
-    () =>
-      withGroupOptions(
-        [
-          {
-            id: "place",
-            label: "Ort",
-            defaultWidgets: ["title", "text", "location"],
-            submitLabel: "Erstellen",
-          },
-          {
-            id: "event",
-            label: "Veranstaltung",
-            defaultWidgets: ["title", "text", "date", "location"],
-            submitLabel: "Erstellen",
-          },
-        ],
-        groups,
-        currentSpace,
-        personalGroupId,
-      ),
+  // Create offers place/event; the detail edit uses the full registry (shared hook).
+  const mapCreateTypes = useMemo(
+    () => withGroupOptions(MAP_CREATE_TYPES, groups, currentSpace, personalGroupId),
     [groups, currentSpace, personalGroupId],
   )
+  const editConfig = useItemDetailEdit(members)
 
   const { openComposer: openCreateComposer } = useComposerHost()
   const { isPicking, updatePick, confirmPick, cancelPick } = useLocationPick()
@@ -462,17 +444,14 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
           }
         />
       ),
-      contentTypes: mapContentTypes,
-      mapper: mapComposerSubmission,
-      editInitialData: itemToComposerData,
-      composerProps: { geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode },
+      ...editConfig,
       renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
       onShare: () => {
         void navigator.clipboard?.writeText(window.location.href)
       },
       backdrop: false,
     }),
-    [resolveAuthor, mapContentTypes, isOverview],
+    [resolveAuthor, editConfig, isOverview],
   )
   useRegisterDetail("map", detailConfig)
 
@@ -629,8 +608,8 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
     // (`focusItem` sees the URL already there → detail wouldn't reopen). Mirrors
     // the calendar's `clearFocusForComposer`.
     clearFocus()
-    openCreateComposer({ contentTypes: mapContentTypes, mapper: mapComposerSubmission })
-  }, [clearFocus, openCreateComposer, mapContentTypes])
+    openCreateComposer({ contentTypes: mapCreateTypes, mapper: mapComposerSubmission })
+  }, [clearFocus, openCreateComposer, mapCreateTypes])
 
   return (
     <div className="relative h-full w-full">

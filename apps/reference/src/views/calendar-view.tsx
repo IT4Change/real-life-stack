@@ -2,14 +2,11 @@ import { useCallback, useMemo } from "react"
 import {
   CalendarView as ToolkitCalendarView,
   CreateFab,
-  type ContentTypeConfig,
   ItemPreview,
   ItemTypeBadge,
   ItemScopeBadge,
   ItemTimeRange,
   ReactionBar,
-  nominatimGeocode,
-  nominatimReverseGeocode,
   useItems,
   useMembers,
   useCurrentUser,
@@ -22,7 +19,9 @@ import type { User } from "@real-life-stack/data-interface"
 import { useComposerHost } from "../composer-host"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
-import { mapComposerSubmission, itemToComposerData, withGroupOptions } from "../composer-mapping"
+import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
+import { CALENDAR_CREATE_TYPES } from "../content-types"
+import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 
 const pad2 = (n: number) => String(n).padStart(2, "0")
 /** Local `datetime-local` string (YYYY-MM-DDTHH:mm) — used for a time-slot click. */
@@ -64,23 +63,12 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // jumps to its month (focusDate); browser-back clears it and closes the panel.
   const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
 
-  const calendarContentTypes: ContentTypeConfig[] = useMemo(
-    () =>
-      withGroupOptions(
-        [
-          {
-            id: "event",
-            label: "Veranstaltung",
-            defaultWidgets: ["title", "text", "date", "location"],
-            submitLabel: "Erstellen",
-          },
-        ],
-        groups,
-        currentSpace,
-        personalGroupId,
-      ),
+  // Create offers events; the detail edit uses the full registry (shared hook).
+  const calendarCreateTypes = useMemo(
+    () => withGroupOptions(CALENDAR_CREATE_TYPES, groups, currentSpace, personalGroupId),
     [groups, currentSpace, personalGroupId],
   )
+  const editConfig = useItemDetailEdit(members)
 
   const { openComposer: openCreateComposer, patchData: patchComposerData } = useComposerHost()
 
@@ -120,16 +108,13 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
           }
         />
       ),
-      contentTypes: calendarContentTypes,
-      mapper: mapComposerSubmission,
-      editInitialData: itemToComposerData,
-      composerProps: { geocode: nominatimGeocode, reverseGeocode: nominatimReverseGeocode },
+      ...editConfig,
       renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
       onShare: () => {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, calendarContentTypes, isOverview],
+    [resolveAuthor, editConfig, isOverview],
   )
   useRegisterDetail("calendar", detailConfig)
 
@@ -161,8 +146,8 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // fullscreen-morph shell.
   const openComposer = useCallback(() => {
     clearFocusForComposer()
-    openCreateComposer({ contentTypes: calendarContentTypes, mapper: mapComposerSubmission })
-  }, [clearFocusForComposer, openCreateComposer, calendarContentTypes])
+    openCreateComposer({ contentTypes: calendarCreateTypes, mapper: mapComposerSubmission })
+  }, [clearFocusForComposer, openCreateComposer, calendarCreateTypes])
 
   // Click on an empty day/slot → composer prefilled with that date/time. A bare
   // day click (month) lands at local midnight → keep it date-only so no time is
@@ -177,12 +162,12 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
       patchComposerData({ start })
     } else {
       openCreateComposer({
-        contentTypes: calendarContentTypes,
+        contentTypes: calendarCreateTypes,
         mapper: mapComposerSubmission,
         initialData: { start },
       })
     }
-  }, [clearFocusForComposer, openCreateComposer, patchComposerData, modulePanel, calendarContentTypes])
+  }, [clearFocusForComposer, openCreateComposer, patchComposerData, modulePanel, calendarCreateTypes])
 
   return (
     <>
