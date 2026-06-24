@@ -305,21 +305,34 @@ export function ContentComposer({
     ...DEFAULT_DATA,
     ...initialData,
   }))
-  // Imperative handle so the host can patch the open composer without remounting
-  // it — e.g. update only `start` when another calendar date is clicked, keeping
-  // already-entered content intact.
-  React.useEffect(() => {
-    if (!apiRef) return
-    apiRef.current = { patchData: (patch) => setData((d) => ({ ...d, ...patch })) }
-    return () => {
-      apiRef.current = null
-    }
-  }, [apiRef])
   // Start with the widgets the item already has a value for, so editing reveals
   // its set fields (a task's date/place) instead of hiding them behind toggles.
   const [manualWidgets, setManualWidgets] = React.useState<Set<string>>(
     () => widgetsWithValue(initialData),
   )
+  // Imperative handle so the host can patch the open composer without remounting
+  // it — e.g. update only `start` when another calendar date is clicked, keeping
+  // already-entered content intact.
+  React.useEffect(() => {
+    if (!apiRef) return
+    apiRef.current = {
+      patchData: (patch) => {
+        setData((d) => ({ ...d, ...patch }))
+        // Reveal any widget the patch gives a value to, so a field prefilled
+        // after mount (e.g. a position handed back from the map picker) isn't
+        // stuck hidden behind a "+" toggle. manualWidgets is seeded only from
+        // the initial data, so post-mount patches need this.
+        setManualWidgets((prev) => {
+          const revealed = widgetsWithValue(patch)
+          if ([...revealed].every((w) => prev.has(w))) return prev
+          return new Set([...prev, ...revealed])
+        })
+      },
+    }
+    return () => {
+      apiRef.current = null
+    }
+  }, [apiRef])
   const [isPublic, setIsPublic] = React.useState(defaultPublic)
   const [isPreviewing, setIsPreviewing] = React.useState(false)
   // Aborts the previous reverse-geocode when the user re-picks on the map.
