@@ -12,10 +12,16 @@ import { VALID_MODULES } from "./use-workspace-routing"
 export interface ItemFocus {
   /** The currently focused item id from the URL (`/{scope}/{module}/{itemId}`), or undefined. */
   itemId?: string
-  /** Focus an item in the current module → writes `/{scope}/{module}/{id}`. */
+  /** Whether the focused item is in edit mode (URL carries `?edit`). */
+  isEditing: boolean
+  /** Focus an item in the current module → writes `/{scope}/{module}/{id}` (read). */
   focusItem: (id: string) => void
   /** Clear the focus → writes `/{scope}/{module}` (the module the user is on right now). */
   clearFocus: () => void
+  /** Enter edit for the focused item → adds `?edit` (pushed, so back returns to read). */
+  editItem: () => void
+  /** Leave edit → drops `?edit` (replaced, so back from read goes to the module). */
+  stopEditing: () => void
 }
 
 const ItemFocusContext = createContext<ItemFocus | null>(null)
@@ -29,45 +35,77 @@ function parsePath(pathname: string): { scope?: string; module?: string; itemId?
   return { scope }
 }
 
+/** Build a URL, toggling the `?edit` flag while preserving other query params. */
+function buildUrl(pathname: string, search: string, opts: { edit: boolean }): string {
+  const params = new URLSearchParams(search)
+  if (opts.edit) params.set("edit", "1")
+  else params.delete("edit")
+  const q = params.toString()
+  return q ? `${pathname}?${q}` : pathname
+}
+
 /**
- * Route-stable source of truth for item focus. The URL owns the focused item
- * (`/{scope}/{module}/{itemId}`): every open writes it, browser-back clears it.
+ * Route-stable source of truth for item focus AND its edit state. The URL owns
+ * both: `/{scope}/{module}/{itemId}` is the focused item (read), `?edit` flips it
+ * to edit. Every open/edit writes the URL; browser-back peels one layer
+ * (edit → read → module).
  *
  * Why a provider above the routes instead of a per-module hook: the shared
  * ModulePanel persists across module switches, so a module's `onClose` can fire
- * long after that module unmounted (open a Feed detail → switch to Kanban
- * carrying the focus → close). A per-module `clearFocus` would be frozen to the
- * module's old route and yank the user back into it. So focus lives here, where
- * it survives every switch: `focusItem`/`clearFocus` read the LIVE location at
- * call time and rewrite the 3rd path segment of whatever module the user is
- * actually on.
+ * long after that module unmounted. A per-module callback would be frozen to the
+ * module's old route. So focus lives here, where it survives every switch:
+ * the callbacks read the LIVE location at call time and rewrite the path/query
+ * of whatever module the user is actually on.
  */
 export function ItemFocusProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
-  // Always-current path so the stable callbacks below (stored as the panel's
-  // onClose) read the route at CALL time, not at the render they were created.
+  // Always-current path/search so the stable callbacks below (some stored as the
+  // panel's onClose) read the route at CALL time, not at the render they were
+  // created.
   const pathRef = useRef(location.pathname)
   pathRef.current = location.pathname
+  const searchRef = useRef(location.search)
+  searchRef.current = location.search
 
   const focusItem = useCallback((id: string) => {
     const { scope, module } = parsePath(pathRef.current)
     if (!scope || !module) return
-    const target = `/${scope}/${module}/${id}`
-    if (pathRef.current !== target) navigate(target)
+    // Focusing an item is the read view — drop any stale `?edit`, keep other query.
+    const target = buildUrl(`/${scope}/${module}/${id}`, searchRef.current, { edit: false })
+    if (`${pathRef.current}${searchRef.current}` !== target) navigate(target)
   }, [navigate])
 
   const clearFocus = useCallback(() => {
     const { scope, module, itemId } = parsePath(pathRef.current)
     // Only navigate when there is actually a focused item to drop — avoids a
     // redundant push when the focus was already cleared (e.g. browser-back).
-    if (scope && module && itemId) navigate(`/${scope}/${module}`)
+    if (scope && module && itemId) {
+      navigate(buildUrl(`/${scope}/${module}`, searchRef.current, { edit: false }))
+    }
   }, [navigate])
 
-  const itemId = parsePath(location.pathname).itemId
+  const editItem = useCallback(() => {
+    const { scope, module, itemId } = parsePath(pathRef.current)
+    if (!scope || !module || !itemId) return
+    // Pushed so browser-back returns to the read view.
+    navigate(buildUrl(`/${scope}/${module}/${itemId}`, searchRef.current, { edit: true }))
+  }, [navigate])
+
+  const stopEditing = useCallback(() => {
+    const { scope, module, itemId } = parsePath(pathRef.current)
+    if (!scope || !module || !itemId) return
+    // Replace so the edit step doesn't linger in history after save/cancel.
+    navigate(buildUrl(`/${scope}/${module}/${itemId}`, searchRef.current, { edit: false }), {
+      replace: true,
+    })
+  }, [navigate])
+
+  const { itemId } = parsePath(location.pathname)
+  const isEditing = !!itemId && new URLSearchParams(location.search).has("edit")
   const value = useMemo<ItemFocus>(
-    () => ({ itemId, focusItem, clearFocus }),
-    [itemId, focusItem, clearFocus],
+    () => ({ itemId, isEditing, focusItem, clearFocus, editItem, stopEditing }),
+    [itemId, isEditing, focusItem, clearFocus, editItem, stopEditing],
   )
   return <ItemFocusContext.Provider value={value}>{children}</ItemFocusContext.Provider>
 }

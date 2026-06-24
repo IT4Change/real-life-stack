@@ -142,13 +142,16 @@ export function useRegisterDetail(module: string, config: DetailConfig): void {
  * *different* item starts fresh in read mode.
  */
 function DetailHostOutlet() {
-  const { itemId: focusedId, clearFocus } = useItemFocus()
+  const { itemId: focusedId, isEditing, clearFocus, editItem, stopEditing } = useItemFocus()
   const config = useActiveDetailConfig()
   if (!focusedId || !config) return null
   return (
     <ItemDetailView
       key={focusedId}
       itemId={focusedId}
+      // Read↔edit is URL-driven (`?edit`): browser-back peels edit → read → module.
+      mode={isEditing ? "edit" : "read"}
+      onModeChange={(next) => (next === "edit" ? editItem() : stopEditing())}
       renderRead={config.renderRead}
       contentTypes={config.contentTypes}
       mapper={config.mapper}

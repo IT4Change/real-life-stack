@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { Newspaper, Map as MapIcon, Calendar, Columns3 } from "lucide-react"
 import {
   useConnector,
@@ -107,6 +107,7 @@ export interface WorkspaceRouting {
 export function useWorkspaceRouting(): WorkspaceRouting {
   const connector = useConnector()
   const navigate = useNavigate()
+  const location = useLocation()
   const { scope: urlScope, seg: urlSeg, itemId: urlItemIdParam } = useParams<{
     scope?: string
     seg?: string
@@ -281,13 +282,17 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     navigate(`/${scopeToSlug(workspace.id)}/${mod}`)
   }, [groups, activeModule, navigate])
 
-  // Switch module within the active space, carrying the focused item if any.
+  // Switch module within the active space, carrying the focused item if any —
+  // plus its query (esp. `?edit`), so an in-progress edit continues seamlessly
+  // across module switches.
   const handleModuleChange = useCallback((moduleId: string, opts?: { replace?: boolean }) => {
     if (!activeWorkspace) return
     const slug = scopeToSlug(activeWorkspace.id)
-    const path = urlItemId ? `/${slug}/${moduleId}/${urlItemId}` : `/${slug}/${moduleId}`
+    const path = urlItemId
+      ? `/${slug}/${moduleId}/${urlItemId}${location.search}`
+      : `/${slug}/${moduleId}`
     navigate(path, opts?.replace ? { replace: true } : undefined)
-  }, [activeWorkspace, urlItemId, navigate])
+  }, [activeWorkspace, urlItemId, location.search, navigate])
 
   return {
     groups,
