@@ -494,6 +494,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
           if (typeof lng === "number" && typeof lat === "number") {
             updatePick({ lat, lng })
             setPickPos({ lat, lng })
+            if (!isCompact) confirmPick()
           }
         }
         return
@@ -510,7 +511,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       }
     })
     return unsubscribe
-  }, [adapter, itemsById, focusItem, isPicking, updatePick])
+  }, [adapter, itemsById, focusItem, isPicking, updatePick, isCompact, confirmPick])
 
   // Reveal the URL-focused item: open its detail, then bring it into view. Runs
   // only on the visible map. The item comes from useItem (scope-aware), so the
@@ -596,9 +597,13 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       const [lng, lat] = e.position
       updatePick({ lat, lng })
       setPickPos({ lat, lng })
+      // Desktop: a precise click is the whole interaction → commit + return to
+      // the origin composer right away. Mobile keeps the provisional marker and
+      // confirms via the banner (touch is less precise).
+      if (!isCompact) confirmPick()
     })
     return unsubscribe
-  }, [adapter, isPicking, updatePick])
+  }, [adapter, isPicking, updatePick, isCompact, confirmPick])
 
   // Drop the provisional pick when picking ends.
   useEffect(() => {
@@ -666,10 +671,10 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
                 ? "Position gewählt."
                 : "Tippe auf die Karte, um die Position zu setzen."}
             </span>
-            {pickPos && (
-              // Always offered once a position is set: on a suspended composer
-              // (mobile drawer or a fullscreen create) this is the only way back
-              // to the form; with a visible sheet it just ends pick mode.
+            {isCompact && pickPos && (
+              // Mobile only: a tap places a provisional marker; this confirms it
+              // and returns to the origin composer. Desktop auto-confirms on the
+              // first click, so the button isn't needed there.
               <Button size="sm" className="h-7 px-2 text-xs" onClick={confirmPick}>
                 Übernehmen
               </Button>

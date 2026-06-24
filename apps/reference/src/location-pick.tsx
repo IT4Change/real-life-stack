@@ -97,9 +97,10 @@ export function LocationPickProvider({
     handlersRef.current?.onPick(pos)
   }, [])
 
-  // "Done": keep the picked position and stay on the map (un-suspends the
-  // composer on mobile).
-  const confirmPick = useCallback(() => endPick({ restore: false, navigate: false }), [endPick])
+  // "Done": keep the picked position and return to the origin module + composer
+  // (the map was a detour). On desktop the map view auto-confirms on the first
+  // click; on mobile/fullscreen the user confirms via the banner button.
+  const confirmPick = useCallback(() => endPick({ restore: false, navigate: true }), [endPick])
   // "Cancel": restore the pre-pick position and return to the origin module.
   const cancelPick = useCallback(() => endPick({ restore: true, navigate: true }), [endPick])
 
