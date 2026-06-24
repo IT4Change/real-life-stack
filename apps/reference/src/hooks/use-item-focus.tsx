@@ -35,9 +35,16 @@ function parsePath(pathname: string): { scope?: string; module?: string; itemId?
   return { scope }
 }
 
-/** Build a URL, toggling the `?edit` flag while preserving other query params. */
+/**
+ * Build a URL for the focus/edit state, toggling `?edit` and preserving other
+ * query params — but always dropping `?compose`: focusing or clearing an item
+ * means "look at this item", which leaves any in-progress create (same as it
+ * leaves edit). So clicking another item while creating works like it does while
+ * editing.
+ */
 function buildUrl(pathname: string, search: string, opts: { edit: boolean }): string {
   const params = new URLSearchParams(search)
+  params.delete("compose")
   if (opts.edit) params.set("edit", "1")
   else params.delete("edit")
   const q = params.toString()
