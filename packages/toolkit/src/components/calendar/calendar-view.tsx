@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
 import {
   Calendar as CalendarIcon,
   CalendarDays,
@@ -284,6 +284,10 @@ export interface CalendarViewProps {
   events: Item[]
   initialDate?: Date | string
   initialViewMode?: CalendarViewMode
+  /** Controlled view mode. With `onViewModeChange`, the host owns it (e.g. from
+   *  the URL); without these the component keeps it in internal state. */
+  viewMode?: CalendarViewMode
+  onViewModeChange?: (mode: CalendarViewMode) => void
   currentUserId?: string
   /** Active group/space colour — the group fallback when no per-item resolver is given. */
   groupColor?: string
@@ -304,6 +308,8 @@ export function CalendarView({
   events,
   initialDate,
   initialViewMode = "month",
+  viewMode: controlledViewMode,
+  onViewModeChange,
   currentUserId,
   groupColor = "#2563eb",
   resolveItemGroupColor,
@@ -316,7 +322,17 @@ export function CalendarView({
   const today = useMemo(() => getInitialDate(initialDate), [initialDate])
   const [visibleDate, setVisibleDate] = useState(today)
   const [selectedDate, setSelectedDate] = useState(today)
-  const [viewMode, setViewMode] = useState<CalendarViewMode>(initialViewMode)
+  // View mode is controllable: the host can own it (e.g. from the URL) via
+  // `viewMode` + `onViewModeChange`; otherwise it lives in internal state.
+  const [internalViewMode, setInternalViewMode] = useState<CalendarViewMode>(initialViewMode)
+  const viewMode = controlledViewMode ?? internalViewMode
+  const setViewMode = useCallback(
+    (next: CalendarViewMode) => {
+      if (onViewModeChange) onViewModeChange(next)
+      else setInternalViewMode(next)
+    },
+    [onViewModeChange],
+  )
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [locationFilter, setLocationFilter] = useState<LocationFilter>("all")
   const [myEventsOnly, setMyEventsOnly] = useState(false)
@@ -800,10 +816,10 @@ function MonthCalendar({
     if (!grid) return
     const measure = () => {
       const rowHeight = grid.clientHeight / weekCount
-      // Chrome ≈ 40px (padding + date row) + ~18px reserved for the pinned
-      // "+N weitere" row; each pill ≈ 30px incl. gap. Conservative so we'd
-      // rather show one fewer pill than clip one.
-      setEventCapacity(Math.max(1, Math.floor((rowHeight - 58) / 30)))
+      // Chrome ≈ 30px (padding + compact date row) + ~16px reserved for the
+      // pinned "+N weitere" row; each compact pill ≈ 22px incl. gap. Conservative
+      // so we'd rather show one fewer pill than clip one.
+      setEventCapacity(Math.max(1, Math.floor((rowHeight - 46) / 22)))
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -815,7 +831,7 @@ function MonthCalendar({
     <div className="flex h-full flex-col">
       <div className="grid shrink-0 grid-cols-7 border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
         {WEEKDAYS.map((weekday) => (
-          <div key={weekday} className="px-2 py-2 text-center">
+          <div key={weekday} className="px-2 py-1.5 text-center">
             {weekday}
           </div>
         ))}
@@ -833,26 +849,26 @@ function MonthCalendar({
             <div
               key={day.key}
               className={cn(
-                "group flex min-h-0 flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
+                "group flex min-h-0 flex-col overflow-hidden border-b border-r p-1 text-left align-top transition-colors",
                 !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
                 day.isCurrentMonth && "hover:bg-muted/50",
                 day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
               )}
             >
-              <div className="mb-1 flex shrink-0 items-center justify-between gap-1">
+              <div className="mb-0.5 flex shrink-0 items-center justify-between gap-1">
                 <button
                   type="button"
                   onClick={() => onSelectDate(day.date)}
                   onDoubleClick={() => onOpenDay(day.date)}
                   className={cn(
-                    "flex h-6 min-w-6 items-center justify-center rounded-full text-sm font-semibold",
+                    "flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold",
                     day.isToday && "bg-primary text-primary-foreground",
                   )}
                 >
                   {day.number}
                 </button>
                 {day.events.length > 0 && (
-                  <span className="text-xs font-medium text-primary">{day.events.length}</span>
+                  <span className="text-[11px] font-medium text-primary">{day.events.length}</span>
                 )}
               </div>
 
@@ -1142,7 +1158,12 @@ function EventPill({ event, compact = false, onClick }: EventPillProps) {
         // Soft glow in the group colour for the item open in the shared panel.
         ...(isActive ? getActivePanelGlow(groupColor) : null),
       }}
-      className="block w-full truncate rounded-md px-2 py-1.5 text-left text-xs font-medium transition-opacity hover:opacity-90"
+      className={cn(
+        "block w-full truncate rounded-md text-left font-medium transition-opacity hover:opacity-90",
+        // Compact = the dense month-grid pill; the regular size is for the week
+        // slots and all-day bar where there's more room.
+        compact ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1.5 text-xs",
+      )}
     >
       {compact
         ? event.allDay

@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react"
+import { useSearchParams } from "react-router-dom"
 import {
   CalendarView as ToolkitCalendarView,
   CreateFab,
@@ -14,8 +15,12 @@ import {
   usePersonalGroupId,
   useModulePanel,
   useItemGroupColorResolver,
+  type CalendarViewMode,
 } from "@real-life-stack/toolkit"
 import type { User } from "@real-life-stack/data-interface"
+
+/** View modes that may appear in the `?view=` URL param. */
+const CALENDAR_VIEW_MODES: CalendarViewMode[] = ["month", "week", "day", "list"]
 import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
@@ -42,6 +47,29 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // from other spaces still resolve to their User.
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
+
+  // View mode (Monat/Woche/Tag/Liste) lives in the URL (`?view=`) so it's
+  // browser-navigable: back/forward steps through view changes. "month" is the
+  // default and stays param-free for a clean URL.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const viewParam = searchParams.get("view") as CalendarViewMode | null
+  const viewMode: CalendarViewMode =
+    viewParam && CALENDAR_VIEW_MODES.includes(viewParam) ? viewParam : "month"
+  const handleViewModeChange = useCallback(
+    (mode: CalendarViewMode) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          if (mode === "month") next.delete("view")
+          else next.set("view", mode)
+          return next
+        },
+        { replace: false },
+      )
+    },
+    [setSearchParams],
+  )
+
   // Groups + personal space for the sharing-scope picker in the composer.
   const { data: groups } = useGroups()
   const personalGroupId = usePersonalGroupId()
@@ -161,6 +189,8 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
       <ToolkitCalendarView
         className="min-h-0 flex-1"
         events={events}
+        viewMode={viewMode}
+        onViewModeChange={handleViewModeChange}
         currentUserId={currentUser?.id}
         resolveItemGroupColor={resolveItemGroupColor}
         activeItemId={modulePanel.current?.itemId}
