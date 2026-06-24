@@ -241,13 +241,22 @@ export function CreateHostProvider({
   const submit = useCallback(
     async (data: { contentType: string; isPublic: boolean; data: WidgetData }) => {
       const created = await editorRef.current.submit(data)
-      if (created) {
+      if (!created) return false
+      // Focus the freshly created item — drop `?compose` and point the URL at the
+      // new item so its detail opens (and the module highlights/reveals it). Falls
+      // back to a plain close if the route can't be parsed.
+      const { scope, module } = parseModule(pathRef.current)
+      if (scope && module) {
+        const params = new URLSearchParams(searchRef.current)
+        params.delete("compose")
+        const q = params.toString()
+        navigate(`/${scope}/${module}/${created.id}${q ? `?${q}` : ""}`, { replace: true })
+      } else {
         stopCreate()
-        return true
       }
-      return false
+      return true
     },
-    [stopCreate],
+    [navigate, stopCreate],
   )
 
   // End any in-flight map pick if the composer is no longer the panel content
