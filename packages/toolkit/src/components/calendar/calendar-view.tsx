@@ -791,6 +791,24 @@ function MonthCalendar({
   // month stays on screen instead of the last week sliding off the bottom.
   const weekCount = days.length / 7
 
+  // How many event pills fit a cell at the current height — measured, so a short
+  // viewport shows fewer pills + "+N weitere" instead of clipping one mid-pill.
+  const gridRef = useRef<HTMLDivElement>(null)
+  const [eventCapacity, setEventCapacity] = useState(4)
+  useEffect(() => {
+    const grid = gridRef.current
+    if (!grid) return
+    const measure = () => {
+      const rowHeight = grid.clientHeight / weekCount
+      // Cell chrome ≈ 40px (padding + date row); each pill ≈ 28px incl. gap.
+      setEventCapacity(Math.max(1, Math.floor((rowHeight - 40) / 28)))
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(grid)
+    return () => observer.disconnect()
+  }, [weekCount])
+
   return (
     <div className="flex h-full flex-col">
       <div className="grid shrink-0 grid-cols-7 border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
@@ -801,92 +819,74 @@ function MonthCalendar({
         ))}
       </div>
       <div
+        ref={gridRef}
         className="grid min-h-0 flex-1 grid-cols-7"
         style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
       >
-        {days.map((day) => (
-          <div
-            key={day.key}
-            className={cn(
-              "group flex min-h-0 flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
-              !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
-              day.isCurrentMonth && "hover:bg-muted/50",
-              day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
-            )}
-          >
-            <div className="mb-1 flex items-center justify-between gap-1">
-              <button
-                type="button"
-                onClick={() => onSelectDate(day.date)}
-                onDoubleClick={() => onOpenDay(day.date)}
-                className={cn(
-                  "flex h-6 min-w-6 items-center justify-center rounded-full text-sm font-semibold",
-                  day.isToday && "bg-primary text-primary-foreground",
+        {days.map((day) => {
+          // Reserve one slot for the "+N weitere" link when overflowing.
+          const overflowing = day.events.length > eventCapacity
+          const visible = overflowing
+            ? day.events.slice(0, Math.max(1, eventCapacity - 1))
+            : day.events
+          const hiddenCount = day.events.length - visible.length
+          return (
+            <div
+              key={day.key}
+              className={cn(
+                "group flex min-h-0 flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
+                !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
+                day.isCurrentMonth && "hover:bg-muted/50",
+                day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
+              )}
+            >
+              <div className="mb-1 flex shrink-0 items-center justify-between gap-1">
+                <button
+                  type="button"
+                  onClick={() => onSelectDate(day.date)}
+                  onDoubleClick={() => onOpenDay(day.date)}
+                  className={cn(
+                    "flex h-6 min-w-6 items-center justify-center rounded-full text-sm font-semibold",
+                    day.isToday && "bg-primary text-primary-foreground",
+                  )}
+                >
+                  {day.number}
+                </button>
+                {day.events.length > 0 && (
+                  <span className="text-xs font-medium text-primary">{day.events.length}</span>
                 )}
-              >
-                {day.number}
-              </button>
-              {day.events.length > 0 && (
-                <span className="text-xs font-medium text-primary">{day.events.length}</span>
-              )}
-            </div>
+              </div>
 
-            <div className="hidden space-y-1 md:block">
-              {day.events.slice(0, 3).map((event) => (
-                <EventPill
-                  key={event.item.id}
-                  event={event}
-                  compact
-                  onClick={onEventClick}
-                />
-              ))}
-              {day.events.length > 3 && (
+              <div className="space-y-1 overflow-hidden">
+                {visible.map((event) => (
+                  <EventPill key={event.item.id} event={event} compact onClick={onEventClick} />
+                ))}
+                {overflowing && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onOpenDay(day.date)
+                    }}
+                    className="w-full rounded px-1 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    +{hiddenCount} weitere
+                  </button>
+                )}
+              </div>
+
+              {onCreateEvent && day.isCurrentMonth && (
                 <button
                   type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onOpenDay(day.date)
-                  }}
-                  className="text-xs font-medium text-muted-foreground hover:text-foreground"
-                >
-                  +{day.events.length - 3} weitere
-                </button>
-              )}
-            </div>
-
-            <div className="mt-1 space-y-0.5 md:hidden">
-              {day.events.slice(0, 2).map((event) => (
-                <EventPill
-                  key={event.item.id}
-                  event={event}
-                  onClick={onEventClick}
+                  aria-label="Event an diesem Tag erstellen"
+                  onClick={() => onCreateEvent(day.date)}
+                  tabIndex={-1}
+                  className="mt-1 min-h-4 flex-1 rounded transition-colors hover:bg-primary/5"
                 />
-              ))}
-              {day.events.length > 2 && (
-                <button
-                  type="button"
-                  onClick={(clickEvent) => {
-                    clickEvent.stopPropagation()
-                    onOpenDay(day.date)
-                  }}
-                  className="w-full rounded px-1 py-0.5 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
-                >
-                  +{day.events.length - 2} weitere
-                </button>
               )}
             </div>
-
-            {onCreateEvent && day.isCurrentMonth && (
-              <button
-                type="button"
-                aria-label="Event an diesem Tag erstellen"
-                onClick={() => onCreateEvent(day.date)}
-                tabIndex={-1}
-                className="mt-2 min-h-4 flex-1 rounded transition-colors hover:bg-primary/5"
-              />
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
