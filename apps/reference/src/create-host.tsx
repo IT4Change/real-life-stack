@@ -22,7 +22,7 @@ import {
   type WidgetData,
 } from "@real-life-stack/toolkit"
 import type { Item } from "@real-life-stack/data-interface"
-import { VALID_MODULES } from "./hooks/use-workspace-routing"
+import { parsePath, buildUrl } from "./hooks/use-item-focus"
 import { useLocationPick } from "./location-pick"
 
 /**
@@ -113,12 +113,6 @@ function createConfigStore(): ConfigStore {
   }
 }
 
-/** Scope + module from a pathname (module only when it's a real module). */
-function parseModule(pathname: string): { scope?: string; module?: string } {
-  const [scope, seg] = pathname.split("/").filter(Boolean)
-  if (seg && VALID_MODULES.includes(seg)) return { scope, module: seg }
-  return { scope }
-}
 
 /**
  * App-level, URL-driven create host. `?compose=<type>` is the single source of
@@ -147,7 +141,7 @@ export function CreateHostProvider({ children }: { children: ReactNode }) {
   const searchRef = useRef(location.search)
   searchRef.current = location.search
 
-  const { module } = parseModule(location.pathname)
+  const { module } = parsePath(location.pathname)
   const composeType = new URLSearchParams(location.search).get("compose")
   const isComposing = composeType !== null && !!module
   // The module that STARTED the current create (set by startCreate). The create
@@ -192,17 +186,14 @@ export function CreateHostProvider({ children }: { children: ReactNode }) {
   const composerApiRef = useRef<ContentComposerHandle | null>(null)
 
   const stopCreate = useCallback(() => {
-    const { scope, module } = parseModule(pathRef.current)
+    const { scope, module } = parsePath(pathRef.current)
     if (!scope || !module) return
-    const params = new URLSearchParams(searchRef.current)
-    params.delete("compose")
-    const q = params.toString()
-    navigate(`/${scope}/${module}${q ? `?${q}` : ""}`, { replace: true })
+    navigate(buildUrl(`/${scope}/${module}`, searchRef.current, { edit: false }), { replace: true })
   }, [navigate])
 
   const startCreate = useCallback(
     (type?: string, initialData?: Partial<WidgetData>) => {
-      const { scope, module } = parseModule(pathRef.current)
+      const { scope, module } = parsePath(pathRef.current)
       if (!scope || !module) return
       const cfg = store.getConfigFor(module)
       const resolvedType = type ?? cfg?.contentTypes[0]?.id ?? ""
@@ -224,12 +215,11 @@ export function CreateHostProvider({ children }: { children: ReactNode }) {
   // the module highlights/reveals it). Falls back to a plain close if odd.
   const focusCreated = useCallback(
     (item: Item) => {
-      const { scope, module } = parseModule(pathRef.current)
+      const { scope, module } = parsePath(pathRef.current)
       if (scope && module) {
-        const params = new URLSearchParams(searchRef.current)
-        params.delete("compose")
-        const q = params.toString()
-        navigate(`/${scope}/${module}/${item.id}${q ? `?${q}` : ""}`, { replace: true })
+        navigate(buildUrl(`/${scope}/${module}/${item.id}`, searchRef.current, { edit: false }), {
+          replace: true,
+        })
       } else {
         stopCreate()
       }

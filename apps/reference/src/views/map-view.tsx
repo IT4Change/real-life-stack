@@ -39,7 +39,6 @@ import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
 import { MAP_CREATE_TYPES } from "../content-types"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
-import { useItemComposerProps } from "../hooks/use-item-composer-props"
 
 const MAP_TYPES: FilterTypeOption[] = [
   { id: "event", label: "Events", icon: Calendar },
@@ -263,7 +262,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   const editConfig = useItemDetailEdit(members)
 
   const { startCreate } = useCreate()
-  const composerProps = useItemComposerProps(members)
+  const composerProps = editConfig.composerProps
   const createConfig = useMemo<CreateConfig>(
     () => ({ contentTypes: mapCreateTypes, mapper: mapComposerSubmission, composerProps, shell: "sheet" }),
     [mapCreateTypes, composerProps],
@@ -283,12 +282,20 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // set), so it appears/moves live and vanishes on save/cancel without leaving a
   // stale marker. For edit (draft.id === real id) it replaces the real marker.
   const draft = useDraftItem()
+  // Only a draft WITH a position produces a marker. Gating on the position here
+  // means typing a title (no position — e.g. composing a task in another module)
+  // never re-runs the marker pipeline on the always-mounted map. While picking,
+  // the provisional pick marker already shows the spot, so skip the draft too.
+  const draftMarker = useMemo(() => {
+    if (!draft || isPicking) return null
+    const pos = draft.data.position as { type?: string; coordinates?: number[] } | undefined
+    if (!pos || pos.type !== "Point" || !Array.isArray(pos.coordinates) || pos.coordinates.length < 2) return null
+    return draft
+  }, [draft, isPicking])
   const markerItems = useMemo(() => {
-    // While picking, the provisional pick marker already shows the position — skip
-    // the draft marker to avoid two markers on the same spot.
-    if (!draft || isPicking) return filteredItems
-    return [...filteredItems.filter((i) => i.id !== draft.id), draft]
-  }, [filteredItems, draft, isPicking])
+    if (!draftMarker) return filteredItems
+    return [...filteredItems.filter((i) => i.id !== draftMarker.id), draftMarker]
+  }, [filteredItems, draftMarker])
 
   // Build the markers and an id → item lookup in one pass — marker
   // clicks come back with just the id, and we need the full item to
@@ -312,15 +319,15 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         icon: (item.data.icon as string | undefined) ?? firstTag,
         // Highlight the marker whose item is open in the shared panel, or the
         // live draft being composed — a soft glow in the origin-group colour.
-        selected: item.id === activeItemId || (draft != null && item.id === draft.id),
+        selected: item.id === activeItemId || (draftMarker != null && item.id === draftMarker.id),
         glowColor: resolveItemGroupColor(item),
       })
       // The draft marker is a preview — not clickable into a detail (its item
       // isn't persisted; for create the id is synthetic).
-      if (!draft || item.id !== draft.id) byId.set(item.id, item)
+      if (!draftMarker || item.id !== draftMarker.id) byId.set(item.id, item)
     }
     return { markers: markerList, itemsById: byId }
-  }, [markerItems, resolveItemGroupColor, activeItemId, draft])
+  }, [markerItems, resolveItemGroupColor, activeItemId, draftMarker])
 
   // Mount the adapter once. The lazy-loaded map library means mount() is
   // properly async, which exposes a classic StrictMode race: both effect

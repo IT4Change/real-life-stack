@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react"
 import type { Item } from "@real-life-stack/data-interface"
 
 /** Synthetic id for a not-yet-saved create draft (edit drafts reuse the real id). */
@@ -24,8 +24,18 @@ const DraftItemContext = createContext<DraftItemValue | null>(null)
  * publishes via {@link useSetDraftItem}; modules read via {@link useItemsWithDraft}.
  */
 export function DraftItemProvider({ children }: { children: ReactNode }) {
-  const [draft, setDraft] = useState<Item | null>(null)
-  const value = useMemo<DraftItemValue>(() => ({ draft, setDraft }), [draft])
+  const [draft, setDraftState] = useState<Item | null>(null)
+  // The composer republishes on every keystroke; skip no-op updates (a keystroke
+  // that maps to identical output) so the draft reference — and every module that
+  // consumes it — doesn't churn needlessly.
+  const setDraft = useCallback((next: Item | null) => {
+    setDraftState((prev) => {
+      if (prev === next) return prev
+      if (prev && next && JSON.stringify(prev) === JSON.stringify(next)) return prev
+      return next
+    })
+  }, [])
+  const value = useMemo<DraftItemValue>(() => ({ draft, setDraft }), [draft, setDraft])
   return <DraftItemContext.Provider value={value}>{children}</DraftItemContext.Provider>
 }
 

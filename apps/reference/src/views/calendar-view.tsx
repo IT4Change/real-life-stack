@@ -22,7 +22,6 @@ import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
 import { CALENDAR_CREATE_TYPES } from "../content-types"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
-import { useItemComposerProps } from "../hooks/use-item-composer-props"
 
 const pad2 = (n: number) => String(n).padStart(2, "0")
 /** Local `datetime-local` string (YYYY-MM-DDTHH:mm) — used for a time-slot click. */
@@ -72,7 +71,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   const editConfig = useItemDetailEdit(members)
 
   const { startCreate, patchCreate, isComposing } = useCreate()
-  const composerProps = useItemComposerProps(members)
+  const composerProps = editConfig.composerProps
   const createConfig = useMemo<CreateConfig>(
     () => ({ contentTypes: calendarCreateTypes, mapper: mapComposerSubmission, composerProps, shell: "sheet" }),
     [calendarCreateTypes, composerProps],

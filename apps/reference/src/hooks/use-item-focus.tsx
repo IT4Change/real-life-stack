@@ -28,7 +28,7 @@ export interface ItemFocus {
 const ItemFocusContext = createContext<ItemFocus | null>(null)
 
 /** Split a pathname into scope/module/item — module only when it's a real module. */
-function parsePath(pathname: string): { scope?: string; module?: string; itemId?: string } {
+export function parsePath(pathname: string): { scope?: string; module?: string; itemId?: string } {
   const [scope, seg, item] = pathname.split("/").filter(Boolean)
   if (seg && VALID_MODULES.includes(seg)) return { scope, module: seg, itemId: item }
   // Module-less or bare path — no module-focus context (e.g. the transient
@@ -43,7 +43,7 @@ function parsePath(pathname: string): { scope?: string; module?: string; itemId?
  * leaves edit). So clicking another item while creating works like it does while
  * editing.
  */
-function buildUrl(pathname: string, search: string, opts: { edit: boolean }): string {
+export function buildUrl(pathname: string, search: string, opts: { edit: boolean }): string {
   const params = new URLSearchParams(search)
   params.delete("compose")
   if (opts.edit) params.set("edit", "1")

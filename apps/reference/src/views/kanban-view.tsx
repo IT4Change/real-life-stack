@@ -20,7 +20,6 @@ import {
   ItemAssignees,
   ItemTypeBadge,
   ItemScopeBadge,
-  ItemPrivateBadge,
   ReactionBar,
   CreateFab,
   Skeleton,
@@ -38,7 +37,6 @@ import {
   useCurrentUser,
   useConnector,
   useItemGroupColorResolver,
-  useItemPrivacyResolver,
   usePersonalGroupId,
 } from "@real-life-stack/toolkit"
 import { Input } from "@real-life-stack/toolkit"
@@ -49,7 +47,6 @@ import { useItemFocus } from "../hooks/use-item-focus"
 import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
-import { useItemComposerProps } from "../hooks/use-item-composer-props"
 import { withGroupOptions, mapComposerSubmission } from "../composer-mapping"
 import { KANBAN_CREATE_TYPES } from "../content-types"
 
@@ -70,15 +67,16 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   const resolveItemGroupColor = useItemGroupColorResolver(
     activeWorkspaceId === "__overview__" ? undefined : (activeWorkspaceId ?? undefined),
   )
-  // Personal space → „Privat" option in the picker + a „Privat" badge on the card.
+  // Personal space → „Privat" option in the picker.
   const personalGroupId = usePersonalGroupId()
-  const isItemPrivate = useItemPrivacyResolver()
-  // „Privat"-Badge nur in der Meta-Gruppe („Mein Netzwerk") — in einem konkreten
-  // Space ist der Scope ohnehin klar, dort wäre das Badge überflüssig.
+  // Scope tag on the card (Privat OR group), only in the meta group („Mein
+  // Netzwerk") — in a concrete space the scope is clear, so no tag. Same
+  // ItemScopeBadge as the detail + the other modules (private and group items
+  // are now treated consistently, not just the private ones).
   const renderTaskAdornment = useCallback(
     (item: Item) =>
-      activeWorkspaceId === "__overview__" && isItemPrivate(item) ? <ItemPrivateBadge /> : null,
-    [activeWorkspaceId, isItemPrivate],
+      activeWorkspaceId === "__overview__" ? <ItemScopeBadge item={item} /> : null,
+    [activeWorkspaceId],
   )
   // Kanban activates on data.status (task/v1). After the PR-1a status
   // migration only tasks carry this field, so no event/place leakage.
@@ -100,9 +98,10 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   // opens/closes the panel and runs the group-move on save.
   const { focusItem } = useItemFocus()
   const { startCreate } = useCreate()
-  // Edit + create share the same composer wiring (geocoder, map-pick, people).
+  // Edit + create share the same composer wiring (geocoder, map-pick, people) —
+  // reuse the one the edit config already built (don't recompute it).
   const editConfig = useItemDetailEdit(members)
-  const composerProps = useItemComposerProps(members)
+  const composerProps = editConfig.composerProps
   const [groupedView, setGroupedView] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null)
