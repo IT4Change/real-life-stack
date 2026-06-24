@@ -12,8 +12,15 @@ export interface FeedComposerTriggerProps {
   userName?: string
   /** Current user avatar URL. */
   userAvatar?: string
-  /** Content to render inside the fullscreen modal. */
-  children: (props: { onClose: () => void; initialText?: string }) => React.ReactNode
+  /**
+   * Trigger-only mode: clicking the card calls this (with any typed first
+   * character) instead of opening the built-in fullscreen modal. Use this when
+   * an app-level host owns the create surface (URL-driven). When provided,
+   * `children` is ignored.
+   */
+  onCompose?: (initialText?: string) => void
+  /** Content to render inside the built-in fullscreen modal (self-contained mode). */
+  children?: (props: { onClose: () => void; initialText?: string }) => React.ReactNode
   /** Additional CSS classes for the trigger card. */
   className?: string
 }
@@ -32,16 +39,23 @@ export function FeedComposerTrigger({
   placeholder = "Was gibt's Neues?",
   userName,
   userAvatar,
+  onCompose,
   children,
   className,
 }: FeedComposerTriggerProps) {
   const [open, setOpen] = useState(false)
   const [initialText, setInitialText] = useState<string | undefined>()
 
+  // Trigger-only mode hands off to an app-level host; otherwise the built-in
+  // fullscreen modal opens.
   const handleOpen = useCallback((text?: string) => {
+    if (onCompose) {
+      onCompose(text)
+      return
+    }
     setInitialText(text)
     setOpen(true)
-  }, [])
+  }, [onCompose])
 
   const handleClose = useCallback(() => {
     setOpen(false)
@@ -82,9 +96,11 @@ export function FeedComposerTrigger({
         <span className="text-sm text-muted-foreground flex-1">{placeholder}</span>
       </div>
 
-      <ComposerFullscreenShell open={open} onRequestClose={handleClose}>
-        {children({ onClose: handleClose, initialText })}
-      </ComposerFullscreenShell>
+      {children && (
+        <ComposerFullscreenShell open={open} onRequestClose={handleClose}>
+          {children({ onClose: handleClose, initialText })}
+        </ComposerFullscreenShell>
+      )}
     </>
   )
 }

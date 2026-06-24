@@ -31,7 +31,7 @@ import {
 import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 import { Calendar, Globe, Loader2, MapPin, Search } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
-import { useComposerHost } from "../composer-host"
+import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 import { useLocationPick } from "../location-pick"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
@@ -232,7 +232,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // focused item is fetched scope-aware via useItem (NOT the viewport-bounded
   // query) so a deep-linked item outside the current bbox still resolves — we
   // need its position to pan/zoom there, which then loads its marker.
-  const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
+  const { itemId: focusedId, focusItem } = useItemFocus()
   const { data: focusedItem } = useItem(active ? (focusedId ?? "") : "")
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [searchText, setSearchText] = useState("")
@@ -260,7 +260,12 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   )
   const editConfig = useItemDetailEdit(members)
 
-  const { openComposer: openCreateComposer } = useComposerHost()
+  const { startCreate } = useCreate()
+  const createConfig = useMemo<CreateConfig>(
+    () => ({ contentTypes: mapCreateTypes, mapper: mapComposerSubmission, shell: "sheet" }),
+    [mapCreateTypes],
+  )
+  useRegisterCreate("map", createConfig)
   const { isPicking, updatePick, confirmPick, cancelPick } = useLocationPick()
   const [pickPos, setPickPos] = useState<{ lat: number; lng: number } | null>(null)
   // "Fertig" (return the composer) is only needed when the composer is hidden,
@@ -602,14 +607,9 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
 
   // Composer opens via the app-level host, so its save path survives the
   // round-trip to location picking. The Feed keeps its own fullscreen shell.
-  const openComposer = useCallback(() => {
-    // Clear the URL focus first: the create composer replaces the detail panel,
-    // and leaving the same itemId focused makes re-clicking that marker a no-op
-    // (`focusItem` sees the URL already there → detail wouldn't reopen). Mirrors
-    // the calendar's `clearFocusForComposer`.
-    clearFocus()
-    openCreateComposer({ contentTypes: mapCreateTypes, mapper: mapComposerSubmission })
-  }, [clearFocus, openCreateComposer, mapCreateTypes])
+  // startCreate navigates to `?compose=place` (dropping any focused item), so the
+  // host opens the create form on the map's sheet.
+  const openComposer = useCallback(() => startCreate("place"), [startCreate])
 
   return (
     <div className="relative h-full w-full">

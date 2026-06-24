@@ -47,7 +47,7 @@ import { Search, Settings } from "lucide-react"
 import type { Item, User, Group } from "@real-life-stack/data-interface"
 import { hasItemGroups } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
-import { useComposerHost } from "../composer-host"
+import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 import { withGroupOptions, mapComposerSubmission } from "../composer-mapping"
@@ -98,8 +98,8 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   // The shared host owns the detail (read↔edit) for the focused item; a card
   // click just points the URL focus at it (like the other modules). The host
   // opens/closes the panel and runs the group-move on save.
-  const { focusItem, clearFocus } = useItemFocus()
-  const { openComposer: openCreateComposer } = useComposerHost()
+  const { focusItem } = useItemFocus()
+  const { startCreate } = useCreate()
   // Edit side of the detail (shared, type-driven) + people options for the
   // create composer's assignees.
   const editConfig = useItemDetailEdit(members)
@@ -229,23 +229,28 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   )
   useRegisterDetail("kanban", detailConfig)
 
-  const handleCreateItem = useCallback(() => {
-    // "+" opens a create form for a task (status defaulted to "open"); on save
-    // the task appears on the board. Clear any focus so the composer replaces an
-    // open detail rather than stacking behind it.
-    clearFocus()
-    openCreateComposer({
+  // Register the task create form with the host (sheet shell). "+" then just
+  // points the URL at `?compose=task` (prefilled with status "open").
+  const createConfig = useMemo<CreateConfig>(
+    () => ({
       contentTypes: kanbanCreateTypes,
       mapper: mapComposerSubmission,
-      initialData: { status: "open" },
+      shell: "sheet",
       composerProps: {
         peopleOptions,
         peopleQuickSuggestions: peopleOptions.slice(0, 10),
         tagSuggestions: availableTags,
         tagQuickSuggestions: availableTags.slice(0, 10),
       },
-    })
-  }, [clearFocus, openCreateComposer, kanbanCreateTypes, peopleOptions, availableTags])
+    }),
+    [kanbanCreateTypes, peopleOptions, availableTags],
+  )
+  useRegisterCreate("kanban", createConfig)
+
+  const handleCreateItem = useCallback(
+    () => startCreate("task", { status: "open" }),
+    [startCreate],
+  )
 
   // Group tasks by their group for the grouped view
   const tasksByGroup = useMemo(() => {
