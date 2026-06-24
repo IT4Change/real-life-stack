@@ -175,23 +175,33 @@ export function ItemPreview({
         </div>
       )}
 
-      {/* Header-only block — only when the author row is suppressed but a
-          header adornment is still provided (e.g. type badge on a kanban
-          card without an author header). */}
-      {author === null && (headerAdornment || actions) && (
+      {/* Header-only block — when the author row is suppressed. The adornment
+          (e.g. a scope badge on a kanban card) sits on its OWN row only when
+          there's no title to share a row with; with a title it renders inline
+          next to it (below). Actions always get this row when present. */}
+      {author === null && (actions || (headerAdornment && !title)) && (
         <div className={cn("flex items-center gap-2", isCompact ? "px-3 pt-2 pb-0.5" : "px-4 pt-3 pb-1")}>
-          <div className="flex flex-1 flex-wrap items-center gap-2">{headerAdornment}</div>
+          {!title && <div className="flex flex-1 flex-wrap items-center gap-2">{headerAdornment}</div>}
           {actions && <div className="-mr-1 shrink-0">{actions}</div>}
         </div>
       )}
 
       {(title || description) && (
         <div className={cn(isCompact ? "px-3 pb-2 pt-1.5" : "px-4 pb-3 pt-2")}>
-          {title && (
-            <h3 className={cn("text-foreground", isCompact ? "font-medium text-sm leading-snug" : "font-semibold text-base mb-1")}>
-              {title}
-            </h3>
-          )}
+          {title &&
+            (author === null ? (
+              // No author row → the scope badge shares the title's row, to its right.
+              <div className="flex items-start justify-between gap-2">
+                <h3 className={cn("min-w-0 text-foreground", isCompact ? "font-medium text-sm leading-snug" : "font-semibold text-base mb-1")}>
+                  {title}
+                </h3>
+                {headerAdornment && <div className="shrink-0">{headerAdornment}</div>}
+              </div>
+            ) : (
+              <h3 className={cn("text-foreground", isCompact ? "font-medium text-sm leading-snug" : "font-semibold text-base mb-1")}>
+                {title}
+              </h3>
+            ))}
           {description && (
             <p className="text-sm text-foreground leading-relaxed line-clamp-4 mt-1">{description}</p>
           )}

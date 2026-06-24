@@ -20,7 +20,6 @@ import {
   ItemAssignees,
   ItemTypeBadge,
   ItemScopeBadge,
-  ItemPrivateBadge,
   ReactionBar,
   CreateFab,
   Skeleton,
@@ -32,14 +31,12 @@ import {
   emptyFilterBarValue,
   useFilterableItems,
   type FilterBarValue,
-  type PersonOption,
-  useItems,
+  useItemsWithDraft,
   useUpdateItem,
   useMembers,
   useCurrentUser,
   useConnector,
   useItemGroupColorResolver,
-  useItemPrivacyResolver,
   usePersonalGroupId,
 } from "@real-life-stack/toolkit"
 import { Input } from "@real-life-stack/toolkit"
@@ -47,7 +44,7 @@ import { Search, Settings } from "lucide-react"
 import type { Item, User, Group } from "@real-life-stack/data-interface"
 import { hasItemGroups } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
-import { useComposerHost } from "../composer-host"
+import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 import { withGroupOptions, mapComposerSubmission } from "../composer-mapping"
@@ -70,19 +67,20 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   const resolveItemGroupColor = useItemGroupColorResolver(
     activeWorkspaceId === "__overview__" ? undefined : (activeWorkspaceId ?? undefined),
   )
-  // Personal space → „Privat" option in the picker + a „Privat" badge on the card.
+  // Personal space → „Privat" option in the picker.
   const personalGroupId = usePersonalGroupId()
-  const isItemPrivate = useItemPrivacyResolver()
-  // „Privat"-Badge nur in der Meta-Gruppe („Mein Netzwerk") — in einem konkreten
-  // Space ist der Scope ohnehin klar, dort wäre das Badge überflüssig.
+  // Scope tag on the card (Privat OR group), only in the meta group („Mein
+  // Netzwerk") — in a concrete space the scope is clear, so no tag. Same
+  // ItemScopeBadge as the detail + the other modules (private and group items
+  // are now treated consistently, not just the private ones).
   const renderTaskAdornment = useCallback(
     (item: Item) =>
-      activeWorkspaceId === "__overview__" && isItemPrivate(item) ? <ItemPrivateBadge /> : null,
-    [activeWorkspaceId, isItemPrivate],
+      activeWorkspaceId === "__overview__" ? <ItemScopeBadge item={item} /> : null,
+    [activeWorkspaceId],
   )
   // Kanban activates on data.status (task/v1). After the PR-1a status
   // migration only tasks carry this field, so no event/place leakage.
-  const { data: tasks, isLoading: tasksLoading } = useItems({ hasField: ["status"] })
+  const { data: tasks, isLoading: tasksLoading } = useItemsWithDraft({ hasField: ["status"] })
   const { data: members } = useMembers(activeWorkspaceId === "__overview__" ? null : (activeWorkspaceId ?? "group-1"))
   const { data: currentUser } = useCurrentUser()
   const { mutate: updateItem } = useUpdateItem()
@@ -98,15 +96,12 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   // The shared host owns the detail (read↔edit) for the focused item; a card
   // click just points the URL focus at it (like the other modules). The host
   // opens/closes the panel and runs the group-move on save.
-  const { focusItem, clearFocus } = useItemFocus()
-  const { openComposer: openCreateComposer } = useComposerHost()
-  // Edit side of the detail (shared, type-driven) + people options for the
-  // create composer's assignees.
+  const { focusItem } = useItemFocus()
+  const { startCreate } = useCreate()
+  // Edit + create share the same composer wiring (geocoder, map-pick, people) —
+  // reuse the one the edit config already built (don't recompute it).
   const editConfig = useItemDetailEdit(members)
-  const peopleOptions = useMemo<PersonOption[]>(
-    () => members.map((m) => ({ id: m.id, name: m.displayName ?? m.id })),
-    [members],
-  )
+  const composerProps = editConfig.composerProps
   const [groupedView, setGroupedView] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null)
@@ -229,23 +224,27 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   )
   useRegisterDetail("kanban", detailConfig)
 
-  const handleCreateItem = useCallback(() => {
-    // "+" opens a create form for a task (status defaulted to "open"); on save
-    // the task appears on the board. Clear any focus so the composer replaces an
-    // open detail rather than stacking behind it.
-    clearFocus()
-    openCreateComposer({
+  // Register the task create form with the host (sheet shell). "+" then just
+  // points the URL at `?compose=task` (prefilled with status "open").
+  const createConfig = useMemo<CreateConfig>(
+    () => ({
       contentTypes: kanbanCreateTypes,
       mapper: mapComposerSubmission,
-      initialData: { status: "open" },
+      shell: "sheet",
       composerProps: {
-        peopleOptions,
-        peopleQuickSuggestions: peopleOptions.slice(0, 10),
+        ...composerProps,
         tagSuggestions: availableTags,
         tagQuickSuggestions: availableTags.slice(0, 10),
       },
-    })
-  }, [clearFocus, openCreateComposer, kanbanCreateTypes, peopleOptions, availableTags])
+    }),
+    [kanbanCreateTypes, composerProps, availableTags],
+  )
+  useRegisterCreate("kanban", createConfig)
+
+  const handleCreateItem = useCallback(
+    () => startCreate("task", { status: "open" }),
+    [startCreate],
+  )
 
   // Group tasks by their group for the grouped view
   const tasksByGroup = useMemo(() => {

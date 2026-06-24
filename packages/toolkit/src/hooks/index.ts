@@ -5,7 +5,13 @@ export { ConnectorProvider, useConnector } from "./connector-context"
 export type { ConnectorProviderProps } from "./connector-context"
 
 // Data Hooks
-export { useItems, useItem } from "./use-items"
+export { useItems, useItem, useItemsWithDraft } from "./use-items"
+export {
+  DraftItemProvider,
+  useDraftItem,
+  useSetDraftItem,
+  DRAFT_ITEM_ID,
+} from "./use-draft-item"
 export { useRelatedItems } from "./use-related-items"
 export { useCreateItem, useUpdateItem, useDeleteItem } from "./use-mutations"
 export { useItemPermissions, useCanCreate, type ItemPermissions } from "./use-item-permissions"

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { Newspaper, Map as MapIcon, Calendar, Columns3 } from "lucide-react"
 import {
   useConnector,
@@ -107,6 +107,7 @@ export interface WorkspaceRouting {
 export function useWorkspaceRouting(): WorkspaceRouting {
   const connector = useConnector()
   const navigate = useNavigate()
+  const location = useLocation()
   const { scope: urlScope, seg: urlSeg, itemId: urlItemIdParam } = useParams<{
     scope?: string
     seg?: string
@@ -281,13 +282,19 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     navigate(`/${scopeToSlug(workspace.id)}/${mod}`)
   }, [groups, activeModule, navigate])
 
-  // Switch module within the active space, carrying the focused item if any.
+  // Switch module within the active space, carrying the focused item if any —
+  // plus its query, so an in-progress edit (`?edit`, needs the itemId) or create
+  // (`?compose`, no itemId) continues seamlessly across module switches. The
+  // create case is load-bearing for the map-pick: picking switches to the Map
+  // module, and dropping `?compose` there would abort the create mid-pick.
   const handleModuleChange = useCallback((moduleId: string, opts?: { replace?: boolean }) => {
     if (!activeWorkspace) return
     const slug = scopeToSlug(activeWorkspace.id)
-    const path = urlItemId ? `/${slug}/${moduleId}/${urlItemId}` : `/${slug}/${moduleId}`
+    const carryQuery = !!urlItemId || new URLSearchParams(location.search).has("compose")
+    const base = urlItemId ? `/${slug}/${moduleId}/${urlItemId}` : `/${slug}/${moduleId}`
+    const path = carryQuery ? `${base}${location.search}` : base
     navigate(path, opts?.replace ? { replace: true } : undefined)
-  }, [activeWorkspace, urlItemId, navigate])
+  }, [activeWorkspace, urlItemId, location.search, navigate])
 
   return {
     groups,

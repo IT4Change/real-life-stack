@@ -1,10 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import { X } from "lucide-react"
+import { useCallback, useState } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/primitives/avatar"
-import { Button } from "@/components/primitives/button"
 import { cn } from "@/lib/utils"
+import { ComposerFullscreenShell } from "@/components/composer/composer-fullscreen-shell"
 
 export interface FeedComposerTriggerProps {
   /** Placeholder text. Default: "Was gibt's Neues?" */
@@ -13,19 +12,17 @@ export interface FeedComposerTriggerProps {
   userName?: string
   /** Current user avatar URL. */
   userAvatar?: string
-  /** Content to render inside the fullscreen modal. */
-  children: (props: { onClose: () => void; initialText?: string }) => React.ReactNode
+  /**
+   * Trigger-only mode: clicking the card calls this (with any typed first
+   * character) instead of opening the built-in fullscreen modal. Use this when
+   * an app-level host owns the create surface (URL-driven). When provided,
+   * `children` is ignored.
+   */
+  onCompose?: (initialText?: string) => void
+  /** Content to render inside the built-in fullscreen modal (self-contained mode). */
+  children?: (props: { onClose: () => void; initialText?: string }) => React.ReactNode
   /** Additional CSS classes for the trigger card. */
   className?: string
-}
-
-function EscapeHandler({ onEscape }: { onEscape: () => void }) {
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onEscape() }
-    document.addEventListener("keydown", handler)
-    return () => document.removeEventListener("keydown", handler)
-  }, [onEscape])
-  return null
 }
 
 function getInitials(name: string): string {
@@ -33,44 +30,42 @@ function getInitials(name: string): string {
 }
 
 /**
- * Feed post creation trigger that opens a fullscreen modal.
- * The trigger looks like a text input field. On click, the modal
- * fades in with the ContentComposer inside, auto-focused on the
- * text field so the user can start typing immediately.
+ * Feed post creation trigger that opens a fullscreen modal. The trigger looks
+ * like a text input field; on click it fades in the fullscreen composer shell
+ * with the ContentComposer inside, auto-focused so the user can type right away.
+ * The fullscreen surface itself is the reusable {@link ComposerFullscreenShell}.
  */
 export function FeedComposerTrigger({
   placeholder = "Was gibt's Neues?",
   userName,
   userAvatar,
+  onCompose,
   children,
   className,
 }: FeedComposerTriggerProps) {
   const [open, setOpen] = useState(false)
-  const [visible, setVisible] = useState(false)
   const [initialText, setInitialText] = useState<string | undefined>()
-  const triggerRef = useRef<HTMLDivElement>(null)
 
+  // Trigger-only mode hands off to an app-level host; otherwise the built-in
+  // fullscreen modal opens.
   const handleOpen = useCallback((text?: string) => {
+    if (onCompose) {
+      onCompose(text)
+      return
+    }
     setInitialText(text)
     setOpen(true)
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => setVisible(true))
-    })
-  }, [])
+  }, [onCompose])
 
   const handleClose = useCallback(() => {
-    setVisible(false)
-    setTimeout(() => {
-      setOpen(false)
-      setInitialText(undefined)
-    }, 200)
+    setOpen(false)
+    setInitialText(undefined)
   }, [])
 
   return (
     <>
       {/* Trigger card — looks like a text input */}
       <div
-        ref={triggerRef}
         role="button"
         tabIndex={0}
         onClick={() => handleOpen()}
@@ -87,7 +82,7 @@ export function FeedComposerTrigger({
         className={cn(
           "flex items-center gap-3 rounded-lg border bg-card p-3 cursor-pointer",
           "hover:border-primary/30 hover:shadow-sm transition-all",
-          className
+          className,
         )}
       >
         {userName && (
@@ -101,33 +96,10 @@ export function FeedComposerTrigger({
         <span className="text-sm text-muted-foreground flex-1">{placeholder}</span>
       </div>
 
-      {/* Fullscreen modal with fade-in — Escape to close */}
-      {open && <EscapeHandler onEscape={handleClose} />}
-      {open && (
-        <div
-          className={cn(
-            "fixed inset-0 z-50 bg-background transition-opacity duration-200 ease-out",
-            visible ? "opacity-100" : "opacity-0"
-          )}
-        >
-          {/* Close button */}
-          <div className="absolute top-3 right-3 z-10">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 rounded-full p-0 text-muted-foreground hover:text-foreground"
-              onClick={handleClose}
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Content wrapper with max width, centered */}
-          <div className="mx-auto max-w-3xl h-full overflow-y-auto">
-            {children({ onClose: handleClose, initialText })}
-          </div>
-        </div>
+      {children && (
+        <ComposerFullscreenShell open={open} onRequestClose={handleClose}>
+          {children({ onClose: handleClose, initialText })}
+        </ComposerFullscreenShell>
       )}
     </>
   )

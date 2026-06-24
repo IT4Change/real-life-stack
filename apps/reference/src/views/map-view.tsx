@@ -18,6 +18,7 @@ import {
   emptyFilterBarValue,
   useFilterableItems,
   getItemColor,
+  useDraftItem,
   useItemGroupColorResolver,
   Button,
   Input,
@@ -31,7 +32,7 @@ import {
 import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 import { Calendar, Globe, Loader2, MapPin, Search } from "lucide-react"
 import type { Item, User } from "@real-life-stack/data-interface"
-import { useComposerHost } from "../composer-host"
+import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 import { useLocationPick } from "../location-pick"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
@@ -232,7 +233,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // focused item is fetched scope-aware via useItem (NOT the viewport-bounded
   // query) so a deep-linked item outside the current bbox still resolves — we
   // need its position to pan/zoom there, which then loads its marker.
-  const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
+  const { itemId: focusedId, focusItem } = useItemFocus()
   const { data: focusedItem } = useItem(active ? (focusedId ?? "") : "")
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [searchText, setSearchText] = useState("")
@@ -260,7 +261,13 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   )
   const editConfig = useItemDetailEdit(members)
 
-  const { openComposer: openCreateComposer } = useComposerHost()
+  const { startCreate } = useCreate()
+  const composerProps = editConfig.composerProps
+  const createConfig = useMemo<CreateConfig>(
+    () => ({ contentTypes: mapCreateTypes, mapper: mapComposerSubmission, composerProps, shell: "sheet" }),
+    [mapCreateTypes, composerProps],
+  )
+  useRegisterCreate("map", createConfig)
   const { isPicking, updatePick, confirmPick, cancelPick } = useLocationPick()
   const [pickPos, setPickPos] = useState<{ lat: number; lng: number } | null>(null)
   // "Fertig" (return the composer) is only needed when the composer is hidden,
@@ -270,13 +277,33 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   // Id of the item open in the shared panel → its marker is highlighted.
   const activeItemId = modulePanel.current?.itemId
 
+  // Live preview: a place/event being created/edited shows its marker as soon as
+  // it has a position. Merged into the marker source only (NOT the accumulated
+  // set), so it appears/moves live and vanishes on save/cancel without leaving a
+  // stale marker. For edit (draft.id === real id) it replaces the real marker.
+  const draft = useDraftItem()
+  // Only a draft WITH a position produces a marker. Gating on the position here
+  // means typing a title (no position — e.g. composing a task in another module)
+  // never re-runs the marker pipeline on the always-mounted map. While picking,
+  // the provisional pick marker already shows the spot, so skip the draft too.
+  const draftMarker = useMemo(() => {
+    if (!draft || isPicking) return null
+    const pos = draft.data.position as { type?: string; coordinates?: number[] } | undefined
+    if (!pos || pos.type !== "Point" || !Array.isArray(pos.coordinates) || pos.coordinates.length < 2) return null
+    return draft
+  }, [draft, isPicking])
+  const markerItems = useMemo(() => {
+    if (!draftMarker) return filteredItems
+    return [...filteredItems.filter((i) => i.id !== draftMarker.id), draftMarker]
+  }, [filteredItems, draftMarker])
+
   // Build the markers and an id → item lookup in one pass — marker
   // clicks come back with just the id, and we need the full item to
   // open the detail panel.
   const { markers, itemsById } = useMemo(() => {
     const markerList: MapMarkerSpec[] = []
     const byId = new Map<string, Item>()
-    for (const item of filteredItems) {
+    for (const item of markerItems) {
       const pos = item.data.position as { type?: string; coordinates?: number[] } | undefined
       if (!pos || pos.type !== "Point" || !Array.isArray(pos.coordinates) || pos.coordinates.length < 2) continue
       const [lng, lat] = pos.coordinates
@@ -290,15 +317,17 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
         // Glyph: an explicit item icon, else the first tag's name (which resolves
         // to a curated icon when it matches, e.g. "cafe"); unknown → a dot.
         icon: (item.data.icon as string | undefined) ?? firstTag,
-        // Highlight the marker whose item is open in the shared panel — a soft
-        // glow in the item's origin-group colour (analogous to the cards).
-        selected: item.id === activeItemId,
+        // Highlight the marker whose item is open in the shared panel, or the
+        // live draft being composed — a soft glow in the origin-group colour.
+        selected: item.id === activeItemId || (draftMarker != null && item.id === draftMarker.id),
         glowColor: resolveItemGroupColor(item),
       })
-      byId.set(item.id, item)
+      // The draft marker is a preview — not clickable into a detail (its item
+      // isn't persisted; for create the id is synthetic).
+      if (!draftMarker || item.id !== draftMarker.id) byId.set(item.id, item)
     }
     return { markers: markerList, itemsById: byId }
-  }, [filteredItems, resolveItemGroupColor, activeItemId])
+  }, [markerItems, resolveItemGroupColor, activeItemId, draftMarker])
 
   // Mount the adapter once. The lazy-loaded map library means mount() is
   // properly async, which exposes a classic StrictMode race: both effect
@@ -489,6 +518,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
           if (typeof lng === "number" && typeof lat === "number") {
             updatePick({ lat, lng })
             setPickPos({ lat, lng })
+            if (!isCompact) confirmPick()
           }
         }
         return
@@ -505,7 +535,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       }
     })
     return unsubscribe
-  }, [adapter, itemsById, focusItem, isPicking, updatePick])
+  }, [adapter, itemsById, focusItem, isPicking, updatePick, isCompact, confirmPick])
 
   // Reveal the URL-focused item: open its detail, then bring it into view. Runs
   // only on the visible map. The item comes from useItem (scope-aware), so the
@@ -591,9 +621,13 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
       const [lng, lat] = e.position
       updatePick({ lat, lng })
       setPickPos({ lat, lng })
+      // Desktop: a precise click is the whole interaction → commit + return to
+      // the origin composer right away. Mobile keeps the provisional marker and
+      // confirms via the banner (touch is less precise).
+      if (!isCompact) confirmPick()
     })
     return unsubscribe
-  }, [adapter, isPicking, updatePick])
+  }, [adapter, isPicking, updatePick, isCompact, confirmPick])
 
   // Drop the provisional pick when picking ends.
   useEffect(() => {
@@ -602,14 +636,9 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
 
   // Composer opens via the app-level host, so its save path survives the
   // round-trip to location picking. The Feed keeps its own fullscreen shell.
-  const openComposer = useCallback(() => {
-    // Clear the URL focus first: the create composer replaces the detail panel,
-    // and leaving the same itemId focused makes re-clicking that marker a no-op
-    // (`focusItem` sees the URL already there → detail wouldn't reopen). Mirrors
-    // the calendar's `clearFocusForComposer`.
-    clearFocus()
-    openCreateComposer({ contentTypes: mapCreateTypes, mapper: mapComposerSubmission })
-  }, [clearFocus, openCreateComposer, mapCreateTypes])
+  // startCreate navigates to `?compose=place` (dropping any focused item), so the
+  // host opens the create form on the map's sheet.
+  const openComposer = useCallback(() => startCreate("place"), [startCreate])
 
   return (
     <div className="relative h-full w-full">
@@ -667,8 +696,11 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
                 : "Tippe auf die Karte, um die Position zu setzen."}
             </span>
             {isCompact && pickPos && (
+              // Mobile only: a tap places a provisional marker; this confirms it
+              // and returns to the origin composer. Desktop auto-confirms on the
+              // first click, so the button isn't needed there.
               <Button size="sm" className="h-7 px-2 text-xs" onClick={confirmPick}>
-                Fertig
+                Übernehmen
               </Button>
             )}
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={cancelPick}>

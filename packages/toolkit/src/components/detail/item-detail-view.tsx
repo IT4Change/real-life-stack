@@ -1,18 +1,17 @@
 "use client"
 
-import { type ReactNode, useState } from "react"
+import { type ReactNode, useCallback, useState } from "react"
 import type { Item } from "@real-life-stack/data-interface"
 import { ItemDetailPanel } from "./item-detail-panel"
 import { ItemDetailActions } from "./item-detail-actions"
 import { ItemPreviewSkeleton } from "../preview"
 import {
-  ContentComposer,
   type ContentComposerProps,
   type ContentTypeConfig,
   type WidgetData,
 } from "../composer/content-composer"
-import { useItemEditor, type ItemEditorMapper } from "../../hooks/use-item-editor"
-import { useCurrentUser } from "../../hooks/use-auth"
+import { ItemComposer } from "../composer/item-composer"
+import type { ItemEditorMapper } from "../../hooks/use-item-editor"
 import { useItem } from "../../hooks/use-items"
 import { useConnector } from "../../hooks/connector-context"
 import { hasItemGroups } from "@real-life-stack/data-interface"
@@ -43,6 +42,11 @@ export interface ItemDetailViewProps {
   onClose: () => void
   /** Share/copy a link to the item. */
   onShare?: () => void
+  /** Controlled read↔edit mode (e.g. URL-driven via `?edit`). When provided the
+   *  view is controlled and reports transitions through {@link onModeChange};
+   *  omit it to use internal state (the default). */
+  mode?: "read" | "edit"
+  onModeChange?: (mode: "read" | "edit") => void
 }
 
 /**
@@ -62,12 +66,21 @@ export function ItemDetailView({
   renderCommentReactions,
   onClose,
   onShare,
+  mode: modeProp,
+  onModeChange,
 }: ItemDetailViewProps) {
-  const { data: currentUser } = useCurrentUser()
   const { data: item } = useItem(itemId)
   const connector = useConnector()
-  const editor = useItemEditor({ currentUserId: currentUser?.id, mapSubmission: mapper })
-  const [mode, setMode] = useState<"read" | "edit">("read")
+  // Uncontrolled by default; controlled when a `mode` prop is supplied (URL-driven).
+  const [internalMode, setInternalMode] = useState<"read" | "edit">("read")
+  const mode = modeProp ?? internalMode
+  const changeMode = useCallback(
+    (next: "read" | "edit") => {
+      onModeChange?.(next)
+      if (modeProp === undefined) setInternalMode(next)
+    },
+    [onModeChange, modeProp],
+  )
 
   if (!item) {
     return (
@@ -100,7 +113,7 @@ export function ItemDetailView({
     <ItemDetailActions
       item={item}
       title={title}
-      onEdit={canEdit ? () => setMode("edit") : undefined}
+      onEdit={canEdit ? () => changeMode("edit") : undefined}
       onDeleted={onClose}
       onShare={onShare}
     />
@@ -111,20 +124,17 @@ export function ItemDetailView({
       {mode === "read" ? (
         <div className="p-4">{renderRead(item, actions)}</div>
       ) : (
-        <ContentComposer
+        <ItemComposer
           key={item.id}
           className="p-4"
-          showPreview={false}
-          {...composerProps}
+          existingItem={item}
           contentTypes={composerTypes}
           initialContentType={item.type}
           initialData={initialData}
-          editMode
-          onSubmit={async (data) => {
-            const updated = await editor.submit(data, { existingItem: item })
-            if (updated) setMode("read")
-          }}
-          onCancel={() => setMode("read")}
+          mapper={mapper}
+          composerProps={composerProps}
+          onDone={() => changeMode("read")}
+          onCancel={() => changeMode("read")}
         />
       )}
     </ItemDetailPanel>

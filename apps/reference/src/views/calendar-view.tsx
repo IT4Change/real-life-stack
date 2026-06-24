@@ -7,7 +7,7 @@ import {
   ItemScopeBadge,
   ItemTimeRange,
   ReactionBar,
-  useItems,
+  useItemsWithDraft,
   useMembers,
   useCurrentUser,
   useGroups,
@@ -16,7 +16,7 @@ import {
   useItemGroupColorResolver,
 } from "@real-life-stack/toolkit"
 import type { User } from "@real-life-stack/data-interface"
-import { useComposerHost } from "../composer-host"
+import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
@@ -36,7 +36,7 @@ function toLocalDate(d: Date): string {
 export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // Calendar activates on data.start (event/v1). Cross-context items
   // (e.g. an event with a place) appear here too.
-  const { data: events } = useItems({ hasField: ["start"] })
+  const { data: events } = useItemsWithDraft({ hasField: ["start"] })
   // Cross-space aggregate ("Mein Netzwerk"): useMembers(null) yields
   // the union of all known members, so authors of items pulled in
   // from other spaces still resolve to their User.
@@ -61,7 +61,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // URL is the single source of truth for the focused event: a click writes
   // `/{scope}/calendar/{id}`, the effect below opens the detail and the calendar
   // jumps to its month (focusDate); browser-back clears it and closes the panel.
-  const { itemId: focusedId, focusItem, clearFocus } = useItemFocus()
+  const { itemId: focusedId, focusItem } = useItemFocus()
 
   // Create offers events; the detail edit uses the full registry (shared hook).
   const calendarCreateTypes = useMemo(
@@ -70,7 +70,13 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   )
   const editConfig = useItemDetailEdit(members)
 
-  const { openComposer: openCreateComposer, patchData: patchComposerData } = useComposerHost()
+  const { startCreate, patchCreate, isComposing } = useCreate()
+  const composerProps = editConfig.composerProps
+  const createConfig = useMemo<CreateConfig>(
+    () => ({ contentTypes: calendarCreateTypes, mapper: mapComposerSubmission, composerProps, shell: "sheet" }),
+    [calendarCreateTypes, composerProps],
+  )
+  useRegisterCreate("calendar", createConfig)
 
   // Resolve event author for the detail-panel ItemPreview. Calendar
   // list cards themselves render with `author={null}` (the date group
@@ -133,41 +139,22 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // The detail panel is owned by the host; the calendar only drives the month
   // reveal (focusDate prop) from the URL focus.
 
-  const clearFocusForComposer = useCallback(() => {
-    // Opening the create composer replaces the detail panel, so clear the URL
-    // focus too — otherwise re-clicking the same event is a no-op (`focusItem`
-    // sees the URL already there). The host releases the panel without closing
-    // the composer (it only closes its own `kind: "detail"`).
-    clearFocus()
-  }, [clearFocus])
-
-  // Composer opens via the app-level host, so its save path survives a switch
-  // to the Map module for location picking. The Feed keeps its own
-  // fullscreen-morph shell.
-  const openComposer = useCallback(() => {
-    clearFocusForComposer()
-    openCreateComposer({ contentTypes: calendarCreateTypes, mapper: mapComposerSubmission })
-  }, [clearFocusForComposer, openCreateComposer, calendarCreateTypes])
+  // startCreate navigates to `?compose=event` (dropping any focused item), so the
+  // host opens the create form. The save path survives a switch to the Map for
+  // location picking (the composer persists while `?compose` is carried).
+  const openComposer = useCallback(() => startCreate("event"), [startCreate])
 
   // Click on an empty day/slot → composer prefilled with that date/time. A bare
   // day click (month) lands at local midnight → keep it date-only so no time is
   // shown until the user sets one; a time-slot click (week/day) keeps its hour.
   const openComposerAt = useCallback((date: Date) => {
-    clearFocusForComposer()
     const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0
     const start = hasTime ? toLocalDatetime(date) : toLocalDate(date)
     // Composer already open (user may be typing) → change only the date, keep the
     // rest. Otherwise open a fresh composer prefilled with the clicked date.
-    if (modulePanel.current?.kind === "composer") {
-      patchComposerData({ start })
-    } else {
-      openCreateComposer({
-        contentTypes: calendarCreateTypes,
-        mapper: mapComposerSubmission,
-        initialData: { start },
-      })
-    }
-  }, [clearFocusForComposer, openCreateComposer, patchComposerData, modulePanel, calendarCreateTypes])
+    if (isComposing) patchCreate({ start })
+    else startCreate("event", { start })
+  }, [isComposing, patchCreate, startCreate])
 
   return (
     <>

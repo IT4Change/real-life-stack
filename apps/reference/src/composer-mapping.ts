@@ -19,10 +19,10 @@ function isEmptyValue(v: unknown): boolean {
  * Data fields the composer round-trips into the edit form (via
  * {@link itemToComposerData}) and that the user can clear through its widgets.
  * For these, an empty value in an EDIT submission is an intentional clear, so we
- * drop the field from the saved item. Fields NOT listed here (e.g. `media`,
- * `meetingLink`, `rrule`) aren't loaded back into the form, so an empty value
- * just means "not shown" and the existing value must be preserved. `text`,
- * `tags` and `people` are clearable too but handled separately below.
+ * drop the field from the saved item. Fields NOT listed here (e.g. `meetingLink`,
+ * `rrule`) aren't loaded back into the form, so an empty value just means "not
+ * shown" and the existing value must be preserved. `text`, `tags` and `people`
+ * are clearable too but handled separately below.
  *
  * Keep this in sync with the fields `itemToComposerData` produces.
  */
@@ -34,6 +34,7 @@ const CLEARABLE_DATA_FIELDS = new Set([
   "locationName",
   "position",
   "status",
+  "media",
 ])
 
 /**
@@ -126,7 +127,8 @@ export const mapComposerSubmission: ItemEditorMapper = (submission, { existingIt
  */
 export function withGroupOptions(
   types: ContentTypeConfig[],
-  groups: { id: string; name: string }[],
+  // May be undefined while the groups query is still loading — guarded below.
+  groups: { id: string; name: string }[] | undefined,
   currentGroupId?: string,
   personalGroupId?: string | null,
 ): ContentTypeConfig[] {
@@ -136,7 +138,7 @@ export function withGroupOptions(
   // option the item just lands there (no widget — not shown, not toggleable).
   const options: { id: string; name: string }[] = []
   if (personalGroupId) options.push({ id: personalGroupId, name: "Privat" })
-  options.push(...groups.map((g) => ({ id: g.id, name: g.name })))
+  options.push(...(groups ?? []).map((g) => ({ id: g.id, name: g.name })))
   if (options.length < 2) return types
 
   // Default to the current space; in the personal/overview view (no concrete
@@ -176,6 +178,9 @@ export function itemToComposerData(item: Item): Partial<WidgetData> {
     ...(typeof d.locationName === "string" ? { locationName: d.locationName } : {}),
     ...(d.position && typeof d.position === "object"
       ? { position: d.position as WidgetData["position"] }
+      : {}),
+    ...(Array.isArray(d.media) && d.media.length > 0
+      ? { media: d.media as WidgetData["media"] }
       : {}),
     ...(typeof d.status === "string" ? { status: d.status } : {}),
     ...(people.length > 0 ? { people } : {}),

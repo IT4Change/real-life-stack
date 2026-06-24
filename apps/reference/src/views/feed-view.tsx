@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import {
-  ContentComposer,
   useModulePanel,
   ReactionBar,
   ItemPreview,
@@ -18,12 +17,11 @@ import {
   useFilterableItems,
   type FilterBarValue,
   type FilterTypeOption,
-  useItems,
+  useItemsWithDraft,
   useMembers,
   useCurrentUser,
   useGroups,
   usePersonalGroupId,
-  useItemEditor,
   useItemGroupColorResolver,
   useItemGroupResolver,
   useItemPrivacyResolver,
@@ -37,6 +35,7 @@ import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
 import { FEED_CREATE_TYPES } from "../content-types"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
+import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 
 const FEED_TYPES: FilterTypeOption[] = [
   { id: "post", label: "Posts", icon: FileText },
@@ -50,8 +49,8 @@ export function FeedView({ groupId }: { groupId: string }) {
   // - Events carry data.start (event/v1)
   // Cross-context items (e.g. an event-with-place) naturally show up in
   // multiple modules without any extra handling.
-  const { data: posts, isLoading: postsLoading } = useItems({ hasField: ["content"] })
-  const { data: events, isLoading: eventsLoading } = useItems({ hasField: ["start"] })
+  const { data: posts, isLoading: postsLoading } = useItemsWithDraft({ hasField: ["content"] })
+  const { data: events, isLoading: eventsLoading } = useItemsWithDraft({ hasField: ["start"] })
   // Feed is the union of both queries → it has "loaded" only once both have.
   const isLoading = postsLoading || eventsLoading
   // `groupId === "__overview__"` is the cross-space aggregate view
@@ -192,11 +191,15 @@ export function FeedView({ groupId }: { groupId: string }) {
   const filterActive =
     searchText.trim() !== "" || filterBarValue.tags.length > 0 || filterBarValue.types.length > 0
 
-  // Content type configs for the composer
-  const editor = useItemEditor({
-    currentUserId: currentUser?.id,
-    mapSubmission: mapComposerSubmission,
-  })
+  // Create runs through the app-level host in the fullscreen shell (the feed's
+  // "write a post" surface). The trigger card just points the URL at `?compose`.
+  const { startCreate } = useCreate()
+  const composerProps = editConfig.composerProps
+  const createConfig = useMemo<CreateConfig>(
+    () => ({ contentTypes: feedCreateTypes, mapper: mapComposerSubmission, composerProps, shell: "fullscreen" }),
+    [feedCreateTypes, composerProps],
+  )
+  useRegisterCreate("feed", createConfig)
 
   // Feed footer convention: a ReactionBar on the left and a comment
   // count on the right. Tasks intentionally don't get reactions in the
@@ -239,28 +242,13 @@ export function FeedView({ groupId }: { groupId: string }) {
         }
       />
 
-      {/* Composer trigger — morphs into fullscreen modal */}
+      {/* Composer trigger — hands off to the app-level create host (fullscreen). */}
       <FeedComposerTrigger
         placeholder="Was gibt's Neues?"
         userName={currentUser?.displayName}
         userAvatar={currentUser?.avatarUrl}
-      >
-        {({ onClose, initialText }) => (
-          <div className="flex flex-col h-full">
-            <ContentComposer
-              className="p-4 sm:p-6 flex-1"
-              contentTypes={feedCreateTypes}
-              initialData={initialText ? { text: initialText } : undefined}
-              onSubmit={async (data) => {
-                const result = await editor.submit(data)
-                if (result) onClose()
-              }}
-              onCancel={onClose}
-              showPreview={false}
-            />
-          </div>
-        )}
-      </FeedComposerTrigger>
+        onCompose={(initialText) => startCreate("post", initialText ? { text: initialText } : undefined)}
+      />
 
       {/* Feed items — skeleton while loading, empty state once loaded with
           nothing, otherwise the list. */}

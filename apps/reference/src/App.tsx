@@ -22,6 +22,7 @@ import {
   GroupDialog,
   AdaptivePanel,
   OpenProfileProvider,
+  DraftItemProvider,
   ModulePanelProvider,
   useModulePanel,
   DebugDashboard,
@@ -60,7 +61,7 @@ import { ModuleOutlet } from "./views/module-outlet"
 import { useWorkspaceRouting, STORAGE_KEY_GROUP } from "./hooks/use-workspace-routing"
 import { ItemFocusProvider } from "./hooks/use-item-focus"
 import { LocationPickProvider, useLocationPick } from "./location-pick"
-import { ComposerHostProvider } from "./composer-host"
+import { CreateHostProvider, CreateSheetController } from "./create-host"
 import { DetailHostProvider, DetailHostController } from "./detail-host"
 
 /**
@@ -415,10 +416,12 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
   return (
     <OpenProfileProvider openProfile={openProfile}>
+    <DraftItemProvider>
     <DetailHostProvider>
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
+    <CreateHostProvider>
     <ModulePanelHost>
-    <ComposerHostProvider currentUserId={currentUser?.id}>
+    <CreateSheetController />
     <DetailHostController activeModule={activeModule} />
     <AppShell>
       <Navbar>
@@ -579,10 +582,11 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         </div>
       )}
     </AppShell>
-    </ComposerHostProvider>
     </ModulePanelHost>
+    </CreateHostProvider>
     </LocationPickProvider>
     </DetailHostProvider>
+    </DraftItemProvider>
     </OpenProfileProvider>
   )
 }
