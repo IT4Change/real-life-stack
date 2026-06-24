@@ -12,6 +12,7 @@ import {
 import { useItemEditor, type ItemEditorMapper } from "../../hooks/use-item-editor"
 import { useCurrentUser } from "../../hooks/use-auth"
 import { useSetDraftItem, DRAFT_ITEM_ID } from "../../hooks/use-draft-item"
+import { useSetUnsavedDirty } from "../../hooks/use-unsaved-changes"
 
 export interface ItemComposerProps {
   /** Types offered. Create: a module's subset; edit: locked to the item's type. */
@@ -86,6 +87,12 @@ export function ItemComposer({
   )
   useEffect(() => () => setDraft(null), [setDraft])
 
+  // Unsaved-changes guard: publish the composer's dirty state so the app can warn
+  // before discarding it. Cleared on unmount so a closed composer never leaves a
+  // stale "dirty" behind.
+  const setUnsavedDirty = useSetUnsavedDirty()
+  useEffect(() => () => setUnsavedDirty(false), [setUnsavedDirty])
+
   return (
     <ContentComposer
       apiRef={apiRef}
@@ -97,9 +104,15 @@ export function ItemComposer({
       showPreview={false}
       {...composerProps}
       onChange={publishDraft}
+      onDirtyChange={setUnsavedDirty}
       onSubmit={async (data) => {
         const saved = await editor.submit(data, existingItem ? { existingItem } : undefined)
-        if (saved) onDone(saved)
+        if (saved) {
+          // Clear synchronously BEFORE onDone navigates, so the nav guard doesn't
+          // block the very navigation the save triggers.
+          setUnsavedDirty(false)
+          onDone(saved)
+        }
         // submit() swallows connector errors into editor.error and returns null;
         // surface it so the composer shows its inline error instead of looking
         // like a silent success.

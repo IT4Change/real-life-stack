@@ -23,6 +23,7 @@ import {
   AdaptivePanel,
   OpenProfileProvider,
   DraftItemProvider,
+  UnsavedChangesProvider,
   ModulePanelProvider,
   useModulePanel,
   DebugDashboard,
@@ -63,6 +64,7 @@ import { ItemFocusProvider } from "./hooks/use-item-focus"
 import { LocationPickProvider, useLocationPick } from "./location-pick"
 import { CreateHostProvider, CreateSheetController } from "./create-host"
 import { DetailHostProvider, DetailHostController } from "./detail-host"
+import { UnsavedChangesGuard } from "./unsaved-changes-guard"
 
 /**
  * Renders the single app-level ModulePanel and suspends it (hidden, kept
@@ -417,12 +419,14 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   return (
     <OpenProfileProvider openProfile={openProfile}>
     <DraftItemProvider>
+    <UnsavedChangesProvider>
     <DetailHostProvider>
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
     <CreateHostProvider>
     <ModulePanelHost>
     <CreateSheetController />
     <DetailHostController activeModule={activeModule} />
+    <UnsavedChangesGuard />
     <AppShell>
       <Navbar>
         <NavbarStart>
@@ -586,6 +590,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     </CreateHostProvider>
     </LocationPickProvider>
     </DetailHostProvider>
+    </UnsavedChangesProvider>
     </DraftItemProvider>
     </OpenProfileProvider>
   )

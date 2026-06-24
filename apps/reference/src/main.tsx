@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import App from './App'
 import './index.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -25,10 +25,13 @@ warmMapOnIdle()
 // Use VITE_BASE_PATH for GitHub Pages deployment
 const basename = import.meta.env.VITE_BASE_PATH || '/'
 
+// A data router (vs. the declarative <BrowserRouter>) so descendant components
+// can use `useBlocker` to guard unsaved composer content against navigation.
+// App keeps its own <Routes>; this is just a trivial splat route around it.
+const router = createBrowserRouter([{ path: '*', element: <App /> }], { basename })
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter basename={basename}>
-      <App />
-    </BrowserRouter>
+    <RouterProvider router={router} />
   </StrictMode>,
 )
