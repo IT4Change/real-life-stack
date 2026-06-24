@@ -283,14 +283,16 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   }, [groups, activeModule, navigate])
 
   // Switch module within the active space, carrying the focused item if any —
-  // plus its query (esp. `?edit`), so an in-progress edit continues seamlessly
-  // across module switches.
+  // plus its query, so an in-progress edit (`?edit`, needs the itemId) or create
+  // (`?compose`, no itemId) continues seamlessly across module switches. The
+  // create case is load-bearing for the map-pick: picking switches to the Map
+  // module, and dropping `?compose` there would abort the create mid-pick.
   const handleModuleChange = useCallback((moduleId: string, opts?: { replace?: boolean }) => {
     if (!activeWorkspace) return
     const slug = scopeToSlug(activeWorkspace.id)
-    const path = urlItemId
-      ? `/${slug}/${moduleId}/${urlItemId}${location.search}`
-      : `/${slug}/${moduleId}`
+    const carryQuery = !!urlItemId || new URLSearchParams(location.search).has("compose")
+    const base = urlItemId ? `/${slug}/${moduleId}/${urlItemId}` : `/${slug}/${moduleId}`
+    const path = carryQuery ? `${base}${location.search}` : base
     navigate(path, opts?.replace ? { replace: true } : undefined)
   }, [activeWorkspace, urlItemId, location.search, navigate])
 
