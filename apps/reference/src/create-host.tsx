@@ -62,6 +62,7 @@ interface CreateOutletValue {
   store: ConfigStore
   composeType: string | null
   composerKey: number
+  activeConfig: CreateConfig | null
   /** Active create uses the sheet shell → the controller (below the panel) owns it. */
   sheetComposing: boolean
   pendingInitialData: () => Partial<WidgetData> | undefined
@@ -163,6 +164,19 @@ export function CreateHostProvider({
   // to the Map module must not swap a fullscreen create over to the Map's sheet
   // config (which would unmount the composer and lose its data).
   const composeOriginRef = useRef<string | undefined>(undefined)
+  // The origin module can unmount during a map-pick detour. Keep the config that
+  // started the create alive until `?compose` closes, otherwise the origin pin
+  // points at a module with no registered config.
+  const composeConfigRef = useRef<CreateConfig | null>(null)
+
+  useEffect(() => {
+    if (isComposing) {
+      if (!composeOriginRef.current && module) composeOriginRef.current = module
+      return
+    }
+    composeOriginRef.current = undefined
+    composeConfigRef.current = null
+  }, [isComposing, module])
 
   // Point the store at the create's origin module while composing, otherwise at
   // the URL module — so the outlet reads the right module's config.
@@ -170,7 +184,15 @@ export function CreateHostProvider({
     const target = isComposing ? (composeOriginRef.current ?? module) : module
     if (target) store.setActiveModule(target)
   }, [isComposing, module, store])
-  const activeConfig = useSyncExternalStore(store.subscribe, store.getActiveConfig, store.getActiveConfig)
+  const registeredActiveConfig = useSyncExternalStore(
+    store.subscribe,
+    store.getActiveConfig,
+    store.getActiveConfig,
+  )
+  useEffect(() => {
+    if (isComposing && registeredActiveConfig) composeConfigRef.current = registeredActiveConfig
+  }, [isComposing, registeredActiveConfig])
+  const activeConfig = registeredActiveConfig ?? (isComposing ? composeConfigRef.current : null)
 
   // Editor (one, shared). Its mapper tracks the active module's config.
   const mapperRef = useRef<ItemEditorMapper>(() => null)
@@ -204,6 +226,7 @@ export function CreateHostProvider({
       const cfg = store.getConfigFor(module)
       const resolvedType = type ?? cfg?.contentTypes[0]?.id ?? ""
       composeOriginRef.current = module
+      composeConfigRef.current = cfg
       pendingInitialDataRef.current = initialData
       setComposerKey((k) => k + 1)
       const params = new URLSearchParams(searchRef.current)
@@ -240,6 +263,7 @@ export function CreateHostProvider({
       store,
       composeType,
       composerKey,
+      activeConfig,
       sheetComposing: isComposing && activeConfig?.shell === "sheet",
       pendingInitialData: () => pendingInitialDataRef.current,
       submit,
@@ -247,7 +271,7 @@ export function CreateHostProvider({
       requestMapPick: startPick,
       composerApiRef,
     }),
-    [store, composeType, composerKey, isComposing, activeConfig, submit, stopCreate, startPick],
+    [store, composeType, composerKey, activeConfig, isComposing, submit, stopCreate, startPick],
   )
 
   const patchCreate = useCallback((patch: Partial<WidgetData>) => {
@@ -311,11 +335,7 @@ export function CreateSheetController() {
 /** Renders the ContentComposer for the active module's create config. */
 function CreateComposerOutlet({ className }: { className?: string }) {
   const ctx = useContext(CreateOutletContext)
-  const config = useSyncExternalStore(
-    ctx!.store.subscribe,
-    ctx!.store.getActiveConfig,
-    ctx!.store.getActiveConfig,
-  )
+  const config = ctx?.activeConfig
   if (!ctx || !config) return null
   return (
     <ContentComposer
