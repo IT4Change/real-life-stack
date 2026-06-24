@@ -62,6 +62,8 @@ interface CreateOutletValue {
   store: ConfigStore
   composeType: string | null
   composerKey: number
+  /** Active create uses the sheet shell → the controller (below the panel) owns it. */
+  sheetComposing: boolean
   pendingInitialData: () => Partial<WidgetData> | undefined
   submit: (data: { contentType: string; isPublic: boolean; data: WidgetData }) => Promise<boolean>
   cancel: () => void
@@ -141,7 +143,6 @@ export function CreateHostProvider({
 }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const modulePanel = useModulePanel()
   const { startPick, confirmPick, isPicking } = useLocationPick()
 
   const storeRef = useRef<ConfigStore | null>(null)
@@ -231,13 +232,14 @@ export function CreateHostProvider({
       store,
       composeType,
       composerKey,
+      sheetComposing: isComposing && activeConfig?.shell === "sheet",
       pendingInitialData: () => pendingInitialDataRef.current,
       submit,
       cancel: stopCreate,
       requestMapPick: startPick,
       composerApiRef,
     }),
-    [store, composeType, composerKey, submit, stopCreate, startPick],
+    [store, composeType, composerKey, isComposing, activeConfig, submit, stopCreate, startPick],
   )
 
   const patchCreate = useCallback((patch: Partial<WidgetData>) => {
@@ -254,10 +256,13 @@ export function CreateHostProvider({
     <CreateHostContext.Provider value={value}>
       <CreateOutletContext.Provider value={outletValue}>
         {children}
-        {/* Sheet shell → shared ModulePanel (opened by the controller). */}
-        <CreateSheetController isComposing={isComposing && activeConfig?.shell === "sheet"} modulePanel={modulePanel} cancel={stopCreate} />
-        {/* Fullscreen shell → rendered here. */}
-        <ComposerFullscreenShell open={!!showFullscreen} onRequestClose={stopCreate}>
+        {/* Fullscreen shell → rendered here (above the panel). Hidden during a map
+            pick so the user can reach the map underneath. */}
+        <ComposerFullscreenShell
+          open={!!showFullscreen}
+          suspended={isPicking}
+          onRequestClose={stopCreate}
+        >
           {showFullscreen && <CreateComposerOutlet className="p-4 sm:p-6" />}
         </ComposerFullscreenShell>
       </CreateOutletContext.Provider>
@@ -266,22 +271,20 @@ export function CreateHostProvider({
 }
 
 /**
- * Opens/closes the shared ModulePanel for the SHEET shell. Like the detail
- * controller: opens a stable `<CreateComposerOutlet/>` (re-renders via context)
- * once, closes when composing ends. Suspends under an in-flight map pick.
+ * Opens/closes the shared ModulePanel for the SHEET shell. Mounted BELOW the
+ * panel (so it can call `useModulePanel`) but reads the create config from the
+ * provider's context ABOVE the panel — so the panel content (`CreateComposerOutlet`)
+ * can read that same context. Mirrors the detail host's provider/controller split.
+ * Opens a stable `<CreateComposerOutlet/>` once, closes when composing ends.
  */
-function CreateSheetController({
-  isComposing,
-  modulePanel,
-  cancel,
-}: {
-  isComposing: boolean
-  modulePanel: ReturnType<typeof useModulePanel>
-  cancel: () => void
-}) {
+export function CreateSheetController() {
+  const modulePanel = useModulePanel()
+  const ctx = useContext(CreateOutletContext)
+  const sheetComposing = !!ctx?.sheetComposing
+  const cancel = ctx?.cancel
   const ownedRef = useRef(false)
   useEffect(() => {
-    if (isComposing) {
+    if (sheetComposing) {
       if (ownedRef.current && modulePanel.current?.kind === "composer") return
       ownedRef.current = true
       modulePanel.open({
@@ -293,7 +296,7 @@ function CreateSheetController({
       ownedRef.current = false
       if (modulePanel.current?.kind === "composer") modulePanel.close({ silent: true })
     }
-  }, [isComposing, modulePanel, cancel])
+  }, [sheetComposing, modulePanel, cancel])
   return null
 }
 

@@ -60,7 +60,7 @@ import { ModuleOutlet } from "./views/module-outlet"
 import { useWorkspaceRouting, STORAGE_KEY_GROUP } from "./hooks/use-workspace-routing"
 import { ItemFocusProvider } from "./hooks/use-item-focus"
 import { LocationPickProvider, useLocationPick } from "./location-pick"
-import { CreateHostProvider } from "./create-host"
+import { CreateHostProvider, CreateSheetController } from "./create-host"
 import { DetailHostProvider, DetailHostController } from "./detail-host"
 
 /**
@@ -417,8 +417,9 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <OpenProfileProvider openProfile={openProfile}>
     <DetailHostProvider>
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
-    <ModulePanelHost>
     <CreateHostProvider currentUserId={currentUser?.id}>
+    <ModulePanelHost>
+    <CreateSheetController />
     <DetailHostController activeModule={activeModule} />
     <AppShell>
       <Navbar>
@@ -579,8 +580,8 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         </div>
       )}
     </AppShell>
-    </CreateHostProvider>
     </ModulePanelHost>
+    </CreateHostProvider>
     </LocationPickProvider>
     </DetailHostProvider>
     </OpenProfileProvider>

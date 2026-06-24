@@ -20,6 +20,9 @@ export interface ComposerFullscreenShellProps {
   /** Whether the shell is open. The parent owns this (e.g. URL-driven); the shell
    *  animates the fade and unmounts itself ~200ms after it goes false. */
   open: boolean
+  /** Hide without unmounting (keeps composer state) — e.g. while the user picks a
+   *  position on the map underneath. */
+  suspended?: boolean
   /** User dismissed via X / Escape. The parent decides what to do (usually close). */
   onRequestClose: () => void
   children: ReactNode
@@ -35,7 +38,7 @@ export interface ComposerFullscreenShellProps {
  * Originally the modal half of `FeedComposerTrigger`, lifted out so create can be
  * shell-agnostic (sheet vs fullscreen) and URL-driven.
  */
-export function ComposerFullscreenShell({ open, onRequestClose, children }: ComposerFullscreenShellProps) {
+export function ComposerFullscreenShell({ open, suspended, onRequestClose, children }: ComposerFullscreenShellProps) {
   // `mounted` keeps the node around for the fade-out; `visible` drives the opacity
   // transition. open=true → mount then fade in (double-rAF); open=false → fade
   // out then unmount after the 200ms transition.
@@ -56,11 +59,12 @@ export function ComposerFullscreenShell({ open, onRequestClose, children }: Comp
   if (!mounted) return null
   return (
     <>
-      <EscapeHandler onEscape={onRequestClose} />
+      {!suspended && <EscapeHandler onEscape={onRequestClose} />}
       <div
         className={cn(
           "fixed inset-0 z-50 bg-background transition-opacity duration-200 ease-out",
           visible ? "opacity-100" : "opacity-0",
+          suspended && "hidden",
         )}
       >
         <div className="absolute top-3 right-3 z-10">
