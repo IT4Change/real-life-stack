@@ -109,6 +109,15 @@ export interface ContentTypeConfig {
   groupOptions?: GroupOption[]
   defaultGroup?: string
   groupRequired?: boolean
+  /**
+   * How this type links people: the relation predicate the `people` widget
+   * maps to (task → `assignedTo`, event → `invited`, …). Declared per type so
+   * the shared submission mapper / pre-fill stay type-driven instead of
+   * hard-coding `assignedTo`. The widget only shows when `people` is in
+   * `defaultWidgets`; the predicate may be declared ahead of enabling it. Label
+   * stays in `widgetLabels.people`.
+   */
+  peopleRelation?: { predicate: string }
 }
 
 export interface WidgetComponentProps<T = unknown> {

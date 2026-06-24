@@ -14,6 +14,7 @@ import {
   useItemEditor,
   useModulePanel,
   type ContentTypeConfig,
+  type ContentComposerProps,
   type ItemEditorMapper,
   type WidgetData,
   type ContentComposerHandle,
@@ -26,6 +27,9 @@ export interface OpenComposerConfig {
   mapper: ItemEditorMapper
   /** Prefill the composer's widget data — e.g. a clicked calendar date as `start`. */
   initialData?: Partial<WidgetData>
+  /** Extra composer props per module (e.g. people options for a task's assignees,
+   *  tag suggestions). Core props (submit/cancel/geocode/map-pick) stay owned here. */
+  composerProps?: Partial<ContentComposerProps>
   className?: string
 }
 
@@ -109,6 +113,7 @@ export function ComposerHostProvider({
             geocode={nominatimGeocode}
             reverseGeocode={nominatimReverseGeocode}
             requestMapPick={startPick}
+            {...config.composerProps}
             onSubmit={async (data) => {
               const result = await editorRef.current.submit(data)
               if (result) {
