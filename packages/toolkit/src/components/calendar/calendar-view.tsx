@@ -800,9 +800,10 @@ function MonthCalendar({
     if (!grid) return
     const measure = () => {
       const rowHeight = grid.clientHeight / weekCount
-      // Cell chrome ≈ 40px (padding + date row); each pill ≈ 30px incl. gap.
-      // Conservative pill height so we'd rather show one fewer than clip one.
-      setEventCapacity(Math.max(1, Math.floor((rowHeight - 40) / 30)))
+      // Chrome ≈ 40px (padding + date row) + ~18px reserved for the pinned
+      // "+N weitere" row; each pill ≈ 30px incl. gap. Conservative so we'd
+      // rather show one fewer pill than clip one.
+      setEventCapacity(Math.max(1, Math.floor((rowHeight - 58) / 30)))
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -825,11 +826,8 @@ function MonthCalendar({
         style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
       >
         {days.map((day) => {
-          // Reserve one slot for the "+N weitere" link when overflowing.
           const overflowing = day.events.length > eventCapacity
-          const visible = overflowing
-            ? day.events.slice(0, Math.max(1, eventCapacity - 1))
-            : day.events
+          const visible = overflowing ? day.events.slice(0, eventCapacity) : day.events
           const hiddenCount = day.events.length - visible.length
           return (
             <div
@@ -858,9 +856,10 @@ function MonthCalendar({
                 )}
               </div>
 
-              {/* Events fill the rest of the cell and clip cleanly at the bottom;
-                  clicking the empty area below them creates an event on this day
-                  (pills/"+N" stop propagation so they don't trigger it). */}
+              {/* Pills fill the space and clip cleanly; clicking the empty area
+                  below them creates an event on this day (pills stop propagation).
+                  The "+N weitere" link sits OUTSIDE this clipped area as a pinned
+                  bottom row, so it stays visible no matter how many pills fit. */}
               <div
                 className="min-h-0 flex-1 space-y-1 overflow-hidden rounded transition-colors hover:bg-primary/5"
                 onClick={onCreateEvent && day.isCurrentMonth ? () => onCreateEvent(day.date) : undefined}
@@ -868,19 +867,19 @@ function MonthCalendar({
                 {visible.map((event) => (
                   <EventPill key={event.item.id} event={event} compact onClick={onEventClick} />
                 ))}
-                {overflowing && (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onOpenDay(day.date)
-                    }}
-                    className="w-full rounded px-1 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
-                  >
-                    +{hiddenCount} weitere
-                  </button>
-                )}
               </div>
+              {overflowing && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onOpenDay(day.date)
+                  }}
+                  className="mt-0.5 w-full shrink-0 rounded px-1 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                >
+                  +{hiddenCount} weitere
+                </button>
+              )}
             </div>
           )
         })}
