@@ -158,11 +158,18 @@ export function CreateHostProvider({
   const { module } = parseModule(location.pathname)
   const composeType = new URLSearchParams(location.search).get("compose")
   const isComposing = composeType !== null && !!module
+  // The module that STARTED the current create (set by startCreate). The create
+  // stays bound to it even if the URL module changes — e.g. a map-pick excursion
+  // to the Map module must not swap a fullscreen create over to the Map's sheet
+  // config (which would unmount the composer and lose its data).
+  const composeOriginRef = useRef<string | undefined>(undefined)
 
-  // Keep the store pointed at the active module so the outlet reads ITS config.
+  // Point the store at the create's origin module while composing, otherwise at
+  // the URL module — so the outlet reads the right module's config.
   useEffect(() => {
-    if (module) store.setActiveModule(module)
-  }, [module, store])
+    const target = isComposing ? (composeOriginRef.current ?? module) : module
+    if (target) store.setActiveModule(target)
+  }, [isComposing, module, store])
   const activeConfig = useSyncExternalStore(store.subscribe, store.getActiveConfig, store.getActiveConfig)
 
   // Editor (one, shared). Its mapper tracks the active module's config.
@@ -196,6 +203,7 @@ export function CreateHostProvider({
       if (!scope || !module) return
       const cfg = store.getConfigFor(module)
       const resolvedType = type ?? cfg?.contentTypes[0]?.id ?? ""
+      composeOriginRef.current = module
       pendingInitialDataRef.current = initialData
       setComposerKey((k) => k + 1)
       const params = new URLSearchParams(searchRef.current)
