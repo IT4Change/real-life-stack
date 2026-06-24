@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef, type DragEvent } from "react"
+import { useState, useMemo, useCallback, type DragEvent } from "react"
 import {
   Layers,
   LayoutList,
@@ -9,10 +9,6 @@ import {
 import {
   KanbanBoard,
   computeColumnReorder,
-  ContentComposer,
-  type ContentComposerSubmitData,
-  type ContentTypeConfig,
-  defaultColumns,
   useModulePanel,
   ModuleSettingsPlaceholder,
   Button,
@@ -20,7 +16,10 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
-  ItemDetailPanel,
+  ItemPreview,
+  ItemAssignees,
+  ItemTypeBadge,
+  ItemScopeBadge,
   ItemPrivateBadge,
   ReactionBar,
   CreateFab,
@@ -33,88 +32,39 @@ import {
   emptyFilterBarValue,
   useFilterableItems,
   type FilterBarValue,
+  type PersonOption,
   useItems,
   useUpdateItem,
   useMembers,
   useCurrentUser,
   useConnector,
-  useItemEditor,
   useItemGroupColorResolver,
   useItemPrivacyResolver,
   usePersonalGroupId,
-  type ItemEditorMapper,
 } from "@real-life-stack/toolkit"
 import { Input } from "@real-life-stack/toolkit"
 import { Search, Settings } from "lucide-react"
-import type { Item, User, Relation, Group, DataInterface } from "@real-life-stack/data-interface"
+import type { Item, User, Group } from "@real-life-stack/data-interface"
 import { hasItemGroups } from "@real-life-stack/data-interface"
-
-function TaskEditPanel({ item, taskContentType, onSubmit, onDelete, connector, activeWorkspaceId, members, availableTags }: {
-  item: Item
-  taskContentType: ContentTypeConfig
-  onSubmit: (data: ContentComposerSubmitData) => void
-  onDelete: () => void
-  connector: DataInterface
-  activeWorkspaceId: string | null
-  members: User[]
-  availableTags: string[]
-}) {
-  return (
-    <ItemDetailPanel
-      itemId={item.id}
-      renderCommentReactions={(commentId) => <ReactionBar itemId={commentId} />}
-    >
-      <ContentComposer
-        key={item.id}
-        className="p-4"
-        contentTypes={[taskContentType]}
-        mode="task"
-        liveUpdate
-        editMode
-        onSubmit={onSubmit}
-        onDelete={onDelete}
-        showVisibility={false}
-        showPreview={false}
-        initialData={{
-          title: String(item.data.title ?? ""),
-          text: String(item.data.description ?? ""),
-          status: String(item.data.status ?? "open"),
-          tags: item.tags ?? [],
-          people: (item.relations ?? [])
-            .filter((r: Relation) => r.predicate === "assignedTo")
-            .map((r: Relation) => r.target.replace(/^global:/, "")),
-          group: (hasItemGroups(connector)
-            ? connector.getItemGroupId(item.id)
-            : null) ?? activeWorkspaceId ?? undefined,
-        }}
-        peopleOptions={members.map((m) => ({ id: m.id, name: m.displayName ?? m.id }))}
-        tagSuggestions={availableTags}
-        tagQuickSuggestions={availableTags.slice(0, 10)}
-        peopleQuickSuggestions={members.slice(0, 10).map((m) => ({ id: m.id, name: m.displayName ?? m.id }))}
-      />
-    </ItemDetailPanel>
-  )
-}
-
-type KanbanPanelState =
-  | { mode: "closed" }
-  | { mode: "edit"; item: Item }
+import { useItemFocus } from "../hooks/use-item-focus"
+import { useComposerHost } from "../composer-host"
+import { useRegisterDetail, type DetailConfig } from "../detail-host"
+import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
+import { withGroupOptions, mapComposerSubmission } from "../composer-mapping"
+import { KANBAN_CREATE_TYPES } from "../content-types"
 
 interface KanbanViewProps {
   activeWorkspaceId: string | null
   groups: Group[]
-  selectedItemId?: string
-  onItemSelect?: (id: string) => void
-  onItemClose?: () => void
 }
 
 export function KanbanView(props: KanbanViewProps) {
   // Renders into the app-level shared panel (one host for all modules);
-  // pin + mode config now lives on that provider (App.tsx).
+  // pin + mode config lives on that provider (App.tsx).
   return <KanbanViewInner {...props} />
 }
 
-function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSelect, onItemClose }: KanbanViewProps) {
+function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   const connector = useConnector()
   // Active-item glow uses the colour of each card's origin group.
   const resolveItemGroupColor = useItemGroupColorResolver(
@@ -144,20 +94,19 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
   const [myItemsOnly, setMyItemsOnly] = useState(false)
   const [assignedTo, setAssignedTo] = useState<string[]>([])
   const [searchText, setSearchText] = useState("")
-  const [panelState, setPanelState] = useState<KanbanPanelState>({ mode: "closed" })
   const modulePanel = useModulePanel()
-
-  // Open item panel from URL deep-link
-  useEffect(() => {
-    if (selectedItemId && tasks.length > 0) {
-      const item = tasks.find((t) => t.id === selectedItemId)
-      if (item) {
-        setPanelState({ mode: "edit", item })
-      }
-    } else if (!selectedItemId && panelState.mode === "edit") {
-      setPanelState({ mode: "closed" })
-    }
-  }, [selectedItemId, tasks.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The shared host owns the detail (read↔edit) for the focused item; a card
+  // click just points the URL focus at it (like the other modules). The host
+  // opens/closes the panel and runs the group-move on save.
+  const { focusItem, clearFocus } = useItemFocus()
+  const { openComposer: openCreateComposer } = useComposerHost()
+  // Edit side of the detail (shared, type-driven) + people options for the
+  // create composer's assignees.
+  const editConfig = useItemDetailEdit(members)
+  const peopleOptions = useMemo<PersonOption[]>(
+    () => members.map((m) => ({ id: m.id, name: m.displayName ?? m.id })),
+    [members],
+  )
   const [groupedView, setGroupedView] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null)
@@ -211,77 +160,92 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
     }
   }
 
+  // A card click points the URL focus at the task; the host opens its detail.
   const handleItemClick = useCallback((item: Item) => {
-    setPanelState({ mode: "edit", item })
-    onItemSelect?.(item.id)
-  }, [onItemSelect])
-
-  // Explicit close — always closes, ignoring pinned state (used by X button / drawer drag)
-  const handleForceClosePanel = useCallback(() => {
-    setPanelState({ mode: "closed" })
-    onItemClose?.()
-  }, [onItemClose])
+    focusItem(item.id)
+  }, [focusItem])
 
   // Determine if the active workspace is the overview view
   const isAggregate = activeWorkspaceId === "__overview__"
+  const currentSpace = isAggregate ? undefined : (activeWorkspaceId ?? undefined)
 
   // All groups are concrete — no aggregate/overview group in the list anymore
   const concreteGroups = groups
 
-  const taskContentType: ContentTypeConfig = useMemo(() => ({
-    id: "task",
-    label: "Task",
-    defaultWidgets: ["title", "text", "status", "people", "tags"],
-    widgetLabels: { text: "Beschreibung", people: "Zugewiesen" },
-    statusOptions: defaultColumns.map((col) => ({
-      id: col.id,
-      label: col.label,
-    })),
-    defaultStatus: "open",
-    // „Privat" (personal space, shared with nobody) first, then the shared
-    // groups — same sharing-scope picker as the other modules. The composer
-    // only shows the widget when there are ≥2 options (a real choice).
-    groupOptions: [
-      ...(personalGroupId ? [{ id: personalGroupId, name: "Privat" }] : []),
-      ...concreteGroups.map((g) => ({ id: g.id, name: g.name })),
-    ],
-    groupRequired: true,
-  }), [concreteGroups, personalGroupId])
+  // Create offers the task type; the detail edit uses the full registry (shared
+  // hook), so a task is editable with its own fields wherever it's opened.
+  const kanbanCreateTypes = useMemo(
+    () => withGroupOptions(KANBAN_CREATE_TYPES, groups, currentSpace, personalGroupId),
+    [groups, currentSpace, personalGroupId],
+  )
 
-  // Bridge local panelState ↔ shared ModulePanel. Whenever the
-  // task-edit state changes, push the TaskEditPanel into the shared
-  // panel; on close, clear it. The shared panel's X / drawer-drag /
-  // backdrop-click flows through `onClose` back into `handleForceClose`.
-  // Tracks whether WE opened the shared panel, so we never close a detail
-  // another module left open when kanban (re)mounts — the panel now persists
-  // across module switches.
-  const panelOwnedRef = useRef(false)
-  useEffect(() => {
-    if (panelState.mode === "edit") {
-      panelOwnedRef.current = true
-      modulePanel.open({
-        kind: "detail",
-        itemId: panelState.item.id,
-        content: (
-          <TaskEditPanel
-            item={panelState.item}
-            taskContentType={taskContentType}
-            onSubmit={handleTaskEdit}
-            onDelete={handleTaskDelete}
-            connector={connector}
-            activeWorkspaceId={activeWorkspaceId}
-            members={members}
-            availableTags={availableTags}
+  const resolveAuthor = useCallback(
+    (createdBy: string): User | undefined => {
+      const member = members.find((m) => m.id === createdBy)
+      if (member) return member
+      if (currentUser?.id === createdBy) return currentUser
+      return undefined
+    },
+    [members, currentUser],
+  )
+
+  // Register the task detail with the host (read↔edit for the focused task).
+  // The read view mirrors the card (assignees), the edit side is the shared,
+  // type-driven config + the board's tag suggestions.
+  const detailConfig = useMemo<DetailConfig>(
+    () => ({
+      renderRead: (current, actions) => {
+        const assignees = (current.relations ?? [])
+          .filter((r) => r.predicate === "assignedTo")
+          .map((r) => members.find((m) => m.id === r.target.replace(/^global:/, "")))
+          .filter((u): u is User => !!u)
+        return (
+          <ItemPreview
+            item={current}
+            author={resolveAuthor(current.createdBy)}
+            headerAdornment={
+              <>
+                <ItemTypeBadge type={current.type} />
+                {isAggregate && <ItemScopeBadge item={current} />}
+              </>
+            }
+            actions={actions}
+            footerAdornment={assignees.length > 0 ? <ItemAssignees users={assignees} /> : undefined}
           />
-        ),
-        onClose: handleForceClosePanel,
-      })
-    } else if (panelOwnedRef.current) {
-      panelOwnedRef.current = false
-      modulePanel.close()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panelState, taskContentType, members, availableTags, activeWorkspaceId])
+        )
+      },
+      ...editConfig,
+      composerProps: {
+        ...editConfig.composerProps,
+        tagSuggestions: availableTags,
+        tagQuickSuggestions: availableTags.slice(0, 10),
+      },
+      renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
+      onShare: () => {
+        void navigator.clipboard?.writeText(window.location.href)
+      },
+    }),
+    [resolveAuthor, members, isAggregate, editConfig, availableTags],
+  )
+  useRegisterDetail("kanban", detailConfig)
+
+  const handleCreateItem = useCallback(() => {
+    // "+" opens a create form for a task (status defaulted to "open"); on save
+    // the task appears on the board. Clear any focus so the composer replaces an
+    // open detail rather than stacking behind it.
+    clearFocus()
+    openCreateComposer({
+      contentTypes: kanbanCreateTypes,
+      mapper: mapComposerSubmission,
+      initialData: { status: "open" },
+      composerProps: {
+        peopleOptions,
+        peopleQuickSuggestions: peopleOptions.slice(0, 10),
+        tagSuggestions: availableTags,
+        tagQuickSuggestions: availableTags.slice(0, 10),
+      },
+    })
+  }, [clearFocus, openCreateComposer, kanbanCreateTypes, peopleOptions, availableTags])
 
   // Group tasks by their group for the grouped view
   const tasksByGroup = useMemo(() => {
@@ -311,93 +275,6 @@ function KanbanViewInner({ activeWorkspaceId, groups, selectedItemId, onItemSele
       return next
     })
   }, [])
-
-  // Kanban-specific composer mapping. The same mapper covers both create
-  // and edit; the `existingItem === null` branch supplies the defaults
-  // a freshly-created task carries (status "open", order at end of
-  // column). Field mapping otherwise: composer `text` →
-  // item.data.description; composer-state `people` → assignedTo
-  // relations. Tags are top-level on the item (spec 07-tags.md), so we
-  // strip any legacy data.tags from the previous item before writing.
-  const mapTaskSubmission = useCallback<ItemEditorMapper>((submission, { existingItem }) => {
-    const { data } = submission
-    const relations: Relation[] = (data.people ?? [])
-      .map((id: string) => ({ predicate: "assignedTo", target: `global:${id}` }))
-    const baseData = existingItem?.data ?? {}
-    const { tags: _legacy, ...dataWithoutLegacyTags } = baseData as Record<string, unknown>
-    const nextData: Record<string, unknown> = existingItem
-      ? {
-          ...dataWithoutLegacyTags,
-          title: data.title,
-          description: data.text,
-          status: data.status,
-        }
-      : {
-          title: data.title ?? "",
-          description: data.text ?? "",
-          status: data.status ?? "open",
-          order: tasks.length,
-        }
-    const nextTags = Array.isArray(data.tags) ? data.tags : existingItem?.tags
-    return {
-      type: existingItem?.type ?? submission.contentType,
-      data: nextData,
-      ...(nextTags !== undefined ? { tags: nextTags } : {}),
-      relations,
-    }
-  }, [tasks.length])
-
-  const editor = useItemEditor({
-    currentUserId: currentUser?.id,
-    mapSubmission: mapTaskSubmission,
-    onCreated: (item) => {
-      setPanelState({ mode: "edit", item })
-      onItemSelect?.(item.id)
-    },
-    onDeleted: () => setPanelState({ mode: "closed" }),
-  })
-
-  const handleTaskCreate = useCallback(() => {
-    // Kanban has no create-modal — the "+" button creates an empty task
-    // and opens the detail panel in edit mode. We feed an empty
-    // composer submission so the mapper's create-branch fills in the
-    // defaults (status "open", order: tasks.length).
-    editor.submit({
-      contentType: "task",
-      isPublic: false,
-      data: {},
-    })
-  }, [editor])
-
-  const handleCreateItem = useCallback(() => {
-    handleTaskCreate()
-  }, [handleTaskCreate])
-
-  const handleTaskEdit = useCallback(async (submitData: ContentComposerSubmitData) => {
-    if (panelState.mode !== "edit") return
-    const item = panelState.item
-    const updated = await editor.submit(submitData, { existingItem: item })
-    if (!updated) {
-      // submit returned null: either the mapper aborted or the connector
-      // rejected the update. The hook has surfaced the error via
-      // editor.error; don't run the group-move side-effect on a write
-      // that didn't land.
-      console.warn("[KanbanView] task edit submit returned null — skipping group-move side-effect")
-      return
-    }
-    const data = submitData.data
-    if (data.group && hasItemGroups(connector)) {
-      const currentGroupId = connector.getItemGroupId(item.id)
-      if (currentGroupId && currentGroupId !== data.group) {
-        connector.moveItemToGroup(item.id, data.group)
-      }
-    }
-  }, [panelState, editor, connector])
-
-  const handleTaskDelete = useCallback(() => {
-    if (panelState.mode !== "edit") return
-    editor.remove(panelState.item.id)
-  }, [panelState, editor])
 
   const viewModeToggle = isAggregate ? (
     <DropdownMenu>
