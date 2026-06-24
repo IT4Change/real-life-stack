@@ -144,7 +144,7 @@ export function CreateHostProvider({
 }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { startPick, confirmPick, isPicking } = useLocationPick()
+  const { startPick, isPicking } = useLocationPick()
 
   const storeRef = useRef<ConfigStore | null>(null)
   if (!storeRef.current) storeRef.current = createConfigStore()
@@ -259,13 +259,10 @@ export function CreateHostProvider({
     [navigate, stopCreate],
   )
 
-  // End any in-flight map pick if the composer is no longer the panel content
-  // (it was replaced/closed) — avoids a stuck pick state.
-  const confirmPickRef = useRef(confirmPick)
-  confirmPickRef.current = confirmPick
-  useEffect(() => {
-    if (isPicking && !isComposing) confirmPickRef.current()
-  }, [isPicking, isComposing])
+  // NB: no "end the pick when !isComposing" cleanup here — a pick can also be
+  // started from an EDIT (`?edit`, not `?compose`), where isComposing is false;
+  // ending it would kill the edit's map-pick. Orphaned picks (navigate away mid-
+  // pick) are already handled inside LocationPickProvider.
 
   const outletValue = useMemo<CreateOutletValue>(
     () => ({

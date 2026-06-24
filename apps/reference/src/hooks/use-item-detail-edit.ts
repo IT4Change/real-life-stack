@@ -10,6 +10,7 @@ import type { User } from "@real-life-stack/data-interface"
 import type { DetailConfig } from "../detail-host"
 import { ALL_CONTENT_TYPES } from "../content-types"
 import { withGroupOptions, mapComposerSubmission, itemToComposerData } from "../composer-mapping"
+import { useLocationPick } from "../location-pick"
 
 /** The shared, type-driven edit half of every module's detail config. */
 export type ItemDetailEditConfig = Pick<
@@ -31,6 +32,9 @@ export type ItemDetailEditConfig = Pick<
 export function useItemDetailEdit(members: User[]): ItemDetailEditConfig {
   const { data: groups } = useGroups()
   const personalGroupId = usePersonalGroupId()
+  // Same map-pick handoff as create — so editing a place/event can re-pick its
+  // position on the map (the button was missing here, only create had it).
+  const { startPick } = useLocationPick()
 
   const contentTypes = useMemo(
     () => withGroupOptions(ALL_CONTENT_TYPES, groups, undefined, personalGroupId),
@@ -49,10 +53,11 @@ export function useItemDetailEdit(members: User[]): ItemDetailEditConfig {
       composerProps: {
         geocode: nominatimGeocode,
         reverseGeocode: nominatimReverseGeocode,
+        requestMapPick: startPick,
         peopleOptions,
         peopleQuickSuggestions: peopleOptions.slice(0, 10),
       },
     }),
-    [contentTypes, peopleOptions],
+    [contentTypes, peopleOptions, startPick],
   )
 }
