@@ -188,6 +188,10 @@ export interface ContentComposerProps {
   /** Fires on every data/type change (and on mount) — for a live preview of the
    *  in-progress item without persisting it. */
   onChange?: (submission: ContentComposerSubmitData) => void
+  /** Fires when the "has unsaved content" state flips. Dirty means the content
+   *  fields now differ from what they were on mount (so an untouched or fully
+   *  emptied form is never dirty) — used to guard against discarding edits. */
+  onDirtyChange?: (dirty: boolean) => void
   className?: string
 }
 
@@ -264,6 +268,34 @@ function widgetsWithValue(data: Partial<WidgetData> | undefined): Set<string> {
   return set
 }
 
+/**
+ * Content fields that count toward "has unsaved changes". Deliberately excludes
+ * `status`/`group` — those carry config defaults (and get rewritten by the
+ * type-switch effect), so including them would flag an untouched/empty form as
+ * dirty. The guard is about user-entered content that would be lost.
+ */
+const DIRTY_FIELDS = [
+  "title", "text", "media", "start", "end", "rrule",
+  "address", "locationName", "position", "meetingLink", "people", "tags",
+] as const
+
+/**
+ * Stable signature of the dirty-relevant content, empties stripped. Two states
+ * with the same signature are "equal" for dirtiness — so typing then clearing a
+ * field, or leaving the form untouched, reads as not dirty. Fixed field order
+ * keeps the JSON key order deterministic.
+ */
+function dirtySignature(data: WidgetData): string {
+  const out: Record<string, unknown> = {}
+  for (const field of DIRTY_FIELDS) {
+    const value = (data as Record<string, unknown>)[field]
+    if (value === "" || value === null || value === undefined) continue
+    if (Array.isArray(value) && value.length === 0) continue
+    out[field] = value
+  }
+  return JSON.stringify(out)
+}
+
 // ── Component ────────────────────────────────────────────────────────────
 
 export function ContentComposer({
@@ -291,6 +323,7 @@ export function ContentComposer({
   renderPreview,
   liveUpdate = false,
   onChange,
+  onDirtyChange,
   className,
 }: ContentComposerProps) {
   const isEditMode = editModeProp ?? !!onDelete
@@ -404,6 +437,18 @@ export function ContentComposer({
   React.useEffect(() => {
     onChange?.({ contentType: selectedType, isPublic, data })
   }, [onChange, selectedType, isPublic, data])
+
+  // Dirty tracking: compare the live content signature against the mount-time
+  // baseline. Baseline is captured once (lazily) from the initial data — so a
+  // prefilled create (e.g. a position handed in) only goes dirty once the user
+  // changes something, and an emptied form goes back to clean.
+  const dirtyBaselineRef = React.useRef<string | null>(null)
+  if (dirtyBaselineRef.current === null) {
+    dirtyBaselineRef.current = dirtySignature({ ...DEFAULT_DATA, ...initialData })
+  }
+  React.useEffect(() => {
+    onDirtyChange?.(dirtySignature(data) !== dirtyBaselineRef.current)
+  }, [onDirtyChange, data])
 
   // Active widgets = defaults + manually added
   const defaultWidgets = new Set(currentConfig.defaultWidgets)
