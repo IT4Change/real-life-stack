@@ -12,11 +12,8 @@ import {
 } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import {
-  ContentComposer,
+  ItemComposer,
   ComposerFullscreenShell,
-  nominatimGeocode,
-  nominatimReverseGeocode,
-  useItemEditor,
   useModulePanel,
   type ContentTypeConfig,
   type ContentComposerProps,
@@ -24,6 +21,7 @@ import {
   type ItemEditorMapper,
   type WidgetData,
 } from "@real-life-stack/toolkit"
+import type { Item } from "@real-life-stack/data-interface"
 import { VALID_MODULES } from "./hooks/use-workspace-routing"
 import { useLocationPick } from "./location-pick"
 
@@ -66,9 +64,8 @@ interface CreateOutletValue {
   /** Active create uses the sheet shell → the controller (below the panel) owns it. */
   sheetComposing: boolean
   pendingInitialData: () => Partial<WidgetData> | undefined
-  submit: (data: { contentType: string; isPublic: boolean; data: WidgetData }) => Promise<boolean>
+  onDone: (item: Item) => void
   cancel: () => void
-  requestMapPick: ContentComposerProps["requestMapPick"]
   composerApiRef: MutableRefObject<ContentComposerHandle | null>
 }
 const CreateOutletContext = createContext<CreateOutletValue | null>(null)
@@ -135,16 +132,10 @@ function parseModule(pathname: string): { scope?: string; module?: string } {
  * save" still works across the module switch (`?compose` is carried by
  * handleModuleChange).
  */
-export function CreateHostProvider({
-  children,
-  currentUserId,
-}: {
-  children: ReactNode
-  currentUserId?: string
-}) {
+export function CreateHostProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { startPick, isPicking } = useLocationPick()
+  const { isPicking } = useLocationPick()
 
   const storeRef = useRef<ConfigStore | null>(null)
   if (!storeRef.current) storeRef.current = createConfigStore()
@@ -194,16 +185,6 @@ export function CreateHostProvider({
   }, [isComposing, registeredActiveConfig])
   const activeConfig = registeredActiveConfig ?? (isComposing ? composeConfigRef.current : null)
 
-  // Editor (one, shared). Its mapper tracks the active module's config.
-  const mapperRef = useRef<ItemEditorMapper>(() => null)
-  mapperRef.current = activeConfig?.mapper ?? (() => null)
-  const editor = useItemEditor({
-    currentUserId,
-    mapSubmission: useCallback<ItemEditorMapper>((s, ctx) => mapperRef.current(s, ctx), []),
-  })
-  const editorRef = useRef(editor)
-  editorRef.current = editor
-
   // Transient prefill (a clicked date) + a key so a fresh create remounts the
   // composer, but module switches (same key) keep its in-progress data.
   const pendingInitialDataRef = useRef<Partial<WidgetData> | undefined>(undefined)
@@ -238,23 +219,20 @@ export function CreateHostProvider({
     [navigate, store],
   )
 
-  const submit = useCallback(
-    async (data: { contentType: string; isPublic: boolean; data: WidgetData }) => {
-      const created = await editorRef.current.submit(data)
-      if (!created) return false
-      // Focus the freshly created item — drop `?compose` and point the URL at the
-      // new item so its detail opens (and the module highlights/reveals it). Falls
-      // back to a plain close if the route can't be parsed.
+  // After a successful create (ItemComposer owns the editor + submit): focus the
+  // new item — drop `?compose` and point the URL at it so its detail opens (and
+  // the module highlights/reveals it). Falls back to a plain close if odd.
+  const focusCreated = useCallback(
+    (item: Item) => {
       const { scope, module } = parseModule(pathRef.current)
       if (scope && module) {
         const params = new URLSearchParams(searchRef.current)
         params.delete("compose")
         const q = params.toString()
-        navigate(`/${scope}/${module}/${created.id}${q ? `?${q}` : ""}`, { replace: true })
+        navigate(`/${scope}/${module}/${item.id}${q ? `?${q}` : ""}`, { replace: true })
       } else {
         stopCreate()
       }
-      return true
     },
     [navigate, stopCreate],
   )
@@ -272,12 +250,11 @@ export function CreateHostProvider({
       activeConfig,
       sheetComposing: isComposing && activeConfig?.shell === "sheet",
       pendingInitialData: () => pendingInitialDataRef.current,
-      submit,
+      onDone: focusCreated,
       cancel: stopCreate,
-      requestMapPick: startPick,
       composerApiRef,
     }),
-    [store, composeType, composerKey, activeConfig, isComposing, submit, stopCreate, startPick],
+    [store, composeType, composerKey, activeConfig, isComposing, focusCreated, stopCreate],
   )
 
   const patchCreate = useCallback((patch: Partial<WidgetData>) => {
@@ -343,23 +320,19 @@ function CreateComposerOutlet({ className }: { className?: string }) {
   const ctx = useContext(CreateOutletContext)
   const config = ctx?.activeConfig
   if (!ctx || !config) return null
+  // Same ItemComposer (form + editor + submit) as edit — only `existingItem` is
+  // absent (create) and onDone focuses the new item.
   return (
-    <ContentComposer
+    <ItemComposer
       key={ctx.composerKey}
       apiRef={ctx.composerApiRef}
       className={className}
       contentTypes={config.contentTypes}
       initialContentType={ctx.composeType ?? undefined}
       initialData={ctx.pendingInitialData()}
-      showPreview={false}
-      geocode={nominatimGeocode}
-      reverseGeocode={nominatimReverseGeocode}
-      requestMapPick={ctx.requestMapPick}
-      {...config.composerProps}
-      onSubmit={async (data) => {
-        const ok = await ctx.submit(data)
-        if (!ok) throw new Error("Speichern fehlgeschlagen. Bitte erneut versuchen.")
-      }}
+      mapper={config.mapper}
+      composerProps={config.composerProps}
+      onDone={ctx.onDone}
       onCancel={ctx.cancel}
     />
   )

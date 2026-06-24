@@ -417,7 +417,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <OpenProfileProvider openProfile={openProfile}>
     <DetailHostProvider>
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
-    <CreateHostProvider currentUserId={currentUser?.id}>
+    <CreateHostProvider>
     <ModulePanelHost>
     <CreateSheetController />
     <DetailHostController activeModule={activeModule} />

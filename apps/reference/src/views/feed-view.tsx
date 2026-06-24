@@ -35,6 +35,7 @@ import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
 import { FEED_CREATE_TYPES } from "../content-types"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
+import { useItemComposerProps } from "../hooks/use-item-composer-props"
 import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 
 const FEED_TYPES: FilterTypeOption[] = [
@@ -194,9 +195,10 @@ export function FeedView({ groupId }: { groupId: string }) {
   // Create runs through the app-level host in the fullscreen shell (the feed's
   // "write a post" surface). The trigger card just points the URL at `?compose`.
   const { startCreate } = useCreate()
+  const composerProps = useItemComposerProps(members)
   const createConfig = useMemo<CreateConfig>(
-    () => ({ contentTypes: feedCreateTypes, mapper: mapComposerSubmission, shell: "fullscreen" }),
-    [feedCreateTypes],
+    () => ({ contentTypes: feedCreateTypes, mapper: mapComposerSubmission, composerProps, shell: "fullscreen" }),
+    [feedCreateTypes, composerProps],
   )
   useRegisterCreate("feed", createConfig)
 

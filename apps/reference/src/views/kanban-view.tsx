@@ -32,7 +32,6 @@ import {
   emptyFilterBarValue,
   useFilterableItems,
   type FilterBarValue,
-  type PersonOption,
   useItems,
   useUpdateItem,
   useMembers,
@@ -50,6 +49,7 @@ import { useItemFocus } from "../hooks/use-item-focus"
 import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
+import { useItemComposerProps } from "../hooks/use-item-composer-props"
 import { withGroupOptions, mapComposerSubmission } from "../composer-mapping"
 import { KANBAN_CREATE_TYPES } from "../content-types"
 
@@ -100,13 +100,9 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   // opens/closes the panel and runs the group-move on save.
   const { focusItem } = useItemFocus()
   const { startCreate } = useCreate()
-  // Edit side of the detail (shared, type-driven) + people options for the
-  // create composer's assignees.
+  // Edit + create share the same composer wiring (geocoder, map-pick, people).
   const editConfig = useItemDetailEdit(members)
-  const peopleOptions = useMemo<PersonOption[]>(
-    () => members.map((m) => ({ id: m.id, name: m.displayName ?? m.id })),
-    [members],
-  )
+  const composerProps = useItemComposerProps(members)
   const [groupedView, setGroupedView] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null)
@@ -237,13 +233,12 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
       mapper: mapComposerSubmission,
       shell: "sheet",
       composerProps: {
-        peopleOptions,
-        peopleQuickSuggestions: peopleOptions.slice(0, 10),
+        ...composerProps,
         tagSuggestions: availableTags,
         tagQuickSuggestions: availableTags.slice(0, 10),
       },
     }),
-    [kanbanCreateTypes, peopleOptions, availableTags],
+    [kanbanCreateTypes, composerProps, availableTags],
   )
   useRegisterCreate("kanban", createConfig)
 

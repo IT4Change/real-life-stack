@@ -38,6 +38,7 @@ import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
 import { MAP_CREATE_TYPES } from "../content-types"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
+import { useItemComposerProps } from "../hooks/use-item-composer-props"
 
 const MAP_TYPES: FilterTypeOption[] = [
   { id: "event", label: "Events", icon: Calendar },
@@ -261,9 +262,10 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   const editConfig = useItemDetailEdit(members)
 
   const { startCreate } = useCreate()
+  const composerProps = useItemComposerProps(members)
   const createConfig = useMemo<CreateConfig>(
-    () => ({ contentTypes: mapCreateTypes, mapper: mapComposerSubmission, shell: "sheet" }),
-    [mapCreateTypes],
+    () => ({ contentTypes: mapCreateTypes, mapper: mapComposerSubmission, composerProps, shell: "sheet" }),
+    [mapCreateTypes, composerProps],
   )
   useRegisterCreate("map", createConfig)
   const { isPicking, updatePick, confirmPick, cancelPick } = useLocationPick()
