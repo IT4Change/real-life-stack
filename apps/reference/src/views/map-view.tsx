@@ -666,9 +666,12 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
                 ? "Position gewählt."
                 : "Tippe auf die Karte, um die Position zu setzen."}
             </span>
-            {isCompact && pickPos && (
+            {pickPos && (
+              // Always offered once a position is set: on a suspended composer
+              // (mobile drawer or a fullscreen create) this is the only way back
+              // to the form; with a visible sheet it just ends pick mode.
               <Button size="sm" className="h-7 px-2 text-xs" onClick={confirmPick}>
-                Fertig
+                Übernehmen
               </Button>
             )}
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={cancelPick}>
