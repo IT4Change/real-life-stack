@@ -1025,64 +1025,47 @@ interface DayCalendarProps {
 }
 
 function DayCalendar({ visibleDate, eventsByDay, onEventClick, onCreateEvent }: DayCalendarProps) {
-  const dayEvents = getEventsForDay(eventsByDay, visibleDate)
-  // All-day events start at local midnight, below the 06:00 first slot, so they
-  // never matched an hour row and went missing. Surface them in their own
-  // section above the timed grid (like the week view's all-day bar).
-  const allDayEvents = dayEvents.filter((event) => event.allDay)
-  const timedEvents = dayEvents.filter((event) => !event.allDay)
+  // The day view is a simple chronological list — no hour grid. Sorting by start
+  // puts all-day events (local midnight) first, then timed events; each card
+  // already labels its own time ("Ganztägig" / "14:00"). The day/date is already
+  // in the calendar header above, so this view carries no header of its own.
+  const dayEvents = useMemo(
+    () => getEventsForDay(eventsByDay, visibleDate).slice().sort(compareEvents),
+    [eventsByDay, visibleDate],
+  )
+
+  if (dayEvents.length === 0) {
+    return (
+      <div className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
+        <CalendarDays className="h-8 w-8" />
+        Keine Events an diesem Tag
+        {onCreateEvent && (
+          <button
+            type="button"
+            onClick={() => onCreateEvent(visibleDate)}
+            className="rounded-md border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+          >
+            Event erstellen
+          </button>
+        )}
+      </div>
+    )
+  }
 
   return (
-    <div>
-      <div className="border-b bg-muted/20 px-4 py-3">
-        <h3 className="font-semibold">{formatDayLabel(visibleDate)}</h3>
-        <p className="text-sm text-muted-foreground">
-          {dayEvents.length === 1 ? "1 Event" : `${dayEvents.length} Events`}
-        </p>
-      </div>
-
-      {allDayEvents.length > 0 && (
-        <div className="grid grid-cols-[72px_1fr] border-b">
-          <div className="flex items-center justify-end border-r bg-muted/20 px-2 py-2 text-right text-xs text-muted-foreground">
-            Ganztägig
-          </div>
-          <div className="space-y-1 p-2">
-            {allDayEvents.map((event) => (
-              <EventCard key={event.item.id} event={event} onClick={onEventClick} />
-            ))}
-          </div>
-        </div>
+    <div className="space-y-3 p-4">
+      {dayEvents.map((event) => (
+        <EventCard key={event.item.id} event={event} onClick={onEventClick} />
+      ))}
+      {onCreateEvent && (
+        <button
+          type="button"
+          onClick={() => onCreateEvent(visibleDate)}
+          className="w-full rounded-lg border border-dashed py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        >
+          + Event an diesem Tag
+        </button>
       )}
-
-      <div>
-        {TIME_SLOTS.map((hour) => {
-          const slotEvents = timedEvents.filter((event) => event.start.getHours() === hour)
-          const canCreateInSlot = slotEvents.length === 0 && onCreateEvent
-          const SlotElement = canCreateInSlot ? "button" : "div"
-          return (
-            <SlotElement
-              key={hour}
-              {...(canCreateInSlot
-                ? { type: "button" as const, onClick: () => onCreateEvent(withTime(visibleDate, hour)) }
-                : {})}
-              className="grid min-h-20 w-full grid-cols-[72px_1fr] border-b text-left transition-colors hover:bg-muted/40"
-            >
-              <div className="border-r bg-muted/20 px-2 py-3 text-right text-xs text-muted-foreground">
-                {String(hour).padStart(2, "0")}:00
-              </div>
-              <div className="space-y-2 p-2">
-                {slotEvents.map((event) => (
-                  <EventCard
-                    key={event.item.id}
-                    event={event}
-                    onClick={onEventClick}
-                  />
-                ))}
-              </div>
-            </SlotElement>
-          )
-        })}
-      </div>
     </div>
   )
 }
