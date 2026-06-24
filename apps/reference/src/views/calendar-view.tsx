@@ -159,6 +159,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   return (
     <>
       <ToolkitCalendarView
+        className="min-h-0 flex-1"
         events={events}
         currentUserId={currentUser?.id}
         resolveItemGroupColor={resolveItemGroupColor}

@@ -581,7 +581,7 @@ export function CalendarView({
   return (
     <CalendarGroupColorContext.Provider value={resolveGroupColor}>
     <CalendarActiveItemContext.Provider value={activeItemId}>
-    <div className={cn("w-full space-y-3", className)}>
+    <div className={cn("flex w-full flex-col gap-3 min-h-0", className)}>
       <FilterBar
         value={filterBarValue}
         onChange={setFilterBarValue}
@@ -662,8 +662,8 @@ export function CalendarView({
         }
       />
 
-      <div className="-mx-4 sm:mx-0 sm:overflow-hidden sm:rounded-lg sm:border">
-      <div className="flex flex-col gap-3 border-b p-3 sm:gap-4 sm:p-4 md:flex-row md:items-center md:justify-between">
+      <div className="-mx-4 flex min-h-0 flex-1 flex-col sm:mx-0 sm:overflow-hidden sm:rounded-lg sm:border">
+      <div className="flex shrink-0 flex-col gap-3 border-b p-3 sm:gap-4 sm:p-4 md:flex-row md:items-center md:justify-between">
         {/* Title between the two arrows, hugging the text (no reserved width, so
             no floating gap). Centred on mobile to sit balanced above the
             full-width view switcher, left-aligned on desktop. The view switcher
@@ -723,7 +723,7 @@ export function CalendarView({
           that it fits 7 columns without horizontal scroll. Previous, current
           and next render side by side in the track so the neighbour is already
           attached while dragging — no empty gap (see the carousel handlers above). */}
-      <div className="overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <div
           ref={swipeTrackRef}
           onTouchStart={handleSwipeStart}
@@ -731,7 +731,7 @@ export function CalendarView({
           onTouchEnd={handleSwipeEnd}
           onTouchCancel={handleSwipeCancel}
           onTransitionEnd={handleSwipeTransitionEnd}
-          className="flex items-start"
+          className="flex h-full items-stretch"
           style={{
             transform: `translateX(calc(-100% + ${swipeDx}px))`,
             transition: swipeAnimating ? "transform 250ms ease-out" : "none",
@@ -743,9 +743,9 @@ export function CalendarView({
               aria-hidden to keep them out of the focus and a11y tree; after a
               swap they re-render by position, so the middle one is always the
               live period. */}
-          <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, -1))}</div>
-          <div className="w-full shrink-0">{renderPeriod(visibleDate)}</div>
-          <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, 1))}</div>
+          <div className="h-full w-full shrink-0 overflow-y-auto" aria-hidden inert>{renderPeriod(periodDate(visibleDate, -1))}</div>
+          <div className="h-full w-full shrink-0 overflow-y-auto">{renderPeriod(visibleDate)}</div>
+          <div className="h-full w-full shrink-0 overflow-y-auto" aria-hidden inert>{renderPeriod(periodDate(visibleDate, 1))}</div>
         </div>
       </div>
       </div>
@@ -787,21 +787,28 @@ function MonthCalendar({
     [eventsByDay, selectedDate, today, visibleDate],
   )
 
+  // Fit-to-height: the weeks share the available height (1fr each) so the whole
+  // month stays on screen instead of the last week sliding off the bottom.
+  const weekCount = days.length / 7
+
   return (
-    <div>
-      <div className="grid grid-cols-7 border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
+    <div className="flex h-full flex-col">
+      <div className="grid shrink-0 grid-cols-7 border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
         {WEEKDAYS.map((weekday) => (
           <div key={weekday} className="px-2 py-2 text-center">
             {weekday}
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7">
+      <div
+        className="grid min-h-0 flex-1 grid-cols-7"
+        style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
+      >
         {days.map((day) => (
           <div
             key={day.key}
             className={cn(
-              "group flex min-h-20 flex-col border-b border-r p-1.5 text-left align-top transition-colors sm:min-h-28 lg:min-h-32",
+              "group flex min-h-0 flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
               !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
               day.isCurrentMonth && "hover:bg-muted/50",
               day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
@@ -1088,7 +1095,7 @@ function EventList({ events, onEventClick }: EventListProps) {
   }
 
   return (
-    <div className="max-h-[720px] overflow-y-auto">
+    <div>
       {groups.map((group) => (
         <div key={group.key} className="border-b">
           <div className="sticky top-0 z-10 border-b bg-card/95 px-4 py-3 backdrop-blur">
