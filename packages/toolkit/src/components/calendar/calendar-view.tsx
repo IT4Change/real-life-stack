@@ -800,8 +800,9 @@ function MonthCalendar({
     if (!grid) return
     const measure = () => {
       const rowHeight = grid.clientHeight / weekCount
-      // Cell chrome ≈ 40px (padding + date row); each pill ≈ 28px incl. gap.
-      setEventCapacity(Math.max(1, Math.floor((rowHeight - 40) / 28)))
+      // Cell chrome ≈ 40px (padding + date row); each pill ≈ 30px incl. gap.
+      // Conservative pill height so we'd rather show one fewer than clip one.
+      setEventCapacity(Math.max(1, Math.floor((rowHeight - 40) / 30)))
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -857,7 +858,13 @@ function MonthCalendar({
                 )}
               </div>
 
-              <div className="space-y-1 overflow-hidden">
+              {/* Events fill the rest of the cell and clip cleanly at the bottom;
+                  clicking the empty area below them creates an event on this day
+                  (pills/"+N" stop propagation so they don't trigger it). */}
+              <div
+                className="min-h-0 flex-1 space-y-1 overflow-hidden rounded transition-colors hover:bg-primary/5"
+                onClick={onCreateEvent && day.isCurrentMonth ? () => onCreateEvent(day.date) : undefined}
+              >
                 {visible.map((event) => (
                   <EventPill key={event.item.id} event={event} compact onClick={onEventClick} />
                 ))}
@@ -874,16 +881,6 @@ function MonthCalendar({
                   </button>
                 )}
               </div>
-
-              {onCreateEvent && day.isCurrentMonth && (
-                <button
-                  type="button"
-                  aria-label="Event an diesem Tag erstellen"
-                  onClick={() => onCreateEvent(day.date)}
-                  tabIndex={-1}
-                  className="mt-1 min-h-4 flex-1 rounded transition-colors hover:bg-primary/5"
-                />
-              )}
             </div>
           )
         })}
