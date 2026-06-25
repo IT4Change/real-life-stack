@@ -869,37 +869,31 @@ function MonthCalendar({
   )
 
   // The month flows at natural height so the whole module scrolls (like
-  // feed/kanban) — not a nested grid scroll. On landscape we size cells so ~5
-  // weeks fill the viewport (tall, readable cells, via the CSS `dvh` min-height
-  // below); a rare 6th week then scrolls with the module. Portrait stays compact.
-  const [landscape, setLandscape] = useState(true)
-  useEffect(() => {
-    const update = () => setLandscape(window.innerWidth > window.innerHeight)
-    update()
-    window.addEventListener("resize", update)
-    return () => window.removeEventListener("resize", update)
-  }, [])
-
-  // Pill capacity follows the ACTUAL rendered cell height (measured), not a
-  // viewport formula — so it stays correct under browser zoom (which doesn't
-  // fire `resize` but does resize the dvh-sized cells, caught by ResizeObserver).
-  // Overflow goes into the "+N weitere" popover.
-  const gridRef = useRef<HTMLDivElement>(null)
+  // feed/kanban). On landscape ~5 weeks fill the viewport; portrait stays
+  // compact. Cell HEIGHT and pill CAPACITY are derived from the SAME measured
+  // value, so they can never desync — that desync is what left cells under-
+  // filled under browser zoom. visualViewport.resize catches zoom where the
+  // plain window resize event doesn't fire. Overflow → the "+N weitere" popover.
+  const [cellHeight, setCellHeight] = useState(140)
   const [eventCapacity, setEventCapacity] = useState(3)
   useEffect(() => {
-    const grid = gridRef.current
-    if (!grid) return
     const measure = () => {
-      const cell = grid.firstElementChild as HTMLElement | null
-      const cellH = cell?.clientHeight ?? 0
+      const landscape = window.innerWidth > window.innerHeight
+      // Chrome above the grid (navbar, filter bar, period header, weekday row)
+      // ≈ 248px; landscape divides the remaining viewport height by 5.
+      const h = landscape ? Math.max(96, (window.innerHeight - 248) / 5) : 120
+      setCellHeight(h)
       // Cell chrome ≈ 40px (padding + date row) + ~18px for the pinned
       // "+N weitere" row; each pill ≈ 30px incl. gap.
-      if (cellH > 0) setEventCapacity(Math.max(1, Math.floor((cellH - 58) / 30)))
+      setEventCapacity(Math.max(1, Math.floor((h - 58) / 30)))
     }
     measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(grid)
-    return () => observer.disconnect()
+    window.addEventListener("resize", measure)
+    window.visualViewport?.addEventListener("resize", measure)
+    return () => {
+      window.removeEventListener("resize", measure)
+      window.visualViewport?.removeEventListener("resize", measure)
+    }
   }, [])
 
   return (
@@ -911,7 +905,7 @@ function MonthCalendar({
           </div>
         ))}
       </div>
-      <div ref={gridRef} className="grid grid-cols-7">
+      <div className="grid grid-cols-7">
         {days.map((day) => {
           const overflowing = day.events.length > eventCapacity
           const visible = overflowing ? day.events.slice(0, eventCapacity) : day.events
@@ -919,9 +913,7 @@ function MonthCalendar({
           return (
             <div
               key={day.key}
-              // Landscape: ~5 weeks fill the viewport (dvh recomputes under zoom,
-              // unlike a JS px snapshot). Portrait: compact fixed height.
-              style={{ minHeight: landscape ? "calc((100dvh - 248px) / 5)" : "120px" }}
+              style={{ minHeight: cellHeight }}
               className={cn(
                 "group flex flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
                 !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
