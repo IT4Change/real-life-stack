@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent, type TransitionEvent } from "react"
 import {
   Calendar as CalendarIcon,
   CalendarDays,
@@ -19,6 +19,7 @@ import { ItemPreview } from "../preview/item-preview"
 import { ItemTypeBadge } from "../preview/item-type-badge"
 import { ItemTimeRange } from "../preview/item-time-range"
 import { ItemScopeBadge } from "../preview/item-scope-badge"
+import { Popover, PopoverContent, PopoverTrigger } from "../primitives/popover"
 import { FilterBar } from "../filter/filter-bar"
 import { FilterSection, FilterToggle, FilterMultiSelect } from "../filter/filter-building-blocks"
 import { emptyFilterBarValue, type FilterBarValue, type FilterTypeOption } from "../filter/types"
@@ -783,6 +784,58 @@ export function CalendarView({
   )
 }
 
+/**
+ * The "+N weitere" overflow popover for a month-grid day: lists ALL of that day's
+ * events in a portalled popover (the shared z-70 overlay layer, see spec 01
+ * „Overlay-Flächen"), so a day can hold arbitrarily many events without cramming
+ * or shrinking the cell. The trigger is passed as `children`.
+ */
+function DayEventsMenu({
+  date,
+  events,
+  onEventClick,
+  children,
+}: {
+  date: Date
+  events: CalendarEvent[]
+  onEventClick?: (event: Item) => void
+  children: ReactNode
+}) {
+  const resolveGroupColor = useContext(CalendarGroupColorContext)
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverContent align="start" className="max-h-80 w-64 overflow-y-auto p-1">
+        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+          {formatDayLabel(date)}
+        </div>
+        {events.map((event) => (
+          <button
+            key={event.item.id}
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              onEventClick?.(event.item)
+            }}
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: getItemColor(event.item, { groupColor: resolveGroupColor(event.item) }) }}
+              aria-hidden
+            />
+            <span className="min-w-0 flex-1 truncate">{event.title}</span>
+            {!event.allDay && (
+              <span className="shrink-0 text-xs text-muted-foreground">{formatTime(event.start)}</span>
+            )}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 interface MonthCalendarProps {
   visibleDate: Date
   selectedDate: Date
@@ -828,10 +881,11 @@ function MonthCalendar({
     if (!grid) return
     const measure = () => {
       const rowHeight = grid.clientHeight / weekCount
-      // Chrome ≈ 30px (padding + compact date row) + ~16px reserved for the
-      // pinned "+N weitere" row; each compact pill ≈ 22px incl. gap. Conservative
-      // so we'd rather show one fewer pill than clip one.
-      setEventCapacity(Math.max(1, Math.floor((rowHeight - 46) / 22)))
+      // Chrome ≈ 40px (padding + date row) + ~18px reserved for the pinned
+      // "+N weitere" row; each pill ≈ 30px incl. gap. Conservative so we'd
+      // rather show one fewer (readable) pill than clip one — the overflow goes
+      // into the "+N weitere" popover, so showing fewer here is fine.
+      setEventCapacity(Math.max(1, Math.floor((rowHeight - 58) / 30)))
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -843,7 +897,7 @@ function MonthCalendar({
     <div className="flex h-full flex-col">
       <div className="grid shrink-0 grid-cols-7 border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
         {WEEKDAYS.map((weekday) => (
-          <div key={weekday} className="px-2 py-1.5 text-center">
+          <div key={weekday} className="px-2 py-2 text-center">
             {weekday}
           </div>
         ))}
@@ -861,26 +915,26 @@ function MonthCalendar({
             <div
               key={day.key}
               className={cn(
-                "group flex min-h-0 flex-col overflow-hidden border-b border-r p-1 text-left align-top transition-colors",
+                "group flex min-h-0 flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
                 !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
                 day.isCurrentMonth && "hover:bg-muted/50",
                 day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
               )}
             >
-              <div className="mb-0.5 flex shrink-0 items-center justify-between gap-1">
+              <div className="mb-1 flex shrink-0 items-center justify-between gap-1">
                 <button
                   type="button"
                   onClick={() => onSelectDate(day.date)}
                   onDoubleClick={() => onOpenDay(day.date)}
                   className={cn(
-                    "flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold",
+                    "flex h-6 min-w-6 items-center justify-center rounded-full text-sm font-semibold",
                     day.isToday && "bg-primary text-primary-foreground",
                   )}
                 >
                   {day.number}
                 </button>
                 {day.events.length > 0 && (
-                  <span className="text-[11px] font-medium text-primary">{day.events.length}</span>
+                  <span className="text-xs font-medium text-primary">{day.events.length}</span>
                 )}
               </div>
 
@@ -897,16 +951,15 @@ function MonthCalendar({
                 ))}
               </div>
               {overflowing && (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onOpenDay(day.date)
-                  }}
-                  className="mt-0.5 w-full shrink-0 rounded px-1 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
-                >
-                  +{hiddenCount} weitere
-                </button>
+                <DayEventsMenu date={day.date} events={day.events} onEventClick={onEventClick}>
+                  <button
+                    type="button"
+                    onClick={(event) => event.stopPropagation()}
+                    className="mt-0.5 w-full shrink-0 rounded px-1 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    +{hiddenCount} weitere
+                  </button>
+                </DayEventsMenu>
               )}
             </div>
           )
@@ -1170,12 +1223,7 @@ function EventPill({ event, compact = false, onClick }: EventPillProps) {
         // Soft glow in the group colour for the item open in the shared panel.
         ...(isActive ? getActivePanelGlow(groupColor) : null),
       }}
-      className={cn(
-        "block w-full truncate rounded-md text-left font-medium transition-opacity hover:opacity-90",
-        // Compact = the dense month-grid pill; the regular size is for the week
-        // slots and all-day bar where there's more room.
-        compact ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1.5 text-xs",
-      )}
+      className="block w-full truncate rounded-md px-2 py-1.5 text-left text-xs font-medium transition-opacity hover:opacity-90"
     >
       {compact
         ? event.allDay
