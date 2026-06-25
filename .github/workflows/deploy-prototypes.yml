@@ -44,39 +44,8 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Checkout web-of-trust (for linked packages)
-        uses: actions/checkout@v4
-        with:
-          repository: real-life-org/web-of-trust
-          # Pinned: wot-core on spec-vnext is mid-refactor. Recent HEAD
-          # broke the build with API-surface changes (GroupKeyService,
-          # HttpDiscoveryAdapter → DiscoveryAdapter,
-          # IndexedDbIdentitySeedVault, PersonalDoc.verifications,
-          # YjsReplicationConfig.groupKeyService, MessageType union).
-          # f79723e is the last spec-vnext commit known to build with
-          # the current packages/wot-connector (master deploy was green
-          # on 2026-05-22 against this commit). Bump the pin once
-          # packages/wot-connector is updated for the new surface.
-          # actions/checkout needs the full 40-char SHA plus fetch-depth: 0
-          # to resolve an arbitrary commit (otherwise it tries to fetch it
-          # as a branch/tag pattern and fails).
-          ref: f79723e8b81467f394b8d5c9ab18da2b34c9c35c
-          fetch-depth: 0
-          path: .wot
-
-      - name: Build web-of-trust packages
-        working-directory: .wot
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm --filter @web_of_trust/core build
-          pnpm --filter @web_of_trust/adapter-yjs build
-
       - name: Install dependencies
-        run: |
-          sed -i 's|link:../web-of-trust/|link:.wot/|g' package.json
-          sed -i 's|"@real-life/wot-core": "^0.2.0"|"@real-life/wot-core": "link:../../.wot/packages/wot-core"|g' packages/wot-connector/package.json
-          sed -i 's|"@real-life/adapter-yjs": "^0.1.0"|"@real-life/adapter-yjs": "link:../../.wot/packages/adapter-yjs"|g' packages/wot-connector/package.json
-          pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Build packages (data-interface, toolkit, connectors)
         run: |
