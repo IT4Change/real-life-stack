@@ -609,7 +609,7 @@ export function CalendarView({
     <CalendarGroupColorContext.Provider value={resolveGroupColor}>
     <CalendarActiveItemContext.Provider value={activeItemId}>
     <CalendarScopeBadgeContext.Provider value={showScopeBadge}>
-    <div className={cn("flex w-full flex-col gap-3 min-h-0", className)}>
+    <div className={cn("w-full space-y-3", className)}>
       <FilterBar
         value={filterBarValue}
         onChange={setFilterBarValue}
@@ -690,8 +690,8 @@ export function CalendarView({
         }
       />
 
-      <div className="-mx-4 flex min-h-0 flex-1 flex-col sm:mx-0 sm:overflow-hidden sm:rounded-lg sm:border">
-      <div className="flex shrink-0 flex-col gap-3 border-b p-3 sm:gap-4 sm:p-4 md:flex-row md:items-center md:justify-between">
+      <div className="-mx-4 sm:mx-0 sm:overflow-hidden sm:rounded-lg sm:border">
+      <div className="flex flex-col gap-3 border-b p-3 sm:gap-4 sm:p-4 md:flex-row md:items-center md:justify-between">
         {/* Title between the two arrows, hugging the text (no reserved width, so
             no floating gap). Centred on mobile to sit balanced above the
             full-width view switcher, left-aligned on desktop. The view switcher
@@ -751,7 +751,7 @@ export function CalendarView({
           that it fits 7 columns without horizontal scroll. Previous, current
           and next render side by side in the track so the neighbour is already
           attached while dragging — no empty gap (see the carousel handlers above). */}
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="overflow-hidden">
         <div
           ref={swipeTrackRef}
           onTouchStart={handleSwipeStart}
@@ -759,7 +759,7 @@ export function CalendarView({
           onTouchEnd={handleSwipeEnd}
           onTouchCancel={handleSwipeCancel}
           onTransitionEnd={handleSwipeTransitionEnd}
-          className="flex h-full items-stretch"
+          className="flex items-start"
           style={{
             transform: `translateX(calc(-100% + ${swipeDx}px))`,
             transition: swipeAnimating ? "transform 250ms ease-out" : "none",
@@ -771,9 +771,9 @@ export function CalendarView({
               aria-hidden to keep them out of the focus and a11y tree; after a
               swap they re-render by position, so the middle one is always the
               live period. */}
-          <div className="h-full w-full shrink-0 overflow-y-auto" aria-hidden inert>{renderPeriod(periodDate(visibleDate, -1))}</div>
-          <div className="h-full w-full shrink-0 overflow-y-auto">{renderPeriod(visibleDate)}</div>
-          <div className="h-full w-full shrink-0 overflow-y-auto" aria-hidden inert>{renderPeriod(periodDate(visibleDate, 1))}</div>
+          <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, -1))}</div>
+          <div className="w-full shrink-0">{renderPeriod(visibleDate)}</div>
+          <div className="w-full shrink-0" aria-hidden inert>{renderPeriod(periodDate(visibleDate, 1))}</div>
         </div>
       </div>
       </div>
@@ -868,54 +868,39 @@ function MonthCalendar({
     [eventsByDay, selectedDate, today, visibleDate],
   )
 
-  // Fit-to-height: the weeks share the available height (1fr each) so the whole
-  // month stays on screen instead of the last week sliding off the bottom.
-  const weekCount = days.length / 7
-
-  // How many event pills fit a cell at the current height — measured, so a short
-  // viewport shows fewer pills + "+N weitere" instead of clipping one mid-pill.
-  const gridRef = useRef<HTMLDivElement>(null)
-  const [eventCapacity, setEventCapacity] = useState(4)
-  // Min cell height (px). On landscape we cap the visible weeks at 5 so cells
-  // stay tall enough for readable pills; a (rare) 6th week then scrolls into
-  // view rather than squeezing every week. Portrait keeps 0 → pure 1fr, all
-  // weeks fitted.
-  const [minRowHeight, setMinRowHeight] = useState(0)
+  // The month flows at natural height so the whole module scrolls (like
+  // feed/kanban) — not a nested grid scroll. On landscape we size cells so ~5
+  // weeks fill the viewport (tall, readable cells); a rare 6th week then scrolls
+  // with the module. Portrait keeps a compact default. Pill capacity follows the
+  // cell height (overflow → the "+N weitere" popover).
+  const [cellMinHeight, setCellMinHeight] = useState(140)
+  const [eventCapacity, setEventCapacity] = useState(3)
   useEffect(() => {
-    const grid = gridRef.current
-    if (!grid) return
     const measure = () => {
-      const gridHeight = grid.clientHeight
-      const minRow = window.innerWidth > window.innerHeight ? gridHeight / 5 : 0
-      setMinRowHeight(minRow)
-      // Capacity from the ACTUAL cell height (the larger of fill-height and the
-      // landscape min). Chrome ≈ 40px (padding + date row) + ~18px reserved for
-      // the pinned "+N weitere" row; each pill ≈ 30px incl. gap. Conservative so
-      // we'd rather show one fewer (readable) pill than clip one — the overflow
-      // goes into the "+N weitere" popover.
-      const rowHeight = Math.max(gridHeight / weekCount, minRow)
-      setEventCapacity(Math.max(1, Math.floor((rowHeight - 58) / 30)))
+      const landscape = window.innerWidth > window.innerHeight
+      // Chrome above the grid (navbar, filter bar, period header, weekday row)
+      // ≈ 248px; landscape divides the remaining viewport height by 5.
+      const cellH = landscape ? Math.max(96, (window.innerHeight - 248) / 5) : 120
+      setCellMinHeight(cellH)
+      // Cell chrome ≈ 40px (padding + date row) + ~18px for the pinned
+      // "+N weitere" row; each pill ≈ 30px incl. gap.
+      setEventCapacity(Math.max(1, Math.floor((cellH - 58) / 30)))
     }
     measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(grid)
-    return () => observer.disconnect()
-  }, [weekCount])
+    window.addEventListener("resize", measure)
+    return () => window.removeEventListener("resize", measure)
+  }, [])
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="grid shrink-0 grid-cols-7 border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
+    <div>
+      <div className="grid grid-cols-7 border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
         {WEEKDAYS.map((weekday) => (
           <div key={weekday} className="px-2 py-2 text-center">
             {weekday}
           </div>
         ))}
       </div>
-      <div
-        ref={gridRef}
-        className="grid min-h-0 flex-1 grid-cols-7 overflow-y-auto"
-        style={{ gridTemplateRows: `repeat(${weekCount}, minmax(${minRowHeight}px, 1fr))` }}
-      >
+      <div className="grid grid-cols-7">
         {days.map((day) => {
           const overflowing = day.events.length > eventCapacity
           const visible = overflowing ? day.events.slice(0, eventCapacity) : day.events
@@ -923,8 +908,9 @@ function MonthCalendar({
           return (
             <div
               key={day.key}
+              style={{ minHeight: cellMinHeight }}
               className={cn(
-                "group flex min-h-0 flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
+                "group flex flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
                 !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
                 day.isCurrentMonth && "hover:bg-muted/50",
                 day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",

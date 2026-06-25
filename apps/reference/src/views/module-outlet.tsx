@@ -73,10 +73,7 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
           <FeedView groupId={activeWorkspace?.id ?? ""} />
         </div>
       ) : activeModule === "calendar" ? (
-        // Fit-to-height: the calendar fills the scroll area so the month view
-        // sizes its weeks to the viewport (week/day/list scroll internally)
-        // instead of pushing the last week off-screen.
-        <div className={`${containerClass} flex h-full min-h-0 flex-col`}>
+        <div className={containerClass}>
           <CalendarViewWrapper groupId={activeWorkspace?.id ?? ""} />
         </div>
       ) : null}
