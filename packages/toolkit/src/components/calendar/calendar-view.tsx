@@ -876,15 +876,24 @@ function MonthCalendar({
   // viewport shows fewer pills + "+N weitere" instead of clipping one mid-pill.
   const gridRef = useRef<HTMLDivElement>(null)
   const [eventCapacity, setEventCapacity] = useState(4)
+  // Min cell height (px). On landscape we cap the visible weeks at 5 so cells
+  // stay tall enough for readable pills; a (rare) 6th week then scrolls into
+  // view rather than squeezing every week. Portrait keeps 0 → pure 1fr, all
+  // weeks fitted.
+  const [minRowHeight, setMinRowHeight] = useState(0)
   useEffect(() => {
     const grid = gridRef.current
     if (!grid) return
     const measure = () => {
-      const rowHeight = grid.clientHeight / weekCount
-      // Chrome ≈ 40px (padding + date row) + ~18px reserved for the pinned
-      // "+N weitere" row; each pill ≈ 30px incl. gap. Conservative so we'd
-      // rather show one fewer (readable) pill than clip one — the overflow goes
-      // into the "+N weitere" popover, so showing fewer here is fine.
+      const gridHeight = grid.clientHeight
+      const minRow = window.innerWidth > window.innerHeight ? gridHeight / 5 : 0
+      setMinRowHeight(minRow)
+      // Capacity from the ACTUAL cell height (the larger of fill-height and the
+      // landscape min). Chrome ≈ 40px (padding + date row) + ~18px reserved for
+      // the pinned "+N weitere" row; each pill ≈ 30px incl. gap. Conservative so
+      // we'd rather show one fewer (readable) pill than clip one — the overflow
+      // goes into the "+N weitere" popover.
+      const rowHeight = Math.max(gridHeight / weekCount, minRow)
       setEventCapacity(Math.max(1, Math.floor((rowHeight - 58) / 30)))
     }
     measure()
@@ -904,8 +913,8 @@ function MonthCalendar({
       </div>
       <div
         ref={gridRef}
-        className="grid min-h-0 flex-1 grid-cols-7"
-        style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
+        className="grid min-h-0 flex-1 grid-cols-7 overflow-y-auto"
+        style={{ gridTemplateRows: `repeat(${weekCount}, minmax(${minRowHeight}px, 1fr))` }}
       >
         {days.map((day) => {
           const overflowing = day.events.length > eventCapacity
