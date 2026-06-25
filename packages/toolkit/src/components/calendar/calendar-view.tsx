@@ -216,18 +216,9 @@ function buildCalendarDays(
 }
 
 /** Hard cap on event pills shown per month cell; the rest go into the
- *  "+N weitere" popover. No per-cell measurement (that caused a zoom ratchet:
- *  more pills → taller cell → higher measured capacity → more pills …). */
+ *  "+N weitere" popover. A fixed cap (not measured) avoids the zoom ratchet:
+ *  more pills → taller cell → higher measured capacity → more pills … */
 const MAX_MONTH_EVENT_PILLS = 5
-/** Floor row height (px): always room for the date + ~1 pill, so a quiet week can
- *  give its share of the height to a busy one without collapsing. The CSS grid
- *  (`minmax(MIN, 1fr)`) distributes a fixed height budget, so busy weeks grow and
- *  quiet weeks shrink while the total stays ≈ the viewport — minimising what
- *  slides off the bottom. */
-const MONTH_ROW_MIN_HEIGHT = 80
-/** Chrome above the month grid (navbar, filter bar, period header, weekday row),
- *  px — the grid claims the rest of the landscape viewport as its height budget. */
-const MONTH_GRID_CHROME = 248
 
 function groupEventsByDay(events: CalendarEvent[]): CalendarEventGroup[] {
   const grouped = new Map<string, CalendarEventGroup>()
@@ -883,23 +874,6 @@ function MonthCalendar({
     [eventsByDay, selectedDate, today, visibleDate],
   )
 
-  const weekCount = days.length / 7
-  // Landscape: the grid claims the viewport below the chrome as a fixed height
-  // budget and distributes it across the week rows (`minmax(MIN, 1fr)` below), so
-  // busy weeks grow and quiet weeks shrink toward MONTH_ROW_MIN_HEIGHT while the
-  // total stays ≈ the viewport. No per-cell measurement → no zoom ratchet.
-  const [landscape, setLandscape] = useState(true)
-  useEffect(() => {
-    const update = () => setLandscape(window.innerWidth > window.innerHeight)
-    update()
-    window.addEventListener("resize", update)
-    window.visualViewport?.addEventListener("resize", update)
-    return () => {
-      window.removeEventListener("resize", update)
-      window.visualViewport?.removeEventListener("resize", update)
-    }
-  }, [])
-
   return (
     <div>
       <div className="grid grid-cols-7 border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
@@ -909,13 +883,7 @@ function MonthCalendar({
           </div>
         ))}
       </div>
-      <div
-        className="grid grid-cols-7"
-        style={{
-          ...(landscape ? { minHeight: `calc(100dvh - ${MONTH_GRID_CHROME}px)` } : {}),
-          gridTemplateRows: `repeat(${weekCount}, minmax(${MONTH_ROW_MIN_HEIGHT}px, 1fr))`,
-        }}
-      >
+      <div className="grid grid-cols-7">
         {days.map((day) => {
           // Hard cap (no measurement). Show up to MAX pills; the rest → popover.
           const visible = day.events.slice(0, MAX_MONTH_EVENT_PILLS)
@@ -924,8 +892,12 @@ function MonthCalendar({
           return (
             <div
               key={day.key}
+              // Content-sized: a quiet day sits at the floor (date + ~1 pill), a
+              // busy day grows to fit up to MAX pills — no viewport stretching, so
+              // cells stay compact and the month is as short as possible (least
+              // overflow). The whole module scrolls when a month is genuinely tall.
               className={cn(
-                "group flex min-h-0 flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
+                "group flex min-h-20 flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors sm:min-h-28 lg:min-h-32",
                 !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
                 day.isCurrentMonth && "hover:bg-muted/50",
                 day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
