@@ -16,11 +16,5 @@
   "devDependencies": {
     "turbo": "^2.3.3",
     "typescript": "~5.7.2"
-  },
-  "pnpm": {
-    "overrides": {
-      "@real-life/wot-core": "link:../web-of-trust/packages/wot-core",
-      "@real-life/adapter-yjs": "link:../web-of-trust/packages/adapter-yjs"
-    }
   }
 }
