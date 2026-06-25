@@ -191,8 +191,9 @@ function buildCalendarDays(
   const startOffset = firstDay === 0 ? 6 : firstDay - 1
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const daysInPrev = new Date(year, month, 0).getDate()
+  const visibleDayCount = Math.max(35, Math.ceil((startOffset + daysInMonth) / 7) * 7)
 
-  return Array.from({ length: 42 }, (_, index) => {
+  return Array.from({ length: visibleDayCount }, (_, index) => {
     const dayNum = index - startOffset + 1
     const inMonth = dayNum >= 1 && dayNum <= daysInMonth
     const number = dayNum < 1 ? daysInPrev + dayNum : dayNum > daysInMonth ? dayNum - daysInMonth : dayNum
@@ -212,6 +213,69 @@ function buildCalendarDays(
       events: eventsByDay.get(key) ?? [],
     }
   })
+}
+
+const DEFAULT_MONTH_EVENT_CAPACITY = {
+  withOverflow: 3,
+  withoutOverflow: 4,
+}
+const DEFAULT_MONTH_EVENT_PILL_HEIGHT = 28
+const DEFAULT_MONTH_EVENT_GAP = 4
+const DEFAULT_MONTH_OVERFLOW_TRIGGER_HEIGHT = 18
+
+function toPixelNumber(value: string): number {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function getOuterBlockSize(element: HTMLElement | null): number {
+  if (!element) return 0
+  const style = window.getComputedStyle(element)
+  return (
+    element.getBoundingClientRect().height +
+    toPixelNumber(style.marginTop) +
+    toPixelNumber(style.marginBottom)
+  )
+}
+
+function getMonthEventSlots(availableHeight: number, pillHeight: number, gap: number): number {
+  return Math.max(1, Math.floor((availableHeight + gap) / (pillHeight + gap)))
+}
+
+function getMonthEventCapacity(grid: HTMLElement): typeof DEFAULT_MONTH_EVENT_CAPACITY {
+  const cells = Array.from(grid.querySelectorAll<HTMLElement>("[data-calendar-month-day]"))
+  const measuredCells = cells.filter((cell) => cell.getBoundingClientRect().height > 0)
+  if (measuredCells.length === 0) return DEFAULT_MONTH_EVENT_CAPACITY
+
+  const cell = measuredCells.reduce((tallest, candidate) =>
+    candidate.getBoundingClientRect().height > tallest.getBoundingClientRect().height ? candidate : tallest,
+  )
+  const cellStyle = window.getComputedStyle(cell)
+  const header = cell.querySelector<HTMLElement>("[data-calendar-month-day-header]")
+  const eventsContainer = cell.querySelector<HTMLElement>("[data-calendar-month-events]")
+  const eventPill = grid.querySelector<HTMLElement>("[data-calendar-event-pill]")
+  const overflowTrigger = grid.querySelector<HTMLElement>("[data-calendar-overflow-trigger]")
+  const eventContainerStyle = eventsContainer ? window.getComputedStyle(eventsContainer) : null
+  const rowGap = eventContainerStyle
+    ? toPixelNumber(eventContainerStyle.rowGap || eventContainerStyle.gap)
+    : DEFAULT_MONTH_EVENT_GAP
+  const gap = rowGap > 0 ? rowGap : DEFAULT_MONTH_EVENT_GAP
+  const pillHeight = eventPill?.getBoundingClientRect().height || DEFAULT_MONTH_EVENT_PILL_HEIGHT
+  const contentHeight = Math.max(
+    0,
+    cell.getBoundingClientRect().height -
+      toPixelNumber(cellStyle.paddingTop) -
+      toPixelNumber(cellStyle.paddingBottom),
+  )
+  const eventAreaHeight = Math.max(0, contentHeight - getOuterBlockSize(header))
+  const overflowHeight = getOuterBlockSize(overflowTrigger) || DEFAULT_MONTH_OVERFLOW_TRIGGER_HEIGHT
+  const withoutOverflow = getMonthEventSlots(eventAreaHeight, pillHeight, gap)
+  const withOverflow = getMonthEventSlots(Math.max(0, eventAreaHeight - overflowHeight), pillHeight, gap)
+
+  return {
+    withOverflow: Math.min(withOverflow, withoutOverflow),
+    withoutOverflow,
+  }
 }
 
 function groupEventsByDay(events: CalendarEvent[]): CalendarEventGroup[] {
@@ -868,33 +932,57 @@ function MonthCalendar({
     [eventsByDay, selectedDate, today, visibleDate],
   )
 
-  // The month flows at natural height so the whole module scrolls (like
-  // feed/kanban). On landscape ~5 weeks fill the viewport; portrait stays
-  // compact. Cell HEIGHT and pill CAPACITY are derived from the SAME measured
-  // value, so they can never desync — that desync is what left cells under-
-  // filled under browser zoom. visualViewport.resize catches zoom where the
-  // plain window resize event doesn't fire. Overflow → the "+N weitere" popover.
-  const [cellHeight, setCellHeight] = useState(140)
-  const [eventCapacity, setEventCapacity] = useState(3)
+  // The month flows at natural height so AppShellMain owns vertical scrolling.
+  // CSS owns cell height; JS only measures the already-rendered cells to decide
+  // how many pills can be shown before the pinned "+N weitere" row is needed.
+  const monthGridRef = useRef<HTMLDivElement>(null)
+  const [eventCapacity, setEventCapacity] = useState(DEFAULT_MONTH_EVENT_CAPACITY)
   useEffect(() => {
+    const grid = monthGridRef.current
+    if (!grid) return
+    let frame = 0
+    let resolutionQuery: MediaQueryList | null = null
+
     const measure = () => {
-      const landscape = window.innerWidth > window.innerHeight
-      // Chrome above the grid (navbar, filter bar, period header, weekday row)
-      // ≈ 248px; landscape divides the remaining viewport height by 5.
-      const h = landscape ? Math.max(96, (window.innerHeight - 248) / 5) : 120
-      setCellHeight(h)
-      // Cell chrome ≈ 40px (padding + date row) + ~18px for the pinned
-      // "+N weitere" row; each pill ≈ 30px incl. gap.
-      setEventCapacity(Math.max(1, Math.floor((h - 58) / 30)))
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => {
+        const next = getMonthEventCapacity(grid)
+        setEventCapacity((current) =>
+          current.withOverflow === next.withOverflow && current.withoutOverflow === next.withoutOverflow
+            ? current
+            : next,
+        )
+      })
     }
+
+    const handleResolutionChange = () => {
+      measure()
+      bindResolutionQuery()
+    }
+
+    const bindResolutionQuery = () => {
+      resolutionQuery?.removeEventListener("change", handleResolutionChange)
+      resolutionQuery = window.matchMedia?.(`(resolution: ${window.devicePixelRatio}dppx)`) ?? null
+      resolutionQuery?.addEventListener("change", handleResolutionChange)
+    }
+
     measure()
+    const resizeObserver = new ResizeObserver(measure)
+    resizeObserver.observe(grid)
+    for (const cell of grid.querySelectorAll<HTMLElement>("[data-calendar-month-day]")) {
+      resizeObserver.observe(cell)
+    }
+    bindResolutionQuery()
     window.addEventListener("resize", measure)
     window.visualViewport?.addEventListener("resize", measure)
     return () => {
+      window.cancelAnimationFrame(frame)
+      resizeObserver.disconnect()
+      resolutionQuery?.removeEventListener("change", handleResolutionChange)
       window.removeEventListener("resize", measure)
       window.visualViewport?.removeEventListener("resize", measure)
     }
-  }, [])
+  }, [days])
 
   return (
     <div>
@@ -905,23 +993,23 @@ function MonthCalendar({
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7">
+      <div ref={monthGridRef} className="grid grid-cols-7">
         {days.map((day) => {
-          const overflowing = day.events.length > eventCapacity
-          const visible = overflowing ? day.events.slice(0, eventCapacity) : day.events
+          const overflowing = day.events.length > eventCapacity.withoutOverflow
+          const visible = overflowing ? day.events.slice(0, eventCapacity.withOverflow) : day.events
           const hiddenCount = day.events.length - visible.length
           return (
             <div
               key={day.key}
-              style={{ minHeight: cellHeight }}
+              data-calendar-month-day
               className={cn(
-                "group flex flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
+                "group flex min-h-[120px] flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors landscape:min-h-[max(96px,calc((100dvh-248px)/5))]",
                 !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
                 day.isCurrentMonth && "hover:bg-muted/50",
                 day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
               )}
             >
-              <div className="mb-1 flex shrink-0 items-center justify-between gap-1">
+              <div data-calendar-month-day-header className="mb-1 flex shrink-0 items-center justify-between gap-1">
                 <button
                   type="button"
                   onClick={() => onSelectDate(day.date)}
@@ -943,6 +1031,7 @@ function MonthCalendar({
                   The "+N weitere" link sits OUTSIDE this clipped area as a pinned
                   bottom row, so it stays visible no matter how many pills fit. */}
               <div
+                data-calendar-month-events
                 className="min-h-0 flex-1 space-y-1 overflow-hidden rounded transition-colors hover:bg-primary/5"
                 onClick={onCreateEvent && day.isCurrentMonth ? () => onCreateEvent(day.date) : undefined}
               >
@@ -953,6 +1042,7 @@ function MonthCalendar({
               {overflowing && (
                 <DayEventsMenu date={day.date} events={day.events} onEventClick={onEventClick}>
                   <button
+                    data-calendar-overflow-trigger
                     type="button"
                     onClick={(event) => event.stopPropagation()}
                     className="mt-0.5 w-full shrink-0 rounded px-1 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
@@ -1210,6 +1300,7 @@ function EventPill({ event, compact = false, onClick }: EventPillProps) {
   const isActive = activeItemId === event.item.id
   return (
     <button
+      data-calendar-event-pill
       type="button"
       title={event.title}
       aria-current={isActive ? "true" : undefined}
