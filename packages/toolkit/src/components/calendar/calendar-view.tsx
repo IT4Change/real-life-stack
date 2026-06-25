@@ -883,7 +883,11 @@ function MonthCalendar({
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7">
+      {/* auto-rows-min + content-start: rows are sized to their content (the cell
+          min-height is the floor) and packed at the top — they never stretch to
+          fill extra container height, which CSS grid's default align-content does
+          and which was inflating the cells. */}
+      <div className="grid grid-cols-7 auto-rows-min content-start">
         {days.map((day) => {
           // Hard cap (no measurement). Show up to MAX pills; the rest → popover.
           const visible = day.events.slice(0, MAX_MONTH_EVENT_PILLS)
