@@ -215,10 +215,13 @@ function buildCalendarDays(
   })
 }
 
-/** Hard cap on event pills shown per month cell; the rest go into the
- *  "+N weitere" popover. A fixed cap (not measured) avoids the zoom ratchet:
- *  more pills → taller cell → higher measured capacity → more pills … */
-const MAX_MONTH_EVENT_PILLS = 5
+/** Max rows a month cell ever grows to (date row excluded): up to this many
+ *  event pills, or — when a day overflows — (this − 1) pills plus a "+N weitere"
+ *  trigger row, so a cell is never taller than this many lines. A *fixed* cap
+ *  (never measured from height) is what keeps the row sizing stable: the cell
+ *  grows with its events, the row sizes to its content, and nothing feeds back
+ *  (no zoom ratchet). Quiet rows shrink to their content; busy rows grow to 3. */
+const MAX_MONTH_ROWS = 3
 
 function groupEventsByDay(events: CalendarEvent[]): CalendarEventGroup[] {
   const grouped = new Map<string, CalendarEventGroup>()
@@ -889,19 +892,24 @@ function MonthCalendar({
           and which was inflating the cells. */}
       <div className="grid grid-cols-7 auto-rows-min content-start">
         {days.map((day) => {
-          // Hard cap (no measurement). Show up to MAX pills; the rest → popover.
-          const visible = day.events.slice(0, MAX_MONTH_EVENT_PILLS)
-          const hiddenCount = day.events.length - visible.length
-          const overflowing = hiddenCount > 0
+          // Fixed cap, never measured. A cell shows at most MAX_MONTH_ROWS lines:
+          // up to MAX_MONTH_ROWS pills, or — on overflow — one fewer pill plus a
+          // "+N weitere" trigger row (the trigger eats one of the rows). So 3
+          // events → 3 pills; 4+ events → 2 pills + "+N weitere".
+          const overflowing = day.events.length > MAX_MONTH_ROWS
+          const visibleCount = overflowing ? MAX_MONTH_ROWS - 1 : day.events.length
+          const visible = day.events.slice(0, visibleCount)
+          const hiddenCount = day.events.length - visibleCount
           return (
             <div
               key={day.key}
-              // Content-sized: a quiet day sits at the floor (date + ~1 pill), a
-              // busy day grows to fit up to MAX pills — no viewport stretching, so
-              // cells stay compact and the month is as short as possible (least
-              // overflow). The whole module scrolls when a month is genuinely tall.
+              // Content-sized: a quiet day sits at the floor (date + room for ~1
+              // pill), a busy day grows to fit up to MAX_MONTH_ROWS lines. With
+              // auto-rows-min the row takes the height of its busiest day and the
+              // quiet rows shrink — no viewport stretching, so the month is only
+              // as tall as its content. The whole module scrolls past 5 rows.
               className={cn(
-                "group flex min-h-20 flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors sm:min-h-28 lg:min-h-32",
+                "group flex min-h-16 flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
                 !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
                 day.isCurrentMonth && "hover:bg-muted/50",
                 day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
