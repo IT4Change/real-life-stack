@@ -1,0 +1,3734 @@
+{
+ "sessions": [
+  {
+   "code": "SJXE8X",
+   "title": "Opening Ceremony & Camp Orientation",
+   "urls": []
+  },
+  {
+   "code": "XG9TX9",
+   "title": "Running Club",
+   "urls": []
+  },
+  {
+   "code": "MPL8TF",
+   "title": "Public AI opening conversation - Representation + Local",
+   "urls": []
+  },
+  {
+   "code": "M337PX",
+   "title": "All about DIDs!",
+   "urls": []
+  },
+  {
+   "code": "ZHGJNM",
+   "title": "Join the DWeb Camp Mesh!",
+   "urls": []
+  },
+  {
+   "code": "XT97FY",
+   "title": "Making sense of community cloud servers",
+   "urls": []
+  },
+  {
+   "code": "ZCKHRQ",
+   "title": "Seeing Governance: Statecharts and Structured Interviews for Legible Communities",
+   "urls": [
+    "https://crowcards.org/",
+    "https://www.researchgate.net/publication/353372040_Community_Rules_Simple_Templates_for_Great_Communities"
+   ]
+  },
+  {
+   "code": "GHTLRT",
+   "title": "Meetmarket: What happens when you vibe-code a solidarity-based platform and the community actually shows up",
+   "urls": []
+  },
+  {
+   "code": "X9ENCG",
+   "title": "Cross-Pollination between Peer-to-Peer & Local First + Decentralized Hardware/Local Community Networks Tracks",
+   "urls": []
+  },
+  {
+   "code": "XBZFVE",
+   "title": "tinySSB hands-on",
+   "urls": []
+  },
+  {
+   "code": "VU73KQ",
+   "title": "Grounded: How Networks that support Grassroots Innovation Share Knowledge  ~ A Reality Check",
+   "urls": []
+  },
+  {
+   "code": "7CNXZG",
+   "title": "Sustainable art communities: brainstorming ideas and strategies for the decentralized web",
+   "urls": []
+  },
+  {
+   "code": "JYFKLK",
+   "title": "Voices of the Edge: How to Build Low-Resource Language AI for Rural Communities",
+   "urls": []
+  },
+  {
+   "code": "F7XGYE",
+   "title": "Design Your Own Place: A Hands-On Community Creation Ritual",
+   "urls": []
+  },
+  {
+   "code": "NPFDBD",
+   "title": "Twelve Years of Matrix: What Worked, What Didn't, and the Road to a Peer-to-Peer Future",
+   "urls": []
+  },
+  {
+   "code": "ZHEPFC",
+   "title": "Basecamp: Your local-first gateway to the network",
+   "urls": []
+  },
+  {
+   "code": "FLLS3A",
+   "title": "NOMOI - Network of Mandated Operational Invariants",
+   "urls": []
+  },
+  {
+   "code": "JYYCHC",
+   "title": "Community Infrastructure for Privacy, Agency, and Consent",
+   "urls": []
+  },
+  {
+   "code": "SFHERD",
+   "title": "P2P VPNs: The Good, the Bad, the Ugly",
+   "urls": []
+  },
+  {
+   "code": "V9L89B",
+   "title": "The Dark Horizon Simulation: Architecting Autonomous Comms in an Extreme Conflict Zone",
+   "urls": []
+  },
+  {
+   "code": "LSVEE3",
+   "title": "Willow: Protocols for an uncertain future",
+   "urls": []
+  },
+  {
+   "code": "LD7UAE",
+   "title": "Introducing the Democratic Tech Fund: Building Social Capacity for Digital Autonomy",
+   "urls": []
+  },
+  {
+   "code": "CNRNLU",
+   "title": "Owning the Means of Coordination: Decentralized Tools for Worker and Community Ownership",
+   "urls": []
+  },
+  {
+   "code": "F9Y7PQ",
+   "title": "AD4M: The Spanning Layer That Unites the Decentralized Web",
+   "urls": []
+  },
+  {
+   "code": "JUPVWB",
+   "title": "Let's host a Coopcloud server during camp!--TEEN VERSION",
+   "urls": []
+  },
+  {
+   "code": "NYHXHW",
+   "title": "Peer-to-Peer Matrix: A New Hope",
+   "urls": []
+  },
+  {
+   "code": "RXRVLL",
+   "title": "What Ag Knowledge Federation Looks Like Run on Solar — The Farm Hack Box, Live",
+   "urls": []
+  },
+  {
+   "code": "QADFXX",
+   "title": "From Hackerspaces to Coops-- We all need Community!",
+   "urls": []
+  },
+  {
+   "code": "FQDZEK",
+   "title": "Build Your Own Local-First App with AI Agents",
+   "urls": []
+  },
+  {
+   "code": "KUEP3J",
+   "title": "Decentralization as Value: From Decentralized Tech to Democratic Control",
+   "urls": []
+  },
+  {
+   "code": "7HM8TX",
+   "title": "Building Folk Tech",
+   "urls": []
+  },
+  {
+   "code": "DJZ3X3",
+   "title": "Staying Connected When Systems Fail: An Internet Shutdown Live Action Roleplay with Dash Chat",
+   "urls": []
+  },
+  {
+   "code": "EXLJYK",
+   "title": "LABLAB Experience: Co-Creating Agroecological Tech and Bioregional Networks",
+   "urls": []
+  },
+  {
+   "code": "D3ATVK",
+   "title": "Federating Cooperatives with Federated Open Key Service (FOKS)",
+   "urls": []
+  },
+  {
+   "code": "PNDFJD",
+   "title": "Hiding in plain sight",
+   "urls": []
+  },
+  {
+   "code": "NPGLHM",
+   "title": "On-Chain Eligibility from Real-World Inputs: zkTLS + Atomic State Simulation",
+   "urls": []
+  },
+  {
+   "code": "B37VPB",
+   "title": "Building Federated Food Systems Technology | AKA ‘A non-profit, a university, a social enterprise, and a cooperative walk into a bar…’",
+   "urls": []
+  },
+  {
+   "code": "LCXYTM",
+   "title": "From Beaker Browser to Bluesky: A Builder's Journey",
+   "urls": []
+  },
+  {
+   "code": "NNTVFV",
+   "title": "AI Psychosis or a way better way to build a peer-to-peer Slack? YOU DECIDE! :)",
+   "urls": []
+  },
+  {
+   "code": "MEBSMB",
+   "title": "Local AI: Building your own Farm Box",
+   "urls": []
+  },
+  {
+   "code": "VMMJPG",
+   "title": "A Seat at the Table: The Open Source Endowment, a Live Experiment in Community-Owned Funding",
+   "urls": []
+  },
+  {
+   "code": "UDVGAJ",
+   "title": "Peer-to-Peer, AI, Other Buzzwords, and Technologies for a Thriving Planet--TEEN VERSION",
+   "urls": []
+  },
+  {
+   "code": "CNRTZ7",
+   "title": "Autonomous Economies Need Decentralized Infrastructure",
+   "urls": []
+  },
+  {
+   "code": "RHB8WL",
+   "title": "Meet DoD: Ask Us Anything",
+   "urls": []
+  },
+  {
+   "code": "KAJ3MX",
+   "title": "p2panda introduction, latest news & community meetup",
+   "urls": []
+  },
+  {
+   "code": "YXYHEK",
+   "title": "Social Aspects of Sovereign Technologies: Lightning Talks and Discussion",
+   "urls": []
+  },
+  {
+   "code": "EG3FTA",
+   "title": "Decentralized Trust Networks in the Age of AI",
+   "urls": []
+  },
+  {
+   "code": "UBMF3U",
+   "title": "Apps that forget you; community tech without persistent identity",
+   "urls": []
+  },
+  {
+   "code": "BE7GHD",
+   "title": "Beyond the Canopy: Building Local Networks & Marginalized Public AI at the Rural Edge",
+   "urls": []
+  },
+  {
+   "code": "JFNK39",
+   "title": "Mesh News Network - dWebbing Local Journalism",
+   "urls": []
+  },
+  {
+   "code": "ZLF38Z",
+   "title": "Activation Layer of Decentralized AI",
+   "urls": []
+  },
+  {
+   "code": "YBNSXL",
+   "title": "Monotone-View Types: a co-transactional approach to Local-first",
+   "urls": []
+  },
+  {
+   "code": "TA3NY7",
+   "title": "Collective knowledge foraging in trail-based social networks beyond feeds",
+   "urls": []
+  },
+  {
+   "code": "3KGBEF",
+   "title": "From solo bug to collective evidence: fighting for Interoperability under the DMA",
+   "urls": []
+  },
+  {
+   "code": "G9E3WD",
+   "title": "Evolving DWeb: How do we deepen the impact of a principles-centric decentralized web movement?",
+   "urls": []
+  },
+  {
+   "code": "CHYFMY",
+   "title": "Who Gets Seen? Rebuilding Trust and Visibility in the Age of AI",
+   "urls": []
+  },
+  {
+   "code": "FDVJJR",
+   "title": "Breaking Up with Big Tech: Making Local-first Community AI Real (Panel + Hands On Session)",
+   "urls": []
+  },
+  {
+   "code": "G8TBUH",
+   "title": "Resistance, Resilience and Regeneration - The Role of Collective Infrastructure in Times of Collapse",
+   "urls": []
+  },
+  {
+   "code": "FMKD8P",
+   "title": "Where does Ethereum fit in the decentralized web?",
+   "urls": []
+  },
+  {
+   "code": "AEWNJA",
+   "title": "Private payments, local-first",
+   "urls": []
+  },
+  {
+   "code": "QJBRME",
+   "title": "The Ancient Signals Treasure Hunt: Pre-Physics Communication Models & Optical Cryptography",
+   "urls": []
+  },
+  {
+   "code": "QSAZ8F",
+   "title": "🧶 Knitting Our Internet – A journey through the history of decentralisation",
+   "urls": []
+  },
+  {
+   "code": "Z8FRLZ",
+   "title": "Five Minutes on the Ethical Technology Assessment (ETA) — A Community-Owned Living  Scoring Assessment for Tools, Datasets, seeds and software",
+   "urls": []
+  },
+  {
+   "code": "AZ3PQC",
+   "title": "What’s next for our open-source project?  An exploration of governance options for an Exit to Community",
+   "urls": []
+  },
+  {
+   "code": "LF8TVG",
+   "title": "Overcoming Implicit Authority Structures To Build a P2P Mesh Network--TEEN VERSION",
+   "urls": []
+  },
+  {
+   "code": "8NC7JG",
+   "title": "NextGraph framework & ELFA ecosystem",
+   "urls": [
+    "https://elfaconsortium.eu"
+   ]
+  },
+  {
+   "code": "PHHFNF",
+   "title": "P2P financing models in cooperative ecosystems",
+   "urls": []
+  },
+  {
+   "code": "FYZ9NG",
+   "title": "Let's Play Stewarding Digital Infrastructure",
+   "urls": []
+  },
+  {
+   "code": "HDG88R",
+   "title": "clan - Reproducible P2P Infrastructure framework",
+   "urls": [
+    "https://clan.lol"
+   ]
+  },
+  {
+   "code": "ZX9PNQ",
+   "title": "Common Archives: Building Trustworthy Infrastructure To Amplify Community Voices",
+   "urls": []
+  },
+  {
+   "code": "Q7NHNU",
+   "title": "Building the People’s Internet: Mesh Networks and Policy Advocacy in Ghana",
+   "urls": []
+  },
+  {
+   "code": "XMJMBK",
+   "title": "The Revolution Will Be Archived: Decentralized Preservation for Accountability and Media Sovereignty",
+   "urls": [
+    "https://www.humanrightscentered.design/",
+    "https://www.open-archive.org/news/oa-hypha-white-paper",
+    "https://www.open-archive.org/save"
+   ]
+  },
+  {
+   "code": "CBXTSZ",
+   "title": "Next Generation of P2P Data Types",
+   "urls": []
+  },
+  {
+   "code": "Q8YSHN",
+   "title": "The Art of Not Being Invisible",
+   "urls": []
+  },
+  {
+   "code": "8R9EZV",
+   "title": "Governing & Sustaining Democratic Tech: From Autonomy to Collective Design",
+   "urls": []
+  },
+  {
+   "code": "VTJEEW",
+   "title": "Let's host a Coopcloud server during camp!",
+   "urls": [
+    "https://coopcloud.tech/",
+    "https://escuelacomun.yanapak.org/"
+   ]
+  },
+  {
+   "code": "AAPV9L",
+   "title": "Choose Your Own Agricultural Innovation Adventure",
+   "urls": []
+  },
+  {
+   "code": "X3S8ZN",
+   "title": "Meet the Team: And Other Stuff--an open innovation collective building technology for human thriving",
+   "urls": [
+    "https://andotherstuff.org/"
+   ]
+  },
+  {
+   "code": "L8HXM3",
+   "title": "Data Sovereignty Panel: Centering Community Control of Agricultural Knowledge",
+   "urls": []
+  },
+  {
+   "code": "QHUS7S",
+   "title": "Peer-to-Peer, AI, Other Buzzwords, and Technologies for a Thriving Planet",
+   "urls": []
+  },
+  {
+   "code": "SK3GNH",
+   "title": "Blockchain in a New Context of Artificial Intelligence",
+   "urls": []
+  },
+  {
+   "code": "NTYGHS",
+   "title": "sig0lease - collaborative service discovery publication for local network services",
+   "urls": []
+  },
+  {
+   "code": "YJHTTK",
+   "title": "Sustaining Infrastructure: Movement Panel",
+   "urls": []
+  },
+  {
+   "code": "RSCUR8",
+   "title": "Spotlight Session: Get to know the Pollinators",
+   "urls": []
+  },
+  {
+   "code": "SUWJJN",
+   "title": "Unbundling Decentralization",
+   "urls": []
+  },
+  {
+   "code": "KUGD8V",
+   "title": "Roots Without a State: Collaborative Survival in the Shadow",
+   "urls": []
+  },
+  {
+   "code": "ZQ7A3T",
+   "title": "Survival Patterns: A Choose-Your-Own-Adventure Workshop + Fishbowl",
+   "urls": []
+  },
+  {
+   "code": "C9YZLT",
+   "title": "Reimagining the Open Social Web from the Edge: Freedom Tech Across Mesh, Mobile, and Peer-to-Peer Infrastructure",
+   "urls": []
+  },
+  {
+   "code": "T9JL87",
+   "title": "Whose Ground Is Your Mind On? - Cognitive Sovereignty, Trust, and the Root System Beneath Your Thinking",
+   "urls": []
+  },
+  {
+   "code": "ET9PZP",
+   "title": "Doing Things Together Locally, Globally, Safely, and Easily",
+   "urls": []
+  },
+  {
+   "code": "QLETHK",
+   "title": "Local-First Social Media & Messaging",
+   "urls": []
+  },
+  {
+   "code": "MLFH9Z",
+   "title": "Using Low Power Wireless P2P Networking Methods to Enable Robust Models of Local Community Governance",
+   "urls": []
+  },
+  {
+   "code": "DFYFRG",
+   "title": "Applied Sovereignty: Building Tools to Amplify Farmer Knowledge and Protect Data Rights",
+   "urls": []
+  },
+  {
+   "code": "YNFNBM",
+   "title": "Self-Hosted Second Brains",
+   "urls": []
+  },
+  {
+   "code": "Z7QNKE",
+   "title": "Neighborhood Vibe Engines",
+   "urls": []
+  },
+  {
+   "code": "JHBJ3J",
+   "title": "AI for Commoning: Speculating on the Kami of the Commons",
+   "urls": []
+  },
+  {
+   "code": "VCVGP8",
+   "title": "Locked Open: How To Build Systems With No Authority To Capture",
+   "urls": []
+  },
+  {
+   "code": "MRYKHP",
+   "title": "Hold the Line: Community Curated Decentralized Libraries with Logos Storage",
+   "urls": []
+  },
+  {
+   "code": "SNZGZD",
+   "title": "Web of Trust: Creating Trust Through Real Encounters",
+   "urls": []
+  },
+  {
+   "code": "NNU9QM",
+   "title": "Federating Tools, Data, and Knowledge Across Grassroots Innovation Networks — In Practice",
+   "urls": []
+  },
+  {
+   "code": "WL3CJJ",
+   "title": "Decentralized Trust Networks in the Age of AI--TEEN VERSION",
+   "urls": []
+  },
+  {
+   "code": "VC9LBJ",
+   "title": "Beyond the Network State: Building Governance Infrastructure for Networked Sovereignties",
+   "urls": []
+  },
+  {
+   "code": "EUNLTT",
+   "title": "Protecting the Roots: Using Nym for p2p and decentralised Apps Across Devices",
+   "urls": []
+  },
+  {
+   "code": "LXD98Q",
+   "title": "Creativity, discernment and relationality in the age of AI: How do dweb tools help or hurt?",
+   "urls": []
+  },
+  {
+   "code": "PGZTXE",
+   "title": "D:Food Track Closing Circle: Collective Sensemaking & Shared Horizons",
+   "urls": []
+  },
+  {
+   "code": "CQXGRY",
+   "title": "Community Data Centers",
+   "urls": []
+  },
+  {
+   "code": "VDWYAU",
+   "title": "OpenHaven for P2P Convergence",
+   "urls": []
+  },
+  {
+   "code": "PEWZVE",
+   "title": "Decentralized Solidarity Finance",
+   "urls": []
+  },
+  {
+   "code": "HG88NG",
+   "title": "Talent Show",
+   "urls": []
+  }
+ ],
+ "persons": [
+  "Adam",
+  "Afri Blanck",
+  "Alisher",
+  "Anamika Dey",
+  "Andrea Ferrante",
+  "Andreas Arnold",
+  "Anna Lynton",
+  "Anton Tranelis",
+  "Artem Brazhnikov",
+  "B Cavello",
+  "Benjamin",
+  "Blake Stoner",
+  "Botao 'Amber' Hu",
+  "Brad Hutcheson",
+  "Bradley Clark Royes",
+  "Calum Bowden",
+  "Camille Nibungco",
+  "Caroline Ledant",
+  "Casey Carr",
+  "Christian Tschudin (cft)",
+  "Colin",
+  "Colin Rinta Stewart",
+  "Daniel Holmgren",
+  "Daniel N.",
+  "Dario Presutti",
+  "David Calleb Otieno",
+  "David Thomas",
+  "Day Waterbury",
+  "Dorn Cox",
+  "Doug",
+  "Duke Dorje",
+  "Engie Matene",
+  "Eric Harris-Braun",
+  "Esther Bauer",
+  "Esther Jang",
+  "Felix Beer",
+  "Florian",
+  "Franzi",
+  "Gavin Owens",
+  "Guil Maueler",
+  "Guillem Cordoba",
+  "Hannah Wittman",
+  "Hilke Ros",
+  "Hiure",
+  "Holmes Wilson",
+  "Hudson Headley",
+  "James Weir",
+  "Jenni Ottilie Keppler",
+  "Jeremiah Lee",
+  "Jihoon Song",
+  "Johann Lensing",
+  "Jonathan Starr",
+  "Josh Field",
+  "Joshua Davila",
+  "Juan Diez, Founder & CEO Torbellino Tech",
+  "Keoni DeFranco",
+  "Kevin Cussen",
+  "Kirsten",
+  "Kris Is",
+  "L0visa",
+  "LX Cast",
+  "Larissa Bral",
+  "Lee",
+  "Liz Barry",
+  "Liz Sweigart",
+  "Luandro",
+  "Luke Smith",
+  "Madelynn Martiniere",
+  "Marcela Guerra",
+  "Marie",
+  "Markus Sabadello",
+  "Martijn de Waal",
+  "Mathias Jud",
+  "Matthew Hodgson",
+  "Matthew Schutte",
+  "Matthias Kirschner",
+  "Max Hampshire",
+  "Michael Suantak",
+  "Mitch Altman",
+  "Nano Castro",
+  "Nicolas Luck",
+  "Niko Bonnieure",
+  "Olivier Schulbaum (platoniq)",
+  "Pamela",
+  "Paul Frazee",
+  "Paul Fuxjäger",
+  "Pearlmwong",
+  "Peter",
+  "Primavera",
+  "Qubasa",
+  "Raul",
+  "Ray Xiang",
+  "Richard Ng",
+  "Riley Wong",
+  "Rosanna Crawford",
+  "Rose Regina Lawrence",
+  "SJ Klein",
+  "Samuel Oslund",
+  "Santi Bazerque",
+  "Sarthi B",
+  "Seph",
+  "Seth Frey",
+  "Shadrach",
+  "Sophie Bloemen",
+  "Spencer Saar Cavanaugh",
+  "Stefano De Vuono",
+  "Steve Francis",
+  "T B Dinesh",
+  "Tamisha Lee",
+  "Tara Conway",
+  "Tara Merk",
+  "Tommi",
+  "Victor Von",
+  "Václav Pavlín",
+  "Wedja",
+  "Wendy Hanamura",
+  "Wesley",
+  "Wouter Kampmann | Powerhouse",
+  "Wouter Tebbens",
+  "Yaron",
+  "Ying Tong",
+  "Yisi Liu",
+  "Zach Alexander",
+  "Zenna",
+  "adz",
+  "bacce",
+  "bruno",
+  "fauno",
+  "fiore",
+  "ian davis",
+  "ligi",
+  "mai ishikawa sutton",
+  "marta",
+  "marv",
+  "nVidya",
+  "nádia coelho pontes",
+  "sammy",
+  "senka"
+ ],
+ "projects": [
+  "AD4M",
+  "ASORCOM",
+  "AT Protocol",
+  "And Other Stuff",
+  "Awana Digital",
+  "BitChat",
+  "Bread Cooperative",
+  "Community Rule",
+  "Coopcloud",
+  "CrowCards",
+  "Crownshy",
+  "Danube Tech",
+  "Dash Chat",
+  "Democratic Tech Fund",
+  "Department of Decentralization",
+  "ELFA",
+  "Escuela Común",
+  "Ethereum",
+  "Ethical Technology Assessment",
+  "FOKS",
+  "FSFE",
+  "Farm Hack",
+  "GIAA",
+  "Holochain",
+  "Honey Bee Network",
+  "IdentiKey",
+  "Iroh",
+  "LABLAB",
+  "LiteFarm",
+  "Logos",
+  "Matrix",
+  "Meetmarket",
+  "Mesh News Network",
+  "Meshtastic",
+  "Metagov",
+  "Moss",
+  "NOMOI",
+  "Network Nations",
+  "NextGraph",
+  "Nostr",
+  "Nym",
+  "Open Food Network",
+  "Open Source Endowment",
+  "OpenArchive",
+  "OpenHaven",
+  "OpenTEAM",
+  "Origin Co-op",
+  "Our Sci",
+  "Platoniq",
+  "Polis",
+  "Powerhouse/Vetra",
+  "Prolinnova",
+  "Quiet",
+  "Semble",
+  "Spacious",
+  "Step Network",
+  "W3C DIDs",
+  "Web of Trust",
+  "White Noise",
+  "Willow",
+  "clan",
+  "eimiAI",
+  "p2panda",
+  "sig0lease",
+  "tinySSB"
+ ],
+ "clusters": [
+  "community-commons",
+  "identity-trust",
+  "p2p-localfirst",
+  "privacy-crypto"
+ ],
+ "speaks": [
+  [
+   "Adam",
+   "NTYGHS"
+  ],
+  [
+   "Afri Blanck",
+   "RHB8WL"
+  ],
+  [
+   "Afri Blanck",
+   "ZHGJNM"
+  ],
+  [
+   "Alisher",
+   "MRYKHP"
+  ],
+  [
+   "Anamika Dey",
+   "DFYFRG"
+  ],
+  [
+   "Anamika Dey",
+   "NNU9QM"
+  ],
+  [
+   "Anamika Dey",
+   "VU73KQ"
+  ],
+  [
+   "Andrea Ferrante",
+   "NNU9QM"
+  ],
+  [
+   "Andreas Arnold",
+   "PHHFNF"
+  ],
+  [
+   "Anna Lynton",
+   "PGZTXE"
+  ],
+  [
+   "Anton Tranelis",
+   "SNZGZD"
+  ],
+  [
+   "Artem Brazhnikov",
+   "EG3FTA"
+  ],
+  [
+   "Artem Brazhnikov",
+   "WL3CJJ"
+  ],
+  [
+   "B Cavello",
+   "FDVJJR"
+  ],
+  [
+   "B Cavello",
+   "MPL8TF"
+  ],
+  [
+   "Benjamin",
+   "AAPV9L"
+  ],
+  [
+   "Blake Stoner",
+   "CHYFMY"
+  ],
+  [
+   "Blake Stoner",
+   "RSCUR8"
+  ],
+  [
+   "Botao 'Amber' Hu",
+   "JHBJ3J"
+  ],
+  [
+   "Brad Hutcheson",
+   "F7XGYE"
+  ],
+  [
+   "Bradley Clark Royes",
+   "ZLF38Z"
+  ],
+  [
+   "Calum Bowden",
+   "GHTLRT"
+  ],
+  [
+   "Camille Nibungco",
+   "RSCUR8"
+  ],
+  [
+   "Caroline Ledant",
+   "NNU9QM"
+  ],
+  [
+   "Caroline Ledant",
+   "VU73KQ"
+  ],
+  [
+   "Casey Carr",
+   "JFNK39"
+  ],
+  [
+   "Christian Tschudin (cft)",
+   "XBZFVE"
+  ],
+  [
+   "Colin",
+   "D3ATVK"
+  ],
+  [
+   "Colin Rinta Stewart",
+   "B37VPB"
+  ],
+  [
+   "Daniel Holmgren",
+   "SUWJJN"
+  ],
+  [
+   "Daniel N.",
+   "T9JL87"
+  ],
+  [
+   "Dario Presutti",
+   "3KGBEF"
+  ],
+  [
+   "David Calleb Otieno",
+   "VU73KQ"
+  ],
+  [
+   "David Thomas",
+   "B37VPB"
+  ],
+  [
+   "Day Waterbury",
+   "VDWYAU"
+  ],
+  [
+   "Dorn Cox",
+   "NNU9QM"
+  ],
+  [
+   "Dorn Cox",
+   "RXRVLL"
+  ],
+  [
+   "Dorn Cox",
+   "VU73KQ"
+  ],
+  [
+   "Dorn Cox",
+   "Z8FRLZ"
+  ],
+  [
+   "Dorn Cox",
+   "ZCKHRQ"
+  ],
+  [
+   "Doug",
+   "ZCKHRQ"
+  ],
+  [
+   "Duke Dorje",
+   "LF8TVG"
+  ],
+  [
+   "Duke Dorje",
+   "VCVGP8"
+  ],
+  [
+   "Engie Matene",
+   "G8TBUH"
+  ],
+  [
+   "Engie Matene",
+   "L8HXM3"
+  ],
+  [
+   "Eric Harris-Braun",
+   "LXD98Q"
+  ],
+  [
+   "Esther Bauer",
+   "KUEP3J"
+  ],
+  [
+   "Esther Jang",
+   "G8TBUH"
+  ],
+  [
+   "Esther Jang",
+   "RSCUR8"
+  ],
+  [
+   "Felix Beer",
+   "VC9LBJ"
+  ],
+  [
+   "Florian",
+   "RHB8WL"
+  ],
+  [
+   "Franzi",
+   "RHB8WL"
+  ],
+  [
+   "Franzi",
+   "SJXE8X"
+  ],
+  [
+   "Gavin Owens",
+   "FYZ9NG"
+  ],
+  [
+   "Guil Maueler",
+   "YJHTTK"
+  ],
+  [
+   "Guil Maueler",
+   "ZQ7A3T"
+  ],
+  [
+   "Guillem Cordoba",
+   "DJZ3X3"
+  ],
+  [
+   "Hannah Wittman",
+   "AZ3PQC"
+  ],
+  [
+   "Hannah Wittman",
+   "B37VPB"
+  ],
+  [
+   "Hilke Ros",
+   "7CNXZG"
+  ],
+  [
+   "Hiure",
+   "EXLJYK"
+  ],
+  [
+   "Hiure",
+   "Q8YSHN"
+  ],
+  [
+   "Hiure",
+   "XT97FY"
+  ],
+  [
+   "Holmes Wilson",
+   "NNTVFV"
+  ],
+  [
+   "Hudson Headley",
+   "CNRNLU"
+  ],
+  [
+   "Hudson Headley",
+   "NPGLHM"
+  ],
+  [
+   "James Weir",
+   "F9Y7PQ"
+  ],
+  [
+   "Jenni Ottilie Keppler",
+   "PGZTXE"
+  ],
+  [
+   "Jeremiah Lee",
+   "8NC7JG"
+  ],
+  [
+   "Jihoon Song",
+   "FMKD8P"
+  ],
+  [
+   "Johann Lensing",
+   "KUEP3J"
+  ],
+  [
+   "Jonathan Starr",
+   "VMMJPG"
+  ],
+  [
+   "Josh Field",
+   "F9Y7PQ"
+  ],
+  [
+   "Joshua Davila",
+   "PEWZVE"
+  ],
+  [
+   "Juan Diez, Founder & CEO Torbellino Tech",
+   "SK3GNH"
+  ],
+  [
+   "Keoni DeFranco",
+   "DFYFRG"
+  ],
+  [
+   "Kevin Cussen",
+   "AZ3PQC"
+  ],
+  [
+   "Kevin Cussen",
+   "B37VPB"
+  ],
+  [
+   "Kirsten",
+   "DFYFRG"
+  ],
+  [
+   "Kris Is",
+   "PNDFJD"
+  ],
+  [
+   "L0visa",
+   "VC9LBJ"
+  ],
+  [
+   "LX Cast",
+   "7HM8TX"
+  ],
+  [
+   "Larissa Bral",
+   "YXYHEK"
+  ],
+  [
+   "Lee",
+   "ET9PZP"
+  ],
+  [
+   "Liz Barry",
+   "YJHTTK"
+  ],
+  [
+   "Liz Barry",
+   "ZCKHRQ"
+  ],
+  [
+   "Liz Barry",
+   "ZQ7A3T"
+  ],
+  [
+   "Liz Sweigart",
+   "C9YZLT"
+  ],
+  [
+   "Liz Sweigart",
+   "X3S8ZN"
+  ],
+  [
+   "Luandro",
+   "G8TBUH"
+  ],
+  [
+   "Luandro",
+   "QHUS7S"
+  ],
+  [
+   "Luandro",
+   "UDVGAJ"
+  ],
+  [
+   "Luke Smith",
+   "YXYHEK"
+  ],
+  [
+   "Madelynn Martiniere",
+   "G8TBUH"
+  ],
+  [
+   "Madelynn Martiniere",
+   "SJXE8X"
+  ],
+  [
+   "Madelynn Martiniere",
+   "ZQ7A3T"
+  ],
+  [
+   "Marcela Guerra",
+   "EXLJYK"
+  ],
+  [
+   "Marie",
+   "RSCUR8"
+  ],
+  [
+   "Markus Sabadello",
+   "M337PX"
+  ],
+  [
+   "Martijn de Waal",
+   "8R9EZV"
+  ],
+  [
+   "Mathias Jud",
+   "NTYGHS"
+  ],
+  [
+   "Mathias Jud",
+   "X9ENCG"
+  ],
+  [
+   "Matthew Hodgson",
+   "NPFDBD"
+  ],
+  [
+   "Matthew Hodgson",
+   "NYHXHW"
+  ],
+  [
+   "Matthew Schutte",
+   "ZQ7A3T"
+  ],
+  [
+   "Matthias Kirschner",
+   "YJHTTK"
+  ],
+  [
+   "Max Hampshire",
+   "EUNLTT"
+  ],
+  [
+   "Michael Suantak",
+   "BE7GHD"
+  ],
+  [
+   "Michael Suantak",
+   "G8TBUH"
+  ],
+  [
+   "Michael Suantak",
+   "JYFKLK"
+  ],
+  [
+   "Michael Suantak",
+   "QJBRME"
+  ],
+  [
+   "Michael Suantak",
+   "V9L89B"
+  ],
+  [
+   "Mitch Altman",
+   "QADFXX"
+  ],
+  [
+   "Nano Castro",
+   "AAPV9L"
+  ],
+  [
+   "Nicolas Luck",
+   "F9Y7PQ"
+  ],
+  [
+   "Niko Bonnieure",
+   "8NC7JG"
+  ],
+  [
+   "Olivier Schulbaum (platoniq)",
+   "8R9EZV"
+  ],
+  [
+   "Olivier Schulbaum (platoniq)",
+   "YJHTTK"
+  ],
+  [
+   "Pamela",
+   "AAPV9L"
+  ],
+  [
+   "Paul Frazee",
+   "LCXYTM"
+  ],
+  [
+   "Paul Fuxjäger",
+   "MLFH9Z"
+  ],
+  [
+   "Pearlmwong",
+   "ZX9PNQ"
+  ],
+  [
+   "Peter",
+   "RHB8WL"
+  ],
+  [
+   "Primavera",
+   "VC9LBJ"
+  ],
+  [
+   "Primavera",
+   "ZQ7A3T"
+  ],
+  [
+   "Qubasa",
+   "HDG88R"
+  ],
+  [
+   "Qubasa",
+   "SFHERD"
+  ],
+  [
+   "Raul",
+   "RHB8WL"
+  ],
+  [
+   "Ray Xiang",
+   "YJHTTK"
+  ],
+  [
+   "Richard Ng",
+   "G8TBUH"
+  ],
+  [
+   "Richard Ng",
+   "ZQ7A3T"
+  ],
+  [
+   "Riley Wong",
+   "JYYCHC"
+  ],
+  [
+   "Rosanna Crawford",
+   "L8HXM3"
+  ],
+  [
+   "Rose Regina Lawrence",
+   "XMJMBK"
+  ],
+  [
+   "SJ Klein",
+   "MPL8TF"
+  ],
+  [
+   "Samuel Oslund",
+   "PGZTXE"
+  ],
+  [
+   "Santi Bazerque",
+   "YBNSXL"
+  ],
+  [
+   "Sarthi B",
+   "CNRTZ7"
+  ],
+  [
+   "Seph",
+   "NPFDBD"
+  ],
+  [
+   "Seth Frey",
+   "QADFXX"
+  ],
+  [
+   "Shadrach",
+   "Q7NHNU"
+  ],
+  [
+   "Shadrach",
+   "Q8YSHN"
+  ],
+  [
+   "Shadrach",
+   "RSCUR8"
+  ],
+  [
+   "Sophie Bloemen",
+   "8R9EZV"
+  ],
+  [
+   "Spencer Saar Cavanaugh",
+   "YNFNBM"
+  ],
+  [
+   "Stefano De Vuono",
+   "QLETHK"
+  ],
+  [
+   "Steve Francis",
+   "L8HXM3"
+  ],
+  [
+   "T B Dinesh",
+   "Q8YSHN"
+  ],
+  [
+   "Tamisha Lee",
+   "YXYHEK"
+  ],
+  [
+   "Tara Conway",
+   "L8HXM3"
+  ],
+  [
+   "Tara Merk",
+   "CQXGRY"
+  ],
+  [
+   "Tara Merk",
+   "ZQ7A3T"
+  ],
+  [
+   "Tommi",
+   "QSAZ8F"
+  ],
+  [
+   "Victor Von",
+   "EXLJYK"
+  ],
+  [
+   "Václav Pavlín",
+   "FDVJJR"
+  ],
+  [
+   "Václav Pavlín",
+   "PNDFJD"
+  ],
+  [
+   "Václav Pavlín",
+   "ZHEPFC"
+  ],
+  [
+   "Wedja",
+   "EXLJYK"
+  ],
+  [
+   "Wendy Hanamura",
+   "HG88NG"
+  ],
+  [
+   "Wendy Hanamura",
+   "LCXYTM"
+  ],
+  [
+   "Wesley",
+   "TA3NY7"
+  ],
+  [
+   "Wouter Kampmann | Powerhouse",
+   "FDVJJR"
+  ],
+  [
+   "Wouter Kampmann | Powerhouse",
+   "FQDZEK"
+  ],
+  [
+   "Wouter Tebbens",
+   "8R9EZV"
+  ],
+  [
+   "Wouter Tebbens",
+   "LD7UAE"
+  ],
+  [
+   "Wouter Tebbens",
+   "PHHFNF"
+  ],
+  [
+   "Yaron",
+   "RHB8WL"
+  ],
+  [
+   "Ying Tong",
+   "AEWNJA"
+  ],
+  [
+   "Yisi Liu",
+   "KUGD8V"
+  ],
+  [
+   "Zach Alexander",
+   "QLETHK"
+  ],
+  [
+   "Zenna",
+   "X9ENCG"
+  ],
+  [
+   "adz",
+   "CBXTSZ"
+  ],
+  [
+   "adz",
+   "KAJ3MX"
+  ],
+  [
+   "bacce",
+   "FLLS3A"
+  ],
+  [
+   "bruno",
+   "FDVJJR"
+  ],
+  [
+   "bruno",
+   "XT97FY"
+  ],
+  [
+   "fauno",
+   "JUPVWB"
+  ],
+  [
+   "fauno",
+   "Q8YSHN"
+  ],
+  [
+   "fauno",
+   "VTJEEW"
+  ],
+  [
+   "fiore",
+   "UBMF3U"
+  ],
+  [
+   "ian davis",
+   "HG88NG"
+  ],
+  [
+   "ian davis",
+   "SJXE8X"
+  ],
+  [
+   "ligi",
+   "RHB8WL"
+  ],
+  [
+   "mai ishikawa sutton",
+   "G9E3WD"
+  ],
+  [
+   "mai ishikawa sutton",
+   "SJXE8X"
+  ],
+  [
+   "marta",
+   "XG9TX9"
+  ],
+  [
+   "marv",
+   "SJXE8X"
+  ],
+  [
+   "nVidya",
+   "Z7QNKE"
+  ],
+  [
+   "nádia coelho pontes",
+   "G8TBUH"
+  ],
+  [
+   "nádia coelho pontes",
+   "YXYHEK"
+  ],
+  [
+   "sammy",
+   "LSVEE3"
+  ],
+  [
+   "senka",
+   "Q8YSHN"
+  ]
+ ],
+ "features": [
+  [
+   "3KGBEF",
+   "FSFE"
+  ],
+  [
+   "7HM8TX",
+   "Spacious"
+  ],
+  [
+   "8NC7JG",
+   "ELFA"
+  ],
+  [
+   "8NC7JG",
+   "NextGraph"
+  ],
+  [
+   "8R9EZV",
+   "Democratic Tech Fund"
+  ],
+  [
+   "8R9EZV",
+   "Platoniq"
+  ],
+  [
+   "AZ3PQC",
+   "LiteFarm"
+  ],
+  [
+   "B37VPB",
+   "LiteFarm"
+  ],
+  [
+   "B37VPB",
+   "Open Food Network"
+  ],
+  [
+   "B37VPB",
+   "Our Sci"
+  ],
+  [
+   "BE7GHD",
+   "ASORCOM"
+  ],
+  [
+   "BE7GHD",
+   "eimiAI"
+  ],
+  [
+   "C9YZLT",
+   "And Other Stuff"
+  ],
+  [
+   "C9YZLT",
+   "BitChat"
+  ],
+  [
+   "C9YZLT",
+   "Nostr"
+  ],
+  [
+   "C9YZLT",
+   "White Noise"
+  ],
+  [
+   "CBXTSZ",
+   "p2panda"
+  ],
+  [
+   "D3ATVK",
+   "FOKS"
+  ],
+  [
+   "DJZ3X3",
+   "Dash Chat"
+  ],
+  [
+   "DJZ3X3",
+   "Iroh"
+  ],
+  [
+   "DJZ3X3",
+   "p2panda"
+  ],
+  [
+   "ET9PZP",
+   "AT Protocol"
+  ],
+  [
+   "ET9PZP",
+   "Crownshy"
+  ],
+  [
+   "ET9PZP",
+   "Metagov"
+  ],
+  [
+   "ET9PZP",
+   "Polis"
+  ],
+  [
+   "EUNLTT",
+   "Nym"
+  ],
+  [
+   "EXLJYK",
+   "LABLAB"
+  ],
+  [
+   "F9Y7PQ",
+   "AD4M"
+  ],
+  [
+   "F9Y7PQ",
+   "Holochain"
+  ],
+  [
+   "FLLS3A",
+   "NOMOI"
+  ],
+  [
+   "FMKD8P",
+   "Ethereum"
+  ],
+  [
+   "FQDZEK",
+   "Powerhouse/Vetra"
+  ],
+  [
+   "GHTLRT",
+   "Meetmarket"
+  ],
+  [
+   "HDG88R",
+   "clan"
+  ],
+  [
+   "JFNK39",
+   "Mesh News Network"
+  ],
+  [
+   "JFNK39",
+   "Meshtastic"
+  ],
+  [
+   "JUPVWB",
+   "Coopcloud"
+  ],
+  [
+   "JUPVWB",
+   "Escuela Común"
+  ],
+  [
+   "JYFKLK",
+   "ASORCOM"
+  ],
+  [
+   "JYFKLK",
+   "eimiAI"
+  ],
+  [
+   "KAJ3MX",
+   "p2panda"
+  ],
+  [
+   "LCXYTM",
+   "AT Protocol"
+  ],
+  [
+   "LD7UAE",
+   "Democratic Tech Fund"
+  ],
+  [
+   "LF8TVG",
+   "IdentiKey"
+  ],
+  [
+   "LSVEE3",
+   "Willow"
+  ],
+  [
+   "LXD98Q",
+   "Holochain"
+  ],
+  [
+   "LXD98Q",
+   "Moss"
+  ],
+  [
+   "M337PX",
+   "Danube Tech"
+  ],
+  [
+   "M337PX",
+   "W3C DIDs"
+  ],
+  [
+   "MEBSMB",
+   "Farm Hack"
+  ],
+  [
+   "MRYKHP",
+   "Logos"
+  ],
+  [
+   "NNTVFV",
+   "Quiet"
+  ],
+  [
+   "NNU9QM",
+   "Farm Hack"
+  ],
+  [
+   "NNU9QM",
+   "GIAA"
+  ],
+  [
+   "NNU9QM",
+   "Honey Bee Network"
+  ],
+  [
+   "NNU9QM",
+   "OpenTEAM"
+  ],
+  [
+   "NNU9QM",
+   "Prolinnova"
+  ],
+  [
+   "NPFDBD",
+   "Matrix"
+  ],
+  [
+   "NTYGHS",
+   "sig0lease"
+  ],
+  [
+   "NYHXHW",
+   "Matrix"
+  ],
+  [
+   "PEWZVE",
+   "Bread Cooperative"
+  ],
+  [
+   "PHHFNF",
+   "Democratic Tech Fund"
+  ],
+  [
+   "PNDFJD",
+   "Logos"
+  ],
+  [
+   "Q7NHNU",
+   "Step Network"
+  ],
+  [
+   "QHUS7S",
+   "Awana Digital"
+  ],
+  [
+   "RHB8WL",
+   "Department of Decentralization"
+  ],
+  [
+   "RXRVLL",
+   "Farm Hack"
+  ],
+  [
+   "RXRVLL",
+   "Holochain"
+  ],
+  [
+   "RXRVLL",
+   "OpenTEAM"
+  ],
+  [
+   "SNZGZD",
+   "Web of Trust"
+  ],
+  [
+   "SUWJJN",
+   "AT Protocol"
+  ],
+  [
+   "TA3NY7",
+   "AT Protocol"
+  ],
+  [
+   "TA3NY7",
+   "Semble"
+  ],
+  [
+   "UDVGAJ",
+   "Awana Digital"
+  ],
+  [
+   "V9L89B",
+   "ASORCOM"
+  ],
+  [
+   "VC9LBJ",
+   "Network Nations"
+  ],
+  [
+   "VCVGP8",
+   "IdentiKey"
+  ],
+  [
+   "VDWYAU",
+   "OpenHaven"
+  ],
+  [
+   "VMMJPG",
+   "Open Source Endowment"
+  ],
+  [
+   "VTJEEW",
+   "Coopcloud"
+  ],
+  [
+   "VTJEEW",
+   "Escuela Común"
+  ],
+  [
+   "VU73KQ",
+   "GIAA"
+  ],
+  [
+   "VU73KQ",
+   "Honey Bee Network"
+  ],
+  [
+   "VU73KQ",
+   "Prolinnova"
+  ],
+  [
+   "X3S8ZN",
+   "And Other Stuff"
+  ],
+  [
+   "X3S8ZN",
+   "BitChat"
+  ],
+  [
+   "X3S8ZN",
+   "Nostr"
+  ],
+  [
+   "XBZFVE",
+   "tinySSB"
+  ],
+  [
+   "XMJMBK",
+   "OpenArchive"
+  ],
+  [
+   "YJHTTK",
+   "FSFE"
+  ],
+  [
+   "YJHTTK",
+   "Platoniq"
+  ],
+  [
+   "YXYHEK",
+   "Origin Co-op"
+  ],
+  [
+   "Z8FRLZ",
+   "Ethical Technology Assessment"
+  ],
+  [
+   "Z8FRLZ",
+   "OpenTEAM"
+  ],
+  [
+   "ZCKHRQ",
+   "Community Rule"
+  ],
+  [
+   "ZCKHRQ",
+   "CrowCards"
+  ],
+  [
+   "ZHEPFC",
+   "Logos"
+  ]
+ ],
+ "in_cluster": [
+  [
+   "3KGBEF",
+   "community-commons"
+  ],
+  [
+   "7CNXZG",
+   "community-commons"
+  ],
+  [
+   "7CNXZG",
+   "p2p-localfirst"
+  ],
+  [
+   "7HM8TX",
+   "community-commons"
+  ],
+  [
+   "7HM8TX",
+   "p2p-localfirst"
+  ],
+  [
+   "8NC7JG",
+   "identity-trust"
+  ],
+  [
+   "8NC7JG",
+   "p2p-localfirst"
+  ],
+  [
+   "8NC7JG",
+   "privacy-crypto"
+  ],
+  [
+   "8R9EZV",
+   "community-commons"
+  ],
+  [
+   "AAPV9L",
+   "community-commons"
+  ],
+  [
+   "AAPV9L",
+   "p2p-localfirst"
+  ],
+  [
+   "AEWNJA",
+   "identity-trust"
+  ],
+  [
+   "AEWNJA",
+   "p2p-localfirst"
+  ],
+  [
+   "AZ3PQC",
+   "community-commons"
+  ],
+  [
+   "B37VPB",
+   "community-commons"
+  ],
+  [
+   "BE7GHD",
+   "community-commons"
+  ],
+  [
+   "BE7GHD",
+   "p2p-localfirst"
+  ],
+  [
+   "C9YZLT",
+   "p2p-localfirst"
+  ],
+  [
+   "CBXTSZ",
+   "p2p-localfirst"
+  ],
+  [
+   "CHYFMY",
+   "identity-trust"
+  ],
+  [
+   "CHYFMY",
+   "p2p-localfirst"
+  ],
+  [
+   "CNRNLU",
+   "community-commons"
+  ],
+  [
+   "CNRNLU",
+   "p2p-localfirst"
+  ],
+  [
+   "CNRTZ7",
+   "p2p-localfirst"
+  ],
+  [
+   "CNRTZ7",
+   "privacy-crypto"
+  ],
+  [
+   "CQXGRY",
+   "community-commons"
+  ],
+  [
+   "CQXGRY",
+   "p2p-localfirst"
+  ],
+  [
+   "D3ATVK",
+   "community-commons"
+  ],
+  [
+   "DFYFRG",
+   "community-commons"
+  ],
+  [
+   "DFYFRG",
+   "p2p-localfirst"
+  ],
+  [
+   "DJZ3X3",
+   "p2p-localfirst"
+  ],
+  [
+   "EG3FTA",
+   "identity-trust"
+  ],
+  [
+   "EG3FTA",
+   "p2p-localfirst"
+  ],
+  [
+   "ET9PZP",
+   "community-commons"
+  ],
+  [
+   "ET9PZP",
+   "p2p-localfirst"
+  ],
+  [
+   "EUNLTT",
+   "p2p-localfirst"
+  ],
+  [
+   "EXLJYK",
+   "community-commons"
+  ],
+  [
+   "EXLJYK",
+   "p2p-localfirst"
+  ],
+  [
+   "F7XGYE",
+   "community-commons"
+  ],
+  [
+   "F7XGYE",
+   "identity-trust"
+  ],
+  [
+   "F9Y7PQ",
+   "community-commons"
+  ],
+  [
+   "F9Y7PQ",
+   "p2p-localfirst"
+  ],
+  [
+   "FDVJJR",
+   "community-commons"
+  ],
+  [
+   "FDVJJR",
+   "p2p-localfirst"
+  ],
+  [
+   "FLLS3A",
+   "community-commons"
+  ],
+  [
+   "FLLS3A",
+   "identity-trust"
+  ],
+  [
+   "FLLS3A",
+   "p2p-localfirst"
+  ],
+  [
+   "FMKD8P",
+   "identity-trust"
+  ],
+  [
+   "FMKD8P",
+   "p2p-localfirst"
+  ],
+  [
+   "FQDZEK",
+   "p2p-localfirst"
+  ],
+  [
+   "FYZ9NG",
+   "community-commons"
+  ],
+  [
+   "FYZ9NG",
+   "p2p-localfirst"
+  ],
+  [
+   "G8TBUH",
+   "community-commons"
+  ],
+  [
+   "G9E3WD",
+   "community-commons"
+  ],
+  [
+   "G9E3WD",
+   "p2p-localfirst"
+  ],
+  [
+   "GHTLRT",
+   "community-commons"
+  ],
+  [
+   "GHTLRT",
+   "privacy-crypto"
+  ],
+  [
+   "HDG88R",
+   "p2p-localfirst"
+  ],
+  [
+   "HG88NG",
+   "community-commons"
+  ],
+  [
+   "HG88NG",
+   "identity-trust"
+  ],
+  [
+   "JFNK39",
+   "community-commons"
+  ],
+  [
+   "JFNK39",
+   "identity-trust"
+  ],
+  [
+   "JFNK39",
+   "p2p-localfirst"
+  ],
+  [
+   "JHBJ3J",
+   "community-commons"
+  ],
+  [
+   "JUPVWB",
+   "community-commons"
+  ],
+  [
+   "JYFKLK",
+   "community-commons"
+  ],
+  [
+   "JYFKLK",
+   "p2p-localfirst"
+  ],
+  [
+   "JYYCHC",
+   "community-commons"
+  ],
+  [
+   "JYYCHC",
+   "privacy-crypto"
+  ],
+  [
+   "KAJ3MX",
+   "community-commons"
+  ],
+  [
+   "KAJ3MX",
+   "p2p-localfirst"
+  ],
+  [
+   "KUEP3J",
+   "community-commons"
+  ],
+  [
+   "KUEP3J",
+   "p2p-localfirst"
+  ],
+  [
+   "KUGD8V",
+   "community-commons"
+  ],
+  [
+   "KUGD8V",
+   "privacy-crypto"
+  ],
+  [
+   "L8HXM3",
+   "community-commons"
+  ],
+  [
+   "LCXYTM",
+   "p2p-localfirst"
+  ],
+  [
+   "LD7UAE",
+   "community-commons"
+  ],
+  [
+   "LD7UAE",
+   "p2p-localfirst"
+  ],
+  [
+   "LF8TVG",
+   "identity-trust"
+  ],
+  [
+   "LF8TVG",
+   "p2p-localfirst"
+  ],
+  [
+   "LF8TVG",
+   "privacy-crypto"
+  ],
+  [
+   "LSVEE3",
+   "community-commons"
+  ],
+  [
+   "LSVEE3",
+   "p2p-localfirst"
+  ],
+  [
+   "LXD98Q",
+   "community-commons"
+  ],
+  [
+   "LXD98Q",
+   "p2p-localfirst"
+  ],
+  [
+   "M337PX",
+   "identity-trust"
+  ],
+  [
+   "M337PX",
+   "p2p-localfirst"
+  ],
+  [
+   "MEBSMB",
+   "community-commons"
+  ],
+  [
+   "MEBSMB",
+   "p2p-localfirst"
+  ],
+  [
+   "MLFH9Z",
+   "community-commons"
+  ],
+  [
+   "MLFH9Z",
+   "identity-trust"
+  ],
+  [
+   "MLFH9Z",
+   "p2p-localfirst"
+  ],
+  [
+   "MPL8TF",
+   "p2p-localfirst"
+  ],
+  [
+   "MRYKHP",
+   "community-commons"
+  ],
+  [
+   "MRYKHP",
+   "p2p-localfirst"
+  ],
+  [
+   "NNTVFV",
+   "identity-trust"
+  ],
+  [
+   "NNTVFV",
+   "p2p-localfirst"
+  ],
+  [
+   "NNU9QM",
+   "community-commons"
+  ],
+  [
+   "NPFDBD",
+   "community-commons"
+  ],
+  [
+   "NPFDBD",
+   "identity-trust"
+  ],
+  [
+   "NPFDBD",
+   "p2p-localfirst"
+  ],
+  [
+   "NPGLHM",
+   "p2p-localfirst"
+  ],
+  [
+   "NPGLHM",
+   "privacy-crypto"
+  ],
+  [
+   "NTYGHS",
+   "community-commons"
+  ],
+  [
+   "NTYGHS",
+   "p2p-localfirst"
+  ],
+  [
+   "NYHXHW",
+   "identity-trust"
+  ],
+  [
+   "NYHXHW",
+   "p2p-localfirst"
+  ],
+  [
+   "PEWZVE",
+   "community-commons"
+  ],
+  [
+   "PEWZVE",
+   "p2p-localfirst"
+  ],
+  [
+   "PGZTXE",
+   "community-commons"
+  ],
+  [
+   "PHHFNF",
+   "community-commons"
+  ],
+  [
+   "PHHFNF",
+   "p2p-localfirst"
+  ],
+  [
+   "PNDFJD",
+   "p2p-localfirst"
+  ],
+  [
+   "PNDFJD",
+   "privacy-crypto"
+  ],
+  [
+   "Q7NHNU",
+   "community-commons"
+  ],
+  [
+   "Q7NHNU",
+   "p2p-localfirst"
+  ],
+  [
+   "Q8YSHN",
+   "community-commons"
+  ],
+  [
+   "Q8YSHN",
+   "p2p-localfirst"
+  ],
+  [
+   "QADFXX",
+   "community-commons"
+  ],
+  [
+   "QHUS7S",
+   "community-commons"
+  ],
+  [
+   "QHUS7S",
+   "p2p-localfirst"
+  ],
+  [
+   "QJBRME",
+   "p2p-localfirst"
+  ],
+  [
+   "QJBRME",
+   "privacy-crypto"
+  ],
+  [
+   "QLETHK",
+   "identity-trust"
+  ],
+  [
+   "QLETHK",
+   "p2p-localfirst"
+  ],
+  [
+   "QSAZ8F",
+   "community-commons"
+  ],
+  [
+   "QSAZ8F",
+   "p2p-localfirst"
+  ],
+  [
+   "RHB8WL",
+   "community-commons"
+  ],
+  [
+   "RHB8WL",
+   "p2p-localfirst"
+  ],
+  [
+   "RSCUR8",
+   "community-commons"
+  ],
+  [
+   "RSCUR8",
+   "p2p-localfirst"
+  ],
+  [
+   "RXRVLL",
+   "community-commons"
+  ],
+  [
+   "RXRVLL",
+   "p2p-localfirst"
+  ],
+  [
+   "SFHERD",
+   "p2p-localfirst"
+  ],
+  [
+   "SJXE8X",
+   "community-commons"
+  ],
+  [
+   "SJXE8X",
+   "p2p-localfirst"
+  ],
+  [
+   "SK3GNH",
+   "p2p-localfirst"
+  ],
+  [
+   "SNZGZD",
+   "identity-trust"
+  ],
+  [
+   "SUWJJN",
+   "p2p-localfirst"
+  ],
+  [
+   "SUWJJN",
+   "privacy-crypto"
+  ],
+  [
+   "T9JL87",
+   "identity-trust"
+  ],
+  [
+   "T9JL87",
+   "p2p-localfirst"
+  ],
+  [
+   "T9JL87",
+   "privacy-crypto"
+  ],
+  [
+   "TA3NY7",
+   "community-commons"
+  ],
+  [
+   "UBMF3U",
+   "community-commons"
+  ],
+  [
+   "UBMF3U",
+   "identity-trust"
+  ],
+  [
+   "UDVGAJ",
+   "community-commons"
+  ],
+  [
+   "UDVGAJ",
+   "p2p-localfirst"
+  ],
+  [
+   "V9L89B",
+   "p2p-localfirst"
+  ],
+  [
+   "V9L89B",
+   "privacy-crypto"
+  ],
+  [
+   "VC9LBJ",
+   "community-commons"
+  ],
+  [
+   "VC9LBJ",
+   "p2p-localfirst"
+  ],
+  [
+   "VCVGP8",
+   "identity-trust"
+  ],
+  [
+   "VCVGP8",
+   "p2p-localfirst"
+  ],
+  [
+   "VCVGP8",
+   "privacy-crypto"
+  ],
+  [
+   "VDWYAU",
+   "community-commons"
+  ],
+  [
+   "VDWYAU",
+   "p2p-localfirst"
+  ],
+  [
+   "VMMJPG",
+   "community-commons"
+  ],
+  [
+   "VMMJPG",
+   "p2p-localfirst"
+  ],
+  [
+   "VTJEEW",
+   "community-commons"
+  ],
+  [
+   "VU73KQ",
+   "community-commons"
+  ],
+  [
+   "VU73KQ",
+   "identity-trust"
+  ],
+  [
+   "VU73KQ",
+   "p2p-localfirst"
+  ],
+  [
+   "WL3CJJ",
+   "identity-trust"
+  ],
+  [
+   "WL3CJJ",
+   "p2p-localfirst"
+  ],
+  [
+   "X3S8ZN",
+   "community-commons"
+  ],
+  [
+   "X3S8ZN",
+   "p2p-localfirst"
+  ],
+  [
+   "X9ENCG",
+   "community-commons"
+  ],
+  [
+   "X9ENCG",
+   "p2p-localfirst"
+  ],
+  [
+   "XBZFVE",
+   "p2p-localfirst"
+  ],
+  [
+   "XG9TX9",
+   "community-commons"
+  ],
+  [
+   "XMJMBK",
+   "p2p-localfirst"
+  ],
+  [
+   "XMJMBK",
+   "privacy-crypto"
+  ],
+  [
+   "XT97FY",
+   "community-commons"
+  ],
+  [
+   "XT97FY",
+   "p2p-localfirst"
+  ],
+  [
+   "YBNSXL",
+   "identity-trust"
+  ],
+  [
+   "YBNSXL",
+   "p2p-localfirst"
+  ],
+  [
+   "YJHTTK",
+   "community-commons"
+  ],
+  [
+   "YJHTTK",
+   "identity-trust"
+  ],
+  [
+   "YNFNBM",
+   "identity-trust"
+  ],
+  [
+   "YNFNBM",
+   "p2p-localfirst"
+  ],
+  [
+   "YXYHEK",
+   "community-commons"
+  ],
+  [
+   "YXYHEK",
+   "p2p-localfirst"
+  ],
+  [
+   "Z7QNKE",
+   "community-commons"
+  ],
+  [
+   "Z7QNKE",
+   "p2p-localfirst"
+  ],
+  [
+   "Z7QNKE",
+   "privacy-crypto"
+  ],
+  [
+   "Z8FRLZ",
+   "community-commons"
+  ],
+  [
+   "ZCKHRQ",
+   "community-commons"
+  ],
+  [
+   "ZHEPFC",
+   "p2p-localfirst"
+  ],
+  [
+   "ZHGJNM",
+   "p2p-localfirst"
+  ],
+  [
+   "ZLF38Z",
+   "community-commons"
+  ],
+  [
+   "ZLF38Z",
+   "identity-trust"
+  ],
+  [
+   "ZLF38Z",
+   "p2p-localfirst"
+  ],
+  [
+   "ZLF38Z",
+   "privacy-crypto"
+  ],
+  [
+   "ZQ7A3T",
+   "community-commons"
+  ],
+  [
+   "ZX9PNQ",
+   "community-commons"
+  ],
+  [
+   "ZX9PNQ",
+   "identity-trust"
+  ]
+ ],
+ "works_on": [
+  [
+   "Adam",
+   "sig0lease",
+   "NTYGHS"
+  ],
+  [
+   "Afri Blanck",
+   "Department of Decentralization",
+   "RHB8WL"
+  ],
+  [
+   "Alisher",
+   "Logos",
+   "MRYKHP"
+  ],
+  [
+   "Andreas Arnold",
+   "Democratic Tech Fund",
+   "PHHFNF"
+  ],
+  [
+   "Anton Tranelis",
+   "Web of Trust",
+   "SNZGZD"
+  ],
+  [
+   "Calum Bowden",
+   "Meetmarket",
+   "GHTLRT"
+  ],
+  [
+   "Casey Carr",
+   "Mesh News Network",
+   "JFNK39"
+  ],
+  [
+   "Casey Carr",
+   "Meshtastic",
+   "JFNK39"
+  ],
+  [
+   "Christian Tschudin (cft)",
+   "tinySSB",
+   "XBZFVE"
+  ],
+  [
+   "Colin",
+   "FOKS",
+   "D3ATVK"
+  ],
+  [
+   "Daniel Holmgren",
+   "AT Protocol",
+   "SUWJJN"
+  ],
+  [
+   "Dario Presutti",
+   "FSFE",
+   "3KGBEF"
+  ],
+  [
+   "Day Waterbury",
+   "OpenHaven",
+   "VDWYAU"
+  ],
+  [
+   "Dorn Cox",
+   "Community Rule",
+   "ZCKHRQ"
+  ],
+  [
+   "Dorn Cox",
+   "CrowCards",
+   "ZCKHRQ"
+  ],
+  [
+   "Dorn Cox",
+   "Ethical Technology Assessment",
+   "Z8FRLZ"
+  ],
+  [
+   "Dorn Cox",
+   "OpenTEAM",
+   "Z8FRLZ"
+  ],
+  [
+   "Doug",
+   "Community Rule",
+   "ZCKHRQ"
+  ],
+  [
+   "Doug",
+   "CrowCards",
+   "ZCKHRQ"
+  ],
+  [
+   "Duke Dorje",
+   "IdentiKey",
+   "LF8TVG"
+  ],
+  [
+   "Duke Dorje",
+   "IdentiKey",
+   "VCVGP8"
+  ],
+  [
+   "Eric Harris-Braun",
+   "Holochain",
+   "LXD98Q"
+  ],
+  [
+   "Eric Harris-Braun",
+   "Moss",
+   "LXD98Q"
+  ],
+  [
+   "Felix Beer",
+   "Network Nations",
+   "VC9LBJ"
+  ],
+  [
+   "Florian",
+   "Department of Decentralization",
+   "RHB8WL"
+  ],
+  [
+   "Franzi",
+   "Department of Decentralization",
+   "RHB8WL"
+  ],
+  [
+   "Guil Maueler",
+   "FSFE",
+   "YJHTTK"
+  ],
+  [
+   "Guil Maueler",
+   "Platoniq",
+   "YJHTTK"
+  ],
+  [
+   "Hannah Wittman",
+   "LiteFarm",
+   "AZ3PQC"
+  ],
+  [
+   "Hiure",
+   "LABLAB",
+   "EXLJYK"
+  ],
+  [
+   "Holmes Wilson",
+   "Quiet",
+   "NNTVFV"
+  ],
+  [
+   "James Weir",
+   "AD4M",
+   "F9Y7PQ"
+  ],
+  [
+   "James Weir",
+   "Holochain",
+   "F9Y7PQ"
+  ],
+  [
+   "Jeremiah Lee",
+   "ELFA",
+   "8NC7JG"
+  ],
+  [
+   "Jeremiah Lee",
+   "NextGraph",
+   "8NC7JG"
+  ],
+  [
+   "Jihoon Song",
+   "Ethereum",
+   "FMKD8P"
+  ],
+  [
+   "Jonathan Starr",
+   "Open Source Endowment",
+   "VMMJPG"
+  ],
+  [
+   "Josh Field",
+   "AD4M",
+   "F9Y7PQ"
+  ],
+  [
+   "Josh Field",
+   "Holochain",
+   "F9Y7PQ"
+  ],
+  [
+   "Joshua Davila",
+   "Bread Cooperative",
+   "PEWZVE"
+  ],
+  [
+   "Kevin Cussen",
+   "LiteFarm",
+   "AZ3PQC"
+  ],
+  [
+   "Kris Is",
+   "Logos",
+   "PNDFJD"
+  ],
+  [
+   "L0visa",
+   "Network Nations",
+   "VC9LBJ"
+  ],
+  [
+   "LX Cast",
+   "Spacious",
+   "7HM8TX"
+  ],
+  [
+   "Larissa Bral",
+   "Origin Co-op",
+   "YXYHEK"
+  ],
+  [
+   "Liz Barry",
+   "Community Rule",
+   "ZCKHRQ"
+  ],
+  [
+   "Liz Barry",
+   "CrowCards",
+   "ZCKHRQ"
+  ],
+  [
+   "Liz Barry",
+   "FSFE",
+   "YJHTTK"
+  ],
+  [
+   "Liz Barry",
+   "Platoniq",
+   "YJHTTK"
+  ],
+  [
+   "Luandro",
+   "Awana Digital",
+   "QHUS7S"
+  ],
+  [
+   "Luandro",
+   "Awana Digital",
+   "UDVGAJ"
+  ],
+  [
+   "Luke Smith",
+   "Origin Co-op",
+   "YXYHEK"
+  ],
+  [
+   "Marcela Guerra",
+   "LABLAB",
+   "EXLJYK"
+  ],
+  [
+   "Markus Sabadello",
+   "Danube Tech",
+   "M337PX"
+  ],
+  [
+   "Markus Sabadello",
+   "W3C DIDs",
+   "M337PX"
+  ],
+  [
+   "Martijn de Waal",
+   "Democratic Tech Fund",
+   "8R9EZV"
+  ],
+  [
+   "Martijn de Waal",
+   "Platoniq",
+   "8R9EZV"
+  ],
+  [
+   "Mathias Jud",
+   "sig0lease",
+   "NTYGHS"
+  ],
+  [
+   "Matthew Hodgson",
+   "Matrix",
+   "NPFDBD"
+  ],
+  [
+   "Matthew Hodgson",
+   "Matrix",
+   "NYHXHW"
+  ],
+  [
+   "Matthias Kirschner",
+   "FSFE",
+   "YJHTTK"
+  ],
+  [
+   "Matthias Kirschner",
+   "Platoniq",
+   "YJHTTK"
+  ],
+  [
+   "Max Hampshire",
+   "Nym",
+   "EUNLTT"
+  ],
+  [
+   "Michael Suantak",
+   "ASORCOM",
+   "BE7GHD"
+  ],
+  [
+   "Michael Suantak",
+   "ASORCOM",
+   "JYFKLK"
+  ],
+  [
+   "Michael Suantak",
+   "ASORCOM",
+   "V9L89B"
+  ],
+  [
+   "Michael Suantak",
+   "eimiAI",
+   "BE7GHD"
+  ],
+  [
+   "Michael Suantak",
+   "eimiAI",
+   "JYFKLK"
+  ],
+  [
+   "Nicolas Luck",
+   "AD4M",
+   "F9Y7PQ"
+  ],
+  [
+   "Nicolas Luck",
+   "Holochain",
+   "F9Y7PQ"
+  ],
+  [
+   "Niko Bonnieure",
+   "ELFA",
+   "8NC7JG"
+  ],
+  [
+   "Niko Bonnieure",
+   "NextGraph",
+   "8NC7JG"
+  ],
+  [
+   "Olivier Schulbaum (platoniq)",
+   "Democratic Tech Fund",
+   "8R9EZV"
+  ],
+  [
+   "Olivier Schulbaum (platoniq)",
+   "FSFE",
+   "YJHTTK"
+  ],
+  [
+   "Olivier Schulbaum (platoniq)",
+   "Platoniq",
+   "8R9EZV"
+  ],
+  [
+   "Olivier Schulbaum (platoniq)",
+   "Platoniq",
+   "YJHTTK"
+  ],
+  [
+   "Paul Frazee",
+   "AT Protocol",
+   "LCXYTM"
+  ],
+  [
+   "Peter",
+   "Department of Decentralization",
+   "RHB8WL"
+  ],
+  [
+   "Primavera",
+   "Network Nations",
+   "VC9LBJ"
+  ],
+  [
+   "Qubasa",
+   "clan",
+   "HDG88R"
+  ],
+  [
+   "Raul",
+   "Department of Decentralization",
+   "RHB8WL"
+  ],
+  [
+   "Ray Xiang",
+   "FSFE",
+   "YJHTTK"
+  ],
+  [
+   "Ray Xiang",
+   "Platoniq",
+   "YJHTTK"
+  ],
+  [
+   "Rose Regina Lawrence",
+   "OpenArchive",
+   "XMJMBK"
+  ],
+  [
+   "Seph",
+   "Matrix",
+   "NPFDBD"
+  ],
+  [
+   "Shadrach",
+   "Step Network",
+   "Q7NHNU"
+  ],
+  [
+   "Sophie Bloemen",
+   "Democratic Tech Fund",
+   "8R9EZV"
+  ],
+  [
+   "Sophie Bloemen",
+   "Platoniq",
+   "8R9EZV"
+  ],
+  [
+   "Tamisha Lee",
+   "Origin Co-op",
+   "YXYHEK"
+  ],
+  [
+   "Victor Von",
+   "LABLAB",
+   "EXLJYK"
+  ],
+  [
+   "Václav Pavlín",
+   "Logos",
+   "PNDFJD"
+  ],
+  [
+   "Václav Pavlín",
+   "Logos",
+   "ZHEPFC"
+  ],
+  [
+   "Wedja",
+   "LABLAB",
+   "EXLJYK"
+  ],
+  [
+   "Wendy Hanamura",
+   "AT Protocol",
+   "LCXYTM"
+  ],
+  [
+   "Wesley",
+   "AT Protocol",
+   "TA3NY7"
+  ],
+  [
+   "Wesley",
+   "Semble",
+   "TA3NY7"
+  ],
+  [
+   "Wouter Kampmann | Powerhouse",
+   "Powerhouse/Vetra",
+   "FQDZEK"
+  ],
+  [
+   "Wouter Tebbens",
+   "Democratic Tech Fund",
+   "8R9EZV"
+  ],
+  [
+   "Wouter Tebbens",
+   "Democratic Tech Fund",
+   "LD7UAE"
+  ],
+  [
+   "Wouter Tebbens",
+   "Democratic Tech Fund",
+   "PHHFNF"
+  ],
+  [
+   "Wouter Tebbens",
+   "Platoniq",
+   "8R9EZV"
+  ],
+  [
+   "Yaron",
+   "Department of Decentralization",
+   "RHB8WL"
+  ],
+  [
+   "adz",
+   "p2panda",
+   "CBXTSZ"
+  ],
+  [
+   "adz",
+   "p2panda",
+   "KAJ3MX"
+  ],
+  [
+   "bacce",
+   "NOMOI",
+   "FLLS3A"
+  ],
+  [
+   "fauno",
+   "Coopcloud",
+   "JUPVWB"
+  ],
+  [
+   "fauno",
+   "Coopcloud",
+   "VTJEEW"
+  ],
+  [
+   "fauno",
+   "Escuela Común",
+   "JUPVWB"
+  ],
+  [
+   "fauno",
+   "Escuela Común",
+   "VTJEEW"
+  ],
+  [
+   "ligi",
+   "Department of Decentralization",
+   "RHB8WL"
+  ],
+  [
+   "nádia coelho pontes",
+   "Origin Co-op",
+   "YXYHEK"
+  ],
+  [
+   "sammy",
+   "Willow",
+   "LSVEE3"
+  ]
+ ],
+ "links": {
+  "Quiet": {
+   "website": "https://tryquiet.org",
+   "repo": "https://github.com/TryQuiet/quiet",
+   "confidence": "high"
+  },
+  "Willow": {
+   "website": "https://willowprotocol.org",
+   "repo": "https://codeberg.org/worm-blossom/willow_rs",
+   "confidence": "high"
+  },
+  "tinySSB": {
+   "website": null,
+   "repo": "https://github.com/ssbc/tinySSB",
+   "confidence": "high"
+  },
+  "AD4M": {
+   "website": "https://ad4m.dev",
+   "repo": "https://github.com/coasys/ad4m",
+   "confidence": "high"
+  },
+  "Moss": {
+   "website": "https://moss.social",
+   "repo": "https://github.com/lightningrodlabs/moss",
+   "confidence": "high"
+  },
+  "Logos": {
+   "website": "https://logos.co",
+   "repo": "https://github.com/logos-co",
+   "confidence": "high"
+  },
+  "FOKS": {
+   "website": "https://foks.pub",
+   "repo": "https://github.com/foks-proj/go-foks",
+   "confidence": "high"
+  },
+  "OpenArchive": {
+   "website": "https://www.open-archive.org",
+   "repo": "https://github.com/OpenArchive",
+   "confidence": "high"
+  },
+  "clan": {
+   "website": "https://clan.lol",
+   "repo": "https://git.clan.lol/clan/clan-core",
+   "confidence": "high"
+  },
+  "OpenHaven": {
+   "website": "https://openhaven.net",
+   "repo": null,
+   "confidence": "medium"
+  },
+  "Bread Cooperative": {
+   "website": "https://bread.coop",
+   "repo": "https://github.com/BreadchainCoop",
+   "confidence": "high"
+  },
+  "LiteFarm": {
+   "website": "https://www.litefarm.org",
+   "repo": "https://github.com/LiteFarmOrg/LiteFarm",
+   "confidence": "high"
+  },
+  "Open Food Network": {
+   "website": "https://openfoodnetwork.org",
+   "repo": "https://github.com/openfoodfoundation/openfoodnetwork",
+   "confidence": "high"
+  },
+  "Our Sci": {
+   "website": "https://www.our-sci.net",
+   "repo": "https://gitlab.com/our-sci",
+   "confidence": "medium"
+  },
+  "Farm Hack": {
+   "website": "https://farmhack.org",
+   "repo": "https://github.com/FarmHack",
+   "confidence": "high"
+  },
+  "OpenTEAM": {
+   "website": "https://openteam.community",
+   "repo": null,
+   "confidence": "high"
+  },
+  "Nym": {
+   "website": "https://nym.com",
+   "repo": "https://github.com/nymtech/nym",
+   "confidence": "high"
+  },
+  "BitChat": {
+   "website": "https://bitchat.free",
+   "repo": "https://github.com/permissionlesstech/bitchat",
+   "confidence": "high"
+  },
+  "And Other Stuff": {
+   "website": "https://andotherstuff.org",
+   "repo": "https://github.com/andotherstuff",
+   "confidence": "high"
+  },
+  "Semble": {
+   "website": "https://semble.so",
+   "repo": "https://github.com/cosmik-network/semble",
+   "confidence": "high"
+  },
+  "Metagov": {
+   "website": "https://metagov.org",
+   "repo": "https://github.com/metagov",
+   "confidence": "high"
+  },
+  "IdentiKey": {
+   "website": "https://identikey.io",
+   "repo": null,
+   "confidence": "medium"
+  },
+  "Dash Chat": {
+   "website": "https://dashchat.org",
+   "repo": "https://github.com/dash-chat/dash-chat",
+   "confidence": "high"
+  },
+  "Danube Tech": {
+   "website": "https://danubetech.com",
+   "repo": "https://github.com/danubetech",
+   "confidence": "high"
+  },
+  "Democratic Tech Fund": {
+   "website": "https://democratictech.fund",
+   "repo": null,
+   "confidence": "high"
+  },
+  "Open Source Endowment": {
+   "website": "https://endowment.dev",
+   "repo": null,
+   "confidence": "high"
+  },
+  "Powerhouse/Vetra": {
+   "website": "https://vetra.io",
+   "repo": "https://github.com/powerhouse-inc/powerhouse",
+   "confidence": "high"
+  },
+  "Spacious": {
+   "website": "https://spacious.audio",
+   "repo": null,
+   "confidence": "medium"
+  },
+  "Mesh News Network": {
+   "website": null,
+   "repo": null,
+   "confidence": "low"
+  },
+  "NOMOI": {
+   "website": null,
+   "repo": null,
+   "confidence": "low"
+  },
+  "Prolinnova": {
+   "website": "https://prolinnova.net",
+   "repo": null,
+   "confidence": "high"
+  },
+  "Honey Bee Network": {
+   "website": "https://honeybee.org",
+   "repo": null,
+   "confidence": "high"
+  },
+  "ASORCOM": {
+   "website": null,
+   "repo": null,
+   "confidence": "low"
+  },
+  "eimiAI": {
+   "website": null,
+   "repo": null,
+   "confidence": "low"
+  },
+  "Step Network": {
+   "website": "https://snetgh.org",
+   "repo": null,
+   "confidence": "medium"
+  },
+  "Meetmarket": {
+   "website": "https://meetmarket.io",
+   "repo": "https://github.com/calsbot/meetmarket",
+   "confidence": "high"
+  },
+  "Crownshy": {
+   "website": "https://crown-shy.com",
+   "repo": "https://github.com/crownshy",
+   "confidence": "high"
+  },
+  "sig0lease": {
+   "website": "https://sig0namectl.networkcommons.org",
+   "repo": "https://github.com/NetworkCommons/sig0namectl",
+   "confidence": "high"
+  },
+  "Ethical Technology Assessment": {
+   "website": "https://openteam.community/eta_glossary.html",
+   "repo": null,
+   "confidence": "medium"
+  },
+  "Network Nations": {
+   "website": "https://networknations.network",
+   "repo": null,
+   "confidence": "high"
+  },
+  "Community Rule": {
+   "website": "https://communityrule.info",
+   "repo": "https://gitlab.com/medlabboulder/communityrule",
+   "confidence": "high"
+  },
+  "Origin Co-op": {
+   "website": "https://origins.coop",
+   "repo": null,
+   "confidence": "high"
+  },
+  "LABLAB": {
+   "website": "https://lablab.tec.br",
+   "repo": null,
+   "confidence": "medium"
+  },
+  "Escuela Común": {
+   "website": "https://escuelacomun.yanapak.org",
+   "repo": null,
+   "confidence": "high"
+  },
+  "White Noise": {
+   "website": "https://www.whitenoise.chat",
+   "repo": "https://github.com/marmot-protocol/whitenoise-rs",
+   "confidence": "high"
+  },
+  "Matrix": {
+   "website": "https://matrix.org",
+   "repo": "https://github.com/matrix-org",
+   "confidence": "high"
+  },
+  "p2panda": {
+   "website": "https://p2panda.org",
+   "repo": "https://github.com/p2panda",
+   "confidence": "high"
+  },
+  "NextGraph": {
+   "website": "https://nextgraph.org",
+   "repo": "https://git.nextgraph.org/NextGraph/nextgraph-rs",
+   "confidence": "high"
+  },
+  "Coopcloud": {
+   "website": "https://coopcloud.tech",
+   "repo": "https://git.coopcloud.tech",
+   "confidence": "high"
+  },
+  "Holochain": {
+   "website": "https://holochain.org",
+   "repo": "https://github.com/holochain",
+   "confidence": "high"
+  },
+  "AT Protocol": {
+   "website": "https://atproto.com",
+   "repo": "https://github.com/bluesky-social/atproto",
+   "confidence": "high"
+  },
+  "Polis": {
+   "website": "https://pol.is",
+   "repo": "https://github.com/compdemocracy/polis",
+   "confidence": "high"
+  },
+  "FSFE": {
+   "website": "https://fsfe.org",
+   "repo": null,
+   "confidence": "high"
+  },
+  "Iroh": {
+   "website": "https://iroh.computer",
+   "repo": "https://github.com/n0-computer/iroh",
+   "confidence": "high"
+  },
+  "Ethereum": {
+   "website": "https://ethereum.org",
+   "repo": "https://github.com/ethereum",
+   "confidence": "high"
+  },
+  "W3C DIDs": {
+   "website": "https://www.w3.org/TR/did-core/",
+   "repo": null,
+   "confidence": "high"
+  },
+  "CrowCards": {
+   "website": "https://crowcards.org",
+   "repo": null,
+   "confidence": "medium"
+  },
+  "ELFA": {
+   "website": "https://elfaconsortium.eu",
+   "repo": null,
+   "confidence": "medium"
+  },
+  "Department of Decentralization": {
+   "website": "https://dod.ngo",
+   "repo": null,
+   "confidence": "high"
+  },
+  "GIAA": {
+   "website": null,
+   "repo": null,
+   "confidence": "low"
+  },
+  "Meshtastic": {
+   "website": "https://meshtastic.org",
+   "repo": "https://github.com/meshtastic",
+   "confidence": "high"
+  },
+  "Awana Digital": {
+   "website": "https://awana.digital",
+   "repo": "https://github.com/digidem",
+   "confidence": "medium"
+  },
+  "Nostr": {
+   "website": "https://nostr.com",
+   "repo": "https://github.com/nostr-protocol/nips",
+   "confidence": "high"
+  },
+  "Platoniq": {
+   "website": "https://platoniq.net",
+   "repo": null,
+   "confidence": "medium"
+  },
+  "Web of Trust": {
+   "website": "https://web-of-trust.de",
+   "repo": "https://github.com/real-life-org/web-of-trust",
+   "confidence": "high"
+  }
+ },
+ "avatars": {
+  "Marie": "https://talx.dod.ngo/media/avatars/MS3PPW_22hqsdk_thumbnail_tiny.webp",
+  "Franzi": "https://talx.dod.ngo/media/avatars/AWPRST_kIn3iCQ_thumbnail_tiny.webp",
+  "Primavera": "https://talx.dod.ngo/media/avatars/8PG8H3_sYzeiTm_thumbnail_tiny.webp",
+  "Matthias Kirschner": "https://talx.dod.ngo/media/avatars/UC8HHG_rqUuI3K_thumbnail_tiny.webp",
+  "mai ishikawa sutton": "https://talx.dod.ngo/media/avatars/3UAN8J_trG28EY_thumbnail_tiny.webp",
+  "Felix Beer": "https://talx.dod.ngo/media/avatars/3UTJUJ_4oFOKZ5_thumbnail_tiny.webp",
+  "Madelynn Martiniere": "https://talx.dod.ngo/media/avatars/JAWJC8_MA3tRUL_thumbnail_tiny.webp",
+  "Wendy Hanamura": "https://talx.dod.ngo/media/avatars/MC3BGL_nDJWT3o_thumbnail_tiny.webp",
+  "ian davis": "https://talx.dod.ngo/media/avatars/UPCGTF_8YXxeWC_thumbnail_tiny.webp",
+  "nVidya": "https://talx.dod.ngo/media/avatars/W3GDYJ_vBGTiab_thumbnail_tiny.webp",
+  "bruno": "https://talx.dod.ngo/media/avatars/UXYXB3_P13lVPD_thumbnail_tiny.webp",
+  "Wouter Tebbens": "https://talx.dod.ngo/media/avatars/DFTKYL_RSpmA8F_thumbnail_tiny.webp",
+  "Zach Alexander": "https://talx.dod.ngo/media/avatars/BDXXRE_a06RQ8h_thumbnail_tiny.webp",
+  "Steve Francis": "https://talx.dod.ngo/media/avatars/T7NHZA_M8QaNL1_thumbnail_tiny.webp",
+  "Daniel N.": "https://talx.dod.ngo/media/avatars/RKJMG9_Pcdf3Xr_thumbnail_tiny.webp",
+  "Larissa Bral": "https://talx.dod.ngo/media/avatars/E3CLUJ_97MTnth_thumbnail_tiny.webp",
+  "Tommi": "https://talx.dod.ngo/media/avatars/APV9CA_oM1yNOa_thumbnail_tiny.webp",
+  "Liz Barry": "https://talx.dod.ngo/media/avatars/ZSQFBX_c7dWWSI_thumbnail_tiny.webp",
+  "Pearlmwong": "https://talx.dod.ngo/media/avatars/LNNTDK_GroTuXu_thumbnail_tiny.webp",
+  "Qubasa": "https://talx.dod.ngo/media/avatars/FWLSQM_sEIL2dz_thumbnail_tiny.webp",
+  "Jonathan Starr": "https://talx.dod.ngo/media/avatars/MWDRPZ_uw8Lrlr_thumbnail_tiny.webp",
+  "Mitch Altman": "https://talx.dod.ngo/media/avatars/MACBVY_FSeu5ik_thumbnail_tiny.webp",
+  "Paul Fuxjäger": "https://talx.dod.ngo/media/avatars/GJMJLB_UlsFIDS_thumbnail_tiny.webp",
+  "Afri Blanck": "https://talx.dod.ngo/media/avatars/7SV8PG_P0RNBll_thumbnail_tiny.webp",
+  "senka": "https://talx.dod.ngo/media/avatars/ZYCZB9_O5wTPB5_thumbnail_tiny.webp",
+  "Matthew Schutte": "https://talx.dod.ngo/media/avatars/KPUMGL_jBhzQ43_thumbnail_tiny.webp",
+  "Markus Sabadello": "https://talx.dod.ngo/media/avatars/STPBTN_7RuSxlm_thumbnail_tiny.webp",
+  "Anton Tranelis": "https://talx.dod.ngo/media/avatars/QGXX9G_HJ2i51n_thumbnail_tiny.webp",
+  "Luandro": "https://talx.dod.ngo/media/avatars/THJRWK_wUlP2xV_thumbnail_tiny.webp",
+  "Riley Wong": "https://talx.dod.ngo/media/avatars/9EXWTB_KiX1pva_thumbnail_tiny.webp",
+  "Santi Bazerque": "https://talx.dod.ngo/media/avatars/WSTJWP_LZbcBHK_thumbnail_tiny.webp",
+  "Anamika Dey": "https://talx.dod.ngo/media/avatars/EE7CZB_vnbnelW_thumbnail_tiny.webp",
+  "Matthew Hodgson": "https://talx.dod.ngo/media/avatars/NUXH7S_SItEXey_thumbnail_tiny.webp",
+  "fauno": "https://talx.dod.ngo/media/avatars/8UY3SD_Vh6pJLu_thumbnail_tiny.webp",
+  "Martijn de Waal": "https://talx.dod.ngo/media/avatars/9KWPGL_XSRM9Xu_thumbnail_tiny.webp",
+  "Dario Presutti": "https://talx.dod.ngo/media/avatars/SVTCUY_JqwYqFR_thumbnail_tiny.webp",
+  "Esther Jang": "https://talx.dod.ngo/media/avatars/EJXARA_Eexit5f_thumbnail_tiny.webp",
+  "Seth Frey": "https://talx.dod.ngo/media/avatars/VKZDYF_lbrEAGU_thumbnail_tiny.webp",
+  "Wedja": "https://talx.dod.ngo/media/avatars/HCQXRF_BTrQ01y_thumbnail_tiny.webp",
+  "Niko Bonnieure": "https://talx.dod.ngo/media/avatars/8LH3E8_sjm2LKl_thumbnail_tiny.webp",
+  "Mathias Jud": "https://talx.dod.ngo/media/avatars/G3SYSB_7DcPCFv_thumbnail_tiny.webp",
+  "Duke Dorje": "https://talx.dod.ngo/media/avatars/KJEZKZ_vRBvRnO_thumbnail_tiny.webp",
+  "Keoni DeFranco": "https://talx.dod.ngo/media/avatars/AQVD3Q_eqUWM5g_thumbnail_tiny.webp",
+  "Johann Lensing": "https://talx.dod.ngo/media/avatars/AC88AP_26KMCn6_thumbnail_tiny.webp",
+  "Sarthi B": "https://talx.dod.ngo/media/avatars/AAACZC_h8ibdwF_thumbnail_tiny.webp",
+  "nádia coelho pontes": "https://talx.dod.ngo/media/avatars/9YKBZX_o5MwjAS_thumbnail_tiny.webp",
+  "LX Cast": "https://talx.dod.ngo/media/avatars/Y7BBF7_kjhEKrV_thumbnail_tiny.webp",
+  "Andreas Arnold": "https://talx.dod.ngo/media/avatars/FDBJKJ_QWlz6WD_thumbnail_tiny.webp",
+  "Josh Field": "https://talx.dod.ngo/media/avatars/EGYBND_Tw0W7jp_thumbnail_tiny.webp",
+  "Rose Regina Lawrence": "https://talx.dod.ngo/media/avatars/JW8D98_2TIBVjb_thumbnail_tiny.webp",
+  "James Weir": "https://talx.dod.ngo/media/avatars/FBLQ9X_JpOlTot_thumbnail_tiny.webp",
+  "fiore": "https://talx.dod.ngo/media/avatars/CYMJSR_qYPuhK3_thumbnail_tiny.webp",
+  "Daniel Holmgren": "https://talx.dod.ngo/media/avatars/ZQ9ZMK_efEh0v9_thumbnail_tiny.webp",
+  "Seph": "https://talx.dod.ngo/media/avatars/MMZXGH_xRp1EPu_thumbnail_tiny.webp",
+  "Guil Maueler": "https://talx.dod.ngo/media/avatars/HFVMAK_f4Iqr8d_thumbnail_tiny.webp",
+  "Hilke Ros": "https://talx.dod.ngo/media/avatars/MBERJV_SbuAJvx_thumbnail_tiny.webp",
+  "Juan Diez, Founder & CEO Torbellino Tech": "https://talx.dod.ngo/media/avatars/VPQSAR_Kl0hF9p_thumbnail_tiny.webp",
+  "Tamisha Lee": "https://talx.dod.ngo/media/avatars/ZCLJVL_QmHFF64_thumbnail_tiny.webp",
+  "Wesley": "https://talx.dod.ngo/media/avatars/KEVYGF_SxNDTtV_thumbnail_tiny.webp",
+  "sammy": "https://talx.dod.ngo/media/avatars/DJGW8M_8Bs4tA1_thumbnail_tiny.webp",
+  "Michael Suantak": "https://talx.dod.ngo/media/avatars/TU9GMX_5CitxTg_thumbnail_tiny.webp",
+  "adz": "https://talx.dod.ngo/media/avatars/XNM8EV_H3YusRu_thumbnail_tiny.webp",
+  "Richard Ng": "https://talx.dod.ngo/media/avatars/MDAJLX_zqyqsEi_thumbnail_tiny.webp",
+  "Nicolas Luck": "https://talx.dod.ngo/media/avatars/KZXXMJ_AnT2NOh_thumbnail_tiny.webp",
+  "marv": "https://talx.dod.ngo/media/avatars/7UXRDE_YDnaFLN_thumbnail_tiny.webp",
+  "Jihoon Song": "https://talx.dod.ngo/media/avatars/B3B7SK_5I8XZXQ_thumbnail_tiny.webp",
+  "Marcela Guerra": "https://talx.dod.ngo/media/avatars/VJENTG_fbxgzvr_thumbnail_tiny.webp",
+  "Olivier Schulbaum (platoniq)": "https://talx.dod.ngo/media/avatars/99GVD3_h7oFSJQ_thumbnail_tiny.webp",
+  "Jeremiah Lee": "https://talx.dod.ngo/media/avatars/UTR9YZ_15bNRR7_thumbnail_tiny.webp",
+  "B Cavello": "https://talx.dod.ngo/media/avatars/G8YJBS_Sq7dwdp_thumbnail_tiny.webp",
+  "Shadrach": "https://talx.dod.ngo/media/avatars/ZQFEJ8_bnoYKp5_thumbnail_tiny.webp",
+  "Jenni Ottilie Keppler": "https://talx.dod.ngo/media/avatars/MNMWKH_9d12Nd2_thumbnail_tiny.webp",
+  "Spencer Saar Cavanaugh": "https://talx.dod.ngo/media/avatars/TRRHGA_zbKtIgy_thumbnail_tiny.webp",
+  "Paul Frazee": "https://talx.dod.ngo/media/avatars/SEHYJQ_oON7wu4_thumbnail_tiny.webp",
+  "Andrea Ferrante": "https://dwebcamp.org/media/andrea_ferrante.thumbnail.jpg",
+  "Anna Lynton": "https://dwebcamp.org/media/square-image_19.thumbnail.jpg",
+  "Blake Stoner": "https://dwebcamp.org/media/1780800523779.thumbnail.png",
+  "Brad Hutcheson": "https://dwebcamp.org/media/brad_hutcheson.thumbnail.png",
+  "Bradley Clark Royes": "https://dwebcamp.org/media/1775306720575.thumbnail.png",
+  "Camille Nibungco": "https://dwebcamp.org/media/1649724016362.thumbnail.jpeg",
+  "David Thomas": "https://dwebcamp.org/media/david_thomas.thumbnail.jpeg",
+  "Day Waterbury": "https://dwebcamp.org/media/1668984314210.thumbnail.jpeg",
+  "Dorn Cox": "https://dwebcamp.org/media/dorn_cox.thumbnail.jpeg",
+  "Engie Matene": "https://dwebcamp.org/media/engiem.thumbnail.jpg",
+  "Florian": "https://dwebcamp.org/media/florian.thumbnail.jpg",
+  "Gavin Owens": "https://dwebcamp.org/media/gavin_owens.thumbnail.png",
+  "Guillem Cordoba": "https://dwebcamp.org/media/guillem_cordoba.thumbnail.jpeg",
+  "Hannah Wittman": "https://dwebcamp.org/media/hannah_wittman.thumbnail.jpeg",
+  "Hiure": "https://dwebcamp.org/media/square-crop_8.thumbnail.jpg",
+  "Holmes Wilson": "https://dwebcamp.org/media/1754347178993.thumbnail.jpeg",
+  "Hudson Headley": "https://dwebcamp.org/media/square-image_13.thumbnail.jpg",
+  "Joshua Davila": "https://dwebcamp.org/media/1710096198289.thumbnail.jpeg",
+  "Kris Is": "https://dwebcamp.org/media/kris_is.thumbnail.jpg",
+  "Lee": "https://dwebcamp.org/media/lee2026.thumbnail.jpg",
+  "Liz Sweigart": "https://dwebcamp.org/media/liz_sweigart.thumbnail.jpeg",
+  "Luke Smith": "https://dwebcamp.org/media/square-crop_17.thumbnail.jpg",
+  "Max Hampshire": "https://dwebcamp.org/media/square-image_33.thumbnail.jpg",
+  "Peter": "https://dwebcamp.org/media/peter.thumbnail.jpg",
+  "Raul": "https://dwebcamp.org/media/raul.d3b5aa57.thumbnail.jpeg",
+  "Rosanna Crawford": "https://dwebcamp.org/media/rosanna.thumbnail.jpg",
+  "SJ Klein": "https://dwebcamp.org/media/square-image_12.thumbnail.jpg",
+  "Samuel Oslund": "https://dwebcamp.org/media/square-image_37.thumbnail.jpg",
+  "Stefano De Vuono": "https://dwebcamp.org/media/1594835514880.thumbnail.jpeg",
+  "T B Dinesh": "https://dwebcamp.org/media/square-image_32.thumbnail.jpg",
+  "Tara Conway": "https://dwebcamp.org/media/tara.thumbnail.jpg",
+  "Tara Merk": "https://dwebcamp.org/media/1592302870426.thumbnail.jpeg",
+  "Václav Pavlín": "https://dwebcamp.org/media/vpavlin.thumbnail.png",
+  "Yaron": "https://dwebcamp.org/media/yaron.cc0fb41d.thumbnail.jpg",
+  "Ying Tong": "https://dwebcamp.org/media/ying-tong.thumbnail.jpg",
+  "Yisi Liu": "https://dwebcamp.org/media/yisi_liu.thumbnail.jpg",
+  "ligi": "https://dwebcamp.org/media/ligi.thumbnail.jpg"
+ }
+}

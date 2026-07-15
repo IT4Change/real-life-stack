@@ -6,6 +6,7 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "dev:reference": "pnpm --filter reference dev",
+    "dev:network": "pnpm --filter network dev",
     "dev:graphql": "pnpm --filter @real-life-stack/graphql-server dev",
     "dev:app": "pnpm --filter @real-life-stack/app dev",
     "build:toolkit": "pnpm --filter @real-life-stack/toolkit build",

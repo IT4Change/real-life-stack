@@ -17,12 +17,14 @@
   ],
   "scripts": {
     "build": "tsc",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@real-life-stack/data-interface": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "~5.7.2"
+    "typescript": "~5.7.2",
+    "vitest": "^4.1.0"
   }
 }
