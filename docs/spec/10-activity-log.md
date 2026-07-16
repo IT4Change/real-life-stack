@@ -111,9 +111,14 @@ interface ActivityEntry {
     Eintrag mit `origin: "mirror"`; `actor` ist die Signer-DID des
     Snapshots — die verursachende Identität, und die einzige normierte
     Ausnahme vom actor-Wert aus Regel 1 (der Schreiber bleibt der
-    Connector). Event-Abbildung: erster akzeptierter Live-Snapshot =
-    `create`, jeder weitere = `update`, Tombstone = `delete`;
-    `targetType` aus der Snapshot-Payload.
+    Connector). Event-Abbildung über **Zustandsübergänge der
+    Mirror-Instanz**, nicht über Snapshot-Arten: kein Mirror → Mirror =
+    `create`; Mirror → Mirror mit neuerer Version = `update`; Mirror →
+    entfernt = `delete`. `targetType` bei create/update aus
+    `payload.item.type`; bei delete vom letzten bekannten Mirror-Zustand
+    (Tombstones tragen kein `item`, s. Regel 7). Ein Tombstone ohne
+    bestehenden Mirror (ungebundene Marke, 09 Invariante 5) ist KEIN
+    Zustandsübergang und erzeugt keinen Eintrag.
 
 ## Lese-Vertrag
 

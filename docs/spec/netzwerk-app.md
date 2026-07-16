@@ -289,3 +289,15 @@ Implementierung kanonisch.
   actor-WERT ist bei Mirror-Anwendung die Signer-DID; neues Feld
   `origin?: "mirror"`; Event-Abbildung create/update/delete definiert.
   **Alle drei übernommen** (Folgecommit in #142).
+- R16 (16.07.): (1) High-Water-Mark speichert die VOLLE Ordnungsposition
+  `(seq, deviceId, tiebreak)` — tiebreak aus den Payload-Bytes beim
+  Akzeptieren berechnen und mitpersistieren; Receipts und Marken als
+  EIN Bestand pro `(home, item, authorDid)` + Bindungs-DID pro
+  `(home, item)` vereinheitlicht (Invariante 8). (2) Gültigkeitsprüfung
+  `item.id === itemId` (+ `createdBy === authorDid`) vor Übernahme;
+  Fremdsigner-Semantik eindeutig: nie materialisieren, nie umbinden,
+  aber Marke führen + als Herkunftskonflikt sichtbar machen. (3)
+  Mirror-Activity über Zustandsübergänge der Mirror-Instanz definiert
+  (Tombstones tragen kein targetType → delete nimmt letzten bekannten
+  Zustand; Tombstone ohne Mirror = kein Eintrag).
+  **Alle drei übernommen** (Folgecommit in #142).

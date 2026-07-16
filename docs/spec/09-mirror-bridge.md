@@ -85,8 +85,11 @@ Außenfelder.
    auch wenn im Home weitere Editoren schreiben dürfen. Deren Änderungen
    erreichen den Mirror erst, wenn der Autor den gemergten Home-Stand neu
    publiziert. Die Erst-Annahme bindet `(homeSpaceId, itemId)` an die
-   Signer-DID; spätere Snapshots mit anderem Signer MÜSSEN verworfen
-   werden (kein Umhängen der Identität). Die Bindung entsteht NUR durch
+   Signer-DID. Snapshots ANDERER Signer werden NIE materialisiert und
+   binden nie um; sie werden aber signaturgeprüft, als eigene
+   High-Water-Marke geführt (Invariante 6) und MÜSSEN als
+   Herkunftskonflikt sichtbar gemacht werden — keine stille Verwerfung,
+   keine automatische Umbindung. Die Bindung entsteht NUR durch
    einen Snapshot mit `item ≠ null` — dort ist `authorDid` gegen
    `item.createdBy` prüfbar. Tombstones etablieren NIE eine Bindung —
    sonst könnte ein gefälschter Erst-Tombstone die Identität fremdbinden
@@ -118,6 +121,14 @@ Außenfelder.
    (Invariante 5) — Marken fremder DIDs berühren ihn nicht. Ein Snapshot
    wird nur übernommen, wenn seine `version` in der totalen Ordnung
    STRIKT größer ist als die bisherige High-Water-Mark seines Autors.
+   Die Marke speichert dafür die **vollständige Ordnungsposition
+   `(seq, deviceId, tiebreak)`**: der tiebreak ist nicht Teil von
+   `version` und MUSS beim Akzeptieren aus den kanonischen Payload-Bytes
+   berechnet und mitpersistiert werden — sonst ist der Vergleich bei
+   gleicher `(seq, deviceId)` nicht entscheidbar. Gültigkeitsprüfung vor
+   jeder Übernahme: bei `item ≠ null` MUSS `item.id === itemId` UND
+   `item.createdBy === authorDid` gelten, sonst ließe sich unter gültiger
+   Signatur ein fremdes Item in den Schlüssel-Slot schieben.
    `seq` ist ein home-weit replizierter **Lamport-Zähler** pro
    gespiegeltem Item: die Freigabe samt letzter publizierter `seq` liegt
    als Registry im Home-Doc (dadurch sehen alle Autor-Geräte Freigabe und
@@ -135,12 +146,14 @@ Außenfelder.
 7. Frische ist best-effort: ein Mirror DARF veraltet sein und MUSS in der UI
    als Snapshot erkennbar bleiben (Herkunfts-Space, Stand/Zeitstempel).
 8. Löschung propagiert als Tombstone-Snapshot (`item: null`) mit höherer
-   `version`. Empfänger MÜSSEN den Mirror-Inhalt entfernen, den Receipt
-   aber dauerhaft behalten: pro `(homeSpaceId, itemId)` bleiben höchste
-   akzeptierte `version` und Signer-DID gespeichert — sonst ließe sich
-   nach dem Tombstone ein älterer, gültig signierter Snapshot wieder
-   einspielen (Resurrection). Ein Tombstone löscht Inhalt, nie die
-   Versionsmarke — und etabliert nie eine Erst-Bindung (Invariante 5).
+   `version`. Empfänger MÜSSEN den Mirror-Inhalt entfernen, die Marken
+   aber dauerhaft behalten. Receipts und High-Water-Marken sind
+   DERSELBE dauerhafte Bestand: pro `(homeSpaceId, itemId, authorDid)`
+   die volle Ordnungsposition `(seq, deviceId, tiebreak)`, dazu die
+   Bindungs-DID pro `(homeSpaceId, itemId)` — sonst ließe sich nach dem
+   Tombstone ein älterer, gültig signierter Snapshot wieder einspielen
+   (Resurrection). Ein Tombstone löscht Inhalt, nie die Marke — und
+   etabliert nie eine Erst-Bindung (Invariante 5).
 9. E2EE-Grenze: die Bridge ist Mitglied beider Spaces und verschlüsselt für
    den Ziel-Space neu; Relay und Nicht-Mitglieder sehen weiterhin nur
    Ciphertext. Ein Mirror macht Inhalte für alle Mitglieder des Ziel-Space
