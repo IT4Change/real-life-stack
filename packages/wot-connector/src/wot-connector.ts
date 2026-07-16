@@ -401,11 +401,13 @@ export class WotConnector extends BaseConnector {
     this.discoveryRetryCleanup?.()
     this.discoveryRetryCleanup = null
     this.stopContactProfileRefresh()
-    this.inboxReception?.stop()
-    await this.replication?.stop()
-    await this.outboxAdapter?.disconnect()
-    await resetYjsPersonalDoc()
-    await this.closeRuntimeStores()
+    try { this.inboxReception?.stop() } catch { /* best-effort teardown */ }
+    // Jeder awaited Schritt einzeln geguardet (CodeRabbit #143): ein
+    // fehlschlagender Adapter darf die restliche Freigabe nicht verhindern.
+    try { await this.replication?.stop() } catch (error) { console.warn("[WotConnector] dispose: replication.stop fehlgeschlagen", error) }
+    try { await this.outboxAdapter?.disconnect() } catch (error) { console.warn("[WotConnector] dispose: outbox.disconnect fehlgeschlagen", error) }
+    try { await resetYjsPersonalDoc() } catch (error) { console.warn("[WotConnector] dispose: personalDoc.reset fehlgeschlagen", error) }
+    try { await this.closeRuntimeStores() } catch (error) { console.warn("[WotConnector] dispose: runtimeStores.close fehlgeschlagen", error) }
 
     for (const obs of this.itemObservables.values()) obs.destroy()
     for (const obs of this.itemByIdObservables.values()) obs.destroy()
@@ -582,8 +584,9 @@ export class WotConnector extends BaseConnector {
     await guarded("persistence.wipe", true, () => wipeIdentityPersistence(did))
     await guarded("seed.delete", true, () => this.identity.deleteStoredIdentity())
 
-    // Clear identity switch marker
+    // Clear identity switch marker + DID-gebundene Pending-Saves
     try { localStorage.removeItem(ACTIVE_DID_STORAGE_KEY) } catch { /* ignore */ }
+    try { localStorage.removeItem(`rls-wot-pending-verification-save:${did}`) } catch { /* ignore */ }
 
     this.currentUserObs.set(null)
     this.authStateObs.set({ status: "unauthenticated" })
@@ -1269,6 +1272,7 @@ export class WotConnector extends BaseConnector {
     // during handler registration.
     this.storage = new YjsStorageAdapter(did)
     await this.retryPendingDeliveryReceipts()
+    await this.drainPendingVerificationSaves()
     await this.outboxAdapter.connect(did)
 
     const spaceMetadataStorage = new PersonalDocSpaceMetadataStorage(personalDocFns)
@@ -2370,28 +2374,25 @@ export class WotConnector extends BaseConnector {
         ? await this.verificationWorkflow.acceptVerifiedCounterVerification(this.identity, payload)
         : await this.verificationWorkflow.acceptVerifiedVerificationAttestation(this.identity, payload)
       if (decision.decision !== "accept-in-person" && decision.decision !== "accept-mutual-in-person") {
-        // Redelivery-Heilung (CodeRabbit #143): das Accept-Gate konsumiert
-        // Nonce/Pending-Counter VOR dem Save. Schlägt der Save fehl, würde die
-        // Redelivery hier als Replay abgelehnt und die Attestation wäre für
-        // immer verloren. Konsumiertes Gate + Attestation FEHLT im Store =
-        // verlorener Write → Save nachholen. VC-Signatur + Sender-/to-Bindung
-        // sind oben erneut geprüft; Rest-Risiko ist auf Duplikate desselben,
-        // bereits verifizierten Senders begrenzt. acceptedInitialVerification
-        // bleibt false → beim Replay wird keine zweite Counter-Verifikation
-        // ausgestellt.
-        const reason = (decision as { reason?: string }).reason
-        const lostWriteReplay =
-          (decision.decision === "reject" && reason === "nonce-consumed") ||
-          (decision.decision === "remote-unbound" && reason === "no-pending-counter-verification")
-        if (!lostWriteReplay) return
-        if (await this.storage.getAttestation(attestation.id)) return
-      } else {
-        acceptedInitialVerification = decision.decision === "accept-in-person"
+        return
       }
+      acceptedInitialVerification = decision.decision === "accept-in-person"
+      // Write-Verlust-Schutz (CodeRabbit #143): das Accept-Gate hat soeben
+      // Nonce/Pending-Counter konsumiert — schlägt der Save unten fehl, wäre
+      // die Redelivery ein Replay und die Attestation für immer verloren.
+      // Deshalb wird die AKZEPTIERTE VC hier durabel als Pending-Save
+      // vorgemerkt (und nach erfolgreichem Save wieder entfernt); der Drain
+      // beim nächsten Init holt den Save nach. KEINE Redelivery-Heilung über
+      // das konsumierte Gate — die würde anders signierte VCs Dritter
+      // durchlassen (Loop-Review-Finding).
+      this.recordPendingVerificationSave(attestation.id, vcJws, senderDid)
     }
 
     const existing = await this.storage.getAttestation(attestation.id)
     if (!existing) await this.storage.saveAttestation(attestation)
+    if (attestation.isVerification === true) {
+      this.clearPendingVerificationSave(attestation.id)
+    }
     this.syncConfirmationsFromPersonalDoc()
 
     // App-level second tick: encrypted inbox/1.0 receipt, never transport ack.
@@ -2536,6 +2537,73 @@ export class WotConnector extends BaseConnector {
     await this.clearDeliveryCorrelation(receipt.messageId).catch((error) => {
       console.warn("[WotConnector] Delivery correlation cleanup deferred", error)
     })
+  }
+
+  /**
+   * Durable Pending-Save-Vormerkung für akzeptierte Verifikations-VCs
+   * (localStorage, DID-namespaced): das Accept-Gate ist one-shot — ein
+   * fehlgeschlagener Save darf die akzeptierte VC nicht verlieren. Der Drain
+   * beim Init verifiziert die VC erneut (Signatur + Bindung) und speichert nach.
+   */
+  private pendingVerificationSaveKey(): string {
+    return `rls-wot-pending-verification-save:${this.identity.getDid()}`
+  }
+
+  private readPendingVerificationSaves(): Record<string, { vcJws: string; senderDid: string }> {
+    try {
+      return JSON.parse(localStorage.getItem(this.pendingVerificationSaveKey()) ?? "{}")
+    } catch {
+      return {}
+    }
+  }
+
+  private recordPendingVerificationSave(id: string, vcJws: string, senderDid: string): void {
+    try {
+      const pending = this.readPendingVerificationSaves()
+      pending[id] = { vcJws, senderDid }
+      localStorage.setItem(this.pendingVerificationSaveKey(), JSON.stringify(pending))
+    } catch { /* best-effort: ohne localStorage bleibt nur das Exception-Fenster */ }
+  }
+
+  private clearPendingVerificationSave(id: string): void {
+    try {
+      const pending = this.readPendingVerificationSaves()
+      if (!(id in pending)) return
+      delete pending[id]
+      const key = this.pendingVerificationSaveKey()
+      if (Object.keys(pending).length === 0) localStorage.removeItem(key)
+      else localStorage.setItem(key, JSON.stringify(pending))
+    } catch { /* best-effort */ }
+  }
+
+  /** Init-Drain: verlorene Saves akzeptierter Verifikations-VCs nachholen. */
+  private async drainPendingVerificationSaves(): Promise<void> {
+    if (!this.storage) return
+    for (const [id, entry] of Object.entries(this.readPendingVerificationSaves())) {
+      try {
+        // Volle Re-Verifikation (Signatur + Sender-/Empfänger-Bindung) — das
+        // Gate wird NICHT erneut geprüft: der Record existiert nur für VCs,
+        // die es bereits bestanden haben.
+        const payload = await this.attestationWorkflow.verifyAttestationVcJws(entry.vcJws)
+        const attestation = attestationFromVerifiedVc(payload, entry.vcJws)
+        if (
+          payload.iss !== entry.senderDid ||
+          attestation.from !== entry.senderDid ||
+          attestation.to !== this.identity.getDid() ||
+          attestation.id !== id
+        ) {
+          this.clearPendingVerificationSave(id)
+          continue
+        }
+        if (!(await this.storage.getAttestation(id))) {
+          await this.storage.saveAttestation(attestation)
+        }
+        this.clearPendingVerificationSave(id)
+      } catch (error) {
+        console.warn("[WotConnector] Pending-Verification-Save-Drain deferred", error)
+      }
+    }
+    this.syncConfirmationsFromPersonalDoc()
   }
 
   private async retryPendingDeliveryReceipts(): Promise<void> {
@@ -2726,6 +2794,7 @@ export class WotConnector extends BaseConnector {
   }
 
   private async cleanupOldIdentity(did: string): Promise<void> {
+    try { localStorage.removeItem(`rls-wot-pending-verification-save:${did}`) } catch { /* ignore */ }
     await wipeIdentityPersistence(did)
   }
 }

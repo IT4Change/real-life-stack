@@ -74,6 +74,9 @@ vi.mock("@real-life/wot-core", () => {
 
 vi.mock("@real-life/wot-core/protocol", () => ({
   x25519MultibaseToPublicKeyBytes: vi.fn(() => new Uint8Array()),
+  // Verhaltensgleich zum Core: Marker wird NUR aus dem VC-Typ-Array abgeleitet.
+  isVerificationAttestation: (payload: { type?: unknown }) =>
+    Array.isArray(payload?.type) && payload.type.includes("WotVerification"),
 }))
 
 vi.mock("../src/identity-persistence.js", async (importOriginal) => ({
@@ -940,12 +943,73 @@ describe("WotConnector loop-review #143: Teardown-Resilienz + Delivery-Monotonie
     expect(wipe.indexOf("deleteLegacyIdentityDatabases()")).toBeLessThan(wipe.indexOf("nicht gelöscht"))
   })
 
-  it("heals a redelivered verification whose gate was consumed but whose save was lost", () => {
+  it("records a durable pending-save after the accept gate and never heals via consumed gates", () => {
     const method = sliceMethod(source, "private async handleIncomingAttestation", "private async sendReceiptAck")
-    expect(method).toMatch(/nonce-consumed/)
-    expect(method).toMatch(/no-pending-counter-verification/)
-    // Heilung nur wenn die Attestation wirklich fehlt (kein Duplikat-Save)
-    expect(method).toMatch(/if \(await this\.storage\.getAttestation\(attestation\.id\)\) return/)
+    // KEINE Redelivery-Heilung über konsumierte Gates: die würde anders
+    // signierte VCs Dritter durchlassen (Loop-Review-Finding, Eve-Fall).
+    expect(method).not.toMatch(/nonce-consumed/)
+    expect(method).not.toMatch(/lostWriteReplay/)
+    // Stattdessen: Pending-Save NACH dem Accept, Clear NACH erfolgreichem Save.
+    const acceptIdx = method.indexOf("acceptedInitialVerification = decision.decision")
+    const recordIdx = method.indexOf("this.recordPendingVerificationSave(attestation.id, vcJws, senderDid)")
+    const saveIdx = method.indexOf("await this.storage.saveAttestation(attestation)")
+    const clearIdx = method.indexOf("this.clearPendingVerificationSave(attestation.id)")
+    expect(acceptIdx).toBeGreaterThan(-1)
+    expect(recordIdx).toBeGreaterThan(acceptIdx)
+    expect(saveIdx).toBeGreaterThan(recordIdx)
+    expect(clearIdx).toBeGreaterThan(saveIdx)
+  })
+
+  it("drains pending verification saves with full re-verification and binding checks", async () => {
+    const localValues = new Map<string, string>()
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      writable: true,
+      value: {
+        getItem: (k: string) => localValues.get(k) ?? null,
+        setItem: (k: string, v: string) => localValues.set(k, v),
+        removeItem: (k: string) => localValues.delete(k),
+      },
+    })
+    const did = "did:key:me"
+    localValues.set(
+      `rls-wot-pending-verification-save:${did}`,
+      JSON.stringify({ "att-lost": { vcJws: "h.p.s", senderDid: "did:key:bob" } }),
+    )
+    const saveAttestation = vi.fn(async () => {})
+    const fake = Object.assign(Object.create(WotConnector.prototype), {
+      identity: { getDid: () => did },
+      storage: { getAttestation: vi.fn(async () => null), saveAttestation },
+      attestationWorkflow: {
+        verifyAttestationVcJws: vi.fn(async () => ({
+          jti: "att-lost",
+          iss: "did:key:bob",
+          issuer: "did:key:bob",
+          validFrom: new Date().toISOString(),
+          type: ["VerifiableCredential", "WotVerification"],
+          credentialSubject: { id: did, claim: "in-person verifiziert" },
+        })),
+      },
+      syncConfirmationsFromPersonalDoc: vi.fn(),
+    })
+    const drain = (WotConnector.prototype as any).drainPendingVerificationSaves
+
+    // Happy-Drain: Record vorhanden, VC re-verifiziert + Bindung passt → Save + Clear.
+    await drain.call(fake)
+    expect(saveAttestation).toHaveBeenCalledTimes(1)
+    expect(saveAttestation.mock.calls[0][0]).toMatchObject({ id: "att-lost", from: "did:key:bob", to: did })
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false)
+    expect(fake.syncConfirmationsFromPersonalDoc).toHaveBeenCalled()
+
+    // Fremde/nicht-bindende VC (Eve): Record wird abgeräumt, aber NICHT gespeichert.
+    localValues.set(
+      `rls-wot-pending-verification-save:${did}`,
+      JSON.stringify({ "att-eve": { vcJws: "h.p.s", senderDid: "did:key:eve" } }),
+    )
+    saveAttestation.mockClear()
+    await drain.call(fake) // gemockte VC ist von bob, Record behauptet eve → Bindung schlägt fehl
+    expect(saveAttestation).not.toHaveBeenCalled()
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false)
   })
 
   it("a late failed receipt cannot degrade an already delivered status", () => {
