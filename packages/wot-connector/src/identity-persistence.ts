@@ -46,10 +46,25 @@ export const LEGACY_IDENTITY_DB_NAMES = [
  * error, never a successful wipe.
  */
 export async function wipeIdentityPersistence(did: string): Promise<void> {
+  // Best-effort über ALLE Datenbanken: ein blockiertes Delete darf die übrigen
+  // DID-Datenbanken und den Legacy-Wipe nicht überspringen (CodeRabbit #143).
+  // Fehler werden gesammelt und am Ende geworfen — ein blockiertes Delete ist
+  // weiterhin ein Fehler, nie ein erfolgreicher Wipe.
+  const failures: unknown[] = []
   for (const name of identityDatabaseNames(did)) {
-    await deleteIndexedDatabase(name)
+    try {
+      await deleteIndexedDatabase(name)
+    } catch (error) {
+      failures.push(error)
+    }
   }
   await deleteLegacyIdentityDatabases()
+  if (failures.length > 0) {
+    // Portabler Sammel-Fehler (lib-Target < ES2021, kein AggregateError-Typ).
+    const error = new Error(`wipeIdentityPersistence: ${failures.length} Datenbank(en) nicht gelöscht`)
+    ;(error as Error & { failures?: unknown[] }).failures = failures
+    throw error
+  }
 }
 
 export async function deleteLegacyIdentityDatabases(): Promise<void> {

@@ -258,3 +258,61 @@ describe("WotConnector delivery-status durability barrier (crash window)", () =>
     expect(order).toEqual(["persist"])
   })
 })
+
+describe("WotConnector send-exception durability barrier (loop-review #143)", () => {
+  it("flushes BEFORE clearing the correlation when the send throws", async () => {
+    wireMocks.sendAttestationInbox.mockRejectedValueOnce(new Error("relay down"))
+    const order: string[] = []
+    const fake = Object.assign(Object.create(WotConnector.prototype), {
+      outboxAdapter: {},
+      outboxStore: null,
+      identity: {},
+      protocolCrypto: {},
+      deliveryMessageIds: new Map<string, string>(),
+      inFlightDeliveryMessageIds: new Set<string>(),
+      pendingDeliveryReceipts: new Map<string, DeliveryReceipt>(),
+      setDeliveryStatus: vi.fn(async () => {
+        order.push("persist")
+        return true
+      }),
+      flushPersonalDocDurably: vi.fn(async () => {
+        order.push("flush")
+      }),
+      clearDeliveryCorrelation: vi.fn(async () => {
+        order.push("clear")
+      }),
+    })
+
+    await expect(
+      (WotConnector.prototype as any).deliverAttestation.call(fake, attestation, new Uint8Array(32)),
+    ).rejects.toThrow("relay down")
+
+    // "sending"-persist läuft vor dem Send; danach failed → flush → clear
+    expect(order).toEqual(["persist", "persist", "flush", "clear"])
+  })
+
+  it("keeps the correlation when the failed-flush fails (crash window stays closed)", async () => {
+    wireMocks.sendAttestationInbox.mockRejectedValueOnce(new Error("relay down"))
+    const clearDeliveryCorrelation = vi.fn(async () => {})
+    const fake = Object.assign(Object.create(WotConnector.prototype), {
+      outboxAdapter: {},
+      outboxStore: null,
+      identity: {},
+      protocolCrypto: {},
+      deliveryMessageIds: new Map<string, string>(),
+      inFlightDeliveryMessageIds: new Set<string>(),
+      pendingDeliveryReceipts: new Map<string, DeliveryReceipt>(),
+      setDeliveryStatus: vi.fn(async () => true),
+      flushPersonalDocDurably: vi.fn(async () => {
+        throw new Error("flush unavailable")
+      }),
+      clearDeliveryCorrelation,
+    })
+
+    await expect(
+      (WotConnector.prototype as any).deliverAttestation.call(fake, attestation, new Uint8Array(32)),
+    ).rejects.toThrow("relay down")
+
+    expect(clearDeliveryCorrelation).not.toHaveBeenCalled()
+  })
+})

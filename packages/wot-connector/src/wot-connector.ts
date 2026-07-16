@@ -531,8 +531,22 @@ export class WotConnector extends BaseConnector {
     this.stopContactProfileRefresh()
     this.inboxReception?.stop()
     this.inboxReception = null
-    await this.replication?.stop()
-    await this.outboxAdapter?.disconnect()
+    // Teardown-Resilienz (CodeRabbit #143): KEIN Schritt darf Seed-Löschung,
+    // Persistenz-Wipe oder Auth-Reset verhindern. Adapter-/Store-Fehler werden
+    // geloggt und übersprungen; Fehler der privacy-kritischen Schritte (Wipe,
+    // Seed-Delete) werden gesammelt und NACH dem Auth-Reset geworfen.
+    const criticalFailures: unknown[] = []
+    const guarded = async (step: string, critical: boolean, fn: () => Promise<unknown> | unknown): Promise<void> => {
+      try {
+        await fn()
+      } catch (error) {
+        console.warn(`[WotConnector] logout: ${step} fehlgeschlagen — Restabbau läuft weiter`, error)
+        if (critical) criticalFailures.push(error)
+      }
+    }
+
+    await guarded("replication.stop", false, () => this.replication?.stop())
+    await guarded("outbox.disconnect", false, () => this.outboxAdapter?.disconnect())
 
     this.contactsUnsub?.()
     this.contactsUnsub = null
@@ -563,17 +577,26 @@ export class WotConnector extends BaseConnector {
     this.profileObs.set(null)
     this.syncPendingObs.set(false)
 
-    await resetYjsPersonalDoc()
-    await this.closeRuntimeStores()
-    await wipeIdentityPersistence(did)
-    await this.identity.deleteStoredIdentity()
+    await guarded("personalDoc.reset", false, () => resetYjsPersonalDoc())
+    await guarded("runtimeStores.close", false, () => this.closeRuntimeStores())
+    await guarded("persistence.wipe", true, () => wipeIdentityPersistence(did))
+    await guarded("seed.delete", true, () => this.identity.deleteStoredIdentity())
 
     // Clear identity switch marker
     try { localStorage.removeItem(ACTIVE_DID_STORAGE_KEY) } catch { /* ignore */ }
 
     this.currentUserObs.set(null)
     this.authStateObs.set({ status: "unauthenticated" })
+
     this.notifyAllObservers()
+
+    if (criticalFailures.length > 0) {
+      // UI ist ausgeloggt (Resets + notify liefen), aber lokale Daten sind evtl.
+      // nicht vollständig entfernt — das MUSS beim Aufrufer sichtbar werden.
+      const error = new Error("logout: lokale Daten wurden nicht vollständig entfernt")
+      ;(error as Error & { failures?: unknown[] }).failures = criticalFailures
+      throw error
+    }
   }
 
   /** Update the local profile in PersonalDoc */
@@ -2156,8 +2179,19 @@ export class WotConnector extends BaseConnector {
         messageId,
       })
     } catch (error) {
+      // Gleiche Durability-Barriere wie im Receipt-Pfad: `failed` erst crash-fest
+      // flushen, dann die Korrelation räumen — sonst bleibt das #144-Fenster in
+      // diesem terminalen Pfad offen (Reset vor dem 2s-Debounce → Status zurück
+      // auf queued, Mapping weg). Flush-Fehler: Korrelation behalten.
       const persisted = await this.setDeliveryStatus(attestation.id, "failed")
-      if (persisted) await this.clearDeliveryCorrelation(messageId).catch(() => {})
+      if (persisted) {
+        try {
+          await this.flushPersonalDocDurably()
+          await this.clearDeliveryCorrelation(messageId).catch(() => {})
+        } catch (flushError) {
+          console.warn("[WotConnector] Failed-Flush deferred — Korrelation bleibt", flushError)
+        }
+      }
       throw error
     }
 
@@ -2336,9 +2370,24 @@ export class WotConnector extends BaseConnector {
         ? await this.verificationWorkflow.acceptVerifiedCounterVerification(this.identity, payload)
         : await this.verificationWorkflow.acceptVerifiedVerificationAttestation(this.identity, payload)
       if (decision.decision !== "accept-in-person" && decision.decision !== "accept-mutual-in-person") {
-        return
+        // Redelivery-Heilung (CodeRabbit #143): das Accept-Gate konsumiert
+        // Nonce/Pending-Counter VOR dem Save. Schlägt der Save fehl, würde die
+        // Redelivery hier als Replay abgelehnt und die Attestation wäre für
+        // immer verloren. Konsumiertes Gate + Attestation FEHLT im Store =
+        // verlorener Write → Save nachholen. VC-Signatur + Sender-/to-Bindung
+        // sind oben erneut geprüft; Rest-Risiko ist auf Duplikate desselben,
+        // bereits verifizierten Senders begrenzt. acceptedInitialVerification
+        // bleibt false → beim Replay wird keine zweite Counter-Verifikation
+        // ausgestellt.
+        const reason = (decision as { reason?: string }).reason
+        const lostWriteReplay =
+          (decision.decision === "reject" && reason === "nonce-consumed") ||
+          (decision.decision === "remote-unbound" && reason === "no-pending-counter-verification")
+        if (!lostWriteReplay) return
+        if (await this.storage.getAttestation(attestation.id)) return
+      } else {
+        acceptedInitialVerification = decision.decision === "accept-in-person"
       }
-      acceptedInitialVerification = decision.decision === "accept-in-person"
     }
 
     const existing = await this.storage.getAttestation(attestation.id)
@@ -2517,6 +2566,10 @@ export class WotConnector extends BaseConnector {
     const current = doc.attestationMetadata?.[attestationId]?.deliveryStatus as DeliveryStatus | null | undefined
     if (current === next) return true
     if (current === "acknowledged") return true
+    // `failed` ist nur aus nicht-zugestellten Zuständen erreichbar: ein spätes
+    // Failed-Receipt (z.B. nach fehlgeschlagenem Korrelations-Cleanup) darf
+    // einen bereits zugestellten Status nicht degradieren (CodeRabbit #143).
+    if (next === "failed" && current === "delivered") return true
     if (next !== "failed" && current && current !== "failed" && DELIVERY_STATUS_RANK[next] <= DELIVERY_STATUS_RANK[current]) {
       return true
     }
@@ -2651,10 +2704,12 @@ export class WotConnector extends BaseConnector {
   }
 
   private async closeRuntimeStores(): Promise<void> {
+    // Jeder Close einzeln geguardet: ein fehlschlagender Store darf die übrigen
+    // Closes (und damit den nachfolgenden Wipe) nicht verhindern.
     const compact = this.spaceCompactStore as (YjsCompactStore & { close?: () => void | Promise<void> }) | null
-    await compact?.close?.()
+    try { await compact?.close?.() } catch { /* best-effort teardown */ }
     const outbox = this.outboxStore as (OutboxStore & { close?: () => void | Promise<void> }) | null
-    await outbox?.close?.()
+    try { await outbox?.close?.() } catch { /* best-effort teardown */ }
     for (const store of this.durableStores.splice(0)) {
       try { await store.close() } catch { /* best-effort teardown */ }
     }

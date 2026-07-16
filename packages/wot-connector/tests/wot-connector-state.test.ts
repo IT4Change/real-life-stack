@@ -904,3 +904,52 @@ describe("WotConnector private space reconciliation", () => {
     expect(withoutExisting.replication.createSpace).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("WotConnector loop-review #143: Teardown-Resilienz + Delivery-Monotonie", () => {
+  const source = readConnectorSource()
+
+  it("logout guards every teardown step; critical wipe/seed failures surface AFTER the auth reset", () => {
+    const logout = sliceMethod(source, "override async logout", "async updateProfile")
+    expect(logout).toMatch(/guarded\("replication\.stop", false/)
+    expect(logout).toMatch(/guarded\("runtimeStores\.close", false/)
+    expect(logout).toMatch(/guarded\("persistence\.wipe", true/)
+    expect(logout).toMatch(/guarded\("seed\.delete", true/)
+    // UI wird IMMER ausgeloggt (Reset + notify), erst danach wird der
+    // gesammelte kritische Fehler geworfen — kein Green-Wash, kein hängender Login.
+    const authResetIdx = logout.indexOf('this.authStateObs.set({ status: "unauthenticated" })')
+    const notifyIdx = logout.indexOf("this.notifyAllObservers()")
+    const throwIdx = logout.indexOf("logout: lokale Daten wurden nicht vollständig entfernt")
+    expect(authResetIdx).toBeGreaterThan(-1)
+    expect(notifyIdx).toBeGreaterThan(authResetIdx)
+    expect(throwIdx).toBeGreaterThan(notifyIdx)
+  })
+
+  it("wipeIdentityPersistence attempts EVERY database and reports failures at the end", () => {
+    const persistenceSource = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), "../src/identity-persistence.ts"),
+      "utf8",
+    )
+    const wipe = persistenceSource.slice(
+      persistenceSource.indexOf("export async function wipeIdentityPersistence"),
+      persistenceSource.indexOf("export async function deleteLegacyIdentityDatabases"),
+    )
+    expect(wipe).toMatch(/failures\.push\(error\)/)
+    expect(wipe).toMatch(/deleteLegacyIdentityDatabases\(\)/)
+    expect(wipe).toMatch(/wipeIdentityPersistence: .*nicht gelöscht/)
+    // Legacy-Wipe läuft VOR dem Fehler-Throw (wird nie übersprungen)
+    expect(wipe.indexOf("deleteLegacyIdentityDatabases()")).toBeLessThan(wipe.indexOf("nicht gelöscht"))
+  })
+
+  it("heals a redelivered verification whose gate was consumed but whose save was lost", () => {
+    const method = sliceMethod(source, "private async handleIncomingAttestation", "private async sendReceiptAck")
+    expect(method).toMatch(/nonce-consumed/)
+    expect(method).toMatch(/no-pending-counter-verification/)
+    // Heilung nur wenn die Attestation wirklich fehlt (kein Duplikat-Save)
+    expect(method).toMatch(/if \(await this\.storage\.getAttestation\(attestation\.id\)\) return/)
+  })
+
+  it("a late failed receipt cannot degrade an already delivered status", () => {
+    const method = sliceMethod(source, "private async setDeliveryStatus", "private async checkMutualVerification")
+    expect(method).toMatch(/next === "failed" && current === "delivered"/)
+  })
+})
