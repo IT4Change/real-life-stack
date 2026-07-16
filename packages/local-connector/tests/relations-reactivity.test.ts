@@ -5,6 +5,7 @@ import type { Item } from "@real-life-stack/data-interface"
 vi.mock("idb-keyval", () => ({
   get: vi.fn().mockResolvedValue(undefined),
   set: vi.fn().mockResolvedValue(undefined),
+  update: vi.fn(async (_key: string, updater: (value: unknown) => unknown) => { updater(undefined) }),
   del: vi.fn().mockResolvedValue(undefined),
   createStore: vi.fn().mockReturnValue({}),
 }))
@@ -54,7 +55,7 @@ describe("LocalConnector — Relations Reactivity", () => {
     })
 
     expect(created.id).toBe("client-id")
-    expect(duplicate).toBe(created)
+    expect(duplicate).toEqual(created)
     expect(await connector.getItems()).toEqual([created])
   })
 

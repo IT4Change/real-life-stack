@@ -25,10 +25,19 @@ const items: Item[] = [
 
 const seed: MockConnectorSeed = {
   items,
-  groups: [{ id: "group-a", name: "A" }],
+  groups: [
+    { id: "group-a", name: "A" },
+    { id: "group-b", name: "B" },
+  ],
   users: [{ id: "did:example:user", displayName: "User" }],
-  groupMembers: { "group-a": ["did:example:user"] },
-  groupItems: { "group-a": items.map(({ id }) => id) },
+  groupMembers: {
+    "group-a": ["did:example:user"],
+    "group-b": ["did:example:user"],
+  },
+  groupItems: {
+    "group-a": items.map(({ id }) => id),
+    "group-b": items.map(({ id }) => id),
+  },
 }
 
 async function flushNotifications(): Promise<void> {
@@ -87,6 +96,47 @@ describe("MockConnector RelationRecord capabilities", () => {
     expect(updated.confirmationRef).toBeUndefined()
 
     await mock.deleteRelationRecord(created.id)
+    expect(await mock.getRelationRecords()).toEqual([])
+  })
+
+  it("keeps the same deterministic relation ID independent in each space", async () => {
+    const mock = connector()
+    const relation = {
+      predicate: "knows",
+      from: "item:person-a",
+      to: "item:person-b",
+    }
+
+    const inGroupA = await mock.createRelationRecord({
+      ...relation,
+      fields: { scope: "a" },
+    })
+
+    mock.setCurrentGroup("group-b")
+    const inGroupB = await mock.createRelationRecord({
+      ...relation,
+      fields: { scope: "b" },
+    })
+
+    expect(inGroupB.id).toBe(inGroupA.id)
+    expect((await mock.getRelationRecords())[0].fields).toEqual({ scope: "b" })
+    expect(mock.getItemGroupId(inGroupB.id)).toBe("group-b")
+
+    await mock.updateRelationRecord(inGroupB.id, { fields: { scope: "b-updated" } })
+    mock.setCurrentGroup("group-a")
+    expect((await mock.getRelationRecords())[0].fields).toEqual({ scope: "a" })
+
+    mock.setCurrentGroup(null)
+    expect(await mock.getItem(inGroupA.id)).toBeNull()
+    expect(await mock.getItems({ type: "relation" })).toEqual([])
+
+    mock.setCurrentGroup("group-a")
+    await mock.deleteRelationRecord(inGroupA.id)
+    expect(await mock.getRelationRecords()).toEqual([])
+
+    mock.setCurrentGroup("group-b")
+    expect((await mock.getRelationRecords())[0].fields).toEqual({ scope: "b-updated" })
+    await mock.deleteRelationRecord(inGroupB.id)
     expect(await mock.getRelationRecords()).toEqual([])
   })
 

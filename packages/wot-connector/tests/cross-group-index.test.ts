@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { CrossGroupIndex } from "../src/CrossGroupIndex.js"
+import { CrossGroupIndex, crossGroupItemKey } from "../src/CrossGroupIndex.js"
 import type { CrossGroupEntry } from "../src/CrossGroupIndex.js"
 
 // --- Mock types ---
@@ -197,6 +197,44 @@ describe("CrossGroupIndex", () => {
 
       expect(index.getItemGroupId("t1")).toBe("group-1")
       expect(index.getItemGroupId("t2")).toBe("group-2")
+
+      index.stop()
+    })
+
+    it("keeps identical item IDs from different groups independent", async () => {
+      const doc1: TestDoc = {
+        items: { shared: { id: "shared", type: "task", title: "Group 1" } },
+      }
+      const doc2: TestDoc = {
+        items: { shared: { id: "shared", type: "task", title: "Group 2" } },
+      }
+      const handle1 = createMockHandle("group-1", doc1)
+      const handle2 = createMockHandle("group-2", doc2)
+      replication.registerHandle("group-1", handle1)
+      replication.registerHandle("group-2", handle2)
+      replication.setSpaces([
+        { id: "group-1", type: "shared" },
+        { id: "group-2", type: "shared" },
+      ])
+
+      const index = createIndex()
+      index.start()
+
+      await vi.waitFor(() => expect(index.getAllScoped().size).toBe(2))
+      expect(index.getAll()).toEqual(new Map())
+      expect(index.getAllScoped().get(crossGroupItemKey("group-1", "shared"))?.item.title).toBe("Group 1")
+      expect(index.getAllScoped().get(crossGroupItemKey("group-2", "shared"))?.item.title).toBe("Group 2")
+      expect(index.getByType("task")).toHaveLength(2)
+      expect(index.getUniqueById("shared")).toBeNull()
+      expect(index.getItemGroupId("shared")).toBeNull()
+
+      delete doc1.items.shared
+      handle1.simulateRemoteUpdate()
+
+      expect(index.getAllScoped().size).toBe(1)
+      expect(index.getAll().get("shared")?.item.title).toBe("Group 2")
+      expect(index.getUniqueById("shared")?.item.title).toBe("Group 2")
+      expect(index.getItemGroupId("shared")).toBe("group-2")
 
       index.stop()
     })

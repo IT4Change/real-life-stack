@@ -1,6 +1,6 @@
 export { WotConnector } from "./wot-connector.js"
 export type { WotConnectorConfig, RlsSpaceDoc, SerializedItem } from "./types.js"
 export { serializeItem, deserializeItem } from "./serialization.js"
-export { CrossGroupIndex } from "./CrossGroupIndex.js"
+export { CrossGroupIndex, crossGroupItemKey } from "./CrossGroupIndex.js"
 export type { CrossGroupEntry, CrossGroupIndexOptions } from "./CrossGroupIndex.js"
 export { BiometricService } from "./biometric-service.js"

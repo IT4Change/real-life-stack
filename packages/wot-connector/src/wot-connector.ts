@@ -784,7 +784,7 @@ export class WotConnector extends BaseConnector {
   override async getItem(id: string): Promise<Item | null> {
     await this.handleReady
     if (this.currentGroupId === null && this.crossGroupIndex) {
-      const entry = this.crossGroupIndex.getAll().get(id)
+      const entry = this.crossGroupIndex.getUniqueById(id)
       return entry?.item ?? null
     }
     const doc = this.getCurrentDoc()
@@ -933,15 +933,11 @@ export class WotConnector extends BaseConnector {
   }
 
   getItemGroupId(itemId: string): string | null {
-    if (this.crossGroupIndex) {
-      return this.crossGroupIndex.getItemGroupId(itemId)
-    }
-    // Fallback: if no index, check current group
-    if (this.currentHandle) {
+    if (this.currentHandle && this.currentGroupId) {
       const doc = this.currentHandle.getDoc()
       if (doc.items?.[itemId]) return this.currentGroupId
     }
-    return null
+    return this.crossGroupIndex?.getItemGroupId(itemId) ?? null
   }
 
   async moveItemToGroup(itemId: string, targetGroupId: string): Promise<void> {
@@ -1618,7 +1614,7 @@ export class WotConnector extends BaseConnector {
       if (!hasData) {
         obs.set(null)
       } else if (isPersonal && this.crossGroupIndex) {
-        const entry = this.crossGroupIndex.getAll().get(id)
+        const entry = this.crossGroupIndex.getUniqueById(id)
         obs.set(entry?.item ?? null)
       } else if (doc) {
         const serialized = doc.items?.[id]

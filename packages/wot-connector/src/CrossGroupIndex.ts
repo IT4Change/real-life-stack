@@ -12,6 +12,10 @@ export interface CrossGroupIndexOptions {
   groupFilter?: (info: SpaceInfo) => boolean
 }
 
+export function crossGroupItemKey(groupId: string, itemId: string): string {
+  return JSON.stringify([groupId, itemId])
+}
+
 // --- CrossGroupIndex ---
 
 /**
@@ -94,7 +98,13 @@ export class CrossGroupIndex<TDoc, TItem> {
 
   // --- Queries ---
 
+  /** Legacy naked-ID view. IDs present in multiple groups are omitted as ambiguous. */
   getAll(): Map<string, CrossGroupEntry<TItem>> {
+    return this.buildUniqueIndex(this.groupItemMaps)
+  }
+
+  /** Canonical cross-space view keyed by crossGroupItemKey(groupId, itemId). */
+  getAllScoped(): Map<string, CrossGroupEntry<TItem>> {
     return this.flatIndex
   }
 
@@ -113,8 +123,18 @@ export class CrossGroupIndex<TDoc, TItem> {
     return this.groupItemMaps.get(groupId) ?? new Map()
   }
 
+  getUniqueById(itemId: string): CrossGroupEntry<TItem> | null {
+    let result: CrossGroupEntry<TItem> | null = null
+    for (const [groupId, items] of this.groupItemMaps) {
+      if (!items.has(itemId)) continue
+      if (result) return null
+      result = { item: items.get(itemId)!, groupId }
+    }
+    return result
+  }
+
   getItemGroupId(itemId: string): string | null {
-    return this.flatIndex.get(itemId)?.groupId ?? null
+    return this.getUniqueById(itemId)?.groupId ?? null
   }
 
   getFiltered(filters: {
@@ -124,19 +144,17 @@ export class CrossGroupIndex<TDoc, TItem> {
     const { includedGroups, excludedGroups } = filters
     // No filtering needed
     if (!includedGroups && (!excludedGroups || excludedGroups.length === 0)) {
-      return this.flatIndex
+      return this.getAll()
     }
 
     const included = includedGroups ? new Set(includedGroups) : null
     const excluded = excludedGroups ? new Set(excludedGroups) : null
-
-    const result = new Map<string, CrossGroupEntry<TItem>>()
-    for (const [id, entry] of this.flatIndex) {
-      if (excluded?.has(entry.groupId)) continue
-      if (included && !included.has(entry.groupId)) continue
-      result.set(id, entry)
-    }
-    return result
+    return this.buildUniqueIndex(
+      [...this.groupItemMaps.entries()].filter(([groupId]) => {
+        if (excluded?.has(groupId)) return false
+        return !included || included.has(groupId)
+      })
+    )
   }
 
   // --- Reactive ---
@@ -182,6 +200,25 @@ export class CrossGroupIndex<TDoc, TItem> {
     }
   }
 
+  private buildUniqueIndex(
+    groups: Iterable<[string, Map<string, TItem>]>
+  ): Map<string, CrossGroupEntry<TItem>> {
+    const result = new Map<string, CrossGroupEntry<TItem>>()
+    const ambiguousIds = new Set<string>()
+    for (const [groupId, items] of groups) {
+      for (const [itemId, item] of items) {
+        if (ambiguousIds.has(itemId)) continue
+        if (result.has(itemId)) {
+          result.delete(itemId)
+          ambiguousIds.add(itemId)
+          continue
+        }
+        result.set(itemId, { item, groupId })
+      }
+    }
+    return result
+  }
+
   private async addGroup(groupId: string): Promise<void> {
     this.pendingGroups.add(groupId)
     try {
@@ -222,9 +259,10 @@ export class CrossGroupIndex<TDoc, TItem> {
     const oldItems = this.groupItemMaps.get(groupId)
     if (oldItems) {
       for (const [id, item] of oldItems) {
-        this.flatIndex.delete(id)
+        const key = crossGroupItemKey(groupId, id)
+        this.flatIndex.delete(key)
         const type = this.getItemType(item)
-        this.typeIndex.get(type)?.delete(id)
+        this.typeIndex.get(type)?.delete(key)
       }
       this.groupItemMaps.delete(groupId)
     }
@@ -240,9 +278,10 @@ export class CrossGroupIndex<TDoc, TItem> {
     if (oldItems) {
       for (const [id, item] of oldItems) {
         if (!newItems.has(id)) {
-          this.flatIndex.delete(id)
+          const key = crossGroupItemKey(groupId, id)
+          this.flatIndex.delete(key)
           const type = this.getItemType(item)
-          this.typeIndex.get(type)?.delete(id)
+          this.typeIndex.get(type)?.delete(key)
         }
       }
     }
@@ -250,24 +289,25 @@ export class CrossGroupIndex<TDoc, TItem> {
     // Add/update items
     for (const [id, item] of newItems) {
       const type = this.getItemType(item)
+      const key = crossGroupItemKey(groupId, id)
 
       // Update type index (handle type changes)
-      const existing = this.flatIndex.get(id)
+      const existing = this.flatIndex.get(key)
       if (existing) {
         const oldType = this.getItemType(existing.item)
         if (oldType !== type) {
-          this.typeIndex.get(oldType)?.delete(id)
+          this.typeIndex.get(oldType)?.delete(key)
         }
       }
 
-      this.flatIndex.set(id, { item, groupId })
+      this.flatIndex.set(key, { item, groupId })
 
       let typeSet = this.typeIndex.get(type)
       if (!typeSet) {
         typeSet = new Set()
         this.typeIndex.set(type, typeSet)
       }
-      typeSet.add(id)
+      typeSet.add(key)
     }
 
     this.groupItemMaps.set(groupId, newItems)

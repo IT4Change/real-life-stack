@@ -12,7 +12,7 @@ import type {
   Source,
 } from "@real-life-stack/data-interface"
 import { createObservable, matchesFilter, findRelatedItems, applyPagination } from "@real-life-stack/data-interface"
-import { get, set, del, createStore } from "idb-keyval"
+import { get, set, del, createStore, update as updateStoredValue } from "idb-keyval"
 
 // --- Types ---
 
@@ -43,6 +43,12 @@ interface StoredState {
 interface BroadcastMessage {
   type: "items-changed" | "groups-changed" | "full-sync"
   senderId: string
+}
+
+function cloneGroupItems(groupItems: Record<string, string[]> | undefined): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(groupItems ?? {}).map(([groupId, itemIds]) => [groupId, [...itemIds]])
+  )
 }
 
 // --- LocalConnector ---
@@ -123,7 +129,7 @@ export class LocalConnector implements FullConnector {
       this.currentGroup = this.seedData!.currentGroupId
         ? this.groups.find((g) => g.id === this.seedData!.currentGroupId) ?? null
         : null
-      await this.persist()
+      await this.persist({ replaceItemState: true })
     } else if (stored) {
       this.items = stored.items.map(i => ({ ...i }))
       this.groups = stored.groups
@@ -326,51 +332,100 @@ export class LocalConnector implements FullConnector {
   }
 
   async createItem(item: CreateItemInput): Promise<Item> {
-    if (item.id !== undefined) {
-      const existing = this.items.find((candidate) => candidate.id === item.id)
-      if (existing) return existing
-    }
+    const targetGroupId = this.currentGroup?.id ?? null
+    let result: Item | undefined
+    let committedState: StoredState | undefined
+    let created = false
 
-    const id = item.id ?? this.allocateItemId()
-    const newItem: Item = {
-      ...item,
-      id,
-      createdAt: new Date().toISOString(),
-    }
-    this.items.push(newItem)
-    const groupId = this.currentGroup?.id
-    if (groupId) {
-      if (!this.groupItems[groupId]) this.groupItems[groupId] = []
-      this.groupItems[groupId].push(newItem.id)
-    }
+    await updateStoredValue<StoredState>("state", (stored) => {
+      const current = stored ?? this.createStoredState()
+      if (item.id !== undefined) {
+        const existing = current.items.find((candidate) => candidate.id === item.id)
+        if (existing) {
+          result = existing
+          committedState = current
+          return current
+        }
+      }
+
+      let nextItemId = current.nextItemId
+      let id = item.id
+      if (id === undefined) {
+        do {
+          id = `item-${nextItemId++}`
+        } while (current.items.some((candidate) => candidate.id === id))
+      }
+
+      const newItem: Item = {
+        ...item,
+        id,
+        createdAt: new Date().toISOString(),
+      }
+      const groupItems = cloneGroupItems(current.groupItems)
+      if (targetGroupId) {
+        const targetItems = groupItems[targetGroupId] ?? []
+        if (!targetItems.includes(newItem.id)) targetItems.push(newItem.id)
+        groupItems[targetGroupId] = targetItems
+      }
+
+      committedState = {
+        ...current,
+        items: [...current.items, newItem],
+        groupItems,
+        nextItemId,
+      }
+      result = newItem
+      created = true
+      return committedState
+    }, this.store)
+
+    if (!result || !committedState) throw new Error("Item transaction did not produce a result")
+    this.applyStoredItemState(committedState)
     this.notifyObservers()
-    await this.persist()
-    this.broadcast({ type: "items-changed" })
-    return newItem
-  }
-
-  private allocateItemId(): string {
-    let id: string
-    do {
-      id = `item-${this.nextItemId++}`
-    } while (this.items.some((item) => item.id === id))
-    return id
+    if (created) this.broadcast({ type: "items-changed" })
+    return result
   }
 
   async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
-    const idx = this.items.findIndex((i) => i.id === id)
-    if (idx === -1) throw new Error(`Item not found: ${id}`)
-    this.items[idx] = { ...this.items[idx], ...updates, id }
+    let result: Item | undefined
+    let committedState: StoredState | undefined
+    await updateStoredValue<StoredState>("state", (stored) => {
+      const current = stored ?? this.createStoredState()
+      const idx = current.items.findIndex((candidate) => candidate.id === id)
+      if (idx === -1) throw new Error(`Item not found: ${id}`)
+      result = { ...current.items[idx], ...updates, id }
+      const items = [...current.items]
+      items[idx] = result
+      committedState = { ...current, items }
+      return committedState
+    }, this.store)
+
+    if (!result || !committedState) throw new Error("Item transaction did not produce a result")
+    this.applyStoredItemState(committedState)
     this.notifyObservers()
-    await this.persist()
     this.broadcast({ type: "items-changed" })
-    return this.items[idx]
+    return result
   }
 
   async deleteItem(id: string): Promise<void> {
-    this.items = this.items.filter((i) => i.id !== id)
+    let committedState: StoredState | undefined
+    await updateStoredValue<StoredState>("state", (stored) => {
+      const current = stored ?? this.createStoredState()
+      const groupItems = cloneGroupItems(current.groupItems)
+      for (const groupId of Object.keys(groupItems)) {
+        groupItems[groupId] = groupItems[groupId].filter((itemId) => itemId !== id)
+      }
+      committedState = {
+        ...current,
+        items: current.items.filter((candidate) => candidate.id !== id),
+        groupItems,
+      }
+      return committedState
+    }, this.store)
+
+    if (!committedState) throw new Error("Item transaction did not produce a result")
+    this.applyStoredItemState(committedState)
     this.notifyObservers()
-    await this.persist()
     this.broadcast({ type: "items-changed" })
   }
 
@@ -382,15 +437,23 @@ export class LocalConnector implements FullConnector {
   }
 
   async moveItemToGroup(itemId: string, targetGroupId: string): Promise<void> {
-    // Remove from all groups
-    for (const gid of Object.keys(this.groupItems)) {
-      this.groupItems[gid] = this.groupItems[gid].filter((id) => id !== itemId)
-    }
-    // Add to target group
-    if (!this.groupItems[targetGroupId]) this.groupItems[targetGroupId] = []
-    this.groupItems[targetGroupId].push(itemId)
+    let committedState: StoredState | undefined
+    await updateStoredValue<StoredState>("state", (stored) => {
+      const current = stored ?? this.createStoredState()
+      const groupItems = cloneGroupItems(current.groupItems)
+      for (const groupId of Object.keys(groupItems)) {
+        groupItems[groupId] = groupItems[groupId].filter((id) => id !== itemId)
+      }
+      const targetItems = groupItems[targetGroupId] ?? []
+      if (!targetItems.includes(itemId)) targetItems.push(itemId)
+      groupItems[targetGroupId] = targetItems
+      committedState = { ...current, groupItems }
+      return committedState
+    }, this.store)
+
+    if (!committedState) throw new Error("Item transaction did not produce a result")
+    this.applyStoredItemState(committedState)
     this.notifyObservers()
-    await this.persist()
     this.broadcast({ type: "items-changed" })
   }
 
@@ -492,19 +555,49 @@ export class LocalConnector implements FullConnector {
 
   // --- Internal: Persistence ---
 
-  private async persist(): Promise<void> {
-    const state: StoredState = {
+  private async persist(options: { replaceItemState?: boolean } = {}): Promise<void> {
+    const localState = this.createStoredState()
+    if (options.replaceItemState) {
+      await set("state", localState, this.store)
+      return
+    }
+
+    let committedState: StoredState | undefined
+    await updateStoredValue<StoredState>("state", (stored) => {
+      committedState = stored
+        ? {
+            ...localState,
+            items: stored.items,
+            groupItems: cloneGroupItems(stored.groupItems),
+            nextItemId: stored.nextItemId,
+          }
+        : localState
+      return committedState
+    }, this.store)
+    if (committedState) {
+      this.applyStoredItemState(committedState)
+      this.notifyObservers()
+    }
+  }
+
+  private createStoredState(): StoredState {
+    return {
       items: this.items.map(i => ({ ...i })),
       groups: this.groups,
       users: this.users,
       groupMembers: this.groupMembers,
-      groupItems: this.groupItems,
+      groupItems: cloneGroupItems(this.groupItems),
       currentUserId: this.currentUser?.id ?? null,
       currentGroupId: this.currentGroup?.id ?? null,
       nextItemId: this.nextItemId,
       seedVersion: SEED_VERSION,
     }
-    await set("state", state, this.store)
+  }
+
+  private applyStoredItemState(state: StoredState): void {
+    this.items = state.items.map((item) => ({ ...item }))
+    this.groupItems = cloneGroupItems(state.groupItems)
+    this.nextItemId = state.nextItemId
   }
 
   // --- Internal: Cross-Tab Sync ---

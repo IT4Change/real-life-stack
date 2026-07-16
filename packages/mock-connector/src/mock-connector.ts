@@ -55,7 +55,8 @@ function copyGroupItems(groupItems: Record<string, string[]> | undefined): Recor
 }
 
 export class MockConnector implements FullConnector, RelationRecordCapable, RelationRecordWriterCapable {
-  private items: Item[]
+  private itemsByScope = new Map<string | null, Map<string, Item>>()
+  private itemOrder: Array<{ scopeId: string | null; id: string }> = []
   private notifyScheduled = false
   private groups: Group[]
   private users: User[]
@@ -83,11 +84,25 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
       groupItems: demoGroupItems,
     }
 
-    this.items = deduplicateItems(data.items)
     this.groups = data.groups.filter((g) => (g.data?.scope as string) !== "aggregate")
     this.users = [...data.users]
     this.groupMembers = { ...data.groupMembers }
     this.groupItems = copyGroupItems(data.groupItems)
+    for (const item of deduplicateItems(data.items)) {
+      if (item.type === "feature") {
+        this.storeItem(null, item)
+        continue
+      }
+
+      const scopeIds = Object.entries(this.groupItems)
+        .filter(([, itemIds]) => itemIds.includes(item.id))
+        .map(([groupId]) => groupId)
+      if (scopeIds.length === 0) {
+        this.storeItem(null, item)
+      } else {
+        for (const scopeId of scopeIds) this.storeItem(scopeId, { ...item })
+      }
+    }
     this.currentGroup = null
     this.currentUser = this.users[0] ?? null
     this.currentUserObs = createObservable<User | null>(this.currentUser)
@@ -234,14 +249,19 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
     const scope = (this.currentGroup?.data?.scope as string) ?? "group"
 
     if (!groupId || scope === "aggregate") {
-      // "Alles" scope: return all items (except feature items which are always global)
-      return this.items
+      const idCounts = new Map<string, number>()
+      for (const { id } of this.itemOrder) idCounts.set(id, (idCounts.get(id) ?? 0) + 1)
+      return this.itemOrder.flatMap(({ scopeId, id }) => {
+        if (idCounts.get(id) !== 1) return []
+        const item = this.itemsByScope.get(scopeId)?.get(id)
+        return item ? [item] : []
+      })
     }
 
-    // For specific scopes (personal, friends, group-*): filter by groupItems mapping
-    const itemIds = this.groupItems[groupId]
-    if (!itemIds) return this.items.filter((i) => i.type === "feature")
-    return this.items.filter((i) => itemIds.includes(i.id) || i.type === "feature")
+    const scopedItems = [...(this.itemsByScope.get(groupId)?.values() ?? [])]
+    const globalFeatures = [...(this.itemsByScope.get(null)?.values() ?? [])]
+      .filter((item) => item.type === "feature")
+    return [...scopedItems, ...globalFeatures]
   }
 
   async getItems(filter?: ItemFilter): Promise<Item[]> {
@@ -252,7 +272,7 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
   }
 
   async getItem(id: string): Promise<Item | null> {
-    return this.items.find((item) => item.id === id) ?? null
+    return this.findVisibleItem(id) ?? null
   }
 
   observe(filter: ItemFilter): Observable<Item[]> {
@@ -267,46 +287,72 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
 
   observeItem(id: string): Observable<Item | null> {
     if (!this.singleItemObservables.has(id)) {
-      const item = this.items.find((i) => i.id === id) ?? null
+      const item = this.findVisibleItem(id) ?? null
       this.singleItemObservables.set(id, createObservable(item))
     }
     return this.singleItemObservables.get(id)!
   }
 
   async createItem(item: CreateItemInput): Promise<Item> {
+    const scopeId = item.type === "feature" ? null : this.currentGroup?.id ?? null
+    const scopeItems = this.getScopeItems(scopeId, true)
     if (item.id !== undefined) {
-      const existing = this.items.find((candidate) => candidate.id === item.id)
+      const existing = scopeItems.get(item.id)
       if (existing) return existing
+      this.assertNoGlobalScopeCollision(scopeId, item.id, item.type)
     }
 
-    const id = item.id ?? this.allocateItemId()
+    const id = item.id ?? this.allocateItemId(scopeId, item.type)
     const newItem: Item = {
       ...item,
       id,
       createdAt: new Date().toISOString(),
     }
-    this.items.push(newItem)
+    this.storeItem(scopeId, newItem)
 
     // Register item in current group's scope
-    const groupId = this.currentGroup?.id
-    if (groupId) this.registerItemInGroup(newItem.id, groupId)
+    if (scopeId) this.registerItemInGroup(newItem.id, scopeId)
 
     this.notifyObservers()
     return newItem
   }
 
   async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
-    const idx = this.items.findIndex((i) => i.id === id)
-    if (idx === -1) throw new Error(`Item not found: ${id}`)
-    this.items[idx] = { ...this.items[idx], ...updates, id }
+    const location = this.findVisibleItemLocation(id)
+    if (!location) throw new Error(`Item not found: ${id}`)
+    const updated = { ...location.item, ...updates, id }
+    if (location.item.type !== "feature" && updated.type === "feature") {
+      this.assertNoItemOutsideScope(location.scopeId, id)
+    }
+    if (updated.type === "feature" && location.scopeId !== null) {
+      const globalItems = this.getScopeItems(null, true)
+      location.items.delete(id)
+      globalItems.set(id, updated)
+      const orderEntry = this.itemOrder.find(
+        (entry) => entry.scopeId === location.scopeId && entry.id === id
+      )
+      if (orderEntry) orderEntry.scopeId = null
+      this.groupItems[location.scopeId] = (this.groupItems[location.scopeId] ?? [])
+        .filter((itemId) => itemId !== id)
+    } else {
+      location.items.set(id, updated)
+    }
     this.notifyObservers()
-    return this.items[idx]
+    return updated
   }
 
   async deleteItem(id: string): Promise<void> {
-    this.items = this.items.filter((i) => i.id !== id)
-    for (const groupId of Object.keys(this.groupItems)) {
-      this.groupItems[groupId] = this.groupItems[groupId].filter((itemId) => itemId !== id)
+    const location = this.findVisibleItemLocation(id)
+    if (!location) return
+    location.items.delete(id)
+    this.removeItemOrder(location.scopeId, id)
+    if (location.scopeId === null) {
+      for (const groupId of Object.keys(this.groupItems)) {
+        this.groupItems[groupId] = this.groupItems[groupId].filter((itemId) => itemId !== id)
+      }
+    } else {
+      this.groupItems[location.scopeId] = (this.groupItems[location.scopeId] ?? [])
+        .filter((itemId) => itemId !== id)
     }
     this.notifyObservers()
   }
@@ -321,15 +367,18 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
     let changed = false
 
     for (const item of items) {
-      let stored = this.items.find((candidate) => candidate.id === item.id)
+      const scopeId = item.type === "feature" ? null : targetGroupId ?? null
+      const scopeItems = this.getScopeItems(scopeId, true)
+      let stored = scopeItems.get(item.id)
       if (!stored) {
+        this.assertNoGlobalScopeCollision(scopeId, item.id, item.type)
         stored = item
-        this.items.push(stored)
+        this.storeItem(scopeId, stored)
         changed = true
       }
       injected.push(stored)
 
-      if (targetGroupId && this.registerItemInGroup(stored.id, targetGroupId)) {
+      if (scopeId !== null && targetGroupId && this.registerItemInGroup(stored.id, targetGroupId)) {
         changed = true
       }
     }
@@ -339,18 +388,33 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
   }
 
   getItemGroupId(itemId: string): string | null {
-    for (const [gid, itemIds] of Object.entries(this.groupItems)) {
-      if (itemIds.includes(itemId)) return gid
-    }
-    return null
+    const activeGroupId = this.currentGroup?.id
+    if (activeGroupId && this.itemsByScope.get(activeGroupId)?.has(itemId)) return activeGroupId
+
+    const matchingGroups = [...this.itemsByScope.entries()]
+      .filter(([scopeId, items]) => scopeId !== null && items.has(itemId))
+      .map(([scopeId]) => scopeId)
+    return matchingGroups.length === 1 ? matchingGroups[0] : null
   }
 
   moveItemToGroup(itemId: string, targetGroupId: string): void {
-    // Remove from all groups
-    for (const gid of Object.keys(this.groupItems)) {
-      this.groupItems[gid] = this.groupItems[gid].filter((id) => id !== itemId)
+    const location = this.findVisibleItemLocation(itemId)
+    if (!location || (location.scopeId === null && location.item.type === "feature")) return
+    if (location.scopeId === targetGroupId) return
+
+    const targetItems = this.getScopeItems(targetGroupId, true)
+    if (targetItems.has(itemId)) throw new Error(`Item already exists in target group: ${itemId}`)
+
+    targetItems.set(itemId, location.item)
+    const orderEntry = this.itemOrder.find(
+      (entry) => entry.scopeId === location.scopeId && entry.id === itemId
+    )
+    if (orderEntry) orderEntry.scopeId = targetGroupId
+    location.items.delete(itemId)
+    if (location.scopeId !== null) {
+      this.groupItems[location.scopeId] = (this.groupItems[location.scopeId] ?? [])
+        .filter((id) => id !== itemId)
     }
-    // Add to target group
     this.registerItemInGroup(itemId, targetGroupId)
     this.notifyObservers()
   }
@@ -392,7 +456,7 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
     predicate?: string,
     options?: RelatedItemsOptions
   ): Promise<Item[]> {
-    return findRelatedItems(itemId, this.items, predicate, options)
+    return findRelatedItems(itemId, this.getScopedItems(), predicate, options)
   }
 
   observeRelatedItems(
@@ -402,7 +466,7 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
   ): Observable<Item[]> {
     const key = `${itemId}:${predicate ?? ""}:${JSON.stringify(options ?? {})}`
     if (!this.relatedObservables.has(key)) {
-      const related = findRelatedItems(itemId, this.items, predicate, options)
+      const related = findRelatedItems(itemId, this.getScopedItems(), predicate, options)
       this.relatedObservables.set(key, createObservable(related))
       this.relatedObservableParams.set(key, { itemId, predicate, options })
     }
@@ -463,12 +527,97 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
 
   // --- Internal ---
 
-  private allocateItemId(): string {
+  private getScopeItems(scopeId: string | null, create = false): Map<string, Item> {
+    let items = this.itemsByScope.get(scopeId)
+    if (!items && create) {
+      items = new Map<string, Item>()
+      this.itemsByScope.set(scopeId, items)
+    }
+    return items ?? new Map<string, Item>()
+  }
+
+  private storeItem(scopeId: string | null, item: Item): void {
+    const items = this.getScopeItems(scopeId, true)
+    if (items.has(item.id)) return
+    items.set(item.id, item)
+    this.itemOrder.push({ scopeId, id: item.id })
+  }
+
+  private removeItemOrder(scopeId: string | null, id: string): void {
+    this.itemOrder = this.itemOrder.filter(
+      (entry) => entry.scopeId !== scopeId || entry.id !== id
+    )
+  }
+
+  private findVisibleItemLocation(id: string): {
+    scopeId: string | null
+    items: Map<string, Item>
+    item: Item
+  } | null {
+    const activeGroupId = this.currentGroup?.id
+    if (activeGroupId) {
+      const scopedItems = this.itemsByScope.get(activeGroupId)
+      const scopedItem = scopedItems?.get(id)
+      if (scopedItems && scopedItem) return { scopeId: activeGroupId, items: scopedItems, item: scopedItem }
+
+      const globalItems = this.itemsByScope.get(null)
+      const globalItem = globalItems?.get(id)
+      if (globalItems && globalItem?.type === "feature") {
+        return { scopeId: null, items: globalItems, item: globalItem }
+      }
+      return null
+    }
+
+    const globalItems = this.itemsByScope.get(null)
+    const globalItem = globalItems?.get(id)
+    if (globalItems && globalItem) return { scopeId: null, items: globalItems, item: globalItem }
+
+    const matches = [...this.itemsByScope.entries()]
+      .filter(([scopeId, items]) => scopeId !== null && items.has(id))
+    if (matches.length !== 1) return null
+    const [scopeId, items] = matches[0]
+    return { scopeId, items, item: items.get(id)! }
+  }
+
+  private findVisibleItem(id: string): Item | undefined {
+    return this.findVisibleItemLocation(id)?.item
+  }
+
+  private allocateItemId(scopeId: string | null, type: string): string {
+    const items = this.getScopeItems(scopeId, true)
     let id: string
     do {
       id = `item-${this.nextItemId++}`
-    } while (this.items.some((item) => item.id === id))
+    } while (
+      items.has(id)
+      || (type === "feature" ? this.hasItemOutsideScope(scopeId, id) : this.hasGlobalFeature(id))
+    )
     return id
+  }
+
+  private hasGlobalFeature(id: string): boolean {
+    return this.itemsByScope.get(null)?.get(id)?.type === "feature"
+  }
+
+  private hasItemOutsideScope(scopeId: string | null, id: string): boolean {
+    return [...this.itemsByScope.entries()]
+      .some(([candidateScopeId, items]) => candidateScopeId !== scopeId && items.has(id))
+  }
+
+  private assertNoItemOutsideScope(scopeId: string | null, id: string): void {
+    if (this.hasItemOutsideScope(scopeId, id)) {
+      throw new Error(`Item ID conflicts with another scope: ${id}`)
+    }
+  }
+
+  private assertNoGlobalScopeCollision(scopeId: string | null, id: string, type: string): void {
+    if (type === "feature") {
+      this.assertNoItemOutsideScope(scopeId, id)
+      return
+    }
+    if (scopeId !== null && this.hasGlobalFeature(id)) {
+      throw new Error(`Item ID conflicts with global feature: ${id}`)
+    }
   }
 
   private registerItemInGroup(itemId: string, groupId: string): boolean {
@@ -500,13 +649,13 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
       observable.set(applyPagination(filtered, filter.limit, filter.offset))
     }
     for (const [id, observable] of this.singleItemObservables) {
-      const item = this.items.find((i) => i.id === id) ?? null
+      const item = this.findVisibleItem(id) ?? null
       observable.set(item)
     }
     for (const [key, observable] of this.relatedObservables) {
       const params = this.relatedObservableParams.get(key)
       if (params) {
-        const related = findRelatedItems(params.itemId, this.items, params.predicate, params.options)
+        const related = findRelatedItems(params.itemId, this.getScopedItems(), params.predicate, params.options)
         observable.set(related)
       }
     }

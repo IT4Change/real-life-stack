@@ -73,6 +73,7 @@ describe("MockConnector item IDs", () => {
 
   it("skips collisions when allocating generated IDs", async () => {
     const connector = new MockConnector(seed([item("item-100", "reserved")]))
+    connector.setCurrentGroup("group-a")
 
     const created = await connector.createItem({
       type: "note",
@@ -106,6 +107,150 @@ describe("MockConnector item IDs", () => {
     expect(await connector.getItems()).toEqual([])
     connector.setCurrentGroup("group-b")
     expect((await connector.getItems()).map(({ id }) => id)).toEqual(["reusable"])
+  })
+
+  it("does not move over an existing space-local ID", async () => {
+    const connector = new MockConnector(seed())
+    connector.setCurrentGroup("group-a")
+    await connector.createItem({
+      id: "shared",
+      type: "note",
+      createdBy: "did:example:user",
+      data: { scope: "a" },
+    })
+    connector.setCurrentGroup("group-b")
+    await connector.createItem({
+      id: "shared",
+      type: "note",
+      createdBy: "did:example:user",
+      data: { scope: "b" },
+    })
+
+    connector.setCurrentGroup("group-a")
+    expect(() => connector.moveItemToGroup("shared", "group-b")).toThrow(/already exists/)
+    expect((await connector.getItem("shared"))?.data).toEqual({ scope: "a" })
+    connector.setCurrentGroup("group-b")
+    expect((await connector.getItem("shared"))?.data).toEqual({ scope: "b" })
+  })
+
+  it("moves an unassigned non-feature item into a group", async () => {
+    const unassignedSeed = seed([item("unassigned", "Unassigned")])
+    unassignedSeed.groupItems = { "group-a": [], "group-b": [] }
+    const connector = new MockConnector(unassignedSeed)
+
+    connector.moveItemToGroup("unassigned", "group-a")
+    connector.setCurrentGroup("group-a")
+
+    expect(await connector.getItem("unassigned")).toEqual(item("unassigned", "Unassigned"))
+    expect(connector.getItemGroupId("unassigned")).toBe("group-a")
+  })
+
+  it("keeps runtime-created and injected feature items global", async () => {
+    const connector = new MockConnector(seed())
+    connector.setCurrentGroup("group-a")
+    const created = await connector.createItem({
+      id: "feature-created",
+      type: "feature",
+      createdBy: "did:example:user",
+      data: { title: "Created" },
+    })
+    const injected: Item = {
+      id: "feature-injected",
+      type: "feature",
+      createdAt: CREATED_AT,
+      createdBy: "seed",
+      data: { title: "Injected" },
+    }
+    connector.injectSeedItems([injected], "group-a")
+
+    connector.setCurrentGroup("group-b")
+    expect(await connector.getItem("feature-created")).toEqual(created)
+    expect(await connector.getItem("feature-injected")).toEqual(injected)
+  })
+
+  it("reserves global feature IDs across space-local item scopes", async () => {
+    const connector = new MockConnector(seed())
+    connector.setCurrentGroup("group-a")
+    const local = await connector.createItem({
+      id: "reserved",
+      type: "note",
+      createdBy: "did:example:user",
+      data: { scope: "a" },
+    })
+
+    connector.setCurrentGroup("group-b")
+    await expect(connector.createItem({
+      id: "reserved",
+      type: "feature",
+      createdBy: "did:example:user",
+      data: {},
+    })).rejects.toThrow(/conflicts with another scope/)
+
+    const feature = await connector.createItem({
+      id: "global",
+      type: "feature",
+      createdBy: "did:example:user",
+      data: {},
+    })
+    await expect(connector.createItem({
+      id: "global",
+      type: "note",
+      createdBy: "did:example:user",
+      data: {},
+    })).rejects.toThrow(/conflicts with global feature/)
+
+    connector.setCurrentGroup("group-a")
+    expect(await connector.getItem("reserved")).toBe(local)
+    expect(await connector.getItem("global")).toBe(feature)
+    expect((await connector.getItems()).filter(({ id }) => id === "reserved")).toEqual([local])
+  })
+
+  it("avoids local IDs when allocating IDs for global features", async () => {
+    const connector = new MockConnector(seed([item("item-100", "local")]))
+    connector.setCurrentGroup("group-b")
+
+    const feature = await connector.createItem({
+      type: "feature",
+      createdBy: "did:example:user",
+      data: {},
+    })
+
+    expect(feature.id).toBe("item-101")
+  })
+
+  it("does not promote a duplicated space-local ID into the global feature scope", async () => {
+    const connector = new MockConnector(seed())
+    connector.injectSeedItems([item("shared", "a")], "group-a")
+    connector.injectSeedItems([item("shared", "b")], "group-b")
+    connector.setCurrentGroup("group-a")
+
+    await expect(connector.updateItem("shared", { type: "feature" }))
+      .rejects.toThrow(/conflicts with another scope/)
+    expect((await connector.getItem("shared"))?.type).toBe("note")
+  })
+
+  it("does not promote an unassigned ID that also exists in a space", async () => {
+    const connector = new MockConnector(seed())
+    const unassigned = await connector.createItem({
+      id: "shared",
+      type: "note",
+      createdBy: "did:example:user",
+      data: { scope: "unassigned" },
+    })
+    connector.setCurrentGroup("group-a")
+    const scoped = await connector.createItem({
+      id: "shared",
+      type: "note",
+      createdBy: "did:example:user",
+      data: { scope: "a" },
+    })
+
+    connector.setCurrentGroup(null)
+    await expect(connector.updateItem("shared", { type: "feature" }))
+      .rejects.toThrow(/conflicts with another scope/)
+    expect(await connector.getItem("shared")).toBe(unassigned)
+    connector.setCurrentGroup("group-a")
+    expect(await connector.getItem("shared")).toBe(scoped)
   })
 })
 
@@ -143,5 +288,18 @@ describe("MockConnector fixture injection", () => {
     connector.setCurrentGroup("group-a")
 
     expect(await connector.getItems()).toEqual([item("seed-a", "first")])
+  })
+
+  it("deduplicates fixture IDs independently in each space", async () => {
+    const connector = new MockConnector(seed())
+
+    connector.injectSeedItems([item("shared-seed", "a-first")], "group-a")
+    connector.injectSeedItems([item("shared-seed", "a-replacement")], "group-a")
+    connector.injectSeedItems([item("shared-seed", "b-first")], "group-b")
+
+    connector.setCurrentGroup("group-a")
+    expect(await connector.getItem("shared-seed")).toEqual(item("shared-seed", "a-first"))
+    connector.setCurrentGroup("group-b")
+    expect(await connector.getItem("shared-seed")).toEqual(item("shared-seed", "b-first"))
   })
 })
