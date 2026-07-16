@@ -607,10 +607,11 @@ const demoData = {
 async function createConnector(type: string): Promise<DataInterface> {
   if (type === "wot") {
     const { WotConnector } = await import("@real-life-stack/wot-connector")
+    // 0.3.0: vaultUrl entfernt (Connector nutzt kein Vault); Defaults auf die
+    // aktiven web-of-trust.de-Dienste (utopia-lab-Legacy ist abgeschaltet).
     const connector = new WotConnector({
-      relayUrl: import.meta.env.VITE_RELAY_URL ?? "wss://relay.utopia-lab.org",
-      profilesUrl: import.meta.env.VITE_PROFILE_SERVICE_URL ?? "https://profiles.utopia-lab.org",
-      vaultUrl: import.meta.env.VITE_VAULT_URL ?? "https://vault.utopia-lab.org",
+      relayUrl: import.meta.env.VITE_RELAY_URL ?? "wss://relay.web-of-trust.de",
+      profilesUrl: import.meta.env.VITE_PROFILE_SERVICE_URL ?? "https://profiles.web-of-trust.de",
     })
     await connector.init()
     return connector

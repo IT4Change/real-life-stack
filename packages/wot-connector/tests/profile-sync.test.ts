@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
-import type { MessageEnvelope, PublicProfile } from "@real-life/wot-core"
+import {
+  InMemoryGraphCacheStore,
+  InMemoryPublishStateStore,
+  OfflineFirstDiscoveryAdapter,
+  type MessageEnvelope,
+  type PublicProfile,
+} from "@real-life/wot-core"
 
 /**
  * Tests for the profile sync logic that the WoT Connector must implement:
@@ -165,6 +171,43 @@ async function syncContactProfiles(
 }
 
 // --- Tests ---
+
+describe("Offline-first profile publish", () => {
+  it("does not throw offline and retries the latest dirty profile", async () => {
+    const did = "did:key:alice"
+    const firstProfile: PublicProfile = {
+      did,
+      name: "Alice Offline",
+      avatar: "avatar-v1",
+      updatedAt: "2026-07-16T09:00:00.000Z",
+    }
+    const retryProfile: PublicProfile = {
+      ...firstProfile,
+      avatar: "avatar-v2",
+      updatedAt: "2026-07-16T09:01:00.000Z",
+    }
+    const publishProfile = vi.fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(undefined)
+    const inner = { publishProfile } as any
+    const publishState = new InMemoryPublishStateStore()
+    const discovery = new OfflineFirstDiscoveryAdapter(
+      inner,
+      publishState,
+      new InMemoryGraphCacheStore(),
+    )
+    const identity = {} as any
+
+    await expect(discovery.publishProfile(firstProfile, identity)).resolves.toBeUndefined()
+    expect(await publishState.getDirtyFields(did)).toContain("profile")
+
+    await discovery.syncPending(did, identity, async () => ({ profile: retryProfile }))
+
+    expect(publishProfile).toHaveBeenNthCalledWith(1, firstProfile, identity)
+    expect(publishProfile).toHaveBeenNthCalledWith(2, retryProfile, identity)
+    expect(await publishState.getDirtyFields(did)).not.toContain("profile")
+  })
+})
 
 describe("Profile Update Broadcast", () => {
   it("sends profile-update message to all contacts", async () => {

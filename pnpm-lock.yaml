@@ -546,11 +546,11 @@ importers:
         specifier: workspace:*
         version: link:../toolkit
       '@real-life/adapter-yjs':
-        specifier: npm:@web_of_trust/adapter-yjs@^0.1.2
-        version: '@web_of_trust/adapter-yjs@0.1.2(@web_of_trust/core@0.2.3(react@19.2.3))'
+        specifier: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.3/web_of_trust-adapter-yjs-0.1.3.tgz
+        version: '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.3/web_of_trust-adapter-yjs-0.1.3.tgz(@web_of_trust/core@0.3.0(react@19.2.3))'
       '@real-life/wot-core':
-        specifier: npm:@web_of_trust/core@^0.2.3
-        version: '@web_of_trust/core@0.2.3(react@19.2.3)'
+        specifier: npm:@web_of_trust/core@^0.3.0
+        version: '@web_of_trust/core@0.3.0(react@19.2.3)'
       react:
         specifier: ^18 || ^19
         version: 19.2.3
@@ -561,6 +561,9 @@ importers:
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.7
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@19.2.3)
@@ -570,6 +573,9 @@ importers:
       vitest:
         specifier: ^4.1.0
         version: 4.1.0(@types/node@22.19.15)(vite@6.4.1(@types/node@22.19.15)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0))
+      yjs:
+        specifier: ^13.6.30
+        version: 13.6.31
 
 packages:
 
@@ -2453,13 +2459,14 @@ packages:
   '@vue/shared@3.5.26':
     resolution: {integrity: sha512-7Z6/y3uFI5PRoKeorTOSXKcDj0MSasfNNltcslbFrPpcw6aXRUALq4IfJlaTRspiWIUOEZbrpM+iQGmCOiWe4A==}
 
-  '@web_of_trust/adapter-yjs@0.1.2':
-    resolution: {integrity: sha512-m5kfKa4zF991dfW0DopWPBF1zUo/zEseiYMN5CmqYB21lRKPK/w/zsOl916s2OO/ZtWLvJawqRwAvaaDtQUCTQ==}
+  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.3/web_of_trust-adapter-yjs-0.1.3.tgz':
+    resolution: {tarball: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.3/web_of_trust-adapter-yjs-0.1.3.tgz}
+    version: 0.1.3
     peerDependencies:
-      '@web_of_trust/core': workspace:*
+      '@web_of_trust/core': 0.3.0
 
-  '@web_of_trust/core@0.2.3':
-    resolution: {integrity: sha512-ufBomrkAKDZGvsqLf13yuPMNt3ewP4IuIhDZD+WmABtWUhGj1z0wzGdM5pEGhHl8yjJXLMNHwIno9vjjvlHl5w==}
+  '@web_of_trust/core@0.3.0':
+    resolution: {integrity: sha512-M7Fx510UJxYXSvAdtUlqNNXqQFIchibyVEDZ4skKedCyJh0B6E475b+FmUAYe9EBz89MszA/i9scYeC8Js9jng==}
     peerDependencies:
       react: ^19.0.0
     peerDependenciesMeta:
@@ -2914,6 +2921,10 @@ packages:
 
   extend@3.0.2:
     resolution: {integrity: sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g==}
+
+  fake-indexeddb@6.2.5:
+    resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
+    engines: {node: '>=18'}
 
   fast-decode-uri-component@1.0.1:
     resolution: {integrity: sha512-WKgKWg5eUxvRZGwW8FvfbaH7AXSh2cL+3j5fMGzUMCxWBJ3dV3a7Wz8y2f/uQ0e3B6WmodD3oS54jTQ9HVTIIg==}
@@ -6569,13 +6580,13 @@ snapshots:
 
   '@vue/shared@3.5.26': {}
 
-  '@web_of_trust/adapter-yjs@0.1.2(@web_of_trust/core@0.2.3(react@19.2.3))':
+  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.3/web_of_trust-adapter-yjs-0.1.3.tgz(@web_of_trust/core@0.3.0(react@19.2.3))':
     dependencies:
-      '@web_of_trust/core': 0.2.3(react@19.2.3)
+      '@web_of_trust/core': 0.3.0(react@19.2.3)
       y-protocols: 1.0.7(yjs@13.6.31)
       yjs: 13.6.31
 
-  '@web_of_trust/core@0.2.3(react@19.2.3)':
+  '@web_of_trust/core@0.3.0(react@19.2.3)':
     dependencies:
       '@noble/ed25519': 3.1.0
       '@scure/base': 2.2.0
@@ -6991,6 +7002,8 @@ snapshots:
   exsolve@1.0.8: {}
 
   extend@3.0.2: {}
+
+  fake-indexeddb@6.2.5: {}
 
   fast-decode-uri-component@1.0.1: {}
 

@@ -1,5 +1,14 @@
 export { WotConnector } from "./wot-connector.js"
-export type { WotConnectorConfig, RlsSpaceDoc, SerializedItem } from "./types.js"
+export type {
+  WotConnectorConfig,
+  WotConnectorRuntimeOverrides,
+  WotSyncState,
+  RlsSpaceDoc,
+  SerializedItem,
+} from "./types.js"
+export { LocalOutboxStore } from "./local-outbox-store.js"
+export { createOutboxMessagingRuntime } from "./messaging-runtime.js"
+export type { OutboxMessagingRuntime } from "./messaging-runtime.js"
 export { serializeItem, deserializeItem } from "./serialization.js"
 export { CrossGroupIndex } from "./CrossGroupIndex.js"
 export type { CrossGroupEntry, CrossGroupIndexOptions } from "./CrossGroupIndex.js"

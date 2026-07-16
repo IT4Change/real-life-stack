@@ -15,7 +15,7 @@ import {
 import type { SpaceInfo } from "@real-life/wot-core"
 
 import { WotConnector } from "../src/wot-connector.js"
-import type { RlsSpaceDoc, SerializedItem } from "../src/types.js"
+import type { RlsSpaceDoc, SerializedItem, WotSyncState } from "../src/types.js"
 
 const yjsMockState = vi.hoisted(() => ({
   personalDoc: {} as any,
@@ -56,6 +56,7 @@ vi.mock("@real-life/wot-core", () => {
     GroupKeyService: EmptyAdapter,
     HttpDiscoveryAdapter: EmptyAdapter,
     OfflineFirstDiscoveryAdapter: EmptyAdapter,
+    GraphCacheService: EmptyAdapter,
     InMemoryPublishStateStore: EmptyAdapter,
     InMemoryGraphCacheStore: EmptyAdapter,
     VerificationWorkflow: EmptyAdapter,
@@ -73,6 +74,14 @@ vi.mock("@real-life/wot-core", () => {
 
 vi.mock("@real-life/wot-core/protocol", () => ({
   x25519MultibaseToPublicKeyBytes: vi.fn(() => new Uint8Array()),
+  // Verhaltensgleich zum Core: Marker wird NUR aus dem VC-Typ-Array abgeleitet.
+  isVerificationAttestation: (payload: { type?: unknown }) =>
+    Array.isArray(payload?.type) && payload.type.includes("WotVerification"),
+}))
+
+vi.mock("../src/identity-persistence.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../src/identity-persistence.js")>(),
+  wipeIdentityPersistence: vi.fn(async () => {}),
 }))
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -111,6 +120,24 @@ describe("WotConnector.logout() - auth-scoped observable reset", () => {
   })
 })
 
+describe("WotConnector bootstrap - delivery receipt ordering", () => {
+  const bootstrap = sliceMethod(
+    readConnectorSource(),
+    "private async bootstrapAdapters",
+    "private async setAuthAuthenticated",
+  )
+
+  it("makes PersonalDoc storage writable before connect starts the automatic outbox flush", () => {
+    const personalDocInit = bootstrap.indexOf("await initNamespacedYjsPersonalDoc(")
+    const storageInit = bootstrap.indexOf("this.storage = new YjsStorageAdapter(did)")
+    const connect = bootstrap.indexOf("await this.outboxAdapter.connect(did)")
+
+    expect(personalDocInit).toBeGreaterThan(-1)
+    expect(storageInit).toBeGreaterThan(personalDocInit)
+    expect(connect).toBeGreaterThan(storageInit)
+  })
+})
+
 describe("WotConnector.setConfirmationAccepted() - metadata-only refresh", () => {
   const source = readConnectorSource()
   const setConfirmationAccepted = sliceMethod(
@@ -123,8 +150,8 @@ describe("WotConnector.setConfirmationAccepted() - metadata-only refresh", () =>
     expect(setConfirmationAccepted).toMatch(/syncConfirmationsFromPersonalDoc\(\)/)
   })
 
-  it("still mutates attestationMetadata.accepted", () => {
-    expect(setConfirmationAccepted).toMatch(/attestationMetadata\[id\]\.accepted\s*=\s*accepted/)
+  it("delegates acceptance metadata to the storage adapter", () => {
+    expect(setConfirmationAccepted).toMatch(/storage\.setAttestationAccepted\(id, accepted\)/)
   })
 })
 
@@ -150,10 +177,10 @@ describe("WotConnector verification boundary - source guards", () => {
     "private async checkMutualVerification",
     "// ==================== Internal: Confirmation sync",
   )
-  const receiveVerificationBranch = sliceMethod(
+  const incomingAttestationMethod = sliceMethod(
     source,
-    'if (envelope.type === "verification"',
-    'if (envelope.type === "space-invite"',
+    "private async handleIncomingAttestation",
+    "private async sendReceiptAck",
   )
 
   it("uses schema-only verification predicates", () => {
@@ -163,12 +190,30 @@ describe("WotConnector verification boundary - source guards", () => {
     expect(mutualMethod).not.toMatch(/tags\?\.includes\("verification"\)/)
   })
 
-  it("refreshes confirmations before the receive path checks for mutual verification", () => {
-    const syncIndex = receiveVerificationBranch.indexOf("this.syncConfirmationsFromPersonalDoc()")
-    const mutualIndex = receiveVerificationBranch.indexOf("this.checkMutualVerification(verification.from)")
+  it("accepts verification attestations only through the signed VC marker and workflow gate", () => {
+    expect(incomingAttestationMethod).toMatch(/attestation\.isVerification === true/)
+    expect(incomingAttestationMethod).toMatch(/acceptVerifiedVerificationAttestation/)
+    expect(incomingAttestationMethod).toMatch(/acceptVerifiedCounterVerification/)
+    expect(incomingAttestationMethod).not.toMatch(/tags\?\.includes\("verification"\)/)
+  })
+
+  it("binds the verified VC to the authenticated sender and local subject", () => {
+    expect(incomingAttestationMethod).toMatch(/payload\.iss !== senderDid/)
+    expect(incomingAttestationMethod).toMatch(/attestation\.to !== this\.identity\.getDid\(\)/)
+  })
+
+  it("refreshes the attestation projection before checking mutual verification", () => {
+    const syncIndex = incomingAttestationMethod.indexOf("this.syncConfirmationsFromPersonalDoc()")
+    const mutualIndex = incomingAttestationMethod.indexOf("this.checkMutualVerification(attestation.from)")
     expect(syncIndex).toBeGreaterThan(-1)
     expect(mutualIndex).toBeGreaterThan(-1)
     expect(syncIndex).toBeLessThan(mutualIndex)
+  })
+
+  it("projects only watchAllAttestations and never the retired verification collection", () => {
+    expect(source).toMatch(/watchAllAttestations\(\)/)
+    expect(source).not.toMatch(/\.watchAllVerifications\(\)/)
+    expect(source).not.toMatch(/envelope\.type === "verification"/)
   })
 })
 
@@ -178,6 +223,7 @@ function createConnectorObservables() {
   const confirmationsObs = createObservable<ConfirmationView[]>([])
   const relayStateObs = createObservable<RelayState>("disconnected")
   const outboxCountObs = createObservable<number>(0)
+  const syncStateObs = createObservable<WotSyncState>({ logPending: 0, outboxPending: 0 })
   const currentGroupObs = createObservable<Group | null>(null)
   const groupsObs = createObservable<Group[]>([])
   const currentUserObs = createObservable<User | null>(null)
@@ -188,6 +234,7 @@ function createConnectorObservables() {
     confirmationsObs,
     relayStateObs,
     outboxCountObs,
+    syncStateObs,
     currentGroupObs,
     groupsObs,
     currentUserObs,
@@ -227,6 +274,7 @@ function createFakeConnectorForLogout() {
   obs.groupsObs.set([{ id: "g1", name: "Crew" }])
 
   return {
+    bufferedEvents: [] as unknown[],
     ...obs,
     closeCurrentHandle: vi.fn(),
     crossGroupUnsub: vi.fn(),
@@ -236,11 +284,16 @@ function createFakeConnectorForLogout() {
     personalDocUnsub: vi.fn(),
     replication: { stop: vi.fn(async () => {}) },
     outboxAdapter: { disconnect: vi.fn(async () => {}) },
-    wsAdapter: { disconnect: vi.fn(async () => {}) },
+    transportAdapter: { disconnect: vi.fn(async () => {}) },
     contactsUnsub: vi.fn(),
-    verificationsUnsub: vi.fn(),
     attestationsUnsub: vi.fn(),
     profileUnsub: vi.fn(),
+    outboxCountUnsub: vi.fn(),
+    inboxAttestationUnsub: vi.fn(),
+    inboxReceiptUnsub: vi.fn(),
+    deliveryReceiptUnsub: vi.fn(),
+    inboxReception: { stop: vi.fn() },
+    stopContactProfileRefresh: vi.fn(),
     storage: { marker: "storage" },
     currentGroupId: "g1",
     currentGroupObservable: obs.currentGroupObs,
@@ -248,7 +301,11 @@ function createFakeConnectorForLogout() {
     groupsObservable: obs.groupsObs,
     profileObs: createObservable<User | null>(user),
     syncPendingObs: createObservable<boolean>(true),
-    identity: { deleteStoredIdentity: vi.fn(async () => {}) },
+    identity: {
+      getDid: vi.fn(() => "did:key:alice"),
+      deleteStoredIdentity: vi.fn(async () => {}),
+    },
+    closeRuntimeStores: vi.fn(async () => {}),
     notifyAllObservers: vi.fn(),
   }
 }
@@ -261,7 +318,6 @@ describe("WotConnector.logout() - real method regression", () => {
   it("clears auth-scoped observables when the real logout method runs", async () => {
     const fake = createFakeConnectorForLogout()
     const contactsUnsub = fake.contactsUnsub
-    const verificationsUnsub = fake.verificationsUnsub
     const attestationsUnsub = fake.attestationsUnsub
     const profileUnsub = fake.profileUnsub
 
@@ -273,12 +329,12 @@ describe("WotConnector.logout() - real method regression", () => {
     expect(fake.relayStateObs.current).toBe("disconnected")
     expect(fake.profileObs.current).toBeNull()
     expect(fake.syncPendingObs.current).toBe(false)
+    expect(fake.syncStateObs.current).toEqual({ logPending: 0, outboxPending: 0 })
     expect(fake.currentGroupObservable.current).toBeNull()
     expect(fake.groupsObservable.current).toEqual([])
     expect(fake.currentUserObs.current).toBeNull()
     expect(fake.authStateObs.current).toEqual({ status: "unauthenticated" })
     expect(contactsUnsub).toHaveBeenCalled()
-    expect(verificationsUnsub).toHaveBeenCalled()
     expect(attestationsUnsub).toHaveBeenCalled()
     expect(profileUnsub).toHaveBeenCalled()
     expect(fake.storage).toBeNull()
@@ -286,35 +342,341 @@ describe("WotConnector.logout() - real method regression", () => {
 })
 
 describe("WotConnector.setConfirmationAccepted() - real method regression", () => {
-  beforeEach(() => {
-    yjsMockState.personalDoc = {
-      attestationMetadata: {
-        "att-1": {
-          attestationId: "att-1",
-          accepted: false,
-          acceptedAt: null,
-        },
-      },
-    }
-  })
-
   it("refreshes projections after mutating attestation metadata", async () => {
+    const setAttestationAccepted = vi.fn(async () => {})
     const fake = {
+      storage: { setAttestationAccepted },
       syncConfirmationsFromPersonalDoc: vi.fn(),
     }
 
     await WotConnector.prototype.setConfirmationAccepted.call(fake as any, "att-1", true)
 
-    expect(yjsMockState.personalDoc.attestationMetadata["att-1"].accepted).toBe(true)
-    expect(yjsMockState.personalDoc.attestationMetadata["att-1"].acceptedAt).toEqual(expect.any(String))
+    expect(setAttestationAccepted).toHaveBeenCalledWith("att-1", true)
     expect(fake.syncConfirmationsFromPersonalDoc).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("WotConnector profile publish and contact refresh", () => {
+  beforeEach(() => {
+    yjsMockState.personalDoc = {
+      profile: {
+        did: "did:key:alice",
+        name: "Alice",
+        bio: null,
+        avatar: null,
+        createdAt: "2026-07-16T08:00:00.000Z",
+        updatedAt: "2026-07-16T08:00:00.000Z",
+      },
+      contacts: {},
+    }
+  })
+
+  it("publishes the updated profile through discovery before resolving updateProfile", async () => {
+    const publishProfile = vi.fn(async () => {})
+    const broadcastProfileUpdate = vi.fn(async () => {})
+    const fake = {
+      identity: { getDid: () => "did:key:alice" },
+      discovery: { publishProfile },
+      broadcastProfileUpdate,
+      currentUserObs: createObservable<User | null>({ id: "did:key:alice", displayName: "Alice" }),
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    await WotConnector.prototype.updateProfile.call(fake as any, {
+      name: "Alice Neu",
+      avatar: "data:image/png;base64,new-avatar",
+    })
+
+    expect(publishProfile).toHaveBeenCalledTimes(1)
+    expect(publishProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        did: "did:key:alice",
+        name: "Alice Neu",
+        avatar: "data:image/png;base64,new-avatar",
+      }),
+      fake.identity,
+    )
+    expect(broadcastProfileUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it("refreshes summaries and projects a changed avatar into contacts and users", async () => {
+    const oldContact = {
+      did: "did:key:bob",
+      publicKey: "key-bob",
+      name: "Bob Alt",
+      avatar: "old-avatar",
+      bio: "Alt",
+      status: "active" as const,
+      createdAt: "2026-07-15T08:00:00.000Z",
+      updatedAt: "2026-07-15T08:00:00.000Z",
+    }
+    yjsMockState.personalDoc.contacts[oldContact.did] = { ...oldContact }
+
+    const contactsObs = createObservable<ContactInfo[]>([{
+      id: oldContact.did,
+      name: oldContact.name,
+      avatar: oldContact.avatar,
+      bio: oldContact.bio,
+      status: oldContact.status,
+      createdAt: oldContact.createdAt,
+      updatedAt: oldContact.updatedAt,
+    }])
+    const updateContact = vi.fn(async (contact: typeof oldContact) => {
+      yjsMockState.personalDoc.contacts[contact.did] = { ...contact }
+      contactsObs.set([{
+        id: contact.did,
+        name: contact.name,
+        avatar: contact.avatar,
+        bio: contact.bio,
+        status: contact.status,
+        createdAt: contact.createdAt,
+        updatedAt: contact.updatedAt,
+      }])
+    })
+    const refreshContactSummaries = vi.fn(async () => {})
+    const cacheEntry = vi.fn(async () => {})
+    const fake = {
+      storage: {
+        getContacts: vi.fn(async () => [oldContact]),
+        updateContact,
+      },
+      graphCacheService: { refreshContactSummaries },
+      graphCacheStore: {
+        getEntries: vi.fn(async () => new Map([[oldContact.did, {
+          did: oldContact.did,
+          name: "Bob Neu",
+          verificationCount: 1,
+          attestationCount: 0,
+          fetchedAt: "2026-07-16T09:00:00.000Z",
+        }]])),
+        getCachedAttestations: vi.fn(async () => []),
+        getCachedVerifications: vi.fn(async () => []),
+        cacheEntry,
+      },
+      discovery: {
+        resolveProfile: vi.fn(async () => ({
+          profile: {
+            did: oldContact.did,
+            name: "Bob Neu",
+            avatar: "new-avatar",
+            bio: "Neu",
+            updatedAt: "2026-07-16T09:00:00.000Z",
+          },
+          didDocument: null,
+          fromCache: false,
+        })),
+      },
+      identity: { getDid: () => "did:key:alice" },
+      contactsObs,
+      contactProfileRefreshGeneration: 0,
+      contactProfileLastFullResolveAt: new Map<string, number>(),
+    }
+
+    await (WotConnector.prototype as any).refreshContactProfiles.call(fake)
+
+    expect(refreshContactSummaries).toHaveBeenCalledWith([oldContact.did])
+    expect(cacheEntry).toHaveBeenCalledTimes(1)
+    expect(updateContact).toHaveBeenCalledWith(expect.objectContaining({
+      did: oldContact.did,
+      name: "Bob Neu",
+      avatar: "new-avatar",
+      bio: "Neu",
+    }))
+    expect(contactsObs.current[0].avatar).toBe("new-avatar")
+
+    const user = await WotConnector.prototype.getUser.call(fake as any, oldContact.did)
+    expect(user).toEqual({
+      id: oldContact.did,
+      displayName: "Bob Neu",
+      avatarUrl: "new-avatar",
+    })
+  })
+
+  it("does not resolve an unchanged profile again within five minutes", async () => {
+    const contact = {
+      did: "did:key:bob",
+      publicKey: "key-bob",
+      name: "Bob",
+      avatar: "avatar",
+      bio: "Bio",
+      status: "active" as const,
+      createdAt: "2026-07-15T08:00:00.000Z",
+      updatedAt: "2026-07-15T08:00:00.000Z",
+    }
+    const refreshContactSummaries = vi.fn(async () => {})
+    const resolveProfile = vi.fn(async () => ({
+      profile: {
+        did: contact.did,
+        name: contact.name,
+        avatar: contact.avatar,
+        bio: contact.bio,
+        updatedAt: contact.updatedAt,
+      },
+      didDocument: null,
+      fromCache: false,
+    }))
+    const fake = {
+      storage: {
+        getContacts: vi.fn(async () => [contact]),
+        updateContact: vi.fn(async () => {}),
+      },
+      graphCacheService: { refreshContactSummaries },
+      graphCacheStore: {
+        getEntries: vi.fn(async () => new Map([[contact.did, {
+          did: contact.did,
+          name: contact.name,
+          verificationCount: 0,
+          attestationCount: 0,
+          fetchedAt: contact.updatedAt,
+        }]])),
+        getCachedAttestations: vi.fn(async () => []),
+        getCachedVerifications: vi.fn(async () => []),
+        cacheEntry: vi.fn(async () => {}),
+      },
+      discovery: { resolveProfile },
+      contactProfileRefreshGeneration: 0,
+      contactProfileLastFullResolveAt: new Map<string, number>(),
+    }
+
+    await (WotConnector.prototype as any).refreshContactProfiles.call(fake)
+    expect(resolveProfile).toHaveBeenCalledTimes(1)
+
+    resolveProfile.mockClear()
+    await (WotConnector.prototype as any).refreshContactProfiles.call(fake)
+
+    expect(refreshContactSummaries).toHaveBeenCalledTimes(2)
+    expect(resolveProfile).toHaveBeenCalledTimes(0)
+  })
+})
+
+describe("WotConnector Yjs membership routing", () => {
+  const source = readConnectorSource()
+  const legacyHandler = sliceMethod(
+    source,
+    "private async handleIncomingMessage",
+    "private async handleIncomingAttestation",
+  )
+
+  it("uses addMember so the replication adapter owns outgoing ECIES invites", async () => {
+    const addMember = vi.fn(async () => {})
+    const notifyMemberObservers = vi.fn(async () => {})
+    const fake = {
+      replication: { addMember },
+      discovery: {
+        resolveProfile: vi.fn(async () => ({
+          profile: { did: "did:key:bob", name: "Bob" },
+          didDocument: {
+            keyAgreement: [{ publicKeyMultibase: "z6LSfakeBobKey" }],
+          },
+        })),
+      },
+      notifyMemberObservers,
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    await WotConnector.prototype.inviteMember.call(fake as any, "space-1", "did:key:bob")
+
+    expect(addMember).toHaveBeenCalledWith("space-1", "did:key:bob", expect.any(Uint8Array))
+    expect(notifyMemberObservers).toHaveBeenCalledWith("space-1")
+  })
+
+  it("projects an applied onSpaceInvite event into groups and the RLS invite flow", async () => {
+    const space: SpaceInfo = {
+      id: "space-1",
+      type: "shared",
+      name: "Garten",
+      image: "garden.png",
+      appTag: "rls",
+      members: ["did:key:alice", "did:key:bob"],
+      createdAt: "2026-07-16T09:00:00.000Z",
+    }
+    const groupsObservable = createObservable<Group[]>([])
+    const emitted: any[] = []
+    const fake = {
+      replication: {
+        getSpaces: vi.fn(async () => [space]),
+        watchSpaces: vi.fn(() => ({ getValue: () => [space] })),
+      },
+      groupsCache: [] as Group[],
+      groupsObservable,
+      privateSpaceId: null,
+      currentGroupId: null,
+      currentGroupObservable: createObservable<Group | null>(null),
+      memberObservables: new Map(),
+      queuePrivateSpaceReconcile: vi.fn(async () => {}),
+      notifyAllObservers: vi.fn(),
+      contactsObs: createObservable<ContactInfo[]>([{
+        id: "did:key:alice",
+        name: "Alice",
+        status: "active",
+        createdAt: "2026-07-15T08:00:00.000Z",
+        updatedAt: "2026-07-15T08:00:00.000Z",
+      }]),
+      graphCacheStore: { getEntry: vi.fn(async () => null) },
+      discovery: { resolveProfile: vi.fn() },
+      eventCallbacks: new Set([(event: unknown) => emitted.push(event)]),
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    await (WotConnector.prototype as any).handleIncomingSpaceInvite.call(fake, {
+      spaceId: space.id,
+      spaceName: space.name,
+      fromDid: "did:key:alice",
+      inviteMessageId: "invite-1",
+    })
+
+    expect(groupsObservable.current).toEqual([expect.objectContaining({
+      id: space.id,
+      name: "Garten",
+      data: expect.objectContaining({ image: "garden.png" }),
+    })])
+    expect(emitted).toEqual([expect.objectContaining({
+      type: "space-invite",
+      fromId: "did:key:alice",
+      fromName: "Alice",
+      spaceId: space.id,
+      spaceName: "Garten",
+      spaceImage: "garden.png",
+    })])
+  })
+
+  it("subscribes to onSpaceInvite and has no Old-World space-invite envelope handler", () => {
+    expect(source).toMatch(/replication\.onSpaceInvite\(/)
+    expect(legacyHandler).not.toMatch(/envelope\.type === "space-invite"/)
+  })
+})
+
+describe("WotConnector attestation receipt - authenticated sender binding", () => {
+  it("acknowledges only receipts signed by the attestation subject", async () => {
+    const setDeliveryStatus = vi.fn(async () => {})
+    const clearDeliveryCorrelationsForAttestation = vi.fn(async () => {})
+    const fake = {
+      storage: {
+        getAttestation: vi.fn(async () => ({
+          id: "att-1",
+          from: "did:key:alice",
+          to: "did:key:bob",
+        })),
+      },
+      setDeliveryStatus,
+      flushPersonalDocDurably: vi.fn(async () => {}),
+      clearDeliveryCorrelationsForAttestation,
+    }
+    const receiveReceipt = (WotConnector.prototype as any).handleIncomingAttestationReceipt
+
+    await receiveReceipt.call(fake, "att-1", "did:key:mallory")
+    expect(setDeliveryStatus).not.toHaveBeenCalled()
+
+    await receiveReceipt.call(fake, "att-1", "did:key:bob")
+    expect(setDeliveryStatus).toHaveBeenCalledWith("att-1", "acknowledged")
+    expect(clearDeliveryCorrelationsForAttestation).toHaveBeenCalledWith("att-1")
   })
 })
 
 describe("WotConnector.deleteStoredIdentity() - real method regression", () => {
   // Guarantees the biometric-setup rollback: the stored seed is removed directly,
   // NOT behind logout()'s awaited adapter teardown (replication/ws/outbox disconnect,
-  // deleteYjsPersonalDocDB) — any of which could reject and skip the deletion.
+  // DID-scoped persistence wipe) — any of which could reject and skip the deletion.
   it("deletes the stored identity with no adapters present (teardown-independent)", async () => {
     const del = vi.fn(async () => {})
     // Deliberately only an identity — no replication/ws/outbox adapters. If the
@@ -544,5 +906,328 @@ describe("WotConnector private space reconciliation", () => {
 
     expect(withoutExisting.privateSpaceId).toBe("created-private")
     expect(withoutExisting.replication.createSpace).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("WotConnector loop-review #143: Teardown-Resilienz + Delivery-Monotonie", () => {
+  const source = readConnectorSource()
+
+  it("logout guards every teardown step; critical wipe/seed failures surface AFTER the auth reset", () => {
+    const logout = sliceMethod(source, "override async logout", "async updateProfile")
+    expect(logout).toMatch(/guarded\("replication\.stop", false/)
+    expect(logout).toMatch(/guarded\("runtimeStores\.close", false/)
+    expect(logout).toMatch(/guarded\("persistence\.wipe", true/)
+    expect(logout).toMatch(/guarded\("seed\.delete", true/)
+    // UI wird IMMER ausgeloggt (Reset + notify), erst danach wird der
+    // gesammelte kritische Fehler geworfen — kein Green-Wash, kein hängender Login.
+    const authResetIdx = logout.indexOf('this.authStateObs.set({ status: "unauthenticated" })')
+    const notifyIdx = logout.indexOf("this.notifyAllObservers()")
+    const throwIdx = logout.indexOf("logout: lokale Daten wurden nicht vollständig entfernt")
+    expect(authResetIdx).toBeGreaterThan(-1)
+    expect(notifyIdx).toBeGreaterThan(authResetIdx)
+    expect(throwIdx).toBeGreaterThan(notifyIdx)
+  })
+
+  it("wipeIdentityPersistence attempts EVERY database and reports failures at the end", () => {
+    const persistenceSource = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), "../src/identity-persistence.ts"),
+      "utf8",
+    )
+    const wipe = persistenceSource.slice(
+      persistenceSource.indexOf("export async function wipeIdentityPersistence"),
+      persistenceSource.indexOf("export async function deleteLegacyIdentityDatabases"),
+    )
+    expect(wipe).toMatch(/failures\.push\(error\)/)
+    expect(wipe).toMatch(/deleteLegacyIdentityDatabases\(\)/)
+    expect(wipe).toMatch(/wipeIdentityPersistence: .*nicht gelöscht/)
+    // Legacy-Wipe läuft VOR dem Fehler-Throw (wird nie übersprungen)
+    expect(wipe.indexOf("deleteLegacyIdentityDatabases()")).toBeLessThan(wipe.indexOf("nicht gelöscht"))
+  })
+
+  it("records a durable pending-save after the accept gate and never heals via consumed gates", () => {
+    const method = sliceMethod(source, "private async handleIncomingAttestation", "private async sendReceiptAck")
+    // KEINE Redelivery-Heilung über konsumierte Gates: die würde anders
+    // signierte VCs Dritter durchlassen (Loop-Review-Finding, Eve-Fall).
+    expect(method).not.toMatch(/nonce-consumed/)
+    expect(method).not.toMatch(/lostWriteReplay/)
+    // Stattdessen: Pending-Save NACH dem Accept, saved-Markierung NACH dem Save.
+    // Der Record wird erst bei der UI-Übernahme (deliverVerificationAction)
+    // geräumt — Vertrag #147: Aktion bleibt durabel bis zur Übernahme.
+    const acceptIdx = method.indexOf("acceptedInitialVerification = decision.decision")
+    const recordIdx = method.indexOf("this.recordPendingVerificationSave(attestation.id, vcJws, senderDid)")
+    const saveIdx = method.indexOf("await this.storage.saveAttestation(attestation)")
+    const markIdx = method.indexOf("this.markPendingVerificationSaved(attestation.id)")
+    expect(acceptIdx).toBeGreaterThan(-1)
+    expect(recordIdx).toBeGreaterThan(acceptIdx)
+    expect(saveIdx).toBeGreaterThan(recordIdx)
+    expect(markIdx).toBeGreaterThan(saveIdx)
+    expect(method).not.toMatch(/this\.clearPendingVerificationSave/)
+  })
+
+  it("drains pending verification saves with full re-verification and binding checks", async () => {
+    const localValues = new Map<string, string>()
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      writable: true,
+      value: {
+        getItem: (k: string) => localValues.get(k) ?? null,
+        setItem: (k: string, v: string) => localValues.set(k, v),
+        removeItem: (k: string) => localValues.delete(k),
+      },
+    })
+    const did = "did:key:me"
+    localValues.set(
+      `rls-wot-pending-verification-save:${did}`,
+      JSON.stringify({ "att-lost": { vcJws: "h.p.s", senderDid: "did:key:bob" } }),
+    )
+    const saveAttestation = vi.fn(async () => {})
+    const fake = Object.assign(Object.create(WotConnector.prototype), {
+      identity: { getDid: () => did },
+      storage: { getAttestation: vi.fn(async () => null), saveAttestation },
+      attestationWorkflow: {
+        verifyAttestationVcJws: vi.fn(async () => ({
+          jti: "att-lost",
+          iss: "did:key:bob",
+          issuer: "did:key:bob",
+          validFrom: new Date().toISOString(),
+          type: ["VerifiableCredential", "WotVerification"],
+          credentialSubject: { id: did, claim: "in-person verifiziert" },
+        })),
+      },
+      syncConfirmationsFromPersonalDoc: vi.fn(),
+      sendReceiptAck: vi.fn(async () => {}),
+      checkMutualVerification: vi.fn(async () => {}),
+      emitEvent: vi.fn(),
+      eventCallbacks: new Set([() => {}]), // Listener vorhanden → Direktlieferung
+      bufferedEvents: [],
+      contactsObs: { current: [] },
+      discovery: { resolveProfile: vi.fn(async () => ({ profile: { name: "Bob" } })) },
+    })
+    const drain = (WotConnector.prototype as any).drainPendingVerificationSaves
+
+    // Happy-Drain: Record vorhanden, VC re-verifiziert + Bindung passt → Save + Clear
+    // + FLOW-Reproduktion: initiale Verifikation (kein inResponseTo) muss den
+    // incoming-verification-Dialog emittieren (counterVerify-Angebot, #147).
+    await drain.call(fake)
+    expect(saveAttestation).toHaveBeenCalledTimes(1)
+    expect(saveAttestation.mock.calls[0][0]).toMatchObject({ id: "att-lost", from: "did:key:bob", to: did })
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false)
+    expect(fake.syncConfirmationsFromPersonalDoc).toHaveBeenCalled()
+    expect(fake.emitEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "incoming-verification", fromId: "did:key:bob" }))
+    expect(fake.checkMutualVerification).toHaveBeenCalledWith("did:key:bob")
+    expect(fake.sendReceiptAck).toHaveBeenCalled()
+
+    // Fremde/nicht-bindende VC (Eve): Record wird abgeräumt, aber NICHT gespeichert.
+    localValues.set(
+      `rls-wot-pending-verification-save:${did}`,
+      JSON.stringify({ "att-eve": { vcJws: "h.p.s", senderDid: "did:key:eve" } }),
+    )
+    saveAttestation.mockClear()
+    await drain.call(fake) // gemockte VC ist von bob, Record behauptet eve → Bindung schlägt fehl
+    expect(saveAttestation).not.toHaveBeenCalled()
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false)
+  })
+
+  it("a late failed receipt cannot degrade an already delivered status", () => {
+    const method = sliceMethod(source, "private async setDeliveryStatus", "private async checkMutualVerification")
+    expect(method).toMatch(/next === "failed" && current === "delivered"/)
+  })
+})
+
+describe("Vertrag #147: eingehende Verifikation als durable Aktion bis zur UI-Übernahme", () => {
+  it("Accept → Save-Fehler → Neustart → init ohne Listener → Listener: genau einmal geliefert, counterVerify möglich", async () => {
+    const localValues = new Map<string, string>()
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      writable: true,
+      value: {
+        getItem: (k: string) => localValues.get(k) ?? null,
+        setItem: (k: string, v: string) => localValues.set(k, v),
+        removeItem: (k: string) => localValues.delete(k),
+      },
+    })
+    const did = "did:key:me"
+    const vcJws = "h.p.s"
+    const payload = {
+      jti: "att-1",
+      iss: "did:key:bob",
+      issuer: "did:key:bob",
+      validFrom: new Date().toISOString(),
+      type: ["VerifiableCredential", "WotVerification"],
+      credentialSubject: { id: did, claim: "in-person verifiziert" },
+    }
+    const baseStubs = () => ({
+      identity: { getDid: () => did },
+      attestationWorkflow: { verifyAttestationVcJws: vi.fn(async () => payload) },
+      syncConfirmationsFromPersonalDoc: vi.fn(),
+      sendReceiptAck: vi.fn(async () => {}),
+      checkMutualVerification: vi.fn(async () => {}),
+      contactsObs: { current: [] },
+      discovery: { resolveProfile: vi.fn(async () => ({ profile: { name: "Bob" } })) },
+      eventCallbacks: new Set<(e: unknown) => void>(),
+      bufferedEvents: [] as unknown[],
+    })
+
+    // Session 1: Verifikation akzeptiert, erster Save scheitert.
+    const session1 = Object.assign(Object.create(WotConnector.prototype), {
+      ...baseStubs(),
+      storage: {
+        getAttestation: vi.fn(async () => null),
+        saveAttestation: vi.fn(async () => { throw new Error("disk full") }),
+      },
+      verificationWorkflow: {
+        acceptVerifiedVerificationAttestation: vi.fn(async () => ({ decision: "accept-in-person" })),
+      },
+    })
+    await expect(
+      (WotConnector.prototype as any).handleIncomingAttestation.call(session1, vcJws, "did:key:bob"),
+    ).rejects.toThrow("disk full")
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(true)
+
+    // Session 2 (Neustart, frische Instanz über derselben durablen Persistenz):
+    // init-Drain OHNE Listener — Daten werden gerettet, Aktion bleibt offen.
+    const saveOk = vi.fn(async () => {})
+    const session2 = Object.assign(Object.create(WotConnector.prototype), {
+      ...baseStubs(),
+      storage: { getAttestation: vi.fn(async () => null), saveAttestation: saveOk },
+    })
+    await (WotConnector.prototype as any).drainPendingVerificationSaves.call(session2)
+    expect(saveOk).toHaveBeenCalledTimes(1)
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(true) // Aktion offen
+
+    // Listener registrieren → Aktion wird GENAU EINMAL geliefert.
+    const events: any[] = []
+    ;(WotConnector.prototype as any).onIncomingEvent.call(session2, (e: any) => events.push(e))
+    await vi.waitFor(() => {
+      expect(events.filter((e) => e.type === "incoming-verification")).toHaveLength(1)
+    })
+    // counterVerify weiterhin möglich: der Dialog trägt die Original-VC als challengeCode.
+    expect(events[0]).toMatchObject({ type: "incoming-verification", fromId: "did:key:bob", challengeCode: vcJws })
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false) // übernommen
+
+    // Zweiter Listener / erneutes Subscribe: KEINE erneute Lieferung.
+    const events2: any[] = []
+    ;(WotConnector.prototype as any).onIncomingEvent.call(session2, (e: any) => events2.push(e))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(events2.filter((e) => e.type === "incoming-verification")).toHaveLength(0)
+  })
+
+  it("React-Strict-Mode: subscribe A → cleanup → subscribe B startet parallele Announcer — B erhält die Aktion GENAU EINMAL", async () => {
+    const localValues = new Map<string, string>()
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      writable: true,
+      value: {
+        getItem: (k: string) => localValues.get(k) ?? null,
+        setItem: (k: string, v: string) => localValues.set(k, v),
+        removeItem: (k: string) => localValues.delete(k),
+      },
+    })
+    const did = "did:key:me"
+    const payload = {
+      jti: "att-strict",
+      iss: "did:key:bob",
+      issuer: "did:key:bob",
+      validFrom: new Date().toISOString(),
+      type: ["VerifiableCredential", "WotVerification"],
+      credentialSubject: { id: did, claim: "in-person verifiziert" },
+    }
+    // Durabler Record mit erledigter Daten-Hälfte (saved) — die Aktion wartet auf die UI.
+    localValues.set(
+      `rls-wot-pending-verification-save:${did}`,
+      JSON.stringify({ "att-strict": { vcJws: "h.p.s", senderDid: "did:key:bob", saved: true } }),
+    )
+    const session = Object.assign(Object.create(WotConnector.prototype), {
+      identity: { getDid: () => did },
+      storage: { getAttestation: vi.fn(async () => null) },
+      attestationWorkflow: { verifyAttestationVcJws: vi.fn(async () => payload) },
+      contactsObs: { current: [] },
+      discovery: { resolveProfile: vi.fn(async () => ({ profile: { name: "Bob" } })) },
+      eventCallbacks: new Set<(e: unknown) => void>(),
+      bufferedEvents: [] as unknown[],
+    })
+    const onIncomingEvent = (WotConnector.prototype as any).onIncomingEvent
+
+    // Strict-Mode-Ablauf: A subscribed (startet Announcer 1), cleanup, B subscribed
+    // (startet Announcer 2) — beide Läufe überlappen.
+    const eventsA: any[] = []
+    const unsubA = onIncomingEvent.call(session, (e: any) => eventsA.push(e))
+    unsubA()
+    const eventsB: any[] = []
+    onIncomingEvent.call(session, (e: any) => eventsB.push(e))
+
+    await vi.waitFor(() => {
+      const total =
+        eventsA.filter((e) => e.type === "incoming-verification").length +
+        eventsB.filter((e) => e.type === "incoming-verification").length
+      expect(total).toBe(1)
+    })
+    // Kurz nachlaufen lassen: es darf keine ZWEITE Lieferung mehr eintreffen.
+    await new Promise((r) => setTimeout(r, 30))
+    const total =
+      eventsA.filter((e) => e.type === "incoming-verification").length +
+      eventsB.filter((e) => e.type === "incoming-verification").length
+    expect(total).toBe(1)
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false)
+  })
+
+  it("Claim-Grenze: stirbt das Enrichment vor dem Emit, bleibt die durable Aktion erhalten", async () => {
+    const localValues = new Map<string, string>()
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      writable: true,
+      value: {
+        getItem: (k: string) => localValues.get(k) ?? null,
+        setItem: (k: string, v: string) => localValues.set(k, v),
+        removeItem: (k: string) => localValues.delete(k),
+      },
+    })
+    const did = "did:key:me"
+    const payload = {
+      jti: "att-hang",
+      iss: "did:key:bob",
+      issuer: "did:key:bob",
+      validFrom: new Date().toISOString(),
+      type: ["VerifiableCredential", "WotVerification"],
+      credentialSubject: { id: did, claim: "in-person verifiziert" },
+    }
+    localValues.set(
+      `rls-wot-pending-verification-save:${did}`,
+      JSON.stringify({ "att-hang": { vcJws: "h.p.s", senderDid: "did:key:bob", saved: true } }),
+    )
+    const base = {
+      identity: { getDid: () => did },
+      storage: { getAttestation: vi.fn(async () => null) },
+      attestationWorkflow: { verifyAttestationVcJws: vi.fn(async () => payload) },
+      contactsObs: { current: [] },
+      bufferedEvents: [] as unknown[],
+    }
+    const onIncomingEvent = (WotConnector.prototype as any).onIncomingEvent
+
+    // Session 1: Enrichment hängt für immer (Tab stirbt währenddessen).
+    const session1 = Object.assign(Object.create(WotConnector.prototype), {
+      ...base,
+      eventCallbacks: new Set<(e: unknown) => void>(),
+      discovery: { resolveProfile: vi.fn(() => new Promise(() => {})) },
+    })
+    const events1: any[] = []
+    onIncomingEvent.call(session1, (e: any) => events1.push(e))
+    await new Promise((r) => setTimeout(r, 30))
+    expect(events1.filter((e) => e.type === "incoming-verification")).toHaveLength(0)
+    // Der Record DARF NICHT geclaimt sein — die Aktion überlebt den Abbruch.
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(true)
+
+    // Session 2 (Neustart): funktionierendes Enrichment → genau eine Lieferung.
+    const session2 = Object.assign(Object.create(WotConnector.prototype), {
+      ...base,
+      eventCallbacks: new Set<(e: unknown) => void>(),
+      discovery: { resolveProfile: vi.fn(async () => ({ profile: { name: "Bob" } })) },
+    })
+    const events2: any[] = []
+    onIncomingEvent.call(session2, (e: any) => events2.push(e))
+    await vi.waitFor(() => {
+      expect(events2.filter((e) => e.type === "incoming-verification")).toHaveLength(1)
+    })
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false)
   })
 })
