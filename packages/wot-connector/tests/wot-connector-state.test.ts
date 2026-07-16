@@ -655,6 +655,7 @@ describe("WotConnector attestation receipt - authenticated sender binding", () =
         })),
       },
       setDeliveryStatus,
+      flushPersonalDocDurably: vi.fn(async () => {}),
       clearDeliveryCorrelationsForAttestation,
     }
     const receiveReceipt = (WotConnector.prototype as any).handleIncomingAttestationReceipt

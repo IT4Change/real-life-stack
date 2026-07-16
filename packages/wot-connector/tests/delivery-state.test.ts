@@ -159,3 +159,102 @@ describe("WotConnector attestation delivery state", () => {
     expect(pendingDeliveryReceipts.has(terminalReceipt.messageId)).toBe(false)
   })
 })
+
+describe("WotConnector delivery-status durability barrier (crash window)", () => {
+  // Der Yjs-Flush ist debounced (~2s). Ohne erzwungenen Flush VOR der
+  // Korrelations-Löschung verliert ein sofortiger Neustart den Terminal-Status
+  // UND das Mapping (Loop-Review-Finding, Issue #144).
+  it("flushes the PersonalDoc BEFORE releasing a terminal correlation", async () => {
+    const order: string[] = []
+    const terminalReceipt = receipt("delivered")
+    const fake = Object.assign(Object.create(WotConnector.prototype), {
+      outboxStore: null,
+      deliveryMessageIds: new Map([[terminalReceipt.messageId, attestation.id]]),
+      inFlightDeliveryMessageIds: new Set<string>(),
+      pendingDeliveryReceipts: new Map<string, DeliveryReceipt>(),
+      setDeliveryStatus: vi.fn(async () => {
+        order.push("persist")
+        return true
+      }),
+      flushPersonalDocDurably: vi.fn(async () => {
+        order.push("flush")
+      }),
+      clearDeliveryCorrelation: vi.fn(async () => {
+        order.push("clear")
+      }),
+    })
+
+    await (WotConnector.prototype as any).applyTransportDeliveryReceipt.call(fake, terminalReceipt)
+
+    expect(order).toEqual(["persist", "flush", "clear"])
+  })
+
+  it("keeps the correlation and parks the receipt when the flush fails", async () => {
+    const terminalReceipt = receipt("delivered")
+    const deliveryMessageIds = new Map([[terminalReceipt.messageId, attestation.id]])
+    const pendingDeliveryReceipts = new Map<string, DeliveryReceipt>()
+    const clearDeliveryCorrelation = vi.fn(async () => {})
+    const fake = Object.assign(Object.create(WotConnector.prototype), {
+      outboxStore: null,
+      deliveryMessageIds,
+      inFlightDeliveryMessageIds: new Set<string>(),
+      pendingDeliveryReceipts,
+      setDeliveryStatus: vi.fn(async () => true),
+      flushPersonalDocDurably: vi.fn(async () => {
+        throw new Error("flush unavailable")
+      }),
+      clearDeliveryCorrelation,
+    })
+
+    await (WotConnector.prototype as any).applyTransportDeliveryReceipt.call(fake, terminalReceipt)
+
+    expect(clearDeliveryCorrelation).not.toHaveBeenCalled()
+    expect(deliveryMessageIds.has(terminalReceipt.messageId)).toBe(true)
+    expect(pendingDeliveryReceipts.has(terminalReceipt.messageId)).toBe(true)
+  })
+
+  it("does not flush for non-terminal queued receipts", async () => {
+    const queuedReceipt = { ...receipt("accepted"), reason: "queued-in-outbox" } as DeliveryReceipt
+    const flushPersonalDocDurably = vi.fn(async () => {})
+    const fake = Object.assign(Object.create(WotConnector.prototype), {
+      outboxStore: null,
+      deliveryMessageIds: new Map([[queuedReceipt.messageId, attestation.id]]),
+      inFlightDeliveryMessageIds: new Set<string>(),
+      pendingDeliveryReceipts: new Map<string, DeliveryReceipt>(),
+      setDeliveryStatus: vi.fn(async () => true),
+      flushPersonalDocDurably,
+    })
+
+    await (WotConnector.prototype as any).applyTransportDeliveryReceipt.call(fake, queuedReceipt)
+
+    expect(flushPersonalDocDurably).not.toHaveBeenCalled()
+  })
+
+  it("flushes acknowledged receipts before clearing their correlations", async () => {
+    const order: string[] = []
+    const fake = {
+      storage: {
+        getAttestation: vi.fn(async () => ({ id: "att-1", from: "did:key:alice", to: "did:key:bob" })),
+      },
+      setDeliveryStatus: vi.fn(async () => {
+        order.push("persist")
+        return true
+      }),
+      flushPersonalDocDurably: vi.fn(async () => {
+        order.push("flush")
+      }),
+      clearDeliveryCorrelationsForAttestation: vi.fn(async () => {
+        order.push("clear")
+      }),
+    }
+
+    await (WotConnector.prototype as any).handleIncomingAttestationReceipt.call(fake, "att-1", "did:key:bob")
+    expect(order).toEqual(["persist", "flush", "clear"])
+
+    // Flush-Fehler → Korrelationen bleiben (kein stiller Verlust)
+    order.length = 0
+    fake.flushPersonalDocDurably = vi.fn(async () => { throw new Error("flush unavailable") })
+    await (WotConnector.prototype as any).handleIncomingAttestationReceipt.call(fake, "att-1", "did:key:bob")
+    expect(order).toEqual(["persist"])
+  })
+})

@@ -2405,6 +2405,14 @@ export class WotConnector extends BaseConnector {
       return
     }
     await this.setDeliveryStatus(jti, "acknowledged")
+    try {
+      // Durability-Barriere: acknowledged erst crash-fest flushen, dann die
+      // Korrelationen räumen — sonst verliert ein sofortiger Neustart beides.
+      await this.flushPersonalDocDurably()
+    } catch (error) {
+      console.warn("[WotConnector] Acknowledged-Flush deferred — Korrelation bleibt", error)
+      return
+    }
     await this.clearDeliveryCorrelationsForAttestation(jti).catch(() => {})
   }
 
@@ -2413,6 +2421,17 @@ export class WotConnector extends BaseConnector {
     if (this.outboxStore && hasAttestationCorrelations(this.outboxStore)) {
       await this.outboxStore.setAttestationCorrelation(messageId, attestationId)
     }
+  }
+
+  /**
+   * Durability-Barriere für Delivery-Status: setDeliveryStatus schreibt ins
+   * Yjs-PersonalDoc, das erst nach ~2s Debounce in IndexedDB landet. Die
+   * Korrelation wird dagegen SOFORT durabel gelöscht — ein Neustart im Fenster
+   * verlöre den Status unwiederbringlich. Deshalb: erzwungener Flush VOR jeder
+   * Korrelations-Löschung. Als Instanz-Methode, damit Tests sie stubben können.
+   */
+  private async flushPersonalDocDurably(): Promise<void> {
+    await flushYjsPersonalDoc()
   }
 
   private async clearDeliveryCorrelation(messageId: string): Promise<void> {
@@ -2443,6 +2462,12 @@ export class WotConnector extends BaseConnector {
       if (!persisted) {
         this.pendingDeliveryReceipts.set(receipt.messageId, receipt)
         return
+      }
+      // Terminal-Status crash-fest machen, BEVOR unten die Korrelation fällt
+      // (Yjs-Debounce ~2s; siehe flushPersonalDocDurably). `queued` ist
+      // nicht-terminal und behält seine Korrelation → kein Flush nötig.
+      if (receipt.reason !== "queued-in-outbox") {
+        await this.flushPersonalDocDurably()
       }
     } catch (error) {
       // The transport callback must never turn a temporary PersonalDoc write
