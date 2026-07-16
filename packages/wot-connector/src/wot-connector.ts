@@ -78,7 +78,6 @@ import type {
 import {
   YjsReplicationAdapter,
   YjsStorageAdapter,
-  initYjsPersonalDoc,
   getYjsPersonalDoc,
   resetYjsPersonalDoc,
   deleteYjsPersonalDocDB,
@@ -105,6 +104,10 @@ import {
   type OutboxMessagingRuntime,
 } from "./messaging-runtime.js"
 import { InboxReceptionHost } from "./inbox-reception-host.js"
+import {
+  deleteLegacyIdentityDatabases,
+  initNamespacedYjsPersonalDoc,
+} from "./personal-doc-persistence.js"
 import {
   attestationFromVerifiedVc,
   messageIdForAttestation,
@@ -1193,11 +1196,9 @@ export class WotConnector extends BaseConnector {
 
     // PersonalDoc uses the SAME durable log store and SAME deviceId as the
     // broker registration and Space replication. No Vault is wired in this slice.
-    await initYjsPersonalDoc(
+    await initNamespacedYjsPersonalDoc(
       this.identity,
       this.outboxAdapter,
-      undefined,
-      undefined,
       { docLogStore: this.docLogStore, deviceId },
     )
 
@@ -2380,29 +2381,7 @@ export class WotConnector extends BaseConnector {
   }
 
   private async cleanupOldIdentity(): Promise<void> {
-    // Delete old IndexedDB databases to prevent data leaks between identities
-    const dbNames = [
-      // Yjs databases
-      "wot-yjs-compact-store",
-      "rls-yjs-space-compact-store",
-      // Legacy Automerge databases (cleanup from migration)
-      "automerge-personal",
-      "automerge-repo",
-      "rls-space-compact-store",
-      "rls-space-sync-states",
-      "wot-compact-store",
-      "wot-sync-states",
-    ]
-    for (const name of dbNames) {
-      try {
-        await new Promise<void>((resolve) => {
-          const req = indexedDB.deleteDatabase(name)
-          req.onsuccess = () => resolve()
-          req.onerror = () => resolve()
-          req.onblocked = () => resolve()
-        })
-      } catch { /* best effort */ }
-    }
+    await deleteLegacyIdentityDatabases()
   }
 }
 
