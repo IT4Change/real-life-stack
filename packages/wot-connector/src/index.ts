@@ -7,6 +7,14 @@ export type {
   SerializedItem,
 } from "./types.js"
 export { LocalOutboxStore } from "./local-outbox-store.js"
+export { WorkQueueStore } from "./work-queue-store.js"
+export type {
+  WorkQueue,
+  WorkQueueEntry,
+  WorkQueueItem,
+  WorkQueueKind,
+  WorkQueueStoreOptions,
+} from "./work-queue-store.js"
 export { createOutboxMessagingRuntime } from "./messaging-runtime.js"
 export type { OutboxMessagingRuntime } from "./messaging-runtime.js"
 export { serializeItem, deserializeItem } from "./serialization.js"
