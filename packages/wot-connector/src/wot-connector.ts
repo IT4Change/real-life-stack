@@ -21,6 +21,7 @@ import type {
 import {
   BaseConnector,
   createObservable,
+  deriveContext,
   matchesFilter,
   findRelatedItems,
   applyPagination,
@@ -149,6 +150,28 @@ const TERMINAL_DELIVERY_STATUSES = new Set<DeliveryStatus>([
   "acknowledged",
   "failed",
 ])
+
+function projectPersonItem(
+  id: string,
+  createdAt: string,
+  displayName: string,
+  bio?: string | null,
+  avatar?: string | null,
+): Item {
+  const data: Record<string, unknown> = {
+    displayName,
+    ...(bio !== undefined && bio !== null ? { bio } : {}),
+    ...(avatar ? { avatarUrl: avatar } : {}),
+  }
+  return {
+    id,
+    "@context": deriveContext("person", data),
+    type: "person",
+    createdAt,
+    createdBy: id,
+    data,
+  }
+}
 
 class WorkflowBackedIdentity implements PublicIdentitySession {
   private readonly workflow: IdentityWorkflow
@@ -667,13 +690,13 @@ export class WotConnector extends BaseConnector {
       bio: updates.bio as string | undefined,
       avatar: updates.avatar as string | undefined,
     })
-    return (await this.getMyProfile()) ?? {
-      id: user.id,
-      type: "person",
-      createdAt: new Date().toISOString(),
-      createdBy: user.id,
-      data: { name: user.displayName },
-    }
+    return (await this.getMyProfile()) ?? projectPersonItem(
+      user.id,
+      new Date().toISOString(),
+      user.displayName || getDefaultDisplayName(user.id),
+      undefined,
+      user.avatarUrl,
+    )
   }
 
   override async getMyProfile(): Promise<Item | null> {
@@ -3246,19 +3269,15 @@ export class WotConnector extends BaseConnector {
       const did = this.identity.getDid()
       const doc = getYjsPersonalDoc()
       const profile = doc?.profile
-      const name = profile?.name ?? getDefaultDisplayName(did)
+      const name = profile?.name || getDefaultDisplayName(did)
       const avatar = profile?.avatar ?? undefined
-      this.profileObs.set({
-        id: did,
-        type: "person",
-        createdAt: profile?.createdAt ?? new Date().toISOString(),
-        createdBy: did,
-        data: {
-          name,
-          bio: profile?.bio ?? undefined,
-          avatar,
-        },
-      })
+      this.profileObs.set(projectPersonItem(
+        did,
+        profile?.createdAt ?? new Date().toISOString(),
+        name,
+        profile?.bio,
+        avatar,
+      ))
       this.currentUserObs.set({ id: did, displayName: name, avatarUrl: avatar })
       // Own profile changed → refresh member observables (own displayName in member lists)
       for (const groupId of this.memberObservables.keys()) {

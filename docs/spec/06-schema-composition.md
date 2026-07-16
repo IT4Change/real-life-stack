@@ -103,6 +103,9 @@ RLS-Vokabulare sind als JSON-LD und JSON-Schema unter `https://real-life-stack.o
 - `https://real-life-stack.org/vocab/event/v1` — Zeitpunkt + Dauer
 - `https://real-life-stack.org/vocab/task/v1` — Status, Assignee
 - `https://real-life-stack.org/vocab/person/v1` — Profil-Felder
+- `https://real-life-stack.org/vocab/relation/v1` — eigenständige RelationRecords
+- `https://real-life-stack.org/vocab/project/v1` — Projekt-Felder
+- `https://real-life-stack.org/vocab/resource/v1` — Ressourcen-Felder
 
 Jede Vocabulary-URL liefert:
 

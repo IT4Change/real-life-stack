@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
 import type { Item, Observable } from "@real-life-stack/data-interface"
-import { createObservable } from "@real-life-stack/data-interface"
+import { createObservable, deriveContext } from "@real-life-stack/data-interface"
 
 /**
  * Tests for profile reactivity in WotConnector.
@@ -58,10 +58,6 @@ function createProfileReactivity(did: string) {
     notifyPersonalDocChange()
   }
 
-  const notifyPersonalDocChange = () => {
-    for (const cb of listeners) cb()
-  }
-
   // This mirrors WotConnector's bootstrapAdapters profile subscription
   const profileUnsub = onPersonalDocChange(() => {
     const key = JSON.stringify(currentProfile ?? null)
@@ -77,16 +73,18 @@ function createProfileReactivity(did: string) {
       profileObs.set(null)
       return
     }
+    const data = {
+      displayName: currentProfile.name ?? did.slice(0, 12),
+      bio: currentProfile.bio ?? undefined,
+      ...(currentProfile.avatar ? { avatarUrl: currentProfile.avatar } : {}),
+    }
     profileObs.set({
       id: did,
+      "@context": deriveContext("person", data),
       type: "person",
       createdAt: currentProfile.createdAt,
       createdBy: did,
-      data: {
-        name: currentProfile.name ?? did.slice(0, 12),
-        bio: currentProfile.bio ?? undefined,
-        avatar: currentProfile.avatar ?? undefined,
-      },
+      data,
     })
   }
 
@@ -118,7 +116,7 @@ describe("Profile Reactivity — observeMyProfile()", () => {
     changeProfile({ name: "Anton" })
 
     expect(updates).toHaveLength(1)
-    expect(updates[0]?.data.name).toBe("Anton")
+    expect(updates[0]?.data.displayName).toBe("Anton")
   })
 
   it("fires when profile name changes", () => {
@@ -131,7 +129,7 @@ describe("Profile Reactivity — observeMyProfile()", () => {
     changeProfile({ name: "Anton T." })
 
     expect(updates).toHaveLength(1)
-    expect(updates[0]?.data.name).toBe("Anton T.")
+    expect(updates[0]?.data.displayName).toBe("Anton T.")
   })
 
   it("fires when bio or avatar changes", () => {
@@ -149,7 +147,7 @@ describe("Profile Reactivity — observeMyProfile()", () => {
     changeProfile({ avatar: "ipfs://QmAbc" })
 
     expect(updates).toHaveLength(2)
-    expect(updates[1]?.data.avatar).toBe("ipfs://QmAbc")
+    expect(updates[1]?.data.avatarUrl).toBe("ipfs://QmAbc")
   })
 
   it("does NOT fire when profile is unchanged", () => {
@@ -170,10 +168,10 @@ describe("Profile Reactivity — observeMyProfile()", () => {
     const { profileObs, changeProfile } = createProfileReactivity(DID)
 
     changeProfile({ name: "First" })
-    expect(profileObs.current?.data.name).toBe("First")
+    expect(profileObs.current?.data.displayName).toBe("First")
 
     changeProfile({ name: "Second" })
-    expect(profileObs.current?.data.name).toBe("Second")
+    expect(profileObs.current?.data.displayName).toBe("Second")
   })
 
   it("profile Item has correct structure", () => {
@@ -184,11 +182,17 @@ describe("Profile Reactivity — observeMyProfile()", () => {
     const profile = profileObs.current
     expect(profile).not.toBeNull()
     expect(profile!.id).toBe(DID)
+    expect(profile!["@context"]).toEqual([
+      "https://real-life-stack.org/vocab/base/v1",
+      "https://real-life-stack.org/vocab/person/v1",
+    ])
     expect(profile!.type).toBe("person")
     expect(profile!.createdBy).toBe(DID)
-    expect(profile!.data.name).toBe("Anton")
+    expect(profile!.data.displayName).toBe("Anton")
     expect(profile!.data.bio).toBe("Dev")
-    expect(profile!.data.avatar).toBe("pic.jpg")
+    expect(profile!.data.avatarUrl).toBe("pic.jpg")
+    expect(profile!.data).not.toHaveProperty("name")
+    expect(profile!.data).not.toHaveProperty("avatar")
     expect(typeof profile!.createdAt).toBe("string")
   })
 })

@@ -1,10 +1,16 @@
 // Item data type specification
 // Companion types for type-safe narrowing of Item.data
 //
-// Relation conventions:
+// Embedded relation conventions:
 //   Forward  = this item carries the relation in item.relations[]
 //   Reverse  = another item points to this item with the given predicate
 //              (queryable via getRelatedItems(id, predicate, { direction: "to" }))
+//
+// These *Relations interfaces and KnownPredicate describe embedded
+// Item.relations[] only. RelationRecord predicates live in relation item data
+// and are typed separately. `locatedAt` intentionally exists in both worlds:
+// embedded Event -> Place relations keep the legacy name, while the
+// RelationRecord catalog uses it for Project -> Place.
 //
 // Cardinality:
 //   0..1  = optional, at most one relation of this type
@@ -23,11 +29,26 @@ import type { Item } from "./index.js"
 
 // --- Shared Types ---
 
-/** Geographic coordinates (events, places). */
-export interface GeoLocation {
-  lat: number
-  lng: number
+/** GeoJSON position in [longitude, latitude, optional elevation] order. */
+export type GeoJSONPosition = [longitude: number, latitude: number, elevation?: number]
+
+export interface GeoJSONPoint {
+  type: "Point"
+  coordinates: GeoJSONPosition
 }
+
+export interface GeoJSONLineString {
+  type: "LineString"
+  coordinates: GeoJSONPosition[]
+}
+
+export interface GeoJSONPolygon {
+  type: "Polygon"
+  coordinates: GeoJSONPosition[][]
+}
+
+/** Geometry variants accepted by place/v1. */
+export type GeoJSONGeometry = GeoJSONPoint | GeoJSONLineString | GeoJSONPolygon
 
 /** Aggregated reaction counts, embedded in target item's data. Emoji → number of users. */
 export type ReactionSummary = Record<string, number>
@@ -59,8 +80,6 @@ export interface TaskData extends Commentable {
   status: string
   /** Sort order within a kanban column (task/v1 `order`). Lower values appear higher. Not `position` — that's place/v1's GeoJSON geometry. */
   order?: number
-  /** Free-text tags for filtering and categorization. */
-  tags?: string[]
 }
 
 export type TaskItem = Item & { type: "task"; data: TaskData }
@@ -104,14 +123,14 @@ export interface EventData extends Reactable, Commentable {
   start: string
   /** End time, ISO-8601 string. If absent, the event is treated as a point in time. */
   end?: string
-  /** Venue coordinates. Determines map display. */
-  location?: GeoLocation
-  /** Human-readable address (e.g. "Am Sonnenhuegel 5, 60000 Frankfurt"). */
-  address?: string
+  /** ISO-8601 duration. Mutually exclusive with end per event/v1. */
+  duration?: string
+  /** RFC 5545 recurrence rule. */
+  rrule?: string
+  /** Online meeting URI. */
+  meetingLink?: string
   /** Event status (e.g. "confirmed", "tentative", "cancelled"). Different value space than Task.status. */
   status?: string
-  /** Free-text tags for filtering and categorization. */
-  tags?: string[]
 }
 
 export type EventItem = Item & { type: "event"; data: EventData }
@@ -145,8 +164,6 @@ export interface PostData extends Reactable, Commentable {
   title?: string
   /** Body content, markdown. Determines feed display. */
   content: string
-  /** Free-text tags for filtering and categorization. */
-  tags?: string[]
 }
 
 export type PostItem = Item & { type: "post"; data: PostData }
@@ -178,12 +195,12 @@ export interface PlaceData {
   title: string
   /** Description, markdown. */
   description?: string
-  /** Coordinates (required). Determines map display. */
-  location: GeoLocation
+  /** GeoJSON geometry (required). Determines map display. */
+  position: GeoJSONGeometry
   /** Human-readable address. */
   address?: string
-  /** Free-text tags for filtering and categorization. */
-  tags?: string[]
+  /** Named location (e.g. "Markthalle 7"). */
+  locationName?: string
 }
 
 export type PlaceItem = Item & { type: "place"; data: PlaceData }
@@ -202,6 +219,48 @@ export interface PlaceRelations {
 
 export function isPlace(item: Item): item is PlaceItem {
   return item.type === "place"
+}
+
+// ============================================================
+// Project
+// ============================================================
+
+export interface ProjectData {
+  /** Display name of the project. */
+  title: string
+  /** Description, markdown. */
+  description?: string
+  /** Public project website. */
+  website?: string
+  /** Source repository URI. */
+  repo?: string
+}
+
+export type ProjectItem = Item & { type: "project"; data: ProjectData }
+
+export function isProject(item: Item): item is ProjectItem {
+  return item.type === "project"
+}
+
+// ============================================================
+// Resource
+// ============================================================
+
+export interface ResourceData {
+  /** Display name of the resource. */
+  title: string
+  /** Resource kind (e.g. tool, space, material). */
+  kind?: string
+  /** Free-text availability information. */
+  availability?: string
+  /** Description, markdown. */
+  description?: string
+}
+
+export type ResourceItem = Item & { type: "resource"; data: ResourceData }
+
+export function isResource(item: Item): item is ResourceItem {
+  return item.type === "resource"
 }
 
 // ============================================================
@@ -235,11 +294,11 @@ export interface ProfileItemData {
   /** Optional stable identity used to bind person items to confirmations. */
   did?: string
   /** Display name. */
-  name?: string
+  displayName: string
   /** Short bio, free text. */
   bio?: string
   /** Profile picture URL. */
-  avatar?: string
+  avatarUrl?: string
   /** Phone number (contacts-only visibility). */
   phone?: string
   /** Address (contacts-only visibility). */
@@ -354,4 +413,15 @@ export type KnownPredicate =
   | keyof CommentRelations["forward"]
 
 /** Known item types. Connectors may define additional ones. */
-export type KnownItemType = "task" | "event" | "post" | "place" | "feature" | "person" | "reaction" | "comment"
+export type KnownItemType =
+  | "task"
+  | "event"
+  | "post"
+  | "place"
+  | "project"
+  | "resource"
+  | "feature"
+  | "person"
+  | "relation"
+  | "reaction"
+  | "comment"

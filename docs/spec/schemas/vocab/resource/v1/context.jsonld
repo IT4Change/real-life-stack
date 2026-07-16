@@ -1,0 +1,10 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "rls": "https://real-life-stack.org/vocab/resource/v1#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "kind": { "@id": "rls:kind", "@type": "xsd:string" },
+    "availability": { "@id": "rls:availability", "@type": "xsd:string" }
+  }
+}

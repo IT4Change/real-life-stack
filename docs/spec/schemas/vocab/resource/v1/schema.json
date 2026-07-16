@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://real-life-stack.org/vocab/resource/v1/schema.json",
+  "title": "RLS Resource Vocabulary",
+  "description": "Properties for items representing shared resources.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["title"],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "availability": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": ["data"]
+}

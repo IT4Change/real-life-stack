@@ -3,10 +3,8 @@ import { createRoot } from "react-dom/client"
 import { MockConnector, type MockConnectorSeed } from "@real-life-stack/mock-connector"
 
 import App from "./App"
-import {
-  buildDwebCampSeedItems,
-  NETWORK_RELATION_STORE_OPTIONS,
-} from "./data/network-seed"
+import { buildDwebCampSeedItems } from "./data/network-seed"
+import { NETWORK_RELATION_STORE_OPTIONS } from "./data/network-relation-predicates"
 import "./index.css"
 
 const DWEB_CAMP_GROUP_ID = "dwebcamp"

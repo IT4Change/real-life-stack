@@ -24,7 +24,9 @@ schemas/
     ├── event/v1/
     ├── task/v1/
     ├── person/v1/
-    └── relation/v1/
+    ├── relation/v1/
+    ├── project/v1/
+    └── resource/v1/
 ```
 
 ## Conventions
@@ -79,3 +81,5 @@ A validator resolves every URL in `@context`, fetches the matching `schema.json`
 | `task/v1` | `vocab/task/v1/` | `status` | Kanban |
 | `person/v1` | `vocab/person/v1/` | `displayName` | Contacts / Profile |
 | `relation/v1` | `vocab/relation/v1/` | `predicate`, one `from`, one `to` | RelationStore / Graph |
+| `project/v1` | `vocab/project/v1/` | `title` (owned by `base/v1`) | Projects |
+| `resource/v1` | `vocab/resource/v1/` | `title` (owned by `base/v1`) | Marketplace / Resources |

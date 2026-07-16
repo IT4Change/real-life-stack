@@ -6,6 +6,7 @@ import {
   deriveRelationRecordId,
   matchesFilter,
   relationRecordFromItem,
+  relationStoreOptionsFrom,
   VOCAB_BASE,
   VOCAB_RELATION,
 } from "../src/index.js"
@@ -170,6 +171,20 @@ function relationItem(
 }
 
 describe("relation record identity", () => {
+  it("derives symmetric relation-store options from predicate definitions", () => {
+    const definitions = [
+      { predicate: "knows", symmetric: true },
+      { predicate: "attends", symmetric: false },
+      { predicate: "connectedWith", symmetric: true },
+    ] as const
+
+    const options = relationStoreOptionsFrom(definitions)
+    expect([...(options.symmetricPredicates ?? [])]).toEqual([
+      "knows",
+      "connectedWith",
+    ])
+  })
+
   it("uses the fixed JCS string-array vector with lowercase SHA-256", async () => {
     await expect(deriveRelationRecordId(
       "did:key:z6MkTest",

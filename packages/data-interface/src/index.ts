@@ -8,7 +8,9 @@ export {
   createDefaultRelationStore,
   deriveRelationRecordId,
   relationRecordFromItem,
+  relationStoreOptionsFrom,
   type DefaultRelationStoreOptions,
+  type RelationPredicateDefinition,
 } from "./relation-records.js"
 export * from "./item-types.js"
 export * from "./vocab.js"

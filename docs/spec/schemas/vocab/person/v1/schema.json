@@ -17,7 +17,8 @@
         },
         "avatarUrl": {
           "type": "string",
-          "format": "uri"
+          "minLength": 1,
+          "description": "Reference to a profile image. Legacy profile storage permits arbitrary non-empty strings; URI validation requires a future storage migration."
         },
         "bio": {
           "type": "string"

@@ -20,6 +20,21 @@ export interface DefaultRelationStoreOptions {
   symmetricPredicates?: Iterable<string>
 }
 
+export interface RelationPredicateDefinition {
+  predicate: string
+  symmetric: boolean
+}
+
+export function relationStoreOptionsFrom(
+  definitions: Iterable<RelationPredicateDefinition>,
+): DefaultRelationStoreOptions {
+  const symmetricPredicates: string[] = []
+  for (const definition of definitions) {
+    if (definition.symmetric) symmetricPredicates.push(definition.predicate)
+  }
+  return { symmetricPredicates }
+}
+
 type RelationStoreConnector = DataInterface & ItemWriter & Authenticatable
 type DefaultRelationStore = RelationRecordCapable & RelationRecordWriterCapable
 

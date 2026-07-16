@@ -1,0 +1,16 @@
+{
+  "id": "01H8XYZ-resource-cargo-bike",
+  "@context": [
+    "https://real-life-stack.org/vocab/base/v1",
+    "https://real-life-stack.org/vocab/resource/v1"
+  ],
+  "type": "resource",
+  "createdAt": "2026-07-16T10:00:00Z",
+  "createdBy": "lena@example.com",
+  "data": {
+    "title": "Community cargo bike",
+    "description": "Electric cargo bike shared by the neighborhood.",
+    "kind": "tool",
+    "availability": "Weekdays after 17:00"
+  }
+}

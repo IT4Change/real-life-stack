@@ -2,18 +2,17 @@ import {
   canonicalizeRelationEndpoints,
   deriveContext,
   deriveRelationRecordId,
-  type DefaultRelationStoreOptions,
   type Item,
 } from "@real-life-stack/data-interface"
 
 import rawGraph from "./graph.json" with { type: "json" }
+import {
+  NETWORK_RELATION_STORE_OPTIONS,
+  type NetworkRelationPredicate,
+} from "./network-relation-predicates"
 
 export const DWEB_CAMP_SEED_CREATED_AT = "2026-07-16T00:00:00.000Z"
 export const DWEB_CAMP_SEED_CREATOR = "seed:dwebcamp-2026"
-export const NETWORK_RELATION_STORE_OPTIONS: DefaultRelationStoreOptions = {
-  symmetricPredicates: ["knows", "connectedWith"],
-}
-
 export interface DwebCampSession {
   code: string
   title: string
@@ -164,7 +163,7 @@ export function buildDwebCampDomainItems(graph: DwebCampGraphData = dwebCampGrap
 }
 
 interface SeedRelation {
-  predicate: string
+  predicate: NetworkRelationPredicate
   from: string
   to: string
   fields?: Record<string, unknown>
