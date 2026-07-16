@@ -38,6 +38,9 @@ interface ActivityEntry {
   action: "create" | "update" | "delete"
   /** gesetzt, wenn der Eintrag aus der Anwendung eines Mirror-Snapshots stammt (Regel 10) */
   origin?: "mirror"
+  /** lokale Item-id; bei origin "mirror" voll qualifiziert
+      `space:{homeSpaceId}/item:{itemId}` (Target-Konvention 04) —
+      kollisionsfrei zu lokalen ids */
   targetId: string
   /** item.type zum Zeitpunkt der Aktion */
   targetType: string
@@ -73,13 +76,13 @@ interface ActivityEntry {
    Retention (Regel 4).
 4. **Retention:** Cap pro Space, Default 500 Einträge — als **eventual
    soft cap**: nach Offline-Merges kann der Bestand vorübergehend darüber
-   liegen und konvergiert durch nachfolgendes Pruning. Die
-   Activity-Log-Implementierung des **Connectors** auf jedem Client DARF
-   beim Schreiben deterministisch prunen (App-/UI-Code nie, s. Regel 1),
-   älteste zuerst gemäß Anzeige-Ordnung; gelöscht wird per Schlüssel
-   (`id`), nie per Position — paralleles Pruning konvergiert, weil alle
-   Connectoren dieselben Schlüssel wählen. Das Prunen selbst erzeugt
-   keinen Eintrag. Hinweis: CRDT-Löschungen begrenzen die **sichtbare**
+   liegen. Überschreitet der Bestand beim Schreiben das Cap, MUSS die
+   Activity-Log-Implementierung des **Connectors** prunen („nie prunen"
+   ist NICHT spec-konform, sonst wäre das Cap bedeutungslos); App-/UI-Code
+   prunt nie (s. Regel 1). Gelöscht wird deterministisch: älteste zuerst
+   gemäß Anzeige-Ordnung, per Schlüssel (`id`), nie per Position —
+   paralleles Pruning konvergiert, weil alle Connectoren dieselben
+   Schlüssel wählen. Das Prunen selbst erzeugt keinen Eintrag. Hinweis: CRDT-Löschungen begrenzen die **sichtbare**
    Map; die Dokument-Historie der Transportschicht schrumpft erst mit
    deren Compaction (CompactStore).
 5. **Projektion, nicht Wahrheit:** Der Log MUSS als unvollständig behandelt
@@ -118,7 +121,10 @@ interface ActivityEntry {
     `payload.item.type`; bei delete vom letzten bekannten Mirror-Zustand
     (Tombstones tragen kein `item`, s. Regel 7). Ein Tombstone ohne
     bestehenden Mirror (ungebundene Marke, 09 Invariante 5) ist KEIN
-    Zustandsübergang und erzeugt keinen Eintrag.
+    Zustandsübergang und erzeugt keinen Eintrag. `targetId` von
+    Mirror-Einträgen ist die voll qualifizierte Form
+    `space:{homeSpaceId}/item:{itemId}` (Target-Konvention 04) — nie die
+    nackte `itemId`, die mit einem lokalen Item kollidieren könnte.
 
 ## Lese-Vertrag
 

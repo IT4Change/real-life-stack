@@ -301,3 +301,9 @@ Implementierung kanonisch.
   (Tombstones tragen kein targetType → delete nimmt letzten bekannten
   Zustand; Tombstone ohne Mirror = kein Eintrag).
   **Alle drei übernommen** (Folgecommit in #142).
+- R17 (16.07., letzter Pass auf Kapitel 10): (1) `targetId` von
+  Mirror-Einträgen kollisionsfrei kanonisch: voll qualifizierte Form
+  `space:{homeSpaceId}/item:{itemId}` (Target-Konvention 04), nie die
+  nackte itemId. (2) Retention verbindlich: Überschreitet der Bestand
+  beim Schreiben das Cap, MUSS der Connector prunen — „nie prunen" ist
+  nicht spec-konform. **Beide übernommen** (Folgecommit in #142).
