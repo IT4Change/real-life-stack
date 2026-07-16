@@ -87,11 +87,16 @@ export class WorkQueueStore implements WorkQueue {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(this.storeName, "readwrite")
       const store = tx.objectStore(this.storeName)
-      const request = store.getKey(item.id)
+      const request = store.get(item.id)
       request.onsuccess = () => {
-        if (request.result !== undefined) return
-        inserted = true
-        store.add({ ...item, attempts: 0, nextDueAt: 0 } satisfies WorkQueueItem)
+        const existing = request.result as WorkQueueItem | undefined
+        inserted = existing === undefined
+        // Deterministic IDs make enqueue an idempotent upsert. Preserve the
+        // retry lifecycle when an active drain re-enqueues its own obligation;
+        // resetting attempts here would prevent the attempt cap from firing.
+        store.put(existing
+          ? { ...existing, kind: item.kind, payload: item.payload }
+          : { ...item, attempts: 0, nextDueAt: 0 } satisfies WorkQueueItem)
       }
       request.onerror = () => tx.abort()
       tx.oncomplete = () => resolve()
