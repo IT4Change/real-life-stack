@@ -21,7 +21,7 @@ export interface GraphTypeDescriptor {
 
 export interface GraphViewHandle {
   fitView: () => void
-  focusNode: (nodeId: string) => void
+  focusNode: (nodeId: string, options?: { bottomInset?: number }) => void
 }
 
 export interface GraphViewProps {

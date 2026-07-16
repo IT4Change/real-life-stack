@@ -1,6 +1,8 @@
 import type { Item } from "@real-life-stack/data-interface"
 import type { GraphEdge, GraphNode } from "@real-life-stack/toolkit"
 
+import { resolveNetworkAvatarSources } from "./avatar-sources"
+
 export interface EmbeddedGraphProjection {
   nodes: GraphNode[]
   edges: GraphEdge[]
@@ -12,7 +14,13 @@ function stringField(item: Item, field: string): string | undefined {
 }
 
 function graphNode(item: Item): GraphNode {
-  const avatarUrl = stringField(item, "avatar") ?? stringField(item, "avatarUrl")
+  const storedAvatarUrl =
+    stringField(item, "avatarUrl") ??
+    stringField(item, "avatar") ??
+    stringField(item, "avatarThumbnail")
+  const avatarUrl = storedAvatarUrl
+    ? resolveNetworkAvatarSources(storedAvatarUrl).graphUrl
+    : undefined
   return {
     id: item.id,
     label:

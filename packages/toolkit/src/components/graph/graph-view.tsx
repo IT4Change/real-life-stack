@@ -11,9 +11,12 @@ import {
 
 import { cn } from "@/lib/utils"
 import {
+  approachOpacity,
   createLayoutNodes,
   displayRadius,
   fitCamera,
+  focusCamera,
+  interpolateCamera,
   stepForceLayout,
   trimEdge,
   type GraphCamera,
@@ -26,11 +29,25 @@ const DEFAULT_NODE_TYPES: readonly GraphTypeDescriptor[] = [
   { id: "project", label: "Projekt", color: "#1baf7a", darkColor: "#199e70" },
   { id: "event", label: "Session", color: "#eda100", darkColor: "#c98500" },
 ]
+const FOCUS_TRANSITION_MS = 280
 
 interface Viewport {
   width: number
   height: number
   dpr: number
+}
+
+interface FocusTarget {
+  nodeId: string
+  bottomInset: number
+  startedAt: number
+  startCamera: GraphCamera
+  settled: boolean
+}
+
+interface DrawOptions {
+  advanceSimulation?: boolean
+  advanceTransitions?: boolean
 }
 
 interface PointerGesture {
@@ -117,9 +134,18 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   const fitOnSettleRef = useRef(false)
   const initializedRef = useRef(false)
   const imagesRef = useRef(new Map<string, HTMLImageElement | null>())
+  const nodeOpacityRef = useRef(new Map<string, number>())
+  const edgeOpacityRef = useRef(new Map<string, number>())
+  const transitionFrameTimeRef = useRef<number | null>(null)
   const pointersRef = useRef(new Map<number, { x: number; y: number }>())
   const gestureRef = useRef<PointerGesture>(initialGesture())
-  const drawRef = useRef<() => void>(() => undefined)
+  const focusTargetRef = useRef<FocusTarget | null>(null)
+  const prefersReducedMotionRef = useRef(
+    typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  )
+  const drawRef = useRef<(options?: DrawOptions) => void>(() => undefined)
 
   const typeDescriptors = useMemo(
     () => new Map(nodeTypes.map((descriptor) => [descriptor.id, descriptor])),
@@ -140,17 +166,22 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   }, [])
 
   const fitView = useCallback(() => {
+    focusTargetRef.current = null
     cameraRef.current = fitCamera(layoutRef.current, viewportRef.current.width, viewportRef.current.height)
     scheduleDraw()
   }, [scheduleDraw])
 
-  const focusNode = useCallback((nodeId: string) => {
+  const focusNode = useCallback((nodeId: string, options?: { bottomInset?: number }) => {
     const node = layoutRef.current.find((candidate) => candidate.id === nodeId)
     if (!node) return
-    cameraRef.current = {
-      x: node.x,
-      y: node.y,
-      zoom: Math.max(0.9, cameraRef.current.zoom),
+    autoFitFrameRef.current = 0
+    fitOnSettleRef.current = false
+    focusTargetRef.current = {
+      nodeId,
+      bottomInset: options?.bottomInset ?? 0,
+      startedAt: performance.now(),
+      startCamera: { ...cameraRef.current },
+      settled: false,
     }
     scheduleDraw()
   }, [scheduleDraw])
@@ -159,6 +190,9 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
 
   useEffect(() => {
     selectedRef.current = selectedNodeId
+    if (!selectedNodeId || focusTargetRef.current?.nodeId !== selectedNodeId) {
+      focusTargetRef.current = null
+    }
     scheduleDraw()
   }, [selectedNodeId, scheduleDraw])
 
@@ -166,6 +200,14 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     const previous = new Map(layoutRef.current.map((node) => [node.id, node]))
     layoutRef.current = createLayoutNodes(nodes, validEdges, previous)
     edgeRef.current = validEdges
+    const nodeIds = new Set(nodes.map(({ id }) => id))
+    const edgeIds = new Set(validEdges.map(({ id }) => id))
+    for (const id of nodeOpacityRef.current.keys()) {
+      if (!nodeIds.has(id)) nodeOpacityRef.current.delete(id)
+    }
+    for (const id of edgeOpacityRef.current.keys()) {
+      if (!edgeIds.has(id)) edgeOpacityRef.current.delete(id)
+    }
     alphaRef.current = nodes.length > 0 ? 1 : 0
     if (!initializedRef.current) {
       initializedRef.current = true
@@ -185,6 +227,18 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   }, [fitViewKey, scheduleDraw])
 
   useEffect(() => {
+    if (typeof window.matchMedia !== "function") return
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const updatePreference = () => {
+      prefersReducedMotionRef.current = query.matches
+      scheduleDraw()
+    }
+    updatePreference()
+    query.addEventListener("change", updatePreference)
+    return () => query.removeEventListener("change", updatePreference)
+  }, [scheduleDraw])
+
+  useEffect(() => {
     const container = containerRef.current
     const canvas = canvasRef.current
     if (!container || !canvas) return
@@ -195,11 +249,15 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       const width = Math.max(1, Math.round(bounds.width))
       const height = Math.max(1, Math.round(bounds.height))
       viewportRef.current = { width, height, dpr }
-      canvas.width = Math.round(width * dpr)
-      canvas.height = Math.round(height * dpr)
+      const pixelWidth = Math.round(width * dpr)
+      const pixelHeight = Math.round(height * dpr)
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight
       canvas.style.width = `${width}px`
       canvas.style.height = `${height}px`
-      scheduleDraw()
+      // Resizing a canvas clears its backing store. Draw synchronously inside
+      // the ResizeObserver so CSS panel transitions never paint a blank frame.
+      drawRef.current({ advanceSimulation: false, advanceTransitions: false })
     }
 
     const observer = new ResizeObserver(updateSize)
@@ -239,6 +297,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       imagesRef.current.set(key, null)
       scheduleDraw()
     }
+    image.referrerPolicy = "no-referrer"
     image.src = node.avatarUrl
     return null
   }, [scheduleDraw])
@@ -254,12 +313,54 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     return result
   }, [validEdges])
 
-  const draw = useCallback(() => {
+  const draw = useCallback((options?: DrawOptions) => {
     const canvas = canvasRef.current
     if (!canvas) return
     const context = canvas.getContext("2d")
     if (!context) return
+    const advanceSimulation = options?.advanceSimulation !== false
+    const advanceTransitions = options?.advanceTransitions !== false
+    const prefersReducedMotion = prefersReducedMotionRef.current
     const viewport = viewportRef.current
+    const now = performance.now()
+    const elapsed = transitionFrameTimeRef.current === null
+      ? 16
+      : Math.min(32, Math.max(0, now - transitionFrameTimeRef.current))
+    if (advanceTransitions) transitionFrameTimeRef.current = now
+    let focusAnimating = false
+    const focusTarget = focusTargetRef.current
+    if (focusTarget) {
+      const node = layoutRef.current.find((candidate) => candidate.id === focusTarget.nodeId)
+      if (node) {
+        const targetCamera = focusCamera(
+          node,
+          cameraRef.current,
+          viewport.height,
+          focusTarget.bottomInset,
+        )
+        if (focusTarget.settled) {
+          cameraRef.current = targetCamera
+        } else if (advanceTransitions && prefersReducedMotion) {
+          cameraRef.current = targetCamera
+          focusTarget.settled = true
+        } else if (advanceTransitions) {
+          const progress = (now - focusTarget.startedAt) / FOCUS_TRANSITION_MS
+          cameraRef.current = interpolateCamera(
+            focusTarget.startCamera,
+            targetCamera,
+            progress,
+          )
+          if (progress >= 1) {
+            focusTarget.settled = true
+            cameraRef.current = targetCamera
+          } else {
+            focusAnimating = true
+          }
+        }
+      } else {
+        focusTargetRef.current = null
+      }
+    }
     const camera = cameraRef.current
     const isDark = Boolean(canvas.closest(".dark"))
     const labelColor = isDark ? "#f4f6fa" : "#263244"
@@ -284,11 +385,20 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     const requestedFocusId = selectedRef.current ?? hoverRef.current
     const focusId = requestedFocusId && byId.has(requestedFocusId) ? requestedFocusId : null
     const focusNeighbors = focusId ? adjacency.get(focusId) ?? new Set<string>() : null
+    let opacityAnimating = false
+    const smoothOpacity = (values: Map<string, number>, id: string, target: number) => {
+      const current = values.get(id) ?? 1
+      if (!advanceTransitions) return current
+      const next = prefersReducedMotion ? target : approachOpacity(current, target, elapsed)
+      values.set(id, next)
+      if (next !== target) opacityAnimating = true
+      return next
+    }
     const labelCandidates: Array<{
       node: LayoutNode
       x: number
       y: number
-      active: boolean
+      opacity: number
       priority: number
     }> = []
 
@@ -302,7 +412,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       const from = worldToScreen({ x: trimmed.x1, y: trimmed.y1 }, camera, viewport)
       const to = worldToScreen({ x: trimmed.x2, y: trimmed.y2 }, camera, viewport)
       const active = !focusId || edge.sourceId === focusId || edge.targetId === focusId
-      context.globalAlpha = active ? 1 : 0.25
+      context.globalAlpha = smoothOpacity(edgeOpacityRef.current, edge.id, active ? 1 : 0.25)
       context.strokeStyle = edgeColor
       context.beginPath()
       context.moveTo(from.x, from.y)
@@ -313,16 +423,17 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     for (const node of layoutRef.current) {
       const screen = worldToScreen(node, camera, viewport)
       const radius = displayRadius(node, camera.zoom)
+      const active = !focusId || node.id === focusId || focusNeighbors?.has(node.id) === true
+      const opacity = smoothOpacity(nodeOpacityRef.current, node.id, active ? 1 : 0.18)
       if (
         screen.x < -radius - 80 || screen.x > viewport.width + radius + 80 ||
         screen.y < -radius - 40 || screen.y > viewport.height + radius + 40
       ) continue
       const descriptor = typeDescriptors.get(node.type)
       const color = isDark ? descriptor?.darkColor ?? descriptor?.color : descriptor?.color
-      const active = !focusId || node.id === focusId || focusNeighbors?.has(node.id) === true
       const selected = selectedRef.current === node.id
       const hovered = hoverRef.current === node.id
-      context.globalAlpha = active ? 1 : 0.18
+      context.globalAlpha = opacity
 
       if (selected || hovered) {
         context.beginPath()
@@ -352,7 +463,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       }
       context.restore()
 
-      context.globalAlpha = active ? 1 : 0.15
+      context.globalAlpha = opacity
       context.beginPath()
       context.arc(screen.x, screen.y, radius, 0, Math.PI * 2)
       context.strokeStyle = selected ? "#ef7f22" : (isDark ? "rgba(255,255,255,0.66)" : "rgba(255,255,255,0.9)")
@@ -368,7 +479,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
         node,
         x: screen.x,
         y: screen.y + radius + 13,
-        active,
+        opacity,
         priority: selected
           ? 1000
           : hovered
@@ -401,7 +512,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       )
       if (overlaps && candidate.priority < 900) continue
       occupiedLabels.push(bounds)
-      context.globalAlpha = candidate.active ? 1 : 0.15
+      context.globalAlpha = candidate.opacity
       context.lineWidth = 4
       context.strokeStyle = labelHalo
       context.strokeText(label, candidate.x, candidate.y)
@@ -410,25 +521,40 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     }
     context.globalAlpha = 1
 
-    const simulationWasActive = alphaRef.current > 0.004
-    if (simulationWasActive && gestureRef.current.mode !== "drag") {
-      alphaRef.current = stepForceLayout(layoutRef.current, edgeRef.current, alphaRef.current)
-    }
-    if (autoFitFrameRef.current > 0) {
-      autoFitFrameRef.current -= 1
-      if (autoFitFrameRef.current === 0) {
-        fitView()
-        if (autoFitPassRef.current === 0 && layoutRef.current.length > 0) {
-          autoFitPassRef.current = 1
-          autoFitFrameRef.current = 159
+    if (advanceSimulation) {
+      const simulationWasActive = alphaRef.current > 0.004
+      if (simulationWasActive && gestureRef.current.mode !== "drag") {
+        alphaRef.current = stepForceLayout(layoutRef.current, edgeRef.current, alphaRef.current)
+      }
+      if (autoFitFrameRef.current > 0) {
+        autoFitFrameRef.current -= 1
+        if (autoFitFrameRef.current === 0) {
+          fitView()
+          if (autoFitPassRef.current === 0 && layoutRef.current.length > 0) {
+            autoFitPassRef.current = 1
+            autoFitFrameRef.current = 159
+          }
         }
       }
+      if (fitOnSettleRef.current && simulationWasActive && alphaRef.current <= 0.004) {
+        fitOnSettleRef.current = false
+        fitView()
+      }
+
+      const focusSettledWithSimulation = focusTargetRef.current?.settled === true &&
+        alphaRef.current <= 0.004
+      const needsFinalFocusedFrame = focusSettledWithSimulation && simulationWasActive
+      if (focusSettledWithSimulation && !simulationWasActive) {
+        focusTargetRef.current = null
+      }
+      if (
+        alphaRef.current > 0.004 ||
+        autoFitFrameRef.current > 0 ||
+        focusAnimating ||
+        opacityAnimating ||
+        needsFinalFocusedFrame
+      ) scheduleDraw()
     }
-    if (fitOnSettleRef.current && simulationWasActive && alphaRef.current <= 0.004) {
-      fitOnSettleRef.current = false
-      fitView()
-    }
-    if (alphaRef.current > 0.004 || autoFitFrameRef.current > 0) scheduleDraw()
   }, [adjacency, fitView, getImage, scheduleDraw, typeDescriptors])
 
   drawRef.current = draw
@@ -460,6 +586,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   }, [])
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    focusTargetRef.current = null
     const position = pointerPosition(event)
     pointersRef.current.set(event.pointerId, position)
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -592,6 +719,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     const canvas = canvasRef.current
     if (!canvas) return
     event.preventDefault()
+    focusTargetRef.current = null
     const bounds = canvas.getBoundingClientRect()
     const position = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
     const before = screenToWorld(position.x, position.y, cameraRef.current, viewportRef.current)

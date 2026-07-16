@@ -16,7 +16,7 @@ describe("projectEmbeddedGraph", () => {
       id: "person-marie",
       label: "Marie",
       type: "person",
-      avatarUrl: expect.stringMatching(/^https:\/\//),
+      avatarUrl: "https://talx.dod.ngo/media/avatars/MS3PPW_22hqsdk_thumbnail_default.webp",
     })
     expect(first.edges).toContainEqual({
       id: "person-adam::attends::event-ntyghs",
@@ -79,5 +79,25 @@ describe("projectEmbeddedGraph", () => {
         },
       ],
     })
+  })
+
+  it("derives graph thumbnails from canonical URLs and supports legacy avatar fields", () => {
+    const item = (id: string, data: Item["data"]): Item => ({
+      id,
+      type: "person",
+      createdAt: "2026-07-16T00:00:00.000Z",
+      createdBy: "test",
+      data,
+    })
+
+    expect(projectEmbeddedGraph([
+      item("canonical", { avatarUrl: "https://dwebcamp.org/media/person.jpg" }),
+      item("avatar", { avatar: "https://example.com/avatar.jpg" }),
+      item("thumbnail", { avatarThumbnail: "https://example.com/thumbnail.jpg" }),
+    ]).nodes.map(({ avatarUrl }) => avatarUrl)).toEqual([
+      "https://dwebcamp.org/media/person.thumbnail.jpg",
+      "https://example.com/avatar.jpg",
+      "https://example.com/thumbnail.jpg",
+    ])
   })
 })

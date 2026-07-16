@@ -8,7 +8,7 @@ import "./index.css"
 
 const DWEB_CAMP_GROUP_ID = "dwebcamp"
 const MY_NETWORK_GROUP_ID = "my-network"
-const LOCAL_USER_ID = "network-local-user"
+const LOCAL_USER_ID = "did:example:network-local-user"
 
 const networkSeed: MockConnectorSeed = {
   items: dwebCampSeedItems,

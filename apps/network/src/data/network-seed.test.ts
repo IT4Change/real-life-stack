@@ -3,7 +3,6 @@ import { VOCAB_BASE, VOCAB_PERSON } from "@real-life-stack/data-interface"
 
 import {
   buildDwebCampSeedItems,
-  dwebCampGraph,
   dwebCampItemId,
   dwebCampSeedItems,
   slugSeedValue,
@@ -56,7 +55,7 @@ describe("DWebCamp seed importer", () => {
     }
   })
 
-  it("maps the source payload without inventing link or avatar data", () => {
+  it("maps links and canonical high-resolution avatar URLs", () => {
     const quiet = dwebCampSeedItems.find(({ id }) => id === "project-quiet")
     expect(quiet?.data).toEqual({
       title: "Quiet",
@@ -67,9 +66,14 @@ describe("DWebCamp seed importer", () => {
     const marie = dwebCampSeedItems.find(({ id }) => id === "person-marie")
     expect(marie?.data).toEqual({
       displayName: "Marie",
-      avatar: dwebCampGraph.avatars.Marie,
+      avatarUrl: "https://talx.dod.ngo/media/avatars/MS3PPW_22hqsdk.webp",
     })
-    expect(dwebCampGraph.avatars.Marie.startsWith("https://")).toBe(true)
+
+    const andrea = dwebCampSeedItems.find(({ id }) => id === "person-andrea-ferrante")
+    expect(andrea?.data).toEqual({
+      displayName: "Andrea Ferrante",
+      avatarUrl: "https://dwebcamp.org/media/andrea_ferrante.jpg",
+    })
   })
 
   it("derives vocabulary contexts from each imported item shape", () => {

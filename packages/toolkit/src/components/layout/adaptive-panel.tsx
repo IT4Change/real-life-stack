@@ -3,6 +3,7 @@
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useCallback,
   type ReactNode,
@@ -11,6 +12,7 @@ import {
 import { cn } from "../../lib/utils"
 import { useIsCompact } from "../../hooks/use-mobile"
 import { X, Maximize2, PanelRight, GripHorizontal, Pin, PinOff } from "lucide-react"
+import { adaptivePanelScrollLock, adaptivePanelStack } from "./adaptive-panel-stack"
 
 export type PanelMode = "modal" | "sidebar" | "drawer"
 
@@ -60,6 +62,14 @@ export interface AdaptivePanelProps {
 }
 
 const VELOCITY_THRESHOLD = 0.15
+
+function syncAdaptivePanelInsets(): void {
+  const { left, right } = adaptivePanelStack.getInsets()
+  const root = document.documentElement
+  root.style.setProperty("--adaptive-panel-margin-left", `${left}px`)
+  root.style.setProperty("--adaptive-panel-margin-right", `${right}px`)
+}
+
 function parsePx(value: string): number {
   if (value.endsWith("px")) return parseFloat(value)
   if (value.endsWith("vw")) return (parseFloat(value) / 100) * window.innerWidth
@@ -173,6 +183,8 @@ export function AdaptivePanel({
   const panelRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number | null>(null)
+  const stackIdRef = useRef(Symbol("adaptive-panel"))
+  const [stackOrder, setStackOrder] = useState(0)
 
   // Remember last drawer/sidebar sizes for restore after modal round-trip
   const lastDrawerYRef = useRef(100 - drawerInitialHeight * 100)
@@ -215,27 +227,34 @@ export function AdaptivePanel({
     }
   }, [isCompact, allowedModes])
 
-  // Set CSS variables for content displacement
-  useEffect(() => {
-    const root = document.documentElement
-    if (mode === "sidebar" && open && !animatingOut) {
-      const width = `${currentSidebarWidth}px`
-      if (side === "right") {
-        root.style.setProperty("--adaptive-panel-margin-right", width)
-        root.style.setProperty("--adaptive-panel-margin-left", "0px")
-      } else {
-        root.style.setProperty("--adaptive-panel-margin-left", width)
-        root.style.setProperty("--adaptive-panel-margin-right", "0px")
-      }
+  // Keep layout displacement and overlay order coherent across stacked panels.
+  useLayoutEffect(() => {
+    const id = stackIdRef.current
+    if ((open || visible) && (!suspended || mode === "sidebar")) {
+      const order = adaptivePanelStack.upsert(
+        id,
+        {
+          mode,
+          side,
+          sidebarWidth: currentSidebarWidth,
+          insetActive: open && !animatingOut,
+        },
+        setStackOrder,
+      )
+      setStackOrder((current) => current === order ? current : order)
     } else {
-      root.style.setProperty("--adaptive-panel-margin-right", "0px")
-      root.style.setProperty("--adaptive-panel-margin-left", "0px")
+      adaptivePanelStack.remove(id)
+      setStackOrder(0)
     }
+    syncAdaptivePanelInsets()
+  }, [mode, open, visible, animatingOut, currentSidebarWidth, side, suspended])
+
+  useLayoutEffect(() => {
     return () => {
-      root.style.setProperty("--adaptive-panel-margin-right", "0px")
-      root.style.setProperty("--adaptive-panel-margin-left", "0px")
+      adaptivePanelStack.remove(stackIdRef.current)
+      syncAdaptivePanelInsets()
     }
-  }, [mode, open, animatingOut, currentSidebarWidth, side])
+  }, [])
 
   // Manual mode switch — restore remembered sizes
   const handleModeSwitch = useCallback(
@@ -483,23 +502,29 @@ export function AdaptivePanel({
 
   // Escape key handler — don't close when pinned
   useEffect(() => {
-    if (!open || pinned) return
+    if (!open || pinned || (suspended && mode !== "sidebar")) return
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
+      if (
+        e.key === "Escape" &&
+        !e.defaultPrevented &&
+        adaptivePanelStack.isTopmost(stackIdRef.current)
+      ) {
+        e.preventDefault()
+        onClose()
+      }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [open, onClose, pinned])
+  }, [mode, open, onClose, pinned, suspended])
 
   // Lock body scroll when modal or (unpinned) drawer is open — but not while
   // suspended, so the underlying map (e.g. during location picking) behaves
   // normally.
   useEffect(() => {
     if (!suspended && open && (mode === "modal" || (mode === "drawer" && !pinned))) {
-      const prev = document.body.style.overflow
-      document.body.style.overflow = "hidden"
+      adaptivePanelScrollLock.acquire(stackIdRef.current, document.body)
       return () => {
-        document.body.style.overflow = prev
+        adaptivePanelScrollLock.release(stackIdRef.current, document.body)
       }
     }
   }, [open, mode, pinned, suspended])
@@ -508,6 +533,7 @@ export function AdaptivePanel({
 
   const isOpen = open && !animatingOut
   const isLeft = side === "left"
+  const panelZIndex = Math.min(64, 59 + stackOrder)
 
   // Drawer-specific computed values
   const drawerTransition = isDragging
@@ -556,6 +582,7 @@ export function AdaptivePanel({
               : (isOpen && drawerY < 90 ? "opacity-100" : "opacity-0 pointer-events-none"),
             suspended && "invisible pointer-events-none",
           )}
+          style={{ zIndex: panelZIndex }}
           onClick={onClose}
         />
       )}
@@ -571,7 +598,7 @@ export function AdaptivePanel({
           mode === "drawer" && "fixed inset-x-0 bottom-0 z-[60] pointer-events-auto",
           suspended && mode !== "sidebar" && "invisible pointer-events-none",
         )}
-        style={mode === "sidebar" ? outerStyle : undefined}
+        style={{ ...(mode === "sidebar" ? outerStyle : {}), zIndex: panelZIndex }}
       >
         {/* Inner panel — single stable container for all modes */}
         <div

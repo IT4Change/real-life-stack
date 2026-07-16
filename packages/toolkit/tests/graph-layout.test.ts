@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  approachOpacity,
   createLayoutNodes,
   fitCamera,
+  focusCamera,
+  interpolateCamera,
   stepForceLayout,
   trimEdge,
 } from "../src/components/graph/force-layout"
@@ -71,5 +74,45 @@ describe("graph force layout", () => {
 
   it("returns a stable default camera for an empty graph", () => {
     expect(fitCamera([], 1000, 600)).toEqual({ x: 0, y: 0, zoom: 1 })
+  })
+
+  it("focuses a node in the visible area above a bottom inset", () => {
+    const node = { x: 40, y: 80 }
+    const viewportHeight = 800
+    const bottomInset = 440
+    const camera = focusCamera(node, { x: 0, y: 0, zoom: 0.4 }, viewportHeight, bottomInset)
+    const screenY = (node.y - camera.y) * camera.zoom + viewportHeight / 2
+
+    expect(camera.zoom).toBe(0.9)
+    expect(camera.x).toBe(node.x)
+    expect(screenY).toBeCloseTo((viewportHeight - bottomInset) / 2)
+  })
+
+  it("preserves a closer zoom and clamps the inset to the viewport", () => {
+    const node = { x: 20, y: 30 }
+    const camera = focusCamera(node, { x: 0, y: 0, zoom: 1.4 }, 600, 900)
+    const screenY = (node.y - camera.y) * camera.zoom + 300
+
+    expect(camera.zoom).toBe(1.4)
+    expect(screenY).toBeCloseTo(0)
+  })
+
+  it("interpolates camera focus without jumping to the destination", () => {
+    const from = { x: 0, y: 20, zoom: 0.4 }
+    const to = { x: 100, y: 220, zoom: 0.9 }
+
+    expect(interpolateCamera(from, to, 0)).toEqual(from)
+    expect(interpolateCamera(from, to, 0.25)).toEqual({ x: 15.625, y: 51.25, zoom: 0.478125 })
+    expect(interpolateCamera(from, to, 1)).toEqual(to)
+  })
+
+  it("softly approaches focus opacity in both directions", () => {
+    const dimmed = approachOpacity(1, 0.18, 16)
+    const restored = approachOpacity(0.18, 1, 16)
+
+    expect(dimmed).toBeGreaterThan(0.18)
+    expect(dimmed).toBeLessThan(1)
+    expect(restored).toBeGreaterThan(0.18)
+    expect(restored).toBeLessThan(1)
   })
 })

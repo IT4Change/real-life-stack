@@ -15,6 +15,41 @@ export interface GraphCamera {
   zoom: number
 }
 
+export function interpolateCamera(
+  from: GraphCamera,
+  to: GraphCamera,
+  progress: number,
+): GraphCamera {
+  const clamped = Math.max(0, Math.min(1, progress))
+  const eased = clamped * clamped * (3 - 2 * clamped)
+  return {
+    x: from.x + (to.x - from.x) * eased,
+    y: from.y + (to.y - from.y) * eased,
+    zoom: from.zoom + (to.zoom - from.zoom) * eased,
+  }
+}
+
+export function approachOpacity(current: number, target: number, elapsedMs: number): number {
+  const elapsed = Math.max(0, Math.min(32, elapsedMs))
+  const next = current + (target - current) * (1 - Math.exp(-elapsed / 110))
+  return Math.abs(target - next) < 0.01 ? target : next
+}
+
+export function focusCamera(
+  node: Pick<LayoutNode, "x" | "y">,
+  current: GraphCamera,
+  viewportHeight: number,
+  bottomInset = 0,
+): GraphCamera {
+  const zoom = Math.max(0.9, current.zoom)
+  const inset = Math.max(0, Math.min(bottomInset, viewportHeight))
+  return {
+    x: node.x,
+    y: node.y + inset / (2 * zoom),
+    zoom,
+  }
+}
+
 const RING_RADIUS: Record<string, number> = {
   project: 220,
   event: 520,
