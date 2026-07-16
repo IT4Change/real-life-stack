@@ -43,6 +43,9 @@ Die Kern-Dokumente bauen in dieser Reihenfolge aufeinander auf:
 | [05-confirmations-and-trust.md](05-confirmations-and-trust.md) | Normativer Entwurf | Claims, Confirmations, Attestations und Trust-Level |
 | [06-schema-composition.md](06-schema-composition.md) | Normativer Entwurf | Schema-Komposition über `@context`, Standardvokabulare, `type`-Hint |
 | [07-tags.md](07-tags.md) | Normativer Entwurf | Tags als Kategorisierungs-Achse: einfache Strings + strukturierte URN-Tags |
+| [08-relation-records.md](08-relation-records.md) | Normativer Entwurf | Relationen als eigenständige Items (`type: "relation"`), `RelationStoreCapable`, Trust-Bindung an Confirmations |
+| [09-mirror-bridge.md](09-mirror-bridge.md) | Normativer Entwurf (Implementierung ab Netzwerk-App P2) | Items in mehreren Spaces: Canonical Home, read-only Mirror-Snapshots, Brücken-Clients |
+| [10-activity-log.md](10-activity-log.md) | Normativer Entwurf | CRUD-Historie pro Space: Collection-Form, ID-/Merge-Ordnung, Retention, Atomarität |
 | [glossary.md](glossary.md) | Lebendes Dokument | Kurzdefinitionen der Spec-Begrifflichkeit mit Verweisen auf die normative Quelle |
 
 ## Formale Schemas
