@@ -2255,7 +2255,18 @@ export class WotConnector extends BaseConnector {
         }
       }
       if (!this.isRuntimeCurrent(generation, queue)) return false
-      await this.failWorkItem(queue, workId, Date.now(), generation)
+      const dropped = await this.failWorkItem(queue, workId, Date.now(), generation)
+      if (dropped && this.isRuntimeCurrent(generation, queue)) {
+        // Attempt-Cap hat die letzte Retry-Autorität verworfen: der Ausgang
+        // MUSS sichtbar terminal sein — failed, crash-fest geflusht (es gibt
+        // keinen Record mehr, der einen queued-Zustand je auflösen würde).
+        try {
+          await this.setDeliveryStatus(attestation.id, "failed")
+          await this.flushPersonalDocDurably()
+        } catch (error) {
+          console.warn("[WotConnector] Cap-Terminal-Flush deferred", error)
+        }
+      }
       if (this.isRuntimeCurrent(generation, queue)) this.noteWorkQueueChanged()
       return false
     }
@@ -2266,7 +2277,18 @@ export class WotConnector extends BaseConnector {
     } catch (error) {
       if (!queue) throw error
       if (!this.isRuntimeCurrent(generation, queue)) return false
-      await this.failWorkItem(queue, workId, Date.now(), generation)
+      const dropped = await this.failWorkItem(queue, workId, Date.now(), generation)
+      if (dropped && this.isRuntimeCurrent(generation, queue)) {
+        // Attempt-Cap hat die letzte Retry-Autorität verworfen: der Ausgang
+        // MUSS sichtbar terminal sein — failed, crash-fest geflusht (es gibt
+        // keinen Record mehr, der einen queued-Zustand je auflösen würde).
+        try {
+          await this.setDeliveryStatus(attestation.id, "failed")
+          await this.flushPersonalDocDurably()
+        } catch (error) {
+          console.warn("[WotConnector] Cap-Terminal-Flush deferred", error)
+        }
+      }
       if (this.isRuntimeCurrent(generation, queue)) this.noteWorkQueueChanged()
       return false
     }
@@ -2310,7 +2332,18 @@ export class WotConnector extends BaseConnector {
       }
       if (!queue) throw error
       if (!this.isRuntimeCurrent(generation, queue)) return false
-      await this.failWorkItem(queue, workId, Date.now(), generation)
+      const dropped = await this.failWorkItem(queue, workId, Date.now(), generation)
+      if (dropped && this.isRuntimeCurrent(generation, queue)) {
+        // Attempt-Cap hat die letzte Retry-Autorität verworfen: der Ausgang
+        // MUSS sichtbar terminal sein — failed, crash-fest geflusht (es gibt
+        // keinen Record mehr, der einen queued-Zustand je auflösen würde).
+        try {
+          await this.setDeliveryStatus(attestation.id, "failed")
+          await this.flushPersonalDocDurably()
+        } catch (error) {
+          console.warn("[WotConnector] Cap-Terminal-Flush deferred", error)
+        }
+      }
       if (this.isRuntimeCurrent(generation, queue)) this.noteWorkQueueChanged()
       return false
     }
@@ -2331,7 +2364,18 @@ export class WotConnector extends BaseConnector {
     } catch (error) {
       if (!queue) throw error
       if (!this.isRuntimeCurrent(generation, queue)) return false
-      await this.failWorkItem(queue, workId, Date.now(), generation)
+      const dropped = await this.failWorkItem(queue, workId, Date.now(), generation)
+      if (dropped && this.isRuntimeCurrent(generation, queue)) {
+        // Attempt-Cap hat die letzte Retry-Autorität verworfen: der Ausgang
+        // MUSS sichtbar terminal sein — failed, crash-fest geflusht (es gibt
+        // keinen Record mehr, der einen queued-Zustand je auflösen würde).
+        try {
+          await this.setDeliveryStatus(attestation.id, "failed")
+          await this.flushPersonalDocDurably()
+        } catch (error) {
+          console.warn("[WotConnector] Cap-Terminal-Flush deferred", error)
+        }
+      }
       if (this.isRuntimeCurrent(generation, queue)) this.noteWorkQueueChanged()
       return false
     }
@@ -2610,6 +2654,12 @@ export class WotConnector extends BaseConnector {
     // Refresh observability now, but do not arm the due-now timer while the
     // immediate attempt owns this obligation. A crash still leaves it due.
     this.noteWorkQueueChanged(false)
+    // In-Session-Ownership (Copilot #148): der Direktversuch CLAIMT sein Item —
+    // ein parallel laufender Drain überspringt es dann. Verliert der Direkt-
+    // versuch den Claim (Drain war schneller), gehört die Pflicht dem Drain:
+    // kein paralleler Zweitversand.
+    const claimApi = queue as WorkQueue & { claimImmediate?: (id: string) => boolean }
+    if (claimApi.claimImmediate && !claimApi.claimImmediate(workId)) return
     void this.attemptReceiptAck(queue, workId, attestation, generation)
   }
 

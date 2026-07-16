@@ -106,6 +106,18 @@ export class WorkQueueStore implements WorkQueue {
     if (inserted) await this.refreshPendingCount()
   }
 
+  /**
+   * In-Session-Ownership für einen Direktversuch (z.B. Receipt sofort nach
+   * Empfang): gewinnt genau einmal; claimDue überspringt geclaimte Items.
+   * complete/fail geben den Claim wieder frei. Synchron → race-frei im
+   * Single-Thread-JS (gleiche Mechanik wie der Drain-Claim).
+   */
+  claimImmediate(id: string): boolean {
+    if (this.claimedIds.has(id)) return false
+    this.claimedIds.add(id)
+    return true
+  }
+
   async claimDue(now: number): Promise<WorkQueueItem[]> {
     let resolveResult!: (items: WorkQueueItem[]) => void
     let rejectResult!: (error: unknown) => void

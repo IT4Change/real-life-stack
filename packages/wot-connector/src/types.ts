@@ -38,7 +38,7 @@ export interface WotConnectorRuntimeOverrides {
 export interface WotSyncState {
   logPending: number
   outboxPending: number
-  workPending: number
+  workPending?: number
 }
 
 // --- Automerge SpaceDoc Schema ---
