@@ -249,3 +249,9 @@ Implementierung kanonisch.
   etablieren (TOFU-Gate als flippbarer Diskriminator) → Bindung entsteht
   NUR über Snapshots mit `item ≠ null`; Tombstone zu unbekanntem
   Schlüssel wird ignoriert. **Beide übernommen** (Folgecommit in #142).
+- R13 (16.07., Codex, Konsistenz in Kapitel 10): (1) `ts` auf kanonisches
+  UTC-Format `Date.toISOString()` festgenagelt (lexikographisch =
+  chronologisch; Offsets/abweichende Präzision unzulässig).
+  (2) Retention-Akteur präzisiert: die Connector-Implementierung auf
+  jedem Client prunt, nie App-/UI-Code (Widerspruch zu Regel 1 beseitigt).
+  **Beide übernommen** (Folgecommit in #142).

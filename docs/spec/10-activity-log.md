@@ -34,7 +34,8 @@ interface ActivityEntry {
   deviceId: string
   /** geräte-lokale, monoton wachsende Sequenz pro Space */
   seq: number
-  /** ISO-Timestamp der Aktion (reine Anzeige-/Sortierhilfe) */
+  /** UTC, exakt Date.toISOString()-Format (YYYY-MM-DDTHH:mm:ss.sssZ) —
+      damit ist lexikographisch = chronologisch */
   ts: string
   /** DID des Handelnden — setzt der Connector, nie die App (Regel 1) */
   actor: string
@@ -62,13 +63,19 @@ interface ActivityEntry {
    derselben DID ohne Koordination eindeutig. Die Anzeige-Ordnung ist
    `(ts, actor, deviceId, seq)` lexikographisch — deterministisch auf
    allen Geräten, unabhängig von der Iterationsreihenfolge der Map.
+   `ts` MUSS das kanonische UTC-Format von `Date.toISOString()` tragen
+   (`YYYY-MM-DDTHH:mm:ss.sssZ`); andere gültige ISO-Darstellungen
+   (Zonen-Offsets, abweichende Präzision) sind unzulässig, weil sie die
+   lexikographische Ordnung brechen würden.
 3. **Append-only:** Einträge werden nie editiert. Entfernt wird nur durch
    Retention (Regel 4).
-4. **Retention:** Cap pro Space, Default 500 Einträge. Beim Schreiben DARF
-   jeder Client Einträge über dem Cap entfernen, älteste zuerst gemäß
-   Anzeige-Ordnung; gelöscht wird per Schlüssel (`id`), nie per Position —
-   paralleles Pruning konvergiert, weil alle Clients dieselben Schlüssel
-   wählen. Das Prunen selbst erzeugt keinen Eintrag.
+4. **Retention:** Cap pro Space, Default 500 Einträge. Die
+   Activity-Log-Implementierung des **Connectors** auf jedem Client DARF
+   beim Schreiben deterministisch prunen (App-/UI-Code nie, s. Regel 1),
+   älteste zuerst gemäß Anzeige-Ordnung; gelöscht wird per Schlüssel
+   (`id`), nie per Position — paralleles Pruning konvergiert, weil alle
+   Connectoren dieselben Schlüssel wählen. Das Prunen selbst erzeugt
+   keinen Eintrag.
 5. **Projektion, nicht Wahrheit:** Der Log MUSS als unvollständig behandelt
    werden (Retention, alte Clients ohne Log-Unterstützung schreiben nicht).
    Er DARF NICHT für Sync, Konfliktlösung oder Berechtigungen verwendet
