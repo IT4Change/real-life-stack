@@ -1,9 +1,18 @@
-import { deriveContext, type Item, type Relation } from "@real-life-stack/data-interface"
+import {
+  canonicalizeRelationEndpoints,
+  deriveContext,
+  deriveRelationRecordId,
+  type DefaultRelationStoreOptions,
+  type Item,
+} from "@real-life-stack/data-interface"
 
 import rawGraph from "./graph.json" with { type: "json" }
 
 export const DWEB_CAMP_SEED_CREATED_AT = "2026-07-16T00:00:00.000Z"
 export const DWEB_CAMP_SEED_CREATOR = "seed:dwebcamp-2026"
+export const NETWORK_RELATION_STORE_OPTIONS: DefaultRelationStoreOptions = {
+  symmetricPredicates: ["knows", "connectedWith"],
+}
 
 export interface DwebCampSession {
   code: string
@@ -80,24 +89,10 @@ function requireId(ids: ReadonlyMap<string, string>, value: string, kind: string
   return id
 }
 
-function addRelation(
-  relationsBySource: Map<string, Relation[]>,
-  source: string,
-  relation: Relation,
-): void {
-  const relations = relationsBySource.get(source)
-  if (relations) {
-    relations.push(relation)
-  } else {
-    relationsBySource.set(source, [relation])
-  }
-}
-
 function baseItem(
   id: string,
   type: SeedItemType,
   data: Record<string, unknown>,
-  relations?: Relation[],
   tags?: string[],
 ): Item {
   return {
@@ -107,49 +102,17 @@ function baseItem(
     createdAt: DWEB_CAMP_SEED_CREATED_AT,
     createdBy: DWEB_CAMP_SEED_CREATOR,
     data,
-    ...(relations?.length ? { relations } : {}),
     ...(tags?.length ? { tags } : {}),
   }
 }
 
-export function buildDwebCampSeedItems(graph: DwebCampGraphData = dwebCampGraph): Item[] {
+export function buildDwebCampDomainItems(graph: DwebCampGraphData = dwebCampGraph): Item[] {
   const eventIds = indexIds("event", graph.sessions.map(({ code }) => code))
   const personIds = indexIds("person", graph.persons)
   const projectIds = indexIds("project", graph.projects)
   const clusterIds = new Set(graph.clusters)
 
-  const relationsBySource = new Map<string, Relation[]>()
   const tagsByEvent = new Map<string, string[]>()
-
-  for (const [person, sessionCode] of graph.speaks) {
-    const personId = requireId(personIds, person, "person")
-    const eventId = requireId(eventIds, sessionCode, "session")
-    addRelation(relationsBySource, personId, {
-      predicate: "attends",
-      target: `item:${eventId}`,
-      meta: { tense: "has-been", role: "speaker" },
-    })
-  }
-
-  for (const [sessionCode, project] of graph.features) {
-    const eventId = requireId(eventIds, sessionCode, "session")
-    const projectId = requireId(projectIds, project, "project")
-    addRelation(relationsBySource, eventId, {
-      predicate: "connectedWith",
-      target: `item:${projectId}`,
-    })
-  }
-
-  for (const [person, project, sessionCode] of graph.works_on) {
-    const personId = requireId(personIds, person, "person")
-    const projectId = requireId(projectIds, project, "project")
-    requireId(eventIds, sessionCode, "session")
-    addRelation(relationsBySource, personId, {
-      predicate: "partOf",
-      target: `item:${projectId}`,
-      meta: { context: sessionCode },
-    })
-  }
 
   for (const [sessionCode, cluster] of graph.in_cluster) {
     const eventId = requireId(eventIds, sessionCode, "session")
@@ -170,7 +133,6 @@ export function buildDwebCampSeedItems(graph: DwebCampGraphData = dwebCampGraph)
       id,
       "event",
       { title, urls: [...urls] },
-      relationsBySource.get(id),
       tagsByEvent.get(id),
     )
   })
@@ -182,7 +144,6 @@ export function buildDwebCampSeedItems(graph: DwebCampGraphData = dwebCampGraph)
       id,
       "person",
       { displayName, ...(avatarUrl ? { avatarUrl } : {}) },
-      relationsBySource.get(id),
     )
   })
 
@@ -202,4 +163,96 @@ export function buildDwebCampSeedItems(graph: DwebCampGraphData = dwebCampGraph)
   return [...events, ...persons, ...projects]
 }
 
-export const dwebCampSeedItems = buildDwebCampSeedItems()
+interface SeedRelation {
+  predicate: string
+  from: string
+  to: string
+  fields?: Record<string, unknown>
+}
+
+function buildDwebCampSeedRelations(graph: DwebCampGraphData): SeedRelation[] {
+  const eventIds = indexIds("event", graph.sessions.map(({ code }) => code))
+  const personIds = indexIds("person", graph.persons)
+  const projectIds = indexIds("project", graph.projects)
+
+  const attends = graph.speaks.map(([person, sessionCode]): SeedRelation => ({
+    predicate: "attends",
+    from: `item:${requireId(personIds, person, "person")}`,
+    to: `item:${requireId(eventIds, sessionCode, "session")}`,
+    fields: { tense: "has-been", role: "speaker" },
+  }))
+
+  const connectedWith = graph.features.map(([sessionCode, project]): SeedRelation => ({
+    predicate: "connectedWith",
+    from: `item:${requireId(eventIds, sessionCode, "session")}`,
+    to: `item:${requireId(projectIds, project, "project")}`,
+  }))
+
+  const partOfByPair = new Map<string, {
+    from: string
+    to: string
+    contexts: Set<string>
+  }>()
+  for (const [person, project, sessionCode] of graph.works_on) {
+    requireId(eventIds, sessionCode, "session")
+    const from = `item:${requireId(personIds, person, "person")}`
+    const to = `item:${requireId(projectIds, project, "project")}`
+    const key = JSON.stringify([from, to])
+    const existing = partOfByPair.get(key)
+    if (existing) {
+      existing.contexts.add(sessionCode)
+    } else {
+      partOfByPair.set(key, { from, to, contexts: new Set([sessionCode]) })
+    }
+  }
+  const partOf = [...partOfByPair.values()].map(({ from, to, contexts }): SeedRelation => ({
+    predicate: "partOf",
+    from,
+    to,
+    fields: { contexts: [...contexts].sort() },
+  }))
+
+  return [...attends, ...connectedWith, ...partOf]
+}
+
+async function buildRelationItem(relation: SeedRelation): Promise<Item> {
+  const { from, to } = canonicalizeRelationEndpoints(
+    relation.predicate,
+    relation.from,
+    relation.to,
+    NETWORK_RELATION_STORE_OPTIONS,
+  )
+  const data = {
+    predicate: relation.predicate,
+    ...relation.fields,
+  }
+
+  return {
+    id: await deriveRelationRecordId(
+      DWEB_CAMP_SEED_CREATOR,
+      relation.predicate,
+      from,
+      to,
+      NETWORK_RELATION_STORE_OPTIONS,
+    ),
+    "@context": deriveContext("relation", data),
+    type: "relation",
+    createdAt: DWEB_CAMP_SEED_CREATED_AT,
+    createdBy: DWEB_CAMP_SEED_CREATOR,
+    data,
+    relations: [
+      { predicate: "from", target: from },
+      { predicate: "to", target: to },
+    ],
+  }
+}
+
+export async function buildDwebCampSeedItems(
+  graph: DwebCampGraphData = dwebCampGraph,
+): Promise<Item[]> {
+  const domainItems = buildDwebCampDomainItems(graph)
+  const relationItems = await Promise.all(buildDwebCampSeedRelations(graph).map(buildRelationItem))
+  return [...domainItems, ...relationItems]
+}
+
+export const dwebCampDomainItems = buildDwebCampDomainItems()

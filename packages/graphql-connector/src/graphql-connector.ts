@@ -1,6 +1,7 @@
 import { GraphQLClient } from "graphql-request"
 import { createClient, type Client as WsClient } from "graphql-ws"
 import type {
+  CreateItemInput,
   FullConnector,
   Item,
   ItemFilter,
@@ -249,9 +250,9 @@ export class GraphQLConnector implements FullConnector {
     return observable
   }
 
-  async createItem(item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+  async createItem(item: CreateItemInput): Promise<Item> {
     const { createItem } = await this.client.request<{ createItem: Record<string, unknown> }>(CREATE_ITEM_MUTATION, {
-      input: { type: item.type, createdBy: item.createdBy, data: item.data, relations: item.relations },
+      input: { id: item.id, type: item.type, createdBy: item.createdBy, data: item.data, relations: item.relations },
     })
     return parseItem(createItem)
   }

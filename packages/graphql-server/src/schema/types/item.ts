@@ -57,6 +57,7 @@ export const RelationInputType = builder.inputType("RelationInput", {
 
 export const ItemInputType = builder.inputType("ItemInput", {
   fields: (t) => ({
+    id: t.id(),
     type: t.string({ required: true }),
     createdBy: t.string({ required: true }),
     data: t.field({ type: "JSON", required: true }),

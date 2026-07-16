@@ -1,4 +1,4 @@
-import type { Item } from "@real-life-stack/data-interface"
+import type { CreateItemInput, Item } from "@real-life-stack/data-interface"
 import { isWritable } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 
@@ -13,7 +13,7 @@ function useWritableConnector() {
 export function useCreateItem() {
   const connector = useWritableConnector()
   return {
-    mutate: (item: Omit<Item, "id" | "createdAt">) => connector.createItem(item),
+    mutate: (item: CreateItemInput) => connector.createItem(item),
   }
 }
 

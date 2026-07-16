@@ -35,6 +35,7 @@ import {
   useItems,
   useIsCompact,
   useModulePanel,
+  useRelationRecords,
   type GraphEdge,
   type GraphNode,
   type GraphTypeDescriptor,
@@ -46,7 +47,7 @@ import {
 
 import { dwebCampDetailAvatarUrl } from "./data/avatar-detail-urls"
 import { resolveNetworkAvatarSources } from "./lib/avatar-sources"
-import { projectEmbeddedGraph } from "./lib/project-embedded-graph"
+import { projectRelationGraph } from "./lib/project-relation-graph"
 
 const GRAPH_TYPES: readonly GraphTypeDescriptor[] = [
   { id: "person", label: "Personen", color: "#2a78d6", darkColor: "#3987e5" },
@@ -359,7 +360,12 @@ function NetworkShell() {
   const connector = useConnector()
   const { data: groups } = useGroups()
   const currentGroup = useCurrentGroup()
-  const { data: items, isLoading } = useItems()
+  const { data: items, isLoading: itemsLoading } = useItems()
+  const {
+    data: relationRecords,
+    isLoading: relationRecordsLoading,
+    supported: relationRecordsSupported,
+  } = useRelationRecords()
   const isCompact = useIsCompact()
   const graphRef = useRef<GraphViewHandle>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -400,9 +406,17 @@ function NetworkShell() {
     [groups],
   )
   const activeWorkspace = workspaces.find(({ id }) => id === currentGroup?.id) ?? null
-  const graph = useMemo(() => projectEmbeddedGraph(items), [items])
+  const domainItems = useMemo(() => items.filter(({ type }) => type !== "relation"), [items])
+  const graph = useMemo(
+    () => projectRelationGraph(domainItems, relationRecords),
+    [domainItems, relationRecords],
+  )
   const nodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes])
-  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
+  const itemById = useMemo(
+    () => new Map(domainItems.map((item) => [item.id, item])),
+    [domainItems],
+  )
+  const isLoading = itemsLoading || relationRecordsLoading
 
   const visibleNodes = useMemo(
     () => graph.nodes.filter(({ type }) => enabledTypes.has(type)),
@@ -660,6 +674,13 @@ function NetworkShell() {
             {isLoading && (
               <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/50">
                 <p className="text-sm text-muted-foreground">Netzwerk wird geladen</p>
+              </div>
+            )}
+            {!relationRecordsSupported && (
+              <div className="absolute inset-0 z-30 grid place-items-center bg-background px-6 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Netzwerkdaten sind mit diesem Connector nicht verfügbar.
+                </p>
               </div>
             )}
           </AppShellMain>

@@ -232,6 +232,8 @@ export function isFeatureItem(item: Item): item is FeatureItem {
 // ============================================================
 
 export interface ProfileItemData {
+  /** Optional stable identity used to bind person items to confirmations. */
+  did?: string
   /** Display name. */
   name?: string
   /** Short bio, free text. */

@@ -18,6 +18,7 @@ export {
   useSetUnsavedDirty,
 } from "./use-unsaved-changes"
 export { useRelatedItems } from "./use-related-items"
+export { useRelationRecords, useRelationNeighbors } from "./use-relation-records"
 export { useCreateItem, useUpdateItem, useDeleteItem } from "./use-mutations"
 export { useItemPermissions, useCanCreate, type ItemPermissions } from "./use-item-permissions"
 export { useGroups, usePersonalGroupId, useCurrentGroup, useCreateGroup, useUpdateGroup, useDeleteGroup, useMembers, useInviteMember, useRemoveMember } from "./use-groups"

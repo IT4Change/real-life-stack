@@ -1,4 +1,5 @@
 import type {
+  CreateItemInput,
   Item,
   ItemFilter,
   Group,
@@ -925,7 +926,7 @@ export class WotConnector extends BaseConnector {
   override async getItem(id: string): Promise<Item | null> {
     await this.handleReady
     if (this.currentGroupId === null && this.crossGroupIndex) {
-      const entry = this.crossGroupIndex.getAll().get(id)
+      const entry = this.crossGroupIndex.getUniqueById(id)
       return entry?.item ?? null
     }
     const doc = this.getCurrentDoc()
@@ -936,16 +937,8 @@ export class WotConnector extends BaseConnector {
     return deserializeItem(serialized)
   }
 
-  override async createItem(item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+  override async createItem(item: CreateItemInput): Promise<Item> {
     await this.handleReady
-
-    const id = crypto.randomUUID()
-    const newItem: Item = {
-      ...item,
-      id,
-      createdAt: new Date().toISOString(),
-    }
-    const serialized = serializeItem(newItem)
 
     // In overview mode, create in private space
     if (this.currentGroupId === null) {
@@ -954,26 +947,55 @@ export class WotConnector extends BaseConnector {
         throw new Error("Private space not available")
       }
       const privateHandle = await this.replication.openSpace<RlsSpaceDoc>(this.privateSpaceId)
-      privateHandle.transact((doc) => {
-        if (!doc.items) doc.items = {}
-        doc.items[id] = serialized
-      })
-      privateHandle.close()
-      this.crossGroupIndex?.reindexGroup(this.privateSpaceId)
-      this.notifyAllObservers()
-      return newItem
+      try {
+        return this.createItemOnHandle(privateHandle, item, this.privateSpaceId)
+      } finally {
+        privateHandle.close()
+      }
     }
 
     const handle = this.currentHandle
     if (!handle) throw new Error("No active group selected")
+    return this.createItemOnHandle(handle, item, this.currentGroupId)
+  }
+
+  private createItemOnHandle(
+    handle: SpaceHandle<RlsSpaceDoc>,
+    item: CreateItemInput,
+    spaceId: string,
+  ): Item {
+    let result: Item | null = null
+    let created = false
 
     handle.transact((doc) => {
       if (!doc.items) doc.items = {}
-      doc.items[id] = serialized
+      if (item.id !== undefined && doc.items[item.id]) {
+        result = deserializeItem(doc.items[item.id])
+        return
+      }
+
+      let id = item.id
+      if (id === undefined) {
+        do {
+          id = crypto.randomUUID()
+        } while (doc.items[id])
+      }
+      const newItem: Item = {
+        ...item,
+        id,
+        createdAt: new Date().toISOString(),
+      }
+      doc.items[id] = serializeItem(newItem)
+      result = newItem
+      created = true
     })
-    if (this.currentGroupId) this.crossGroupIndex?.reindexGroup(this.currentGroupId)
-    this.notifyAllObservers()
-    return newItem
+
+    if (!result) throw new Error("Item transaction did not produce a result")
+    if (created) {
+      this.crossGroupIndex?.reindexGroup(spaceId)
+      this.notifyAllObservers()
+    }
+    return result
   }
 
   override async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
@@ -1053,15 +1075,11 @@ export class WotConnector extends BaseConnector {
   }
 
   getItemGroupId(itemId: string): string | null {
-    if (this.crossGroupIndex) {
-      return this.crossGroupIndex.getItemGroupId(itemId)
-    }
-    // Fallback: if no index, check current group
-    if (this.currentHandle) {
+    if (this.currentHandle && this.currentGroupId) {
       const doc = this.currentHandle.getDoc()
       if (doc.items?.[itemId]) return this.currentGroupId
     }
-    return null
+    return this.crossGroupIndex?.getItemGroupId(itemId) ?? null
   }
 
   async moveItemToGroup(itemId: string, targetGroupId: string): Promise<void> {
@@ -1928,7 +1946,7 @@ export class WotConnector extends BaseConnector {
       if (!hasData) {
         obs.set(null)
       } else if (isPersonal && this.crossGroupIndex) {
-        const entry = this.crossGroupIndex.getAll().get(id)
+        const entry = this.crossGroupIndex.getUniqueById(id)
         obs.set(entry?.item ?? null)
       } else if (doc) {
         const serialized = doc.items?.[id]

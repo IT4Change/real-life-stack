@@ -744,6 +744,35 @@ function createSpaceHandle(doc: RlsSpaceDoc) {
   }
 }
 
+describe("WotConnector.getItemGroupId()", () => {
+  it("prefers the active space when the same naked ID is ambiguous globally", () => {
+    const indexLookup = vi.fn(() => null)
+    const fake = {
+      currentGroupId: "group-a",
+      currentHandle: createSpaceHandle({
+        _type: "rls",
+        items: { shared: createSerializedItem("shared", "A") },
+      } as RlsSpaceDoc),
+      crossGroupIndex: { getItemGroupId: indexLookup },
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    expect((fake as unknown as WotConnector).getItemGroupId("shared")).toBe("group-a")
+    expect(indexLookup).not.toHaveBeenCalled()
+  })
+
+  it("uses the unique aggregate lookup when no space is active", () => {
+    const fake = {
+      currentGroupId: null,
+      currentHandle: null,
+      crossGroupIndex: { getItemGroupId: vi.fn(() => "group-b") },
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    expect((fake as unknown as WotConnector).getItemGroupId("shared")).toBe("group-b")
+  })
+})
+
 function createFakePrivateSpaceConnector(spaces: SpaceInfo[], docs: Record<string, RlsSpaceDoc>) {
   const fake = {
     privateSpaceId: null,

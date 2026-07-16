@@ -39,6 +39,10 @@ function createProfileReactivity(did: string) {
     }
   }
 
+  const notifyPersonalDocChange = () => {
+    for (const cb of listeners) cb()
+  }
+
   // Simulates changeYjsPersonalDoc
   const changeProfile = (updates: Partial<PersonalDocProfile>) => {
     const now = new Date().toISOString()
@@ -51,7 +55,7 @@ function createProfileReactivity(did: string) {
       ...updates,
     }
     // Fire all listeners (simulates Yjs doc change event)
-    for (const cb of listeners) cb()
+    notifyPersonalDocChange()
   }
 
   const notifyPersonalDocChange = () => {

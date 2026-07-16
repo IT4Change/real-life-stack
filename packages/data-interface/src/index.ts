@@ -3,6 +3,13 @@
 
 import { BaseConnector } from "./base-connector.js"
 export { BaseConnector, createObservable, shallowEqual, matchesFilter, findRelatedItems, applyPagination, type ReactiveObservable } from "./base-connector.js"
+export {
+  canonicalizeRelationEndpoints,
+  createDefaultRelationStore,
+  deriveRelationRecordId,
+  relationRecordFromItem,
+  type DefaultRelationStoreOptions,
+} from "./relation-records.js"
 export * from "./item-types.js"
 export * from "./vocab.js"
 
@@ -146,8 +153,10 @@ export interface DataInterface {
 
 // --- Capability Interfaces ---
 
+export type CreateItemInput = Omit<Item, "id" | "createdAt"> & { id?: string }
+
 export interface ItemWriter {
-  createItem(item: Omit<Item, "id" | "createdAt">): Promise<Item>
+  createItem(item: CreateItemInput): Promise<Item>
   updateItem(id: string, updates: Partial<Item>): Promise<Item>
   deleteItem(id: string): Promise<void>
 }
@@ -193,6 +202,51 @@ export interface RelationCapable {
     predicate?: string,
     options?: RelatedItemsOptions
   ): Observable<Item[]>
+}
+
+export interface RelationRecord {
+  id: string
+  predicate: string
+  from: string
+  to: string
+  fields?: Record<string, unknown>
+  confirmationRef?: string
+  createdBy: string
+  createdAt: string
+}
+
+export interface RelationRecordInput {
+  predicate: string
+  from: string
+  to: string
+  fields?: Record<string, unknown>
+  confirmationRef?: string
+}
+
+export interface RelationRecordUpdate {
+  fields?: Record<string, unknown>
+  confirmationRef?: string | null
+}
+
+export interface RelationRecordFilter {
+  predicate?: string
+  from?: string
+  to?: string
+  /** Match records whose from or to target equals this value. */
+  endpoint?: string
+}
+
+export interface RelationRecordCapable {
+  getRelationRecords(filter?: RelationRecordFilter): Promise<RelationRecord[]>
+  observeRelationRecords(filter?: RelationRecordFilter): Observable<RelationRecord[]>
+  getRelationNeighbors(endpoint: string, predicate?: string): Promise<Item[]>
+  observeRelationNeighbors(endpoint: string, predicate?: string): Observable<Item[]>
+}
+
+export interface RelationRecordWriterCapable {
+  createRelationRecord(input: RelationRecordInput): Promise<RelationRecord>
+  updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord>
+  deleteRelationRecord(id: string): Promise<void>
 }
 
 export interface GroupManager {
@@ -416,6 +470,25 @@ export function hasAuthorization(c: DataInterface): c is DataInterface & Authori
 
 export function hasRelations(c: DataInterface): c is DataInterface & RelationCapable {
   return "getRelatedItems" in c && "observeRelatedItems" in c
+}
+
+export function hasRelationRecords(c: DataInterface): c is DataInterface & RelationRecordCapable {
+  const candidate = c as DataInterface & Partial<RelationRecordCapable>
+  return (
+    typeof candidate.getRelationRecords === "function" &&
+    typeof candidate.observeRelationRecords === "function" &&
+    typeof candidate.getRelationNeighbors === "function" &&
+    typeof candidate.observeRelationNeighbors === "function"
+  )
+}
+
+export function hasRelationRecordWriter(c: DataInterface): c is DataInterface & RelationRecordWriterCapable {
+  const candidate = c as DataInterface & Partial<RelationRecordWriterCapable>
+  return (
+    typeof candidate.createRelationRecord === "function" &&
+    typeof candidate.updateRelationRecord === "function" &&
+    typeof candidate.deleteRelationRecord === "function"
+  )
 }
 
 export function hasGroups(c: DataInterface): c is DataInterface & GroupManager {

@@ -1,0 +1,19 @@
+{
+  "id": "rel-4494eed1761255500765ac88ded8f81f052039327ba8c353fa0c1a270d140e08",
+  "@context": [
+    "https://real-life-stack.org/vocab/base/v1",
+    "https://real-life-stack.org/vocab/relation/v1"
+  ],
+  "type": "relation",
+  "createdAt": "2026-07-15T10:00:00.000Z",
+  "createdBy": "did:key:z6MkTest",
+  "data": {
+    "predicate": "knows",
+    "level": "met",
+    "confirmationRef": "conf-123"
+  },
+  "relations": [
+    { "predicate": "from", "target": "item:person-anton" },
+    { "predicate": "to", "target": "item:person-kaliya" }
+  ]
+}

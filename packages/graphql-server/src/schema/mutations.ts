@@ -23,6 +23,7 @@ builder.mutationType({
       args: { input: t.arg({ type: ItemInputType, required: true }) },
       resolve: (_root, args) =>
         store.createItem({
+          id: args.input.id == null ? undefined : String(args.input.id),
           type: args.input.type,
           createdBy: args.input.createdBy,
           data: args.input.data as Record<string, unknown>,

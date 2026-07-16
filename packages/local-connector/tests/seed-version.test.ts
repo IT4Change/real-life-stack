@@ -6,6 +6,7 @@ import { get, set } from "idb-keyval"
 vi.mock("idb-keyval", () => ({
   get: vi.fn().mockResolvedValue(undefined),
   set: vi.fn().mockResolvedValue(undefined),
+  update: vi.fn(async (_key: string, updater: (value: unknown) => unknown) => { updater(undefined) }),
   del: vi.fn().mockResolvedValue(undefined),
   createStore: vi.fn().mockReturnValue({}),
 }))

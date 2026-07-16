@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://real-life-stack.org/vocab/relation/v1/schema.json",
+  "title": "RLS Relation Vocabulary",
+  "description": "Standalone, authored relation records projected through RelationStoreCapable.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^rel-[0-9a-f]{64}$",
+      "description": "Deterministic lowercase SHA-256 relation id. The digest is verified by the write implementation."
+    },
+    "type": {
+      "const": "relation"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["predicate"],
+      "properties": {
+        "predicate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confirmationRef": {
+          "type": "string"
+        }
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "if": {
+          "type": "object",
+          "required": ["predicate"],
+          "properties": {
+            "predicate": { "enum": ["from", "to"] }
+          }
+        },
+        "then": {
+          "required": ["target"],
+          "properties": {
+            "target": {
+              "type": "string",
+              "pattern": "^(?:item:.+|global:.+|space:.+/item:.+)$"
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "required": ["predicate"],
+            "properties": {
+              "predicate": { "const": "from" }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["predicate"],
+            "properties": {
+              "predicate": { "const": "to" }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    }
+  },
+  "required": ["id", "type", "data", "relations"]
+}

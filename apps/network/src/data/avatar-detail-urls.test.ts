@@ -2,12 +2,12 @@ import type { Item } from "@real-life-stack/data-interface"
 import { describe, expect, it } from "vitest"
 
 import { dwebCampDetailAvatarUrl } from "./avatar-detail-urls"
-import { dwebCampSeedItems } from "./network-seed"
+import { dwebCampDomainItems } from "./network-seed"
 
 describe("dwebCampDetailAvatarUrl", () => {
   it("resolves sharp HTTPS details only for known DWebCamp seed people", () => {
-    const marie = dwebCampSeedItems.find(({ id }) => id === "person-marie")
-    const andrea = dwebCampSeedItems.find(({ id }) => id === "person-andrea-ferrante")
+    const marie = dwebCampDomainItems.find(({ id }) => id === "person-marie")
+    const andrea = dwebCampDomainItems.find(({ id }) => id === "person-andrea-ferrante")
 
     expect(marie && dwebCampDetailAvatarUrl(marie)).toBe(
       "https://talx.dod.ngo/media/avatars/MS3PPW_22hqsdk.webp",
@@ -16,7 +16,7 @@ describe("dwebCampDetailAvatarUrl", () => {
       "https://dwebcamp.org/media/andrea_ferrante.jpg",
     )
 
-    const detailUrls = dwebCampSeedItems
+    const detailUrls = dwebCampDomainItems
       .filter(({ type }) => type === "person")
       .map(dwebCampDetailAvatarUrl)
       .filter((value): value is string => value !== null)
