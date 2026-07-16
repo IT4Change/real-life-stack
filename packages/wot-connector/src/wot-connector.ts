@@ -321,6 +321,8 @@ export class WotConnector extends BaseConnector {
 
   // Incoming event listeners
   private eventCallbacks = new Set<(event: IncomingEvent) => void>()
+  /** Events aus dem Init-Fenster (vor App-Subscribe), Replay beim ersten onIncomingEvent. */
+  private bufferedEvents: IncomingEvent[] = []
 
   // Item observables keyed by JSON.stringify(filter)
   private itemObservables = new Map<string, ReactiveObservable<Item[]>>()
@@ -573,6 +575,7 @@ export class WotConnector extends BaseConnector {
     // pending-outbox counts from the previous session.
     this.confirmationsObs.set([])
     this.contactsObs.set([])
+    this.bufferedEvents.length = 0 // keine Events über Identitätsgrenzen replayen
     this.outboxCountObs.set(0)
     this.syncStateObs.set({ logPending: 0, outboxPending: 0 })
     this.relayStateObs.set("disconnected")
@@ -2282,10 +2285,30 @@ export class WotConnector extends BaseConnector {
 
   onIncomingEvent(callback: (event: IncomingEvent) => void): () => void {
     this.eventCallbacks.add(callback)
+    // Gepufferte Init-Zeit-Events nachliefern (z.B. incoming-verification aus
+    // dem Pending-Save-Drain): init() läuft, BEVOR die App ihren Listener
+    // registriert — ohne Replay ginge der counterVerify-Dialog verloren (#147).
+    if (this.bufferedEvents.length > 0) {
+      const backlog = this.bufferedEvents.splice(0)
+      for (const event of backlog) {
+        try { callback(event) } catch { /* ignore callback errors */ }
+      }
+    }
+    // Durable ausstehende Verifikations-Aktionen (Vertrag #147) nachliefern.
+    void this.announcePendingVerificationActions().catch((error) => {
+      console.warn("[WotConnector] Pending-Verification-Announce fehlgeschlagen", error)
+    })
     return () => { this.eventCallbacks.delete(callback) }
   }
 
   private emitEvent(event: IncomingEvent): void {
+    if (this.eventCallbacks.size === 0) {
+      // Kein Subscriber (Init-Fenster): puffern statt ins Leere emittieren.
+      // Bounded, damit ein nie-subscribender Konsument keinen Leak erzeugt.
+      this.bufferedEvents.push(event)
+      if (this.bufferedEvents.length > 32) this.bufferedEvents.shift()
+      return
+    }
     for (const cb of this.eventCallbacks) {
       try { cb(event) } catch { /* ignore callback errors */ }
     }
@@ -2391,7 +2414,10 @@ export class WotConnector extends BaseConnector {
     const existing = await this.storage.getAttestation(attestation.id)
     if (!existing) await this.storage.saveAttestation(attestation)
     if (attestation.isVerification === true) {
-      this.clearPendingVerificationSave(attestation.id)
+      // Vertrag (#147): der Record bleibt als AUSSTEHENDE AKTION bestehen, bis
+      // die UI den incoming-verification-Dialog tatsächlich übernommen hat —
+      // hier wird nur die Daten-Hälfte (Save durabel) markiert.
+      this.markPendingVerificationSaved(attestation.id)
     }
     await this.finalizeIncomingAttestation(attestation, acceptedInitialVerification)
   }
@@ -2416,24 +2442,7 @@ export class WotConnector extends BaseConnector {
 
     const contact = this.contactsObs.current.find((entry) => entry.id === attestation.from)
     if (attestation.isVerification === true) {
-      if (acceptedInitialVerification) {
-        let peerName = contact?.name
-        let peerAvatar = contact?.avatar
-        if (!peerName || !peerAvatar) {
-          try {
-            const result = await this.discovery.resolveProfile(attestation.from)
-            peerName = peerName ?? result.profile?.name ?? undefined
-            peerAvatar = peerAvatar ?? result.profile?.avatar ?? undefined
-          } catch { /* optional profile enrichment */ }
-        }
-        this.emitEvent({
-          type: "incoming-verification",
-          fromId: attestation.from,
-          fromName: peerName,
-          fromAvatar: peerAvatar,
-          challengeCode: attestation.vcJws,
-        })
-      }
+      await this.deliverVerificationAction(attestation, acceptedInitialVerification)
       this.checkMutualVerification(attestation.from)
       return
     }
@@ -2563,7 +2572,71 @@ export class WotConnector extends BaseConnector {
     return `rls-wot-pending-verification-save:${this.identity.getDid()}`
   }
 
-  private readPendingVerificationSaves(): Record<string, { vcJws: string; senderDid: string }> {
+  /**
+   * UI-Übernahme-Hälfte des Vertrags (#147): der incoming-verification-Dialog
+   * (counterVerify-Angebot) wird NUR emittiert, wenn ein Listener registriert
+   * ist — sonst bleibt der durable Record als ausstehende Aktion bestehen und
+   * wird bei der Listener-Registrierung (announcePendingVerificationActions)
+   * genau einmal nachgeliefert. Counter-Verifikationen brauchen keinen Dialog:
+   * ihr Record wird nach dem Save direkt geräumt.
+   */
+  private async deliverVerificationAction(
+    attestation: Attestation,
+    acceptedInitialVerification: boolean,
+  ): Promise<void> {
+    if (!acceptedInitialVerification) {
+      this.clearPendingVerificationSave(attestation.id)
+      return
+    }
+    if (this.eventCallbacks.size === 0) return // Record bleibt — Nachlieferung beim Subscribe
+
+    const contact = this.contactsObs.current.find((entry) => entry.id === attestation.from)
+    let peerName = contact?.name
+    let peerAvatar = contact?.avatar
+    if (!peerName || !peerAvatar) {
+      try {
+        const result = await this.discovery.resolveProfile(attestation.from)
+        peerName = peerName ?? result.profile?.name ?? undefined
+        peerAvatar = peerAvatar ?? result.profile?.avatar ?? undefined
+      } catch { /* optional profile enrichment */ }
+    }
+    // Exactly-once: Record VOR dem Emit räumen (ein werfender UI-Callback gilt
+    // als Übernahme; er wird ohnehin geschluckt).
+    this.clearPendingVerificationSave(attestation.id)
+    this.emitEvent({
+      type: "incoming-verification",
+      fromId: attestation.from,
+      fromName: peerName,
+      fromAvatar: peerAvatar,
+      challengeCode: attestation.vcJws,
+    })
+  }
+
+  /** Bei Listener-Registrierung: gespeicherte, noch nicht übernommene Aktionen nachliefern. */
+  private async announcePendingVerificationActions(): Promise<void> {
+    if (!this.storage || this.eventCallbacks.size === 0) return
+    for (const [id, entry] of Object.entries(this.readPendingVerificationSaves())) {
+      if (!entry.saved) continue // Daten-Hälfte fehlt noch → nächster Drain kümmert sich
+      try {
+        const payload = await this.attestationWorkflow.verifyAttestationVcJws(entry.vcJws)
+        const attestation = attestationFromVerifiedVc(payload, entry.vcJws)
+        if (
+          payload.iss !== entry.senderDid ||
+          attestation.from !== entry.senderDid ||
+          attestation.to !== this.identity.getDid() ||
+          attestation.id !== id
+        ) {
+          this.clearPendingVerificationSave(id)
+          continue
+        }
+        await this.deliverVerificationAction(attestation, !payload.inResponseTo)
+      } catch (error) {
+        console.warn("[WotConnector] Pending-Verification-Announce deferred", error)
+      }
+    }
+  }
+
+  private readPendingVerificationSaves(): Record<string, { vcJws: string; senderDid: string; saved?: boolean }> {
     try {
       return JSON.parse(localStorage.getItem(this.pendingVerificationSaveKey()) ?? "{}")
     } catch {
@@ -2577,6 +2650,16 @@ export class WotConnector extends BaseConnector {
       pending[id] = { vcJws, senderDid }
       localStorage.setItem(this.pendingVerificationSaveKey(), JSON.stringify(pending))
     } catch { /* best-effort: ohne localStorage bleibt nur das Exception-Fenster */ }
+  }
+
+  /** Daten-Hälfte des Vertrags erfüllt: Save ist durabel, Aktion bleibt offen. */
+  private markPendingVerificationSaved(id: string): void {
+    try {
+      const pending = this.readPendingVerificationSaves()
+      if (!(id in pending)) return
+      pending[id] = { ...pending[id], saved: true }
+      localStorage.setItem(this.pendingVerificationSaveKey(), JSON.stringify(pending))
+    } catch { /* best-effort */ }
   }
 
   private clearPendingVerificationSave(id: string): void {
@@ -2612,14 +2695,12 @@ export class WotConnector extends BaseConnector {
         if (!(await this.storage.getAttestation(id))) {
           await this.storage.saveAttestation(attestation)
         }
-        this.clearPendingVerificationSave(id)
-        // Flow reproduzieren, nicht nur Daten retten: bei einer INITIALEN
-        // Verifikation (kein inResponseTo) muss der incoming-verification-
-        // Dialog erscheinen, sonst wird counterVerify() nie angeboten und die
-        // gegenseitige Verifikation bleibt für immer einseitig (#147-Kontext).
-        // Ein Record existiert nur für Gate-akzeptierte VCs → initial ⇔
-        // accept-in-person. Läuft auch, wenn der Save selbst schon durch war
-        // (Crash zwischen Save und Finalize).
+        this.markPendingVerificationSaved(id)
+        // Flow reproduzieren, nicht nur Daten retten (#147): finalize liefert
+        // den Dialog, WENN ein Listener da ist — sonst bleibt der Record als
+        // ausstehende Aktion und announcePendingVerificationActions() liefert
+        // ihn bei der Listener-Registrierung genau einmal nach. initial ⇔
+        // !inResponseTo (Records existieren nur für Gate-akzeptierte VCs).
         await this.finalizeIncomingAttestation(attestation, !payload.inResponseTo)
       } catch (error) {
         console.warn("[WotConnector] Pending-Verification-Save-Drain deferred", error)

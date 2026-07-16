@@ -274,6 +274,7 @@ function createFakeConnectorForLogout() {
   obs.groupsObs.set([{ id: "g1", name: "Crew" }])
 
   return {
+    bufferedEvents: [] as unknown[],
     ...obs,
     closeCurrentHandle: vi.fn(),
     crossGroupUnsub: vi.fn(),
@@ -949,15 +950,18 @@ describe("WotConnector loop-review #143: Teardown-Resilienz + Delivery-Monotonie
     // signierte VCs Dritter durchlassen (Loop-Review-Finding, Eve-Fall).
     expect(method).not.toMatch(/nonce-consumed/)
     expect(method).not.toMatch(/lostWriteReplay/)
-    // Stattdessen: Pending-Save NACH dem Accept, Clear NACH erfolgreichem Save.
+    // Stattdessen: Pending-Save NACH dem Accept, saved-Markierung NACH dem Save.
+    // Der Record wird erst bei der UI-Übernahme (deliverVerificationAction)
+    // geräumt — Vertrag #147: Aktion bleibt durabel bis zur Übernahme.
     const acceptIdx = method.indexOf("acceptedInitialVerification = decision.decision")
     const recordIdx = method.indexOf("this.recordPendingVerificationSave(attestation.id, vcJws, senderDid)")
     const saveIdx = method.indexOf("await this.storage.saveAttestation(attestation)")
-    const clearIdx = method.indexOf("this.clearPendingVerificationSave(attestation.id)")
+    const markIdx = method.indexOf("this.markPendingVerificationSaved(attestation.id)")
     expect(acceptIdx).toBeGreaterThan(-1)
     expect(recordIdx).toBeGreaterThan(acceptIdx)
     expect(saveIdx).toBeGreaterThan(recordIdx)
-    expect(clearIdx).toBeGreaterThan(saveIdx)
+    expect(markIdx).toBeGreaterThan(saveIdx)
+    expect(method).not.toMatch(/this\.clearPendingVerificationSave/)
   })
 
   it("drains pending verification saves with full re-verification and binding checks", async () => {
@@ -994,6 +998,8 @@ describe("WotConnector loop-review #143: Teardown-Resilienz + Delivery-Monotonie
       sendReceiptAck: vi.fn(async () => {}),
       checkMutualVerification: vi.fn(async () => {}),
       emitEvent: vi.fn(),
+      eventCallbacks: new Set([() => {}]), // Listener vorhanden → Direktlieferung
+      bufferedEvents: [],
       contactsObs: { current: [] },
       discovery: { resolveProfile: vi.fn(async () => ({ profile: { name: "Bob" } })) },
     })
@@ -1025,5 +1031,84 @@ describe("WotConnector loop-review #143: Teardown-Resilienz + Delivery-Monotonie
   it("a late failed receipt cannot degrade an already delivered status", () => {
     const method = sliceMethod(source, "private async setDeliveryStatus", "private async checkMutualVerification")
     expect(method).toMatch(/next === "failed" && current === "delivered"/)
+  })
+})
+
+describe("Vertrag #147: eingehende Verifikation als durable Aktion bis zur UI-Übernahme", () => {
+  it("Accept → Save-Fehler → Neustart → init ohne Listener → Listener: genau einmal geliefert, counterVerify möglich", async () => {
+    const localValues = new Map<string, string>()
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      writable: true,
+      value: {
+        getItem: (k: string) => localValues.get(k) ?? null,
+        setItem: (k: string, v: string) => localValues.set(k, v),
+        removeItem: (k: string) => localValues.delete(k),
+      },
+    })
+    const did = "did:key:me"
+    const vcJws = "h.p.s"
+    const payload = {
+      jti: "att-1",
+      iss: "did:key:bob",
+      issuer: "did:key:bob",
+      validFrom: new Date().toISOString(),
+      type: ["VerifiableCredential", "WotVerification"],
+      credentialSubject: { id: did, claim: "in-person verifiziert" },
+    }
+    const baseStubs = () => ({
+      identity: { getDid: () => did },
+      attestationWorkflow: { verifyAttestationVcJws: vi.fn(async () => payload) },
+      syncConfirmationsFromPersonalDoc: vi.fn(),
+      sendReceiptAck: vi.fn(async () => {}),
+      checkMutualVerification: vi.fn(async () => {}),
+      contactsObs: { current: [] },
+      discovery: { resolveProfile: vi.fn(async () => ({ profile: { name: "Bob" } })) },
+      eventCallbacks: new Set<(e: unknown) => void>(),
+      bufferedEvents: [] as unknown[],
+    })
+
+    // Session 1: Verifikation akzeptiert, erster Save scheitert.
+    const session1 = Object.assign(Object.create(WotConnector.prototype), {
+      ...baseStubs(),
+      storage: {
+        getAttestation: vi.fn(async () => null),
+        saveAttestation: vi.fn(async () => { throw new Error("disk full") }),
+      },
+      verificationWorkflow: {
+        acceptVerifiedVerificationAttestation: vi.fn(async () => ({ decision: "accept-in-person" })),
+      },
+    })
+    await expect(
+      (WotConnector.prototype as any).handleIncomingAttestation.call(session1, vcJws, "did:key:bob"),
+    ).rejects.toThrow("disk full")
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(true)
+
+    // Session 2 (Neustart, frische Instanz über derselben durablen Persistenz):
+    // init-Drain OHNE Listener — Daten werden gerettet, Aktion bleibt offen.
+    const saveOk = vi.fn(async () => {})
+    const session2 = Object.assign(Object.create(WotConnector.prototype), {
+      ...baseStubs(),
+      storage: { getAttestation: vi.fn(async () => null), saveAttestation: saveOk },
+    })
+    await (WotConnector.prototype as any).drainPendingVerificationSaves.call(session2)
+    expect(saveOk).toHaveBeenCalledTimes(1)
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(true) // Aktion offen
+
+    // Listener registrieren → Aktion wird GENAU EINMAL geliefert.
+    const events: any[] = []
+    ;(WotConnector.prototype as any).onIncomingEvent.call(session2, (e: any) => events.push(e))
+    await vi.waitFor(() => {
+      expect(events.filter((e) => e.type === "incoming-verification")).toHaveLength(1)
+    })
+    // counterVerify weiterhin möglich: der Dialog trägt die Original-VC als challengeCode.
+    expect(events[0]).toMatchObject({ type: "incoming-verification", fromId: "did:key:bob", challengeCode: vcJws })
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false) // übernommen
+
+    // Zweiter Listener / erneutes Subscribe: KEINE erneute Lieferung.
+    const events2: any[] = []
+    ;(WotConnector.prototype as any).onIncomingEvent.call(session2, (e: any) => events2.push(e))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(events2.filter((e) => e.type === "incoming-verification")).toHaveLength(0)
   })
 })
