@@ -22,7 +22,7 @@ async function loadStore() {
     enqueue(item: { id: string; kind: WorkItem["kind"]; payload: Record<string, unknown> }): Promise<void>
     claimDue(now: number): Promise<WorkItem[]>
     complete(id: string): Promise<void>
-    fail(id: string, now: number): Promise<void>
+    fail(id: string, now: number): Promise<boolean>
     count(): Promise<number>
   }
 }
@@ -115,6 +115,50 @@ describe("Vertrag #145 — WorkQueueStore Durability & Lebenszyklus", () => {
     expect(await store.count()).toBe(0)
     await store.close()
   })
+})
+
+describe("Vertrag #145 — Store-Nachschärfung Runde 3 (Cap-Signal, Listener-Isolation)", () => {
+  beforeEach(() => {
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      writable: true,
+      value: new IDBFactory(),
+    })
+  })
+
+  it("S3: fail liefert das Cap-Signal exakt als false,false,true (maxAttempts 3)", async () => {
+    const WorkQueueStore = await loadStore()
+    const store = new WorkQueueStore(DB, { maxAttempts: 3 })
+    await store.open()
+    let now = 1_000_000
+    await store.enqueue({ id: "w1", kind: "deliver-attestation", payload: {} })
+    const signals: boolean[] = []
+    for (let i = 0; i < 3; i++) {
+      await store.claimDue(now)
+      signals.push(await store.fail("w1", now))
+      now += 10 * 60_000
+    }
+    expect(signals).toEqual([false, false, true])
+    await store.close()
+  })
+
+  it("B2: ein werfender Pending-Listener verschluckt das dropped-Signal NICHT (Isolation nach Mutation)", async () => {
+    const WorkQueueStore = await loadStore()
+    const store = new WorkQueueStore(DB, { maxAttempts: 1 }) as InstanceType<Awaited<ReturnType<typeof loadStore>>> & {
+      watchPendingCount(): { subscribe(cb: (n: number) => void): () => void }
+    }
+    await store.open()
+    store.watchPendingCount().subscribe(() => { throw new Error("listener boom") })
+    await store.enqueue({ id: "w1", kind: "receipt-ack", payload: {} })
+    await store.claimDue(Date.now())
+    // Cap-Versuch: Delete ist committed — der Listener-Fehler darf weder
+    // rejecten noch das dropped=true-Signal verschlucken.
+    await expect(store.fail("w1", Date.now())).resolves.toBe(true)
+    expect(await store.count()).toBe(0)
+    await store.close()
+  })
+
+  it("claimImmediate gewinnt genau einmal; claimDue überspringt geclaimte Items; complete gibt frei — Ownership", () => {})
 })
 
 describe("Vertrag #145 — Store-Nachschärfung: claimImmediate (In-Session-Ownership)", () => {

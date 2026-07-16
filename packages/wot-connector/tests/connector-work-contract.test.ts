@@ -337,3 +337,93 @@ describe("Vertrag #145 — Nachschärfung Runde 2 (Cap-Terminal, API-Additivitä
     expect(sendReceiptAck).not.toHaveBeenCalled()
   })
 })
+
+describe("Vertrag #145 — Runde 3: Runtime-Autorität, Timer-Ownership, State-Publikation", () => {
+  const readSrc = async (rel: string) => {
+    const { readFileSync } = await import("node:fs")
+    const { fileURLToPath } = await import("node:url")
+    const { dirname, resolve } = await import("node:path")
+    return readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), rel), "utf8")
+  }
+
+  it("B1a: authenticate invalidiert die Runtime-Autorität VOR jeder Identity-Mutation", async () => {
+    const src = await readSrc("../src/wot-connector.ts")
+    const method = src.slice(src.indexOf("async authenticate"), src.indexOf("async logout"))
+    const invalidateIdx = method.indexOf("this.invalidateRuntimeAuthority()")
+    const firstMutationIdx = Math.min(
+      ...["this.identity.unlock(", "this.identity.create("]
+        .map((m) => method.indexOf(m))
+        .filter((i) => i >= 0),
+    )
+    expect(invalidateIdx).toBeGreaterThan(-1)
+    expect(invalidateIdx).toBeLessThan(firstMutationIdx)
+  })
+
+  it("B1b: der Wire-Pfad guarded Sign UND Send mit ensureCurrent; der Connector reicht den Guard hinein", async () => {
+    const wire = await readSrc("../src/attestation-wire.ts")
+    // Guard unmittelbar vor Signatur und vor Transport-Send
+    expect(wire).toMatch(/ensureCurrent/)
+    const signIdx = wire.indexOf("signEd25519")
+    const guardBeforeSign = wire.lastIndexOf("ensureCurrent", signIdx)
+    expect(guardBeforeSign).toBeGreaterThan(-1)
+    const sendIdx = wire.indexOf("messaging.send(")
+    const guardBeforeSend = wire.lastIndexOf("ensureCurrent", sendIdx)
+    expect(guardBeforeSend).toBeGreaterThan(-1)
+    const connector = await readSrc("../src/wot-connector.ts")
+    expect(connector).toMatch(/ensureCurrent: \(\) => this\.isRuntimeCurrent\(/)
+  })
+
+  it("B3: ein veralteter Scheduler-Read darf einen neueren Retry-Timer nicht löschen (Revision)", async () => {
+    let resolveOld: (v: number | null) => void = () => {}
+    const oldRead = new Promise<number | null>((r) => { resolveOld = r })
+    const reads: Array<Promise<number | null>> = [oldRead, Promise.resolve(Date.now() + 60_000)]
+    const wq = {
+      getNextDueAt: vi.fn(() => reads.shift() ?? Promise.resolve(null)),
+      claimDue: vi.fn(async () => []),
+      count: vi.fn(async () => 1),
+    }
+    const fake = Object.assign(Object.create(WotConnector.prototype), {
+      workQueue: wq,
+      runtimeGeneration: 0,
+      workQueueTimer: null,
+    })
+    const schedule = (WotConnector.prototype as any).schedulePendingWorkDrain
+    const a = schedule.call(fake) // alter Read, hängt
+    const b = schedule.call(fake) // neuer Read, armt den Timer
+    await b
+    expect(fake.workQueueTimer).not.toBeNull()
+    resolveOld(null) // alter null-Read löst spät auf
+    await a
+    // Der neuere Timer MUSS überleben — die fällige Arbeit darf nicht liegenbleiben.
+    expect(fake.workQueueTimer).not.toBeNull()
+    if (fake.workQueueTimer) clearTimeout(fake.workQueueTimer)
+  })
+
+  it("S1: ein vor dem Logout gestarteter refreshSyncState überschreibt den Zero-State nicht", async () => {
+    let resolvePending: (v: unknown[]) => void = () => {}
+    const slowPending = new Promise<unknown[]>((r) => { resolvePending = r })
+    const state = { current: { logPending: 5, outboxPending: 2, workPending: 1 } as Record<string, number> }
+    const fake = Object.assign(Object.create(WotConnector.prototype), {
+      runtimeGeneration: 0,
+      docLogStore: { getPending: vi.fn(() => slowPending) },
+      outboxStore: { count: vi.fn(async () => 2) },
+      workQueue: { count: vi.fn(async () => 1) },
+      syncStateObs: { current: state.current, set: vi.fn((v: Record<string, number>) => { state.current = v }) },
+      outboxCountObs: { set: vi.fn() },
+      lastSyncStateLog: null,
+    })
+    const refresh = (WotConnector.prototype as any).refreshSyncState.call(fake)
+
+    // Logout: Zero-State + Runtime-Invalidierung + Stores weg
+    state.current = { logPending: 0, outboxPending: 0, workPending: 0 }
+    fake.syncStateObs.current = state.current
+    fake.runtimeGeneration++
+    fake.docLogStore = null
+    fake.outboxStore = null
+    fake.workQueue = null
+
+    resolvePending([{}, {}, {}]) // alter Read liefert spät alte Counts
+    await refresh
+    expect(state.current).toEqual({ logPending: 0, outboxPending: 0, workPending: 0 })
+  })
+})
