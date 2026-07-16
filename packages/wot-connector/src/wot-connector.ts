@@ -822,31 +822,38 @@ export class WotConnector extends BaseConnector {
     item: CreateItemInput,
     spaceId: string,
   ): Item {
-    const currentItems = handle.getDoc().items ?? {}
-    if (item.id !== undefined && currentItems[item.id]) {
-      return deserializeItem(currentItems[item.id])
-    }
-
-    let id = item.id
-    if (id === undefined) {
-      do {
-        id = crypto.randomUUID()
-      } while (currentItems[id])
-    }
-    const newItem: Item = {
-      ...item,
-      id,
-      createdAt: new Date().toISOString(),
-    }
-    const serialized = serializeItem(newItem)
+    let result: Item | null = null
+    let created = false
 
     handle.transact((doc) => {
       if (!doc.items) doc.items = {}
-      doc.items[id] = serialized
+      if (item.id !== undefined && doc.items[item.id]) {
+        result = deserializeItem(doc.items[item.id])
+        return
+      }
+
+      let id = item.id
+      if (id === undefined) {
+        do {
+          id = crypto.randomUUID()
+        } while (doc.items[id])
+      }
+      const newItem: Item = {
+        ...item,
+        id,
+        createdAt: new Date().toISOString(),
+      }
+      doc.items[id] = serializeItem(newItem)
+      result = newItem
+      created = true
     })
-    this.crossGroupIndex?.reindexGroup(spaceId)
-    this.notifyAllObservers()
-    return newItem
+
+    if (!result) throw new Error("Item transaction did not produce a result")
+    if (created) {
+      this.crossGroupIndex?.reindexGroup(spaceId)
+      this.notifyAllObservers()
+    }
+    return result
   }
 
   override async updateItem(id: string, updates: Partial<Item>): Promise<Item> {

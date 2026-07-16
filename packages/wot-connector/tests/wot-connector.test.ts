@@ -23,6 +23,7 @@ import { matchesFilter } from "@real-life-stack/data-interface"
 
 class FakeSpaceHandle {
   private doc: RlsSpaceDoc
+  private beforeNextTransaction: ((doc: RlsSpaceDoc) => void) | null = null
 
   constructor(name = "Test Space") {
     this.doc = {
@@ -37,7 +38,14 @@ class FakeSpaceHandle {
   }
 
   transact(fn: (doc: RlsSpaceDoc) => void): void {
+    const before = this.beforeNextTransaction
+    this.beforeNextTransaction = null
+    before?.(this.doc)
     fn(this.doc)
+  }
+
+  interleaveBeforeNextTransaction(fn: (doc: RlsSpaceDoc) => void): void {
+    this.beforeNextTransaction = fn
   }
 
   onRemoteUpdate(_cb: () => void): () => void {
@@ -53,21 +61,25 @@ function createItemOnHandle(
   handle: FakeSpaceHandle,
   input: CreateItemInput,
 ): Item {
-  const existing = input.id !== undefined ? handle.getDoc().items[input.id] : undefined
-  if (existing) return deserializeItem(existing)
-
-  let id = input.id
-  if (id === undefined) {
-    do {
-      id = crypto.randomUUID()
-    } while (handle.getDoc().items[id])
-  }
-  const newItem: Item = { ...input, id, createdAt: new Date().toISOString() }
-  const serialized = serializeItem(newItem)
+  let result: Item | null = null
   handle.transact((doc) => {
-    doc.items[id] = serialized
+    if (input.id !== undefined && doc.items[input.id]) {
+      result = deserializeItem(doc.items[input.id])
+      return
+    }
+
+    let id = input.id
+    if (id === undefined) {
+      do {
+        id = crypto.randomUUID()
+      } while (doc.items[id])
+    }
+    const newItem: Item = { ...input, id, createdAt: new Date().toISOString() }
+    doc.items[id] = serializeItem(newItem)
+    result = newItem
   })
-  return newItem
+  if (!result) throw new Error("Item transaction did not produce a result")
+  return result
 }
 
 function getItemsFromHandle(handle: FakeSpaceHandle, filter?: ItemFilter): Item[] {
@@ -181,6 +193,29 @@ describe("Item CRUD (CRDT-agnostic contract)", () => {
       expect(created.id).toBe("rel-fixed")
       expect(duplicate).toEqual(created)
       expect(Object.keys(handle.getDoc().items)).toEqual(["rel-fixed"])
+    })
+
+    it("does not overwrite a client ID inserted immediately before the transaction", () => {
+      const concurrent: Item = {
+        id: "rel-race",
+        type: "relation",
+        createdAt: "2026-07-16T00:00:00.000Z",
+        createdBy: "did:key:z6MkTest",
+        data: { predicate: "knows", level: "concurrent" },
+      }
+      handle.interleaveBeforeNextTransaction((doc) => {
+        doc.items[concurrent.id] = serializeItem(concurrent)
+      })
+
+      const result = createItemOnHandle(handle, {
+        id: concurrent.id,
+        type: "relation",
+        createdBy: concurrent.createdBy,
+        data: { predicate: "knows", level: "replacement" },
+      })
+
+      expect(result).toEqual(concurrent)
+      expect(getItemFromHandle(handle, concurrent.id)).toEqual(concurrent)
     })
   })
 
