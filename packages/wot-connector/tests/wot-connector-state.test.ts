@@ -76,6 +76,11 @@ vi.mock("@real-life/wot-core/protocol", () => ({
   x25519MultibaseToPublicKeyBytes: vi.fn(() => new Uint8Array()),
 }))
 
+vi.mock("../src/identity-persistence.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../src/identity-persistence.js")>(),
+  wipeIdentityPersistence: vi.fn(async () => {}),
+}))
+
 const here = dirname(fileURLToPath(import.meta.url))
 const CONNECTOR_SRC = resolve(here, "../src/wot-connector.ts")
 const CONFIRMATIONS_SRC = resolve(here, "../src/confirmations.ts")
@@ -274,7 +279,10 @@ function createFakeConnectorForLogout() {
     groupsObservable: obs.groupsObs,
     profileObs: createObservable<User | null>(user),
     syncPendingObs: createObservable<boolean>(true),
-    identity: { deleteStoredIdentity: vi.fn(async () => {}) },
+    identity: {
+      getDid: vi.fn(() => "did:key:alice"),
+      deleteStoredIdentity: vi.fn(async () => {}),
+    },
     closeRuntimeStores: vi.fn(async () => {}),
     notifyAllObservers: vi.fn(),
   }
@@ -619,6 +627,7 @@ describe("WotConnector Yjs membership routing", () => {
 describe("WotConnector attestation receipt - authenticated sender binding", () => {
   it("acknowledges only receipts signed by the attestation subject", async () => {
     const setDeliveryStatus = vi.fn(async () => {})
+    const clearDeliveryCorrelationsForAttestation = vi.fn(async () => {})
     const fake = {
       storage: {
         getAttestation: vi.fn(async () => ({
@@ -628,6 +637,7 @@ describe("WotConnector attestation receipt - authenticated sender binding", () =
         })),
       },
       setDeliveryStatus,
+      clearDeliveryCorrelationsForAttestation,
     }
     const receiveReceipt = (WotConnector.prototype as any).handleIncomingAttestationReceipt
 
@@ -636,13 +646,14 @@ describe("WotConnector attestation receipt - authenticated sender binding", () =
 
     await receiveReceipt.call(fake, "att-1", "did:key:bob")
     expect(setDeliveryStatus).toHaveBeenCalledWith("att-1", "acknowledged")
+    expect(clearDeliveryCorrelationsForAttestation).toHaveBeenCalledWith("att-1")
   })
 })
 
 describe("WotConnector.deleteStoredIdentity() - real method regression", () => {
   // Guarantees the biometric-setup rollback: the stored seed is removed directly,
   // NOT behind logout()'s awaited adapter teardown (replication/ws/outbox disconnect,
-  // deleteYjsPersonalDocDB) — any of which could reject and skip the deletion.
+  // DID-scoped persistence wipe) — any of which could reject and skip the deletion.
   it("deletes the stored identity with no adapters present (teardown-independent)", async () => {
     const del = vi.fn(async () => {})
     // Deliberately only an identity — no replication/ws/outbox adapters. If the

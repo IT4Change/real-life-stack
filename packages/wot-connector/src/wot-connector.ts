@@ -66,6 +66,7 @@ import type {
   IncomingSpaceInvite,
   PublicProfile,
   PublicIdentitySession,
+  DeliveryReceipt,
 } from "@real-life/wot-core/types"
 import type {
   DocLogStore,
@@ -82,7 +83,6 @@ import {
   YjsStorageAdapter,
   getYjsPersonalDoc,
   resetYjsPersonalDoc,
-  deleteYjsPersonalDocDB,
   onYjsPersonalDocChange,
   changeYjsPersonalDoc,
   flushYjsPersonalDoc,
@@ -99,17 +99,22 @@ import type {
 import { serializeItem, deserializeItem } from "./serialization.js"
 import { CrossGroupIndex } from "./CrossGroupIndex.js"
 import { projectAttestationConfirmations } from "./confirmations.js"
-import { LocalOutboxStore } from "./local-outbox-store.js"
+import {
+  LocalOutboxStore,
+  hasAttestationCorrelations,
+} from "./local-outbox-store.js"
 import {
   createOutboxMessagingRuntime,
   observeDocLogPending,
   type OutboxMessagingRuntime,
 } from "./messaging-runtime.js"
 import { InboxReceptionHost } from "./inbox-reception-host.js"
+import { initNamespacedYjsPersonalDoc } from "./personal-doc-persistence.js"
 import {
-  deleteLegacyIdentityDatabases,
-  initNamespacedYjsPersonalDoc,
-} from "./personal-doc-persistence.js"
+  ACTIVE_DID_STORAGE_KEY,
+  identityDatabaseName,
+  wipeIdentityPersistence,
+} from "./identity-persistence.js"
 import {
   attestationFromVerifiedVc,
   messageIdForAttestation,
@@ -306,6 +311,7 @@ export class WotConnector extends BaseConnector {
   private lastSyncStateLog: string | null = null
   private syncStateRefresh: Promise<void> = Promise.resolve()
   private deliveryMessageIds = new Map<string, string>()
+  private inFlightDeliveryMessageIds = new Set<string>()
 
   // Incoming event listeners
   private eventCallbacks = new Set<(event: IncomingEvent) => void>()
@@ -489,7 +495,7 @@ export class WotConnector extends BaseConnector {
   /**
    * Delete the locally stored identity directly, without the adapter teardown
    * that logout() runs first. logout() only reaches deleteStoredIdentity() after
-   * several awaited disconnects (replication/ws/outbox, deleteYjsPersonalDocDB) —
+   * several awaited disconnects and the DID-scoped persistence wipe —
    * any of which could reject and skip it. This guarantees the seed is removed,
    * so a half-finished biometric setup can be rolled back without lockout risk.
    */
@@ -498,6 +504,7 @@ export class WotConnector extends BaseConnector {
   }
 
   override async logout(): Promise<void> {
+    const did = this.identity.getDid()
     this.closeCurrentHandle()
     this.crossGroupUnsub?.()
     this.crossGroupIndex?.stop()
@@ -552,11 +559,11 @@ export class WotConnector extends BaseConnector {
 
     await resetYjsPersonalDoc()
     await this.closeRuntimeStores()
-    await deleteYjsPersonalDocDB()
+    await wipeIdentityPersistence(did)
     await this.identity.deleteStoredIdentity()
 
     // Clear identity switch marker
-    try { localStorage.removeItem("rls-wot-active-did") } catch { /* ignore */ }
+    try { localStorage.removeItem(ACTIVE_DID_STORAGE_KEY) } catch { /* ignore */ }
 
     this.currentUserObs.set(null)
     this.authStateObs.set({ status: "unauthenticated" })
@@ -1134,26 +1141,26 @@ export class WotConnector extends BaseConnector {
     }
 
     // Identity switch cleanup
-    const prevDid = safeLocalStorage("rls-wot-active-did")
+    const prevDid = safeLocalStorage(ACTIVE_DID_STORAGE_KEY)
     if (prevDid && prevDid !== did) {
-      await this.cleanupOldIdentity()
+      await this.cleanupOldIdentity(prevDid)
     }
-    try { localStorage.setItem("rls-wot-active-did", did) } catch { /* ignore */ }
+    try { localStorage.setItem(ACTIVE_DID_STORAGE_KEY, did) } catch { /* ignore */ }
 
     // Stable deviceId: the durable log owns the nonce namespace. Resolve it
     // before constructing the transport and reuse the exact same ID everywhere.
     const rawDocLogStore = this.runtimeOverrides.docLogStore
-      ?? new IndexedDBDocLogStore(`wot-doc-log:${did}`)
+      ?? new IndexedDBDocLogStore(identityDatabaseName("docLog", did))
     await rawDocLogStore.init()
     const deviceId = await rawDocLogStore.resolveConnectDeviceId()
     this.docLogStore = observeDocLogPending(rawDocLogStore, () => this.queueSyncStateRefresh())
 
     this.keyManagement = this.runtimeOverrides.keyManagement
-      ?? new IndexedDBKeyManagementAdapter(`wot-key-management:${did}`)
+      ?? new IndexedDBKeyManagementAdapter(identityDatabaseName("keyManagement", did))
     this.memberUpdateStore = this.runtimeOverrides.memberUpdateStore
-      ?? new IndexedDBMemberUpdatePendingStore(`wot-member-update-pending:${did}`)
+      ?? new IndexedDBMemberUpdatePendingStore(identityDatabaseName("memberUpdatePending", did))
     this.messageIdHistory = this.runtimeOverrides.messageIdHistory
-      ?? new IndexedDBMessageIdHistory(`wot-message-id-history:${did}`)
+      ?? new IndexedDBMessageIdHistory(identityDatabaseName("messageIdHistory", did))
 
     const closeCandidates: unknown[] = [
       rawDocLogStore,
@@ -1167,11 +1174,16 @@ export class WotConnector extends BaseConnector {
     )
 
     const localOutbox = this.runtimeOverrides.outboxStore
-      ?? new LocalOutboxStore(`wot-outbox:${did}`)
+      ?? new LocalOutboxStore(identityDatabaseName("outbox", did))
     if ("open" in localOutbox && typeof localOutbox.open === "function") {
       await localOutbox.open()
     }
     this.outboxStore = localOutbox
+    if (hasAttestationCorrelations(localOutbox)) {
+      for (const correlation of await localOutbox.getAttestationCorrelations()) {
+        this.deliveryMessageIds.set(correlation.messageId, correlation.attestationId)
+      }
+    }
 
     // Sync-003 WebSocket auth. Heartbeat values are intentionally omitted:
     // core's 15s interval / 5s timeout defaults are the production contract.
@@ -1197,13 +1209,7 @@ export class WotConnector extends BaseConnector {
       }
     })
     this.deliveryReceiptUnsub = this.outboxAdapter.onReceipt((receipt) => {
-      const attestationId = this.deliveryMessageIds.get(receipt.messageId)
-      if (!attestationId) return
-      if (receipt.status === "delivered") {
-        void this.setDeliveryStatus(attestationId, "delivered")
-      } else if (receipt.status === "failed") {
-        void this.setDeliveryStatus(attestationId, "failed")
-      }
+      void this.applyTransportDeliveryReceipt(receipt)
     })
 
     this.inboxReception = new InboxReceptionHost({
@@ -1231,7 +1237,9 @@ export class WotConnector extends BaseConnector {
 
     const spaceMetadataStorage = new PersonalDocSpaceMetadataStorage(personalDocFns)
     this.spaceCompactStore = this.runtimeOverrides.compactStore
-      ?? new TracedCompactStorageManager(new CompactStorageManager(`rls-yjs-space-compact-store:${did}`))
+      ?? new TracedCompactStorageManager(
+        new CompactStorageManager(identityDatabaseName("spaceCompact", did)),
+      )
     if ("open" in this.spaceCompactStore && typeof this.spaceCompactStore.open === "function") {
       await this.spaceCompactStore.open()
     }
@@ -1263,9 +1271,11 @@ export class WotConnector extends BaseConnector {
       this.outboxCountUnsub = localOutbox.watchPendingCount().subscribe((count: number) => {
         this.outboxCountObs.set(count)
         this.queueSyncStateRefresh()
+        void this.pruneDeliveryCorrelations().catch(() => {})
       })
     }
     this.outboxCountObs.set(await localOutbox.count())
+    await this.pruneDeliveryCorrelations()
     await this.refreshSyncState()
 
     // Transitional non-membership messages (currently profile-update) remain
@@ -2120,10 +2130,12 @@ export class WotConnector extends BaseConnector {
     if (!recipientKey) throw new Error(`No encryption key published for ${attestation.to}`)
 
     await this.setDeliveryStatus(attestation.id, "sending")
+    const messageId = messageIdForAttestation(attestation.id)
+    let delivery: Awaited<ReturnType<typeof sendAttestationInbox>>
     try {
-      const messageId = messageIdForAttestation(attestation.id)
-      this.deliveryMessageIds.set(messageId, attestation.id)
-      const { envelope, receipt } = await sendAttestationInbox({
+      await this.registerDeliveryCorrelation(messageId, attestation.id)
+      this.inFlightDeliveryMessageIds.add(messageId)
+      delivery = await sendAttestationInbox({
         identity: this.identity,
         attestation,
         recipientEncryptionPublicKey: recipientKey,
@@ -2131,16 +2143,18 @@ export class WotConnector extends BaseConnector {
         crypto: this.protocolCrypto,
         messageId,
       })
-      this.deliveryMessageIds.set(envelope.id, attestation.id)
-      if (receipt.reason === "queued-in-outbox") {
-        await this.setDeliveryStatus(attestation.id, "queued")
-      } else if (receipt.status === "accepted" || receipt.status === "delivered") {
-        await this.setDeliveryStatus(attestation.id, "delivered")
-      }
     } catch (error) {
       await this.setDeliveryStatus(attestation.id, "failed")
+      await this.clearDeliveryCorrelation(messageId).catch(() => {})
       throw error
     }
+
+    this.inFlightDeliveryMessageIds.delete(messageId)
+    if (delivery.envelope.id !== messageId) {
+      await this.clearDeliveryCorrelation(messageId)
+      await this.registerDeliveryCorrelation(delivery.envelope.id, attestation.id)
+    }
+    await this.applyTransportDeliveryReceipt(delivery.receipt)
   }
 
   private async resolveRecipientEncryptionKey(did: string): Promise<Uint8Array | null> {
@@ -2379,6 +2393,56 @@ export class WotConnector extends BaseConnector {
       return
     }
     await this.setDeliveryStatus(jti, "acknowledged")
+    await this.clearDeliveryCorrelationsForAttestation(jti).catch(() => {})
+  }
+
+  private async registerDeliveryCorrelation(messageId: string, attestationId: string): Promise<void> {
+    this.deliveryMessageIds.set(messageId, attestationId)
+    if (this.outboxStore && hasAttestationCorrelations(this.outboxStore)) {
+      await this.outboxStore.setAttestationCorrelation(messageId, attestationId)
+    }
+  }
+
+  private async clearDeliveryCorrelation(messageId: string): Promise<void> {
+    this.deliveryMessageIds.delete(messageId)
+    this.inFlightDeliveryMessageIds.delete(messageId)
+    if (this.outboxStore && hasAttestationCorrelations(this.outboxStore)) {
+      await this.outboxStore.clearAttestationCorrelation(messageId)
+    }
+  }
+
+  private async clearDeliveryCorrelationsForAttestation(attestationId: string): Promise<void> {
+    const messageIds = [...this.deliveryMessageIds]
+      .filter(([, correlatedAttestationId]) => correlatedAttestationId === attestationId)
+      .map(([messageId]) => messageId)
+    await Promise.all(messageIds.map((messageId) => this.clearDeliveryCorrelation(messageId)))
+  }
+
+  private async applyTransportDeliveryReceipt(receipt: DeliveryReceipt): Promise<void> {
+    const attestationId = this.deliveryMessageIds.get(receipt.messageId)
+    if (!attestationId) return
+    if (receipt.reason === "queued-in-outbox") {
+      await this.setDeliveryStatus(attestationId, "queued")
+      return
+    }
+
+    await this.setDeliveryStatus(
+      attestationId,
+      receipt.status === "failed" ? "failed" : "delivered",
+    )
+    await this.clearDeliveryCorrelation(receipt.messageId).catch(() => {})
+  }
+
+  private async pruneDeliveryCorrelations(): Promise<void> {
+    if (!this.outboxStore) return
+    const pendingMessageIds = new Set(
+      (await this.outboxStore.getPending()).map((entry) => entry.envelope.id),
+    )
+    for (const messageId of this.deliveryMessageIds.keys()) {
+      if (!pendingMessageIds.has(messageId) && !this.inFlightDeliveryMessageIds.has(messageId)) {
+        this.deliveryMessageIds.delete(messageId)
+      }
+    }
   }
 
   private async setDeliveryStatus(attestationId: string, next: DeliveryStatus): Promise<void> {
@@ -2534,11 +2598,12 @@ export class WotConnector extends BaseConnector {
     this.memberUpdateStore = null
     this.messageIdHistory = null
     this.deliveryMessageIds.clear()
+    this.inFlightDeliveryMessageIds.clear()
     this.lastSyncStateLog = null
   }
 
-  private async cleanupOldIdentity(): Promise<void> {
-    await deleteLegacyIdentityDatabases()
+  private async cleanupOldIdentity(did: string): Promise<void> {
+    await wipeIdentityPersistence(did)
   }
 }
 

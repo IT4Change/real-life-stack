@@ -4,46 +4,13 @@ import {
 } from "@real-life/wot-core"
 import type { DocLogStore, MessagingAdapter } from "@real-life/wot-core/ports"
 import { initYjsPersonalDoc } from "@real-life/adapter-yjs"
-
-const PERSONAL_DOC_COMPACT_STORE_PREFIX = "wot-yjs-compact-store"
-
-/**
- * Unsuffixed databases from before identity-scoped persistence.
- *
- * `wot-yjs-compact-store` is the actual default opened by the 0.3.0
- * YjsPersonalDocManager when no external CompactStore is supplied. `personal-doc`
- * is the historical y-indexeddb namespace. The remaining names are the existing
- * connector migration set for global Yjs/Automerge state.
- */
-export const LEGACY_IDENTITY_DB_NAMES = [
-  "wot-yjs-compact-store",
-  "personal-doc",
-  "rls-yjs-space-compact-store",
-  "automerge-personal",
-  "automerge-repo",
-  "rls-space-compact-store",
-  "rls-space-sync-states",
-  "wot-compact-store",
-  "wot-sync-states",
-] as const
+import {
+  deleteLegacyIdentityDatabases,
+  identityDatabaseName,
+} from "./identity-persistence.js"
 
 export function personalDocCompactStoreName(did: string): string {
-  return `${PERSONAL_DOC_COMPACT_STORE_PREFIX}:${did}`
-}
-
-export async function deleteLegacyIdentityDatabases(): Promise<void> {
-  for (const name of LEGACY_IDENTITY_DB_NAMES) {
-    try {
-      await new Promise<void>((resolve) => {
-        const req = indexedDB.deleteDatabase(name)
-        req.onsuccess = () => resolve()
-        req.onerror = () => resolve()
-        req.onblocked = () => resolve()
-      })
-    } catch {
-      // Best effort: persistence isolation does not depend on legacy deletion.
-    }
-  }
+  return identityDatabaseName("personalDocCompact", did)
 }
 
 /**

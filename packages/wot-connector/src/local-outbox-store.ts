@@ -10,6 +10,27 @@ interface StoredOutboxEntry {
   envelopeJson: string
   createdAt: string
   retryCount: number
+  attestationId?: string
+}
+
+export interface AttestationOutboxCorrelation {
+  messageId: string
+  attestationId: string
+}
+
+export interface AttestationCorrelatingOutboxStore extends OutboxStore {
+  setAttestationCorrelation(messageId: string, attestationId: string): Promise<void>
+  clearAttestationCorrelation(messageId: string): Promise<void>
+  getAttestationCorrelations(): Promise<AttestationOutboxCorrelation[]>
+}
+
+export function hasAttestationCorrelations(
+  store: OutboxStore,
+): store is AttestationCorrelatingOutboxStore {
+  const candidate = store as Partial<AttestationCorrelatingOutboxStore>
+  return typeof candidate.setAttestationCorrelation === "function"
+    && typeof candidate.clearAttestationCorrelation === "function"
+    && typeof candidate.getAttestationCorrelations === "function"
 }
 
 /**
@@ -24,6 +45,7 @@ export class LocalOutboxStore implements OutboxStore {
   private openPromise: Promise<IDBDatabase> | null = null
   private pendingCount = 0
   private listeners = new Set<(count: number) => void>()
+  private attestationCorrelations = new Map<string, string>()
 
   constructor(
     private readonly dbName: string,
@@ -33,6 +55,9 @@ export class LocalOutboxStore implements OutboxStore {
   async open(): Promise<void> {
     await this.ensureOpen()
     this.pendingCount = await this.count()
+    for (const { messageId, attestationId } of await this.getAttestationCorrelations()) {
+      this.attestationCorrelations.set(messageId, attestationId)
+    }
   }
 
   async close(): Promise<void> {
@@ -45,6 +70,29 @@ export class LocalOutboxStore implements OutboxStore {
     this.db = null
     this.openPromise = null
     this.listeners.clear()
+    this.attestationCorrelations.clear()
+  }
+
+  /**
+   * Register before send(). If the message is queued later, enqueue() writes the
+   * correlation into the same durable outbox row atomically with the envelope.
+   */
+  async setAttestationCorrelation(messageId: string, attestationId: string): Promise<void> {
+    this.attestationCorrelations.set(messageId, attestationId)
+    await this.updateStoredAttestationId(messageId, attestationId)
+  }
+
+  async clearAttestationCorrelation(messageId: string): Promise<void> {
+    this.attestationCorrelations.delete(messageId)
+    await this.updateStoredAttestationId(messageId, undefined)
+  }
+
+  async getAttestationCorrelations(): Promise<AttestationOutboxCorrelation[]> {
+    return (await this.getAll()).flatMap((entry) =>
+      entry.attestationId
+        ? [{ messageId: entry.id, attestationId: entry.attestationId }]
+        : [],
+    )
   }
 
   async enqueue(envelope: WireMessage): Promise<void> {
@@ -54,6 +102,7 @@ export class LocalOutboxStore implements OutboxStore {
       envelopeJson: JSON.stringify(envelope),
       createdAt: new Date().toISOString(),
       retryCount: 0,
+      attestationId: this.attestationCorrelations.get(envelope.id),
     }
     await this.put(entry)
     await this.refreshPendingCount()
@@ -68,6 +117,7 @@ export class LocalOutboxStore implements OutboxStore {
       tx.onerror = () => reject(tx.error)
       tx.onabort = () => reject(tx.error)
     })
+    this.attestationCorrelations.delete(envelopeId)
     await this.refreshPendingCount()
   }
 
@@ -171,6 +221,29 @@ export class LocalOutboxStore implements OutboxStore {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(this.storeName, "readwrite")
       tx.objectStore(this.storeName).put(entry)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+      tx.onabort = () => reject(tx.error)
+    })
+  }
+
+  private async updateStoredAttestationId(
+    messageId: string,
+    attestationId: string | undefined,
+  ): Promise<void> {
+    const db = await this.ensureOpen()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(this.storeName, "readwrite")
+      const store = tx.objectStore(this.storeName)
+      const request = store.get(messageId)
+      request.onsuccess = () => {
+        const entry = request.result as StoredOutboxEntry | undefined
+        if (!entry) return
+        if (attestationId === undefined) delete entry.attestationId
+        else entry.attestationId = attestationId
+        store.put(entry)
+      }
+      request.onerror = () => reject(request.error)
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
       tx.onabort = () => reject(tx.error)

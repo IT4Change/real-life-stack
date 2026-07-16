@@ -9,12 +9,20 @@ import {
 import type { Attestation, Contact } from "@real-life/wot-core/types"
 import {
   YjsStorageAdapter,
+  changeYjsPersonalDoc,
   flushYjsPersonalDoc,
+  getYjsPersonalDoc,
   initYjsPersonalDoc,
   resetYjsPersonalDoc,
 } from "@real-life/adapter-yjs"
 
 import { projectAttestationConfirmations } from "../src/confirmations.js"
+import { WotConnector } from "../src/wot-connector.js"
+import { LocalOutboxStore } from "../src/local-outbox-store.js"
+import {
+  identityDatabaseName,
+  identityDatabaseNames,
+} from "../src/identity-persistence.js"
 import {
   initNamespacedYjsPersonalDoc,
   personalDocCompactStoreName,
@@ -157,5 +165,81 @@ describe("PersonalDoc persistence isolation", () => {
       personalDocCompactStoreName(identityA.getDid()),
       personalDocCompactStoreName(identityB.getDid()),
     ]))
+  })
+
+  it("logout closes active stores and fully wipes every database of the DID", async () => {
+    const identityA = await createIdentity("logout-owner")
+    const identityB = await createIdentity("next-owner")
+    const did = identityA.getDid()
+
+    await initNamespacedYjsPersonalDoc(identityA)
+    const storageA = new YjsStorageAdapter(did)
+    await storageA.addContact(createContact("did:key:logout-contact"))
+    await storageA.saveAttestation(createAttestation(did, identityB.getDid()))
+    const now = new Date().toISOString()
+    changeYjsPersonalDoc((doc) => {
+      doc.profile = {
+        did,
+        name: "Logout Owner",
+        bio: "must be wiped",
+        avatar: null,
+        offersJson: null,
+        needsJson: null,
+        createdAt: now,
+        updatedAt: now,
+      }
+    })
+    await flushYjsPersonalDoc()
+
+    const outbox = new LocalOutboxStore(identityDatabaseName("outbox", did))
+    await outbox.open()
+    for (const name of identityDatabaseNames(did)) {
+      if (name !== personalDocCompactStoreName(did) && name !== identityDatabaseName("outbox", did)) {
+        await createDatabase(name)
+      }
+    }
+
+    const connector = new WotConnector({
+      relayUrl: "ws://localhost:1234",
+      profilesUrl: "http://localhost:1235",
+    })
+    Object.assign(connector as any, {
+      identity: {
+        getDid: () => did,
+        deleteStoredIdentity: async () => {},
+      },
+      outboxStore: outbox,
+    })
+
+    await connector.logout()
+
+    const afterLogout = await databaseNames()
+    for (const name of identityDatabaseNames(did)) expect(afterLogout).not.toContain(name)
+
+    await initNamespacedYjsPersonalDoc(identityB)
+    expect(getYjsPersonalDoc().profile).toBeNull()
+    expect(new YjsStorageAdapter(identityB.getDid()).watchContacts().getValue()).toEqual([])
+    await resetYjsPersonalDoc()
+
+    await initNamespacedYjsPersonalDoc(identityA)
+    const reloginStorage = new YjsStorageAdapter(did)
+    expect(getYjsPersonalDoc().profile).toBeNull()
+    expect(reloginStorage.watchContacts().getValue()).toEqual([])
+    expect(reloginStorage.watchAllAttestations().getValue()).toEqual([])
+  })
+
+  it("uses the same full wipe for identity-switch cleanup", async () => {
+    const identity = await createIdentity("switch-owner")
+    const did = identity.getDid()
+    for (const name of identityDatabaseNames(did)) await createDatabase(name)
+
+    const connector = new WotConnector({
+      relayUrl: "ws://localhost:1234",
+      profilesUrl: "http://localhost:1235",
+    })
+    await (connector as any).cleanupOldIdentity(did)
+
+    const remaining = await databaseNames()
+    for (const name of identityDatabaseNames(did)) expect(remaining).not.toContain(name)
   })
 })
