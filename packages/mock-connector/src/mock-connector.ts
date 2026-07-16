@@ -13,6 +13,14 @@ import type {
 import { createObservable, matchesFilter, findRelatedItems, applyPagination } from "@real-life-stack/data-interface"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers, demoGroupItems } from "@real-life-stack/data-interface/demo-data"
 
+export interface MockConnectorSeed {
+  items: Item[]
+  groups: Group[]
+  users: User[]
+  groupMembers: Record<string, string[]>
+  groupItems?: Record<string, string[]>
+}
+
 export class MockConnector implements FullConnector {
   private items: Item[]
   private notifyScheduled = false
@@ -32,12 +40,20 @@ export class MockConnector implements FullConnector {
   private relatedObservableParams = new Map<string, { itemId: string; predicate?: string; options?: RelatedItemsOptions }>()
   private nextItemId = 100
 
-  constructor() {
-    this.items = [...demoItems]
-    this.groups = demoGroups.filter((g) => (g.data?.scope as string) !== "aggregate")
-    this.users = [...demoUsers]
-    this.groupMembers = { ...demoGroupMembers }
-    this.groupItems = { ...demoGroupItems }
+  constructor(seed?: MockConnectorSeed) {
+    const data = seed ?? {
+      items: demoItems,
+      groups: demoGroups,
+      users: demoUsers,
+      groupMembers: demoGroupMembers,
+      groupItems: demoGroupItems,
+    }
+
+    this.items = [...data.items]
+    this.groups = data.groups.filter((g) => (g.data?.scope as string) !== "aggregate")
+    this.users = [...data.users]
+    this.groupMembers = { ...data.groupMembers }
+    this.groupItems = { ...(data.groupItems ?? {}) }
     this.currentGroup = null
     this.currentUser = this.users[0] ?? null
     this.currentUserObs = createObservable<User | null>(this.currentUser)

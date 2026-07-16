@@ -75,6 +75,24 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 
 ---
 
+## Adaptive Panels
+
+- [x] **adaptive-panel-stack-order**: Gestapelte Panels schließen per Escape nur die oberste sichtbare Ebene
+- [x] **adaptive-panel-sidebar-inset**: Ein Modal oder Drawer über einer Sidebar erhält deren Layout-Inset
+- [x] **adaptive-panel-scroll-lock-stack**: Body-Scroll bleibt bis zum Schließen des letzten sperrenden Panels deaktiviert
+
+---
+
+## Graph
+
+- [x] **graph-focus-visible-area**: Ausgewählte Knoten werden innerhalb der nicht vom Drawer verdeckten Fläche zentriert
+- [x] **graph-focus-transition**: Die Kamera fährt weich zum ausgewählten Knoten und folgt ihm bis zum Ende der Force-Simulation
+- [x] **graph-hover-transition**: Nicht verbundene Knoten und Kanten werden beim Hover weich ein- und ausgeblendet
+- [x] **graph-reduced-motion**: Bei reduzierter Bewegung wechseln Kamera und Opazität ohne animierte Zwischenstufen
+- [x] **graph-resize-continuity**: Canvas-Resizes zeichnen synchron nach, damit Panel-Animationen keinen leeren Frame zeigen
+
+---
+
 ## Dropdown-Menüs
 
 - [x] **dropdown-cursor-pointer**: Alle Items zeigen `cursor: pointer`
@@ -140,3 +158,4 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 | 2026-01-10 | Hintergrund auf Weiß (oklch(1.00 0 0)) |
 | 2026-01-10 | Accent auf Blau-Familie umgestellt (keine Orange-Hover mehr) |
 | 2026-01-10 | Button-Schatten deaktiviert (shadow-button: none) |
+| 2026-07-16 | Adaptive-Panel-Stacking und weiche Graph-Fokus-/Hover-Übergänge dokumentiert |
