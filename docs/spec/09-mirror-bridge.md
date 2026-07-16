@@ -23,10 +23,14 @@ Code-Referenzen:
 ## Snapshot-Form
 
 ```ts
-interface MirrorSnapshot {
+/**
+ * Die PAYLOAD der Compact-JWS. Das Wire-Format ist die JWS selbst —
+ * dieser Typ enthält deshalb bewusst KEIN signature-Feld.
+ */
+interface MirrorSnapshotPayload {
   homeSpaceId: string
   itemId: string
-  /** der EINE Ziel-Space dieser Freigabe — Teil der signierten Payload (Invariante 4) */
+  /** der EINE Ziel-Space dieser Freigabe (Invariante 4) */
   targetSpaceId: string
   /** seq: home-weit replizierter Lamport-Zähler; ts: reine Anzeigezeit — Ordnung s. Invariante 6 */
   version: { seq: number; deviceId: string; ts: string }
@@ -34,8 +38,6 @@ interface MirrorSnapshot {
   item: SerializedItem | null
   /** MUSS bei item ≠ null gleich item.createdBy sein (Invariante 5) */
   authorDid: string
-  /** JWS des Autors über die kanonische Payload (s. unten) */
-  signature: string
 }
 ```
 
@@ -95,11 +97,27 @@ Außenfelder.
    (Offline-Reihenfolge!) ein Live-Snapshot desselben `authorDid` mit
    niedrigerer `version` ein, MUSS er verworfen werden — sonst ersteht
    das gelöschte Item wieder auf. Live-Snapshots anderer Autoren bleiben
-   von der Marke unberührt. Delegation an weitere Signer (z. B. UCAN)
-   ist außerhalb dieses Vertrags — s. Nicht-Ziele (MirrorGrant).
-6. Empfänger MÜSSEN die Signatur gegen die gebundene Signer-DID prüfen und
-   DÜRFEN einen Snapshot nur übernehmen, wenn seine `version` in der
-   totalen Ordnung STRIKT größer ist als die zuletzt akzeptierte.
+   von der Marke unberührt. Die Erst-Annahme ist dabei ausdrücklich
+   **Home-Origin-TOFU**: der Empfänger ist im Home nicht Mitglied und
+   kann die Behauptung, das Item stamme aus `homeSpaceId`, beim
+   Erstkontakt nicht beweisen. Restrisiko: ein Angreifer kann ein noch
+   ungespiegeltes `(homeSpaceId, itemId)` mit eigener DID besetzen; das
+   blockiert genau diesen zusammengesetzten Schlüssel (und wird als
+   Konflikt sichtbar, sobald der echte Autor publiziert), kompromittiert
+   aber keine bestehenden Mirrors. UI-Flächen MÜSSEN die Herkunft als
+   Behauptung ausweisen („laut Snapshot aus …"). Ein Provenienznachweis
+   (Home-Mitgliedschafts-Beleg oder MirrorGrant) ist als Härtung
+   vorgesehen, nicht Teil dieses Vertrags. Delegation an weitere Signer
+   (z. B. UCAN) ist ebenfalls außerhalb — s. Nicht-Ziele (MirrorGrant).
+6. Empfänger MÜSSEN die Signatur JEDES Snapshots (Live wie Tombstone)
+   gegen dessen `authorDid` prüfen und führen pro
+   `(homeSpaceId, itemId, authorDid)` die höchste akzeptierte `version`
+   als High-Water-Mark über Live- UND Tombstone-Snapshots. Die
+   Strikt-größer-Regel gilt je `authorDid`; **materialisiert** wird der
+   Mirror ausschließlich aus Snapshots des gebundenen Signers
+   (Invariante 5) — Marken fremder DIDs berühren ihn nicht. Ein Snapshot
+   wird nur übernommen, wenn seine `version` in der totalen Ordnung
+   STRIKT größer ist als die bisherige High-Water-Mark seines Autors.
    `seq` ist ein home-weit replizierter **Lamport-Zähler** pro
    gespiegeltem Item: die Freigabe samt letzter publizierter `seq` liegt
    als Registry im Home-Doc (dadurch sehen alle Autor-Geräte Freigabe und
@@ -129,11 +147,13 @@ Außenfelder.
    sichtbar — das ist Teil der Freigabe aus Invariante 3.
 10. RelationRecords sind Items ([08-relation-records.md](08-relation-records.md))
     und werden nach denselben Regeln gespiegelt. Ihre Endpunkt-Relations
-    MÜSSEN **vor dem Signieren voll qualifiziert** werden
-    (`space:{homeSpaceId}/item:…`): ein relatives `item:x` ist im
-    Snapshot unzulässig, weil es im Ziel-Space sonst auf ein lokales
-    Item `x` zeigen würde statt auf das Home-Item. Der Ziel-Space löst
-    voll qualifizierte Targets über den Mirror-Tripel-Schlüssel auf.
+    bleiben im Snapshot **byte-treu home-relativ**: ein Umschreiben vor
+    dem Signieren würde den Item-Inhalt verändern und damit die
+    deterministische Relation-`id` aus 08 brechen (sie hasht `from`/`to`).
+    Stattdessen gilt eine Auflösungsregel beim Empfänger: relative
+    `item:`-Targets eines Mirrors MÜSSEN im Kontext seines `homeSpaceId`
+    interpretiert werden (`item:x` ⇒ Mirror-Instanz
+    `(targetSpaceId, homeSpaceId, x)`), NIE gegen den lokalen Space.
 
 ## Nicht-Ziele
 

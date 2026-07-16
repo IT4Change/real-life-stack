@@ -274,3 +274,18 @@ Implementierung kanonisch.
   Privacy-Aussage (neue Verhaltensmetadaten); Space-Wechsel = zwei
   Einträge, Mirror-Anwendung geloggt mit actor = Signer-DID.
   **Alle Punkte übernommen** (Folgecommit in #142).
+- R15 (16.07., Konsistenzpass auf R14): (1) 09: Wire-Typ →
+  `MirrorSnapshotPayload` OHNE signature-Feld (Payload kann ihre eigene
+  Signatur nicht enthalten); Tombstone-Verifikation normiert (Signatur
+  jedes Snapshots gegen dessen `authorDid`, High-Water-Mark pro
+  `(home, item, authorDid)` über Live+Tombstone, Materialisierung nur vom
+  gebundenen Signer); Target-Rewrite GEKIPPT — Endpunkte bleiben
+  byte-treu home-relativ (Umschreiben bräche die 08-Relation-id),
+  Auflösung beim Empfänger im homeSpaceId-Kontext. (2) 09: Erstbindung
+  ausdrücklich als **Home-Origin-TOFU** benannt inkl. Restrisiko
+  (Key-Squatting sichtbar als Konflikt) und UI-Pflicht („laut Snapshot
+  aus …"); Provenienznachweis als Härtung vorgesehen. (3) 10:
+  actor-Ausnahme normiert — Schreiber bleibt IMMER der Connector, nur der
+  actor-WERT ist bei Mirror-Anwendung die Signer-DID; neues Feld
+  `origin?: "mirror"`; Event-Abbildung create/update/delete definiert.
+  **Alle drei übernommen** (Folgecommit in #142).

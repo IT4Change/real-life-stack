@@ -36,6 +36,8 @@ interface ActivityEntry {
   /** DID des Handelnden — setzt der Connector, nie die App (Regel 1) */
   actor: string
   action: "create" | "update" | "delete"
+  /** gesetzt, wenn der Eintrag aus der Anwendung eines Mirror-Snapshots stammt (Regel 10) */
+  origin?: "mirror"
   targetId: string
   /** item.type zum Zeitpunkt der Aktion */
   targetType: string
@@ -53,7 +55,9 @@ interface ActivityEntry {
    loggen; App-Code DARF keine Einträge schreiben. `actor` leitet der
    Connector aus seiner authentifizierten Identität ab (wie `createdBy`),
    NIE aus einem App-Parameter — der Log ist kein Audit (Regel 5), aber
-   falsche Urheberanzeigen dürfen nicht trivial erzeugbar sein.
+   falsche Urheberanzeigen dürfen nicht trivial erzeugbar sein. Die
+   einzige normierte Ausnahme für den `actor`-WERT (nicht den Schreiber)
+   ist die Mirror-Anwendung, Regel 10.
 2. **ID und Ordnung:** `id = crypto.randomUUID()` — eindeutig ohne
    Koordination und ohne persistente, tab-übergreifend atomare
    Sequenzzähler oder Escaping-Normierung (deshalb bewusst kein
@@ -103,8 +107,13 @@ interface ActivityEntry {
     loggbar. Er erzeugt deshalb ZWEI Einträge — `delete` im Quell-Log,
     `create` im Ziel-Log, jeder atomar in seinem Doc; kurzzeitige
     Inkonsistenz zwischen den Logs ist zulässig (Regel 5). Die Anwendung
-    eines Mirror-Snapshots (09) SOLL im Ziel-Log als eigener Eintrag
-    erscheinen, mit `actor` = Signer-DID des Snapshots.
+    eines Mirror-Snapshots (09) schreibt der **Connector** als eigenen
+    Eintrag mit `origin: "mirror"`; `actor` ist die Signer-DID des
+    Snapshots — die verursachende Identität, und die einzige normierte
+    Ausnahme vom actor-Wert aus Regel 1 (der Schreiber bleibt der
+    Connector). Event-Abbildung: erster akzeptierter Live-Snapshot =
+    `create`, jeder weitere = `update`, Tombstone = `delete`;
+    `targetType` aus der Snapshot-Payload.
 
 ## Lese-Vertrag
 
