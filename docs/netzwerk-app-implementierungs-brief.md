@@ -113,8 +113,14 @@ setzt direkt auf diesen Typen auf — die Drift muss vorher zu sein.
   Pflichtliste der Standardvokabulare einführen (base, event, person,
   place, task, relation, project, resource): fehlendes Schema, fehlendes
   `context.jsonld` oder null valide Examples = Testfehler. Zusätzlich
-  prüfen, dass jedes `context.jsonld` nur die eigenen Schema-Properties
-  als Terms deklariert (kein Re-Claim von base-Feldern).
+  eine **Re-Claim-Prüfung** der Contexts: kein Context außer base/v1 darf
+  einen von base/v1 besessenen Property-Term (`title`, `description`,
+  `content`, `tags`, `relations`, …) erneut deklarieren. NICHT verboten
+  sind legitime Nicht-Property-Terms: Wert-Terme (z. B. `open`/`done`/
+  `in-progress`/`archived` in task/v1), Prädikat-Terme (`from`/`to` in
+  relation/v1) und Präfixe (`rls`, `xsd`) — ein naiver
+  „Terms ⊆ Schema-Properties"-Test würde die bestehenden Vokabulare
+  brechen.
 - **Vokabular-Indizes nachziehen** (im selben PR): Vokabel-Liste in
   `06-schema-composition.md` + `docs/spec/README.md` + `docs/spec/schemas/
   README.md` um relation/project/resource ergänzen; `docs/spec/glossary.md`
@@ -157,9 +163,10 @@ setzt direkt auf diesen Typen auf — die Drift muss vorher zu sein.
 - **Embedded-Bestand bleibt unangetastet:** `EventRelations.locatedAt`
   (embedded, Event→Place) behält seine Semantik — die RelationRecord-Welt
   nutzt per netzwerk-app.md `takesPlaceAt` (Event→Place) und `locatedAt`
-  (Projekt→Place). Diese Namens-Divergenz ist entschieden (kein Umbenennen
-  des Embedded-Bestands = keine Datenmigration in diesem Schnitt) und wird
-  im Abgrenzungs-Kommentar explizit benannt.
+  (Projekt→Place). `locatedAt` existiert damit bewusst in beiden Welten
+  (**entschiedener Legacy-Overlap** — kein Umbenennen des
+  Embedded-Bestands = keine Datenmigration in diesem Schnitt); der
+  Abgrenzungs-Kommentar benennt genau das.
 - **`KnownItemType` += `"project" | "resource" | "relation"`.** Keine
   Duplikation der RelationRecord-Typen — die leben in
   `relation-records.ts`.
@@ -199,14 +206,17 @@ bis P5 (versionierte RelationTypeDefinition im Space).
 ### 5. Person-Runtime-Pfad (WoT-Connector)
 
 - **Festlegung avatarUrl:** `person/v1` wird von `format: uri` auf
-  **`format: uri-reference`** geändert (einzige Schema-Änderung dieses
-  Schnitts). Begründung: Der Bestand enthält relative Referenzen (z. B.
-  `pic.jpg` in der bestehenden Regression) und data-URIs; ein reines
-  Umbenennen wäre nicht konform, und Werte in der Projektion auszulassen
-  würde über den Profil-Edit-Roundtrip gespeicherte Avatare löschen
-  (Datenverlust). `uri-reference` ist die kleinste ehrliche Änderung; der
-  Netzwerk-Seed (absolute URLs) bleibt gültig. Das `person/v1`-Example
-  bekommt einen Fall mit relativer Referenz.
+  **`format: uri-reference` + `minLength: 1`** geändert (einzige
+  Schema-Änderung dieses Schnitts; `minLength`, weil der leere String
+  eine gültige URI-Referenz ist und ohne ihn konform bliebe). Begründung:
+  Der Bestand enthält relative Referenzen (z. B. `pic.jpg` in der
+  bestehenden Regression) und data-URIs; ein reines Umbenennen wäre nicht
+  konform, und Werte in der Projektion auszulassen würde über den
+  Profil-Edit-Roundtrip gespeicherte Avatare löschen (Datenverlust).
+  `uri-reference` ist die kleinste ehrliche Änderung; der Netzwerk-Seed
+  (absolute URLs) bleibt gültig. Das `person/v1`-Example bekommt einen
+  Fall mit relativer Referenz. Die Projektion emittiert `avatarUrl` nur
+  bei nicht-leerem Storage-Wert.
 - **TDD, Vertragstest zuerst:** `getMyProfile()` liefert ein Item, das
   **per AJV gegen person/v1 validiert** (nicht nur Feldnamen prüfen):
   `data.displayName` (nie `name`; `getDefaultDisplayName`-Fallback
@@ -245,8 +255,9 @@ bis P5 (versionierte RelationTypeDefinition im Space).
    Aktivierungen unverändert (Testfälle).
 3. Gehärteter Schema-Test: Pflichtliste base/event/person/place/task/
    relation/project/resource — je Schema + Context + mindestens ein
-   valides Example, Context-Terms nur eigene Properties. (Die bisherige
-   Silent-Skip-Logik reicht als Abnahme nicht.)
+   valides Example; Re-Claim-Prüfung wie in Scope 1 (nur fremd-besessene
+   Property-Terms verboten, Wert-/Prädikat-Terme und Präfixe erlaubt).
+   (Die bisherige Silent-Skip-Logik reicht als Abnahme nicht.)
 4. Katalog-Test: sieben eindeutige Prädikate, genau `knows` +
    `connectedWith` symmetric, fester ID-Vektor über
    `relationStoreOptionsFrom(NETWORK_RELATION_PREDICATES)`.
@@ -256,8 +267,13 @@ bis P5 (versionierte RelationTypeDefinition im Space).
    mehr (grep-Beweis im PR-Body; die Nicht-Ziel-Verträge sind ausgenommen).
 7. `item-types.ts` enthält kein `GeoLocation` und kein `data.tags` mehr;
    `KnownItemType` umfasst project/resource/relation; keine
-   RelationRecord-Prädikate in `*Relations`/`KnownPredicate`.
-8. Kein package.json-Diff, keine neuen Dependencies.
+   RelationRecord-Prädikate **neu** in `*Relations`/`KnownPredicate`
+   aufgenommen — der bestehende embedded `locatedAt`-Eintrag ist der in
+   Scope 3 entschiedene Legacy-Overlap und bleibt.
+8. Keine neuen **Runtime**-Dependencies. Einzige erlaubte
+   package.json-Änderung: `ajv` + `ajv-formats` als devDependencies des
+   WoT-Connectors für den Vertragstest aus DoD 5 (Versionen wie im
+   data-interface).
 
 ## Nicht-Ziele
 
@@ -276,9 +292,11 @@ bis P5 (versionierte RelationTypeDefinition im Space).
 - Keine Marketplace-/Linsen-UI (P3), keine Karten-/Bild-Koordinaten-
   Entscheidung (P4).
 - Keine Storage-Migration (personal doc, space docs).
+- Kein gemeinsamer Runtime-Schema-Validator: AJV bleibt Test-Werkzeug;
+  Schema-Validierung zur Laufzeit ist nicht Teil dieses Schnitts.
 - Keine Spec-Änderungen außer: Vokabular-Indizes (06, spec/README,
-  schemas/README, glossary) und `person/v1.avatarUrl` → `uri-reference`
-  (Scope 5).
+  schemas/README, glossary) und `person/v1.avatarUrl` →
+  `uri-reference` + `minLength: 1` (Scope 5).
 
 ## Leitplanken
 
