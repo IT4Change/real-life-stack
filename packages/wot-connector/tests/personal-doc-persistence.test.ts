@@ -1,7 +1,4 @@
-// The linked 0.3.0 core supplies fake-indexeddb for its adapter tests. Import
-// its factory through that declared package link so this package-only bugfix
-// does not require a workspace-root lockfile change.
-import IDBFactory from "../node_modules/@real-life/wot-core/node_modules/fake-indexeddb/lib/FDBFactory.js"
+import { IDBFactory } from "fake-indexeddb"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import {
