@@ -2,6 +2,7 @@ import {
   relationRecordFromItem,
   VOCAB_BASE,
   VOCAB_PERSON,
+  VOCAB_PROJECT,
   VOCAB_RELATION,
   type Item,
   type RelationRecord,
@@ -15,9 +16,9 @@ import {
   dwebCampItemId,
   DWEB_CAMP_SEED_CREATED_AT,
   DWEB_CAMP_SEED_CREATOR,
-  NETWORK_RELATION_STORE_OPTIONS,
   slugSeedValue,
 } from "./network-seed"
+import { NETWORK_RELATION_STORE_OPTIONS } from "./network-relation-predicates"
 
 let seedItems: Item[]
 let relationItems: Item[]
@@ -178,6 +179,6 @@ describe("DWebCamp seed importer", () => {
 
     expect(event?.["@context"]).toEqual([VOCAB_BASE])
     expect(person?.["@context"]).toEqual([VOCAB_BASE, VOCAB_PERSON])
-    expect(project?.["@context"]).toEqual([VOCAB_BASE])
+    expect(project?.["@context"]).toEqual([VOCAB_BASE, VOCAB_PROJECT])
   })
 })

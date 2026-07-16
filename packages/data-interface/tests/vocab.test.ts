@@ -7,6 +7,8 @@ import {
   VOCAB_TASK,
   VOCAB_PERSON,
   VOCAB_RELATION,
+  VOCAB_PROJECT,
+  VOCAB_RESOURCE,
 } from "../src/index.js"
 
 describe("deriveContext", () => {
@@ -77,6 +79,22 @@ describe("deriveContext", () => {
 
   it("does NOT add relation/v1 based on a predicate field alone", () => {
     expect(deriveContext("post", { predicate: "knows" })).not.toContain(VOCAB_RELATION)
+  })
+
+  it("adds project/v1 when type === 'project'", () => {
+    expect(deriveContext("project", {})).toEqual([VOCAB_BASE, VOCAB_PROJECT])
+  })
+
+  it("does NOT add project/v1 based on project-like fields alone", () => {
+    expect(deriveContext("post", { website: "https://example.org" })).not.toContain(VOCAB_PROJECT)
+  })
+
+  it("adds resource/v1 when type === 'resource'", () => {
+    expect(deriveContext("resource", {})).toEqual([VOCAB_BASE, VOCAB_RESOURCE])
+  })
+
+  it("does NOT add resource/v1 based on resource-like fields alone", () => {
+    expect(deriveContext("post", { kind: "tool" })).not.toContain(VOCAB_RESOURCE)
   })
 
   it("composes multiple vocabs: event + place for an event with a location", () => {

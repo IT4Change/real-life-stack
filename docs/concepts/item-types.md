@@ -1,5 +1,7 @@
 # Inhalts-Typen
 
+> **Normative Quellen:** [`docs/spec/schemas/vocab/`](../spec/schemas/vocab/) und [`packages/data-interface/src/item-types.ts`](../../packages/data-interface/src/item-types.ts). Dieses Dokument bleibt eine historische Ideensammlung.
+
 ## Persönliche Profile
 * Jeder Nutzer hat ein persönliches Profil
 

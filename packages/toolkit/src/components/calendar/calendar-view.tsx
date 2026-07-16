@@ -162,7 +162,7 @@ function toCalendarEvent(item: Item): CalendarEvent | null {
     start,
     end,
     allDay,
-    title: String(item.data.title ?? item.data.name ?? "Ohne Titel"),
+    title: String(item.data.title ?? item.data.displayName ?? item.data.name ?? "Ohne Titel"),
     description: typeof description === "string" ? description : undefined,
     location: getLocationLabel(item.data.locationName, item.data.address),
     tags: item.tags ?? [],

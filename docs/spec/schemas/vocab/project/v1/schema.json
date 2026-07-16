@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://real-life-stack.org/vocab/project/v1/schema.json",
+  "title": "RLS Project Vocabulary",
+  "description": "Properties for items representing projects.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["title"],
+      "properties": {
+        "website": {
+          "type": "string",
+          "format": "uri"
+        },
+        "repo": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    }
+  },
+  "required": ["data"]
+}

@@ -10,6 +10,7 @@
   "createdBy": "did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp",
   "data": {
     "displayName": "Lena Berg",
+    "avatarUrl": "images/lena.jpg",
     "bio": "Yoga-Lehrerin, Community-Gärtnerin, baut gerade an einem Permakultur-Garten am Friedrichshain.",
     "position": {
       "type": "Point",

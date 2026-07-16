@@ -1,0 +1,16 @@
+{
+  "id": "01H8XYZ-project-garden",
+  "@context": [
+    "https://real-life-stack.org/vocab/base/v1",
+    "https://real-life-stack.org/vocab/project/v1"
+  ],
+  "type": "project",
+  "createdAt": "2026-07-16T10:00:00Z",
+  "createdBy": "did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp",
+  "data": {
+    "title": "Community Garden",
+    "description": "A shared neighborhood garden project.",
+    "website": "https://example.org/community-garden",
+    "repo": "https://github.com/example/community-garden"
+  }
+}

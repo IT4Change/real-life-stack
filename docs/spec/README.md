@@ -57,7 +57,7 @@ Die Kern-Dokumente bauen in dieser Reihenfolge aufeinander auf:
 | [schemas/README.md](schemas/README.md) | Konventionen, Komposition, Versionierung |
 | [schemas/vocab/](schemas/vocab/) | Pro Vokabular: `context.jsonld` (JSON-LD) + `schema.json` (JSON-Schema) + `examples/valid/` |
 
-Aktuelle Vokabulare: `base/v1`, `place/v1`, `event/v1`, `task/v1`, `person/v1`.
+Aktuelle Vokabulare: `base/v1`, `place/v1`, `event/v1`, `task/v1`, `person/v1`, `relation/v1`, `project/v1`, `resource/v1`.
 
 ## Weitere Referenzen
 

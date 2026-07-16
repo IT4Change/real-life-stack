@@ -12,6 +12,8 @@ export const VOCAB_PLACE = "https://real-life-stack.org/vocab/place/v1"
 export const VOCAB_TASK = "https://real-life-stack.org/vocab/task/v1"
 export const VOCAB_PERSON = "https://real-life-stack.org/vocab/person/v1"
 export const VOCAB_RELATION = "https://real-life-stack.org/vocab/relation/v1"
+export const VOCAB_PROJECT = "https://real-life-stack.org/vocab/project/v1"
+export const VOCAB_RESOURCE = "https://real-life-stack.org/vocab/resource/v1"
 
 const TASK_STATUS_VALUES = new Set(["open", "in-progress", "done", "archived"])
 const PLACE_GEOMETRY_TYPES = new Set(["Point", "LineString", "Polygon"])
@@ -37,6 +39,8 @@ function isPlaceGeometry(value: unknown): boolean {
  *   enum values (`open` | `in-progress` | `done` | `archived`).
  * - `person/v1` if `type === "person"`.
  * - `relation/v1` if `type === "relation"`.
+ * - `project/v1` if `type === "project"`.
+ * - `resource/v1` if `type === "resource"`.
  */
 export function deriveContext(type: string, data: Record<string, unknown>): string[] {
   const ctx: string[] = [VOCAB_BASE]
@@ -59,6 +63,14 @@ export function deriveContext(type: string, data: Record<string, unknown>): stri
 
   if (type === "relation") {
     ctx.push(VOCAB_RELATION)
+  }
+
+  if (type === "project") {
+    ctx.push(VOCAB_PROJECT)
+  }
+
+  if (type === "resource") {
+    ctx.push(VOCAB_RESOURCE)
   }
 
   return ctx

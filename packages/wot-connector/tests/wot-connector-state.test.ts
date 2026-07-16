@@ -2,13 +2,18 @@ import { beforeEach, describe, it, expect, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, resolve } from "node:path"
+import Ajv2020 from "ajv/dist/2020"
+import addFormats from "ajv-formats"
 
 import {
   createObservable,
+  VOCAB_BASE,
+  VOCAB_PERSON,
   type AuthState,
   type ContactInfo,
   type ConfirmationView,
   type Group,
+  type Item,
   type RelayState,
   type User,
 } from "@real-life-stack/data-interface"
@@ -87,6 +92,11 @@ vi.mock("../src/identity-persistence.js", async (importOriginal) => ({
 const here = dirname(fileURLToPath(import.meta.url))
 const CONNECTOR_SRC = resolve(here, "../src/wot-connector.ts")
 const CONFIRMATIONS_SRC = resolve(here, "../src/confirmations.ts")
+const PERSON_SCHEMA = resolve(here, "../../../docs/spec/schemas/vocab/person/v1/schema.json")
+
+const personAjv = new Ajv2020({ allErrors: true, strict: false })
+addFormats(personAjv)
+const validatePerson = personAjv.compile(JSON.parse(readFileSync(PERSON_SCHEMA, "utf8")))
 
 function readConnectorSource(): string {
   return readFileSync(CONNECTOR_SRC, "utf8")
@@ -546,6 +556,63 @@ describe("WotConnector profile publish and contact refresh", () => {
 
     expect(refreshContactSummaries).toHaveBeenCalledTimes(2)
     expect(resolveProfile).toHaveBeenCalledTimes(0)
+  })
+})
+
+describe("WotConnector person/v1 item projection", () => {
+  const did = "did:key:alice"
+
+  async function getProjectedProfile(profile: {
+    name: string | null
+    bio: string | null
+    avatar: string | null
+  }): Promise<Item> {
+    yjsMockState.personalDoc = {
+      profile: {
+        did,
+        ...profile,
+        createdAt: "2026-07-16T08:00:00.000Z",
+        updatedAt: "2026-07-16T08:00:00.000Z",
+      },
+      contacts: {},
+    }
+    const fake = {
+      identity: { getDid: () => did },
+      profileObs: createObservable<Item | null>(null),
+      currentUserObs: createObservable<User | null>(null),
+      memberObservables: new Map(),
+      notifyMemberObservers: vi.fn(),
+    }
+
+    ;(WotConnector.prototype as any).syncProfileObservable.call(fake)
+    const item = await WotConnector.prototype.getMyProfile.call(fake as any)
+    if (!item) throw new Error("Expected getMyProfile() to return the projected profile")
+    return item
+  }
+
+  it.each(["pic.jpg", "hello world"])(
+    "returns an AJV-valid person/v1 item for legacy avatar %j",
+    async (avatar) => {
+      const item = await getProjectedProfile({ name: "Alice", bio: "Builder", avatar })
+
+      expect(item["@context"]).toEqual([VOCAB_BASE, VOCAB_PERSON])
+      expect(item.data).toEqual({
+        displayName: "Alice",
+        bio: "Builder",
+        avatarUrl: avatar,
+      })
+      expect(item.data).not.toHaveProperty("name")
+      expect(item.data).not.toHaveProperty("avatar")
+      expect(validatePerson(item), JSON.stringify(validatePerson.errors, null, 2)).toBe(true)
+    },
+  )
+
+  it("uses the display-name fallback and omits an empty stored avatar", async () => {
+    const item = await getProjectedProfile({ name: null, bio: null, avatar: "" })
+
+    expect(item.data.displayName).toBe(did)
+    expect(item.data).not.toHaveProperty("avatarUrl")
+    expect(validatePerson(item), JSON.stringify(validatePerson.errors, null, 2)).toBe(true)
   })
 })
 
