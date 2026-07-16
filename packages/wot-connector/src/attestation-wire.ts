@@ -59,17 +59,27 @@ export async function sendAttestationInbox(options: {
   messaging: MessagingAdapter
   crypto: ProtocolCryptoAdapter
   messageId?: string
+  /** Runtime-Autoritäts-Guard: vor Sign und Send geprüft (B1b). */
+  ensureCurrent?: () => boolean
 }) {
+  // Runtime-Autoritäts-Guard (Review B1b): unmittelbar vor Signatur/Send —
+  // eine übersprungene Generation darf weder signieren noch senden.
+  const ensureCurrent = options.ensureCurrent ?? (() => true)
+  if (!ensureCurrent()) throw new Error("wire aborted: runtime superseded")
   const envelope = await deliverInboxMessage({
     type: INBOX_MESSAGE_TYPE,
     body: { vcJws: options.attestation.vcJws },
     from: options.identity.getDid(),
     to: options.attestation.to,
     recipientEncryptionPublicKey: options.recipientEncryptionPublicKey,
-    sign: (input) => options.identity.signEd25519(input),
+    sign: (input) => {
+      if (!ensureCurrent()) throw new Error("wire aborted: runtime superseded")
+      return options.identity.signEd25519(input)
+    },
     crypto: options.crypto,
     randomId: () => options.messageId ?? messageIdForAttestation(options.attestation.id),
   })
+  if (!ensureCurrent()) throw new Error("wire aborted: runtime superseded")
   const receipt = await options.messaging.send(envelope)
   return { envelope, receipt }
 }
@@ -81,6 +91,8 @@ export async function sendAttestationReceipt(options: {
   recipientEncryptionPublicKey: Uint8Array
   messaging: MessagingAdapter
   crypto: ProtocolCryptoAdapter
+  /** Runtime-Autoritäts-Guard: vor Sign und Send geprüft (B1b). */
+  ensureCurrent?: () => boolean
 }): Promise<void> {
   const body: AttestationReceiptBody = {
     kind: ATTESTATION_RECEIPT_BODY_KIND,
@@ -92,16 +104,22 @@ export async function sendAttestationReceipt(options: {
     options.identity.getDid(),
     options.crypto,
   )
+  const ensureCurrent = options.ensureCurrent ?? (() => true)
+  if (!ensureCurrent()) throw new Error("wire aborted: runtime superseded")
   const envelope = await deliverInboxMessage({
     type: INBOX_MESSAGE_TYPE,
     body,
     from: options.identity.getDid(),
     to: options.issuerDid,
     recipientEncryptionPublicKey: options.recipientEncryptionPublicKey,
-    sign: (input) => options.identity.signEd25519(input),
+    sign: (input) => {
+      if (!ensureCurrent()) throw new Error("wire aborted: runtime superseded")
+      return options.identity.signEd25519(input)
+    },
     crypto: options.crypto,
     randomId: () => messageId,
   })
+  if (!ensureCurrent()) throw new Error("wire aborted: runtime superseded")
   await options.messaging.send(envelope)
 }
 

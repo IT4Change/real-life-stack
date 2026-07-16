@@ -323,6 +323,8 @@ export class WotConnector extends BaseConnector {
   private lastSyncStateLog: string | null = null
   private syncStateRefresh: Promise<void> = Promise.resolve()
   private workQueueTimer: ReturnType<typeof setTimeout> | null = null
+  /** Monotone Scheduling-Revision (Review B3): nur der NEUESTE Read darf den Timer stoppen/armen. */
+  private workQueueScheduleRevision = 0
   private workDrainInFlight: Promise<void> | null = null
   private workDrainGeneration: number | null = null
   private runtimeGeneration = 0
@@ -453,6 +455,8 @@ export class WotConnector extends BaseConnector {
   }
 
   override async authenticate(method: string, credentials: unknown): Promise<User> {
+    // Runtime-Autorität VOR jeder Identity-Mutation entziehen (B1a).
+    this.invalidateRuntimeAuthority()
     const creds = credentials as Record<string, string>
 
     // Generate mnemonic without saving — used by OnboardingFlow step 1
@@ -2308,6 +2312,7 @@ export class WotConnector extends BaseConnector {
         messaging: this.outboxAdapter,
         crypto: this.protocolCrypto,
         messageId,
+        ensureCurrent: () => this.isRuntimeCurrent(generation, queue),
       })
       if (!this.isRuntimeCurrent(generation, queue)) return false
     } catch (error) {
@@ -2718,6 +2723,7 @@ export class WotConnector extends BaseConnector {
       recipientEncryptionPublicKey: recipientKey,
       messaging: this.outboxAdapter,
       crypto: this.protocolCrypto,
+      ensureCurrent: () => this.isRuntimeCurrent(generation),
     })
     if (!this.isRuntimeCurrent(generation)) return false
     return true
@@ -3263,8 +3269,12 @@ export class WotConnector extends BaseConnector {
     const generation = this.runtimeGeneration
     const queue = this.workQueue
     if (!queue?.getNextDueAt) return
+    const revision = ++this.workQueueScheduleRevision
     const nextDueAt = await queue.getNextDueAt()
     if (!this.isRuntimeCurrent(generation, queue)) return
+    // Nur der neueste Scheduler-Read besitzt den Timer: ein veralteter (z.B.
+    // spät auflösender null-)Read darf einen frisch gearmten Timer nicht löschen.
+    if (revision !== this.workQueueScheduleRevision) return
     this.stopWorkQueueTimer()
     if (nextDueAt === null) return
     const delay = Math.min(Math.max(0, nextDueAt - Date.now()), 2_147_483_647)
@@ -3293,9 +3303,22 @@ export class WotConnector extends BaseConnector {
   }
 
   private async refreshSyncState(): Promise<void> {
-    const logPending = this.docLogStore ? (await this.docLogStore.getPending()).length : 0
-    const outboxPending = this.outboxStore ? await this.outboxStore.count() : 0
-    const workPending = this.workQueue ? await this.workQueue.count() : 0
+    // Review S1: Referenzen + Generation VOR den Awaits erfassen und vor der
+    // Publikation validieren — ein vor dem Logout gestarteter Refresh darf den
+    // Zero-State nicht mit alten Counts überschreiben.
+    const generation = this.runtimeGeneration
+    const docLogStore = this.docLogStore
+    const outboxStore = this.outboxStore
+    const workQueue = this.workQueue
+    const logPending = docLogStore ? (await docLogStore.getPending()).length : 0
+    const outboxPending = outboxStore ? await outboxStore.count() : 0
+    const workPending = workQueue ? await workQueue.count() : 0
+    if (
+      generation !== this.runtimeGeneration ||
+      docLogStore !== this.docLogStore ||
+      outboxStore !== this.outboxStore ||
+      workQueue !== this.workQueue
+    ) return
     const current = this.syncStateObs.current
     const exposeWorkPending = this.workQueue !== null || "workPending" in current
     if (
@@ -3380,6 +3403,16 @@ export class WotConnector extends BaseConnector {
 
   private invalidateRuntimeGeneration(): void {
     this.runtimeGeneration = (this.runtimeGeneration ?? 0) + 1
+  }
+
+  /**
+   * Entzieht ALLER laufenden Arbeit die Runtime-Autorität (Review B1a): MUSS
+   * vor jeder Identity-Mutation (unlock/create) geschehen, damit kein
+   * In-flight-Send über die Identitätsgrenze signiert oder sendet.
+   */
+  private invalidateRuntimeAuthority(): void {
+    this.runtimeGeneration++
+    this.stopWorkQueueTimer()
   }
 
   private isRuntimeCurrent(

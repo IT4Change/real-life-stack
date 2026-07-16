@@ -270,6 +270,11 @@ export class WorkQueueStore implements WorkQueue {
     const next = await this.count()
     if (next === this.pendingCount) return
     this.pendingCount = next
-    for (const listener of this.listeners) listener(next)
+    for (const listener of this.listeners) {
+      // Isolation NACH der Mutation (Review B2): ein werfender Listener darf
+      // weder fail()/complete() rejecten lassen noch das dropped-Signal
+      // verschlucken — der Store-Zustand ist zu diesem Zeitpunkt committed.
+      try { listener(next) } catch (error) { console.warn("[WorkQueueStore] pending listener failed", error) }
+    }
   }
 }

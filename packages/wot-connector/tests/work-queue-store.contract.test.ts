@@ -157,8 +157,6 @@ describe("Vertrag #145 — Store-Nachschärfung Runde 3 (Cap-Signal, Listener-Is
     expect(await store.count()).toBe(0)
     await store.close()
   })
-
-  it("claimImmediate gewinnt genau einmal; claimDue überspringt geclaimte Items; complete gibt frei — Ownership", () => {})
 })
 
 describe("Vertrag #145 — Store-Nachschärfung: claimImmediate (In-Session-Ownership)", () => {

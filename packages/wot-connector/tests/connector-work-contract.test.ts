@@ -3,6 +3,14 @@
 // Operationen, Drain verarbeitet fällige Items, Logout-Wipe kennt die DB.
 import { describe, expect, it, vi } from "vitest"
 
+vi.mock("../src/attestation-wire.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../src/attestation-wire.js")>(),
+  sendAttestationInbox: vi.fn(async (options: { messageId?: string }) => ({
+    envelope: { id: options.messageId ?? "msg-1" },
+    receipt: { messageId: options.messageId ?? "msg-1", status: "accepted", timestamp: new Date().toISOString() },
+  })),
+}))
+
 import { WotConnector } from "../src/wot-connector.js"
 import { identityDatabaseNames } from "../src/identity-persistence.js"
 
@@ -216,14 +224,12 @@ describe("Vertrag #145 — Nachschärfung aus Loop-Review (Blocker 1+2)", () => 
     // sendAttestationInbox wird modulgebunden aufgerufen — im Erfolgsfall
     // genügt uns die Vertragsprüfung über den bestehenden Sende-Mock der Suite,
     // hier: deliverAttestation wirft nicht und completed die Pflicht.
-    try {
-      await (WotConnector.prototype as any).deliverAttestation.call(fake, attestation)
-    } catch { /* Transportdetails egal — entscheidend ist die Buchung unten */ }
+    await (WotConnector.prototype as any).deliverAttestation.call(fake, attestation)
     await vi.waitFor(() => expect(wq.enqueue).toHaveBeenCalled())
-    // Nach erfolgreichem Abschluss (oder terminalem receipt) MUSS complete gebucht sein,
-    // sofern kein Fehler flog. Wenn der Transport im Test-Setup wirft, akzeptieren
-    // wir stattdessen fail — aber NIE eine still offene Pflicht ohne Buchung:
-    expect(wq.complete.mock.calls.length + wq.fail.mock.calls.length).toBeGreaterThan(0)
+    // S2 (Review): erfolgreicher Versand MUSS die Pflicht mit complete abschließen —
+    // fail ist hier KEIN akzeptabler Ausgang mehr (Wire-Mock garantiert Erfolg).
+    await vi.waitFor(() => expect(wq.complete).toHaveBeenCalled())
+    expect(wq.fail).not.toHaveBeenCalled()
     void wire
   })
 
@@ -386,6 +392,7 @@ describe("Vertrag #145 — Runde 3: Runtime-Autorität, Timer-Ownership, State-P
       workQueue: wq,
       runtimeGeneration: 0,
       workQueueTimer: null,
+      workQueueScheduleRevision: 0,
     })
     const schedule = (WotConnector.prototype as any).schedulePendingWorkDrain
     const a = schedule.call(fake) // alter Read, hängt
