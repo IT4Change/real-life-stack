@@ -46,12 +46,25 @@ exakt diese Bytes; `tiebreak` in Invariante 6 ist `sha256` über dieselben
 Bytes (lowercase Hex). Damit sind Signaturprüfung und Versionsvergleich
 implementierungsunabhängig deterministisch.
 
+**Wire-Format = nur die JWS:** Übertragen wird ausschließlich die
+Compact-JWS (wie in `wot-core/src/protocol/crypto/jws.ts`); der
+TypeScript-Typ oben beschreibt die **Payload-Struktur**, nicht das
+Wire-Format. Empfänger MÜSSEN alle Feldwerte aus der verifizierten
+JWS-Payload lesen. Unsignierte äußere Kopien der Felder sind unzulässig —
+sonst prüft eine Implementierung die JWS und verwendet danach manipulierte
+Außenfelder.
+
 ## Invarianten
 
 1. Die Identität eines gespiegelten Items ist der zusammengesetzte Schlüssel
    `(homeSpaceId, itemId)`. Kein Index DARF Mirror-Instanzen unter nacktem
    `itemId` mit Home-Instanzen zusammenführen. Der heutige `CrossGroupIndex`
-   erfüllt das nicht und DARF deshalb keine Mirrors führen.
+   erfüllt das nicht und DARF deshalb keine Mirrors führen. Zu trennen
+   sind dabei logische und physische Identität: logisch ist das
+   gespiegelte Item `(homeSpaceId, itemId)`, eine konkrete
+   Mirror-Instanz ist `(targetSpaceId, homeSpaceId, itemId)` — Indizes
+   über mehrere Ziel-Spaces MÜSSEN den vollen Tripel-Schlüssel verwenden,
+   sonst kollabiert derselbe Mirror aus zwei Ziel-Spaces erneut.
 2. Es gibt genau ein Home. Der Schreibpfad existiert nur dort; ein Mirror
    schreibt NIE zurück. Damit existiert kein Cross-Space-Merge und kein
    Konfliktmodell zwischen Spaces — „Konflikt" reduziert sich auf den
@@ -73,12 +86,17 @@ implementierungsunabhängig deterministisch.
    Signer-DID; spätere Snapshots mit anderem Signer MÜSSEN verworfen
    werden (kein Umhängen der Identität). Die Bindung entsteht NUR durch
    einen Snapshot mit `item ≠ null` — dort ist `authorDid` gegen
-   `item.createdBy` prüfbar. Tombstones etablieren NIE eine Bindung: ein
-   Tombstone zu einem unbekannten `(homeSpaceId, itemId)` wird ignoriert
-   (es gibt nichts zu löschen); sonst könnte ein gefälschter
-   Erst-Tombstone die Identität fremdbinden und die Snapshots des echten
-   Autors dauerhaft aussperren. Delegation an weitere Signer (z. B. UCAN)
-   ist außerhalb dieses Vertrags.
+   `item.createdBy` prüfbar. Tombstones etablieren NIE eine Bindung —
+   sonst könnte ein gefälschter Erst-Tombstone die Identität fremdbinden
+   und die Snapshots des echten Autors dauerhaft aussperren. Ein
+   Tombstone zu einem unbekannten `(homeSpaceId, itemId)` wird aber NICHT
+   verworfen, sondern als **ungebundene Tombstone-Marke**
+   `(homeSpaceId, itemId, authorDid, version)` gespeichert: trifft später
+   (Offline-Reihenfolge!) ein Live-Snapshot desselben `authorDid` mit
+   niedrigerer `version` ein, MUSS er verworfen werden — sonst ersteht
+   das gelöschte Item wieder auf. Live-Snapshots anderer Autoren bleiben
+   von der Marke unberührt. Delegation an weitere Signer (z. B. UCAN)
+   ist außerhalb dieses Vertrags — s. Nicht-Ziele (MirrorGrant).
 6. Empfänger MÜSSEN die Signatur gegen die gebundene Signer-DID prüfen und
    DÜRFEN einen Snapshot nur übernehmen, wenn seine `version` in der
    totalen Ordnung STRIKT größer ist als die zuletzt akzeptierte.
@@ -110,9 +128,12 @@ implementierungsunabhängig deterministisch.
    Ciphertext. Ein Mirror macht Inhalte für alle Mitglieder des Ziel-Space
    sichtbar — das ist Teil der Freigabe aus Invariante 3.
 10. RelationRecords sind Items ([08-relation-records.md](08-relation-records.md))
-    und werden nach denselben Regeln gespiegelt; ihre Endpunkt-Relations
-    (`from`/`to`) behalten die Schreibweise des Home (`space:{id}/item:`
-    löst im Ziel-Space auf den Mirror-Schlüssel auf).
+    und werden nach denselben Regeln gespiegelt. Ihre Endpunkt-Relations
+    MÜSSEN **vor dem Signieren voll qualifiziert** werden
+    (`space:{homeSpaceId}/item:…`): ein relatives `item:x` ist im
+    Snapshot unzulässig, weil es im Ziel-Space sonst auf ein lokales
+    Item `x` zeigen würde statt auf das Home-Item. Der Ziel-Space löst
+    voll qualifizierte Targets über den Mirror-Tripel-Schlüssel auf.
 
 ## Nicht-Ziele
 
@@ -120,4 +141,8 @@ Diese Spec definiert nicht:
 
 - Live-Sync oder CRDT-Merge zwischen Spaces (nur Snapshot-Transfer),
 - ein neues Signaturformat (der JWS-Container des WoT wird wiederverwendet),
-- automatisches Spiegeln ohne Autor-Freigabe.
+- automatisches Spiegeln ohne Autor-Freigabe,
+- delegiertes Publizieren: ein zielgebundener **MirrorGrant**
+  (delegierbare Publisher-Capability, etwa für Schlüsselverlust oder
+  abwesende Autoren) ist als spätere Erweiterung vorgesehen, nicht Teil
+  dieses Vertrags.

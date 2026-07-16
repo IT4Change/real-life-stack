@@ -36,11 +36,13 @@ Ein kohärenter PR gegen `master`, PR-Body mit Spec-Ankern.
   Eingabe-Typ `Omit<Item, "id" | "createdAt"> & { id?: string }`. Bei
   existierender `id` MUSS das bestehende Item unverändert zurückkommen
   (idempotent, kein Überschreiben).
-- **Neue Typen + Vertrag** exakt wie in 08 spezifiziert: `RelationRecord`,
+- **Neue Typen + Verträge** exakt wie in 08 spezifiziert: `RelationRecord`,
   `RelationRecordInput`, `RelationRecordUpdate` (nur `fields`/
-  `confirmationRef`!), `RelationRecordFilter` (inkl. `endpoint`),
-  `RelationStoreCapable` (inkl. `getRelationNeighbors`/
-  `observeRelationNeighbors`), Type Guard `hasRelationStore`.
+  `confirmationRef`, `null` entfernt!), `RelationRecordFilter` (inkl.
+  `endpoint`), **`RelationRecordCapable`** (Lesen + Neighbors) und
+  **`RelationRecordWriterCapable`** (CRUD) — Read/Write getrennt analog
+  Confirmations; Type Guards `hasRelationRecords` /
+  `hasRelationRecordWriter`.
 - **Generische Default-Implementierung** (Factory, z. B.
   `createDefaultRelationStore(connector, { symmetricPredicates })` über
   `DataInterface + ItemWriter + Authenticatable`): Projektion über
@@ -48,10 +50,13 @@ Ein kohärenter PR gegen `master`, PR-Body mit Spec-Ankern.
   `from`/`to` im Relation-Item (genau je ein Eintrag); `createdBy` aus der
   authentifizierten Identität, NIE vom Aufrufer.
 - **Deterministische ID** (08, Mapping-Regel 4):
-  `"rel-" + hex(sha256(createdBy + "\n" + predicate + "\n" + from + "\n" + to))`
-  via WebCrypto (kein neues Paket). Symmetrische Prädikate (hier:
-  `knows`, `connectedWith`) vorher kanonisch ordnen (`from` ≤ `to`
-  lexikographisch). ID-Helfer exportieren — Seed-Importer nutzt denselben.
+  `"rel-" + hex(sha256(JCS([createdBy, predicate, from, to])))` — die vier
+  Strings als JSON-Array nach RFC 8785 (JCS), sha256 via WebCrypto,
+  lowercase Hex (kein neues Paket; JCS für ein reines String-Array ist
+  `JSON.stringify` der Array-Form). Symmetrische Prädikate (hier: `knows`,
+  `connectedWith`) vorher kanonisch ordnen (`from` ≤ `to` lexikographisch).
+  IDs sind space-lokal. ID-Helfer exportieren — Seed-Importer nutzt
+  denselben.
 - `deriveContext`: `type === "relation"` → Vokabular `relation/v1`.
 - **Schema `docs/spec/schemas/vocab/relation/v1/`** anlegen
   (context.jsonld + schema.json + examples/valid/): validiert

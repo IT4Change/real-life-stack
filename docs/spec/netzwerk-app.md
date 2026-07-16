@@ -255,3 +255,22 @@ Implementierung kanonisch.
   (2) Retention-Akteur präzisiert: die Connector-Implementierung auf
   jedem Client prunt, nie App-/UI-Code (Widerspruch zu Regel 1 beseitigt).
   **Beide übernommen** (Folgecommit in #142).
+- R14 (16.07., externes Gesamt-Review; Makroarchitektur „eine Wahrheit
+  pro Kapitel" bestätigt): **08:** Read/Write-Split
+  `RelationRecordCapable`/`RelationRecordWriterCapable` (analog
+  Confirmations, read-only Connectoren ohne Schreib-Stubs); Hash-Tupel als
+  JCS-Array statt `\n`-Verkettung (Injektions-Eindeutigkeit, konsistent
+  mit 09); ID-Scope explizit space-lokal + Composite-Key für
+  Cross-Space-Indizes; Symmetrie-Konfig = Übergang, Ziel versionierte
+  RelationTypeDefinition im Space. **09:** Wire-Format = nur Compact-JWS,
+  alle Felder aus verifizierter Payload; Erst-Tombstones als ungebundene
+  Marken (Offline-Reihenfolge kann sonst Resurrection erlauben); logische
+  vs. physische Identität (Tripel-Schlüssel mit targetSpaceId);
+  Endpunkt-Targets vor dem Signieren voll qualifizieren; MirrorGrant als
+  Ausblick in Nicht-Ziele. **10:** `id = crypto.randomUUID()` statt
+  actor#deviceId#seq (keine durablen tab-atomaren Zähler, keine
+  deviceId-Korrelation über Spaces), Ordnung `(ts, actor, id)`; Cap als
+  eventual soft cap; Hinweis sichtbare Map ≠ Transport-Historie; ehrliche
+  Privacy-Aussage (neue Verhaltensmetadaten); Space-Wechsel = zwei
+  Einträge, Mirror-Anwendung geloggt mit actor = Signer-DID.
+  **Alle Punkte übernommen** (Folgecommit in #142).

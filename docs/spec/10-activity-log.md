@@ -28,12 +28,8 @@ interface RlsSpaceDoc {
 }
 
 interface ActivityEntry {
-  /** `${actor}#${deviceId}#${seq}` — eindeutig ohne Koordination, auch über mehrere Geräte derselben DID */
+  /** crypto.randomUUID() — eindeutig ohne Koordination, ohne durable Zähler */
   id: string
-  /** stabile, durable Geräte-ID des schreibenden Geräts */
-  deviceId: string
-  /** geräte-lokale, monoton wachsende Sequenz pro Space */
-  seq: number
   /** UTC, exakt Date.toISOString()-Format (YYYY-MM-DDTHH:mm:ss.sssZ) —
       damit ist lexikographisch = chronologisch */
   ts: string
@@ -58,24 +54,30 @@ interface ActivityEntry {
    Connector aus seiner authentifizierten Identität ab (wie `createdBy`),
    NIE aus einem App-Parameter — der Log ist kein Audit (Regel 5), aber
    falsche Urheberanzeigen dürfen nicht trivial erzeugbar sein.
-2. **ID und Ordnung:** `id = actor + "#" + deviceId + "#" + seq`; `seq`
-   ist geräte-lokal monoton, die ID damit auch über mehrere Geräte
-   derselben DID ohne Koordination eindeutig. Die Anzeige-Ordnung ist
-   `(ts, actor, deviceId, seq)` lexikographisch — deterministisch auf
-   allen Geräten, unabhängig von der Iterationsreihenfolge der Map.
-   `ts` MUSS das kanonische UTC-Format von `Date.toISOString()` tragen
+2. **ID und Ordnung:** `id = crypto.randomUUID()` — eindeutig ohne
+   Koordination und ohne persistente, tab-übergreifend atomare
+   Sequenzzähler oder Escaping-Normierung (deshalb bewusst kein
+   `actor#deviceId#seq`-Schema; das nähme zudem eine gerätekorrelierbare
+   ID über Spaces hinweg in Kauf). Die Anzeige-Ordnung ist
+   `(ts, actor, id)` lexikographisch — deterministisch auf allen Geräten,
+   unabhängig von der Iterationsreihenfolge der Map. `ts` MUSS das
+   kanonische UTC-Format von `Date.toISOString()` tragen
    (`YYYY-MM-DDTHH:mm:ss.sssZ`); andere gültige ISO-Darstellungen
    (Zonen-Offsets, abweichende Präzision) sind unzulässig, weil sie die
    lexikographische Ordnung brechen würden.
 3. **Append-only:** Einträge werden nie editiert. Entfernt wird nur durch
    Retention (Regel 4).
-4. **Retention:** Cap pro Space, Default 500 Einträge. Die
+4. **Retention:** Cap pro Space, Default 500 Einträge — als **eventual
+   soft cap**: nach Offline-Merges kann der Bestand vorübergehend darüber
+   liegen und konvergiert durch nachfolgendes Pruning. Die
    Activity-Log-Implementierung des **Connectors** auf jedem Client DARF
    beim Schreiben deterministisch prunen (App-/UI-Code nie, s. Regel 1),
    älteste zuerst gemäß Anzeige-Ordnung; gelöscht wird per Schlüssel
    (`id`), nie per Position — paralleles Pruning konvergiert, weil alle
    Connectoren dieselben Schlüssel wählen. Das Prunen selbst erzeugt
-   keinen Eintrag.
+   keinen Eintrag. Hinweis: CRDT-Löschungen begrenzen die **sichtbare**
+   Map; die Dokument-Historie der Transportschicht schrumpft erst mit
+   deren Compaction (CompactStore).
 5. **Projektion, nicht Wahrheit:** Der Log MUSS als unvollständig behandelt
    werden (Retention, alte Clients ohne Log-Unterstützung schreiben nicht).
    Er DARF NICHT für Sync, Konfliktlösung oder Berechtigungen verwendet
@@ -87,11 +89,22 @@ interface ActivityEntry {
    Stand. Nach Retention DARF ein `delete` ohne zugehöriges `create`
    existieren; Leseflächen müssen das darstellen können.
 8. **Privacy:** Der Log lebt im Space-Doc und ist E2EE wie alle Inhalte,
-   sichtbar nur für Space-Mitglieder. `actor` ist dieselbe Identitätsklasse
-   wie `createdBy`; es entsteht keine neue Informationskategorie.
+   sichtbar nur für Space-Mitglieder. Er erzeugt dabei sehr wohl **neue
+   Verhaltensmetadaten** — wer hat wann editiert oder gelöscht —, die über
+   `item.createdBy` hinausgehen. Begrenzt wird das durch die
+   E2EE-Sichtbarkeitsgrenze (nur Mitglieder) und die Retention
+   (Historientiefe); UI-Flächen SOLLEN den Log als das ausweisen, was er
+   ist: eine für alle Mitglieder sichtbare Verlaufsansicht.
 9. RelationRecords sind Items ([08-relation-records.md](08-relation-records.md));
    Kanten-CRUD erscheint dadurch automatisch im Log
    (`targetType: "relation"`).
+10. **Space-Wechsel und Mirror:** `moveItemToGroup` berührt zwei
+    Space-Docs nacheinander und ist als EINE Mutation nicht atomar
+    loggbar. Er erzeugt deshalb ZWEI Einträge — `delete` im Quell-Log,
+    `create` im Ziel-Log, jeder atomar in seinem Doc; kurzzeitige
+    Inkonsistenz zwischen den Logs ist zulässig (Regel 5). Die Anwendung
+    eines Mirror-Snapshots (09) SOLL im Ziel-Log als eigener Eintrag
+    erscheinen, mit `actor` = Signer-DID des Snapshots.
 
 ## Lese-Vertrag
 

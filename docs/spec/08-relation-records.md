@@ -68,20 +68,31 @@ Regeln:
    Prädikaten MÜSSEN die Endpunkte kanonisch geordnet gespeichert werden
    (lexikographisch: `from` ≤ `to` als Target-String). Spiegel-Records sind
    damit strukturell ausgeschlossen, auch bei gleichzeitiger
-   Offline-Erzeugung.
+   Offline-Erzeugung. Die Symmetrie-Deklaration als lokale App-Konfiguration
+   ist eine Übergangslösung (P1b); Ziel ist eine **versionierte
+   RelationTypeDefinition im Space** (Malleable-Phase), damit alle Clients
+   eines Space garantiert dieselbe Kanonisierung anwenden.
 4. Die Item-`id` MUSS deterministisch aus dem Tupel
    `(createdBy, predicate, from, to)` abgeleitet werden:
-   `"rel-" + hex(sha256(createdBy + "\n" + predicate + "\n" + from + "\n" + to))`.
-   Normierung: die vier Strings gehen **byte-genau als UTF-8** in den Hash
-   ein — ohne Unicode-Normalisierung (kein NFC/NFD, kein Trimming, kein
+   `"rel-" + hex(sha256(JCS([createdBy, predicate, from, to])))` — die
+   vier Strings als JSON-Array, serialisiert nach **RFC 8785 (JCS)**,
+   UTF-8. Die Array-Form ist eindeutig (eine `\n`-Verkettung wäre es
+   nicht, solange Komponenten Zeilenumbrüche enthalten dürfen) und
+   konsistent mit der Snapshot-Kanonisierung in 09. Keine
+   Unicode-Normalisierung (kein NFC/NFD, kein Trimming, kein
    Case-Folding); `hex` ist **lowercase**. Nur so erzeugen alle
    Connectoren für dasselbe Tupel dieselbe `id`.
+   **ID-Scope:** Relation-IDs sind **space-lokal** wie alle Item-IDs
+   (`item:`-Targets sind relativ zum Space, dasselbe Tupel in zwei Spaces
+   ist zwei verschiedene Kanten); `spaceId` gehört NICHT in den Hash.
+   Jeder space-übergreifende Index MUSS deshalb den zusammengesetzten
+   Schlüssel `(spaceId, id)` verwenden (vgl. 09, Invariante 1).
    Damit konvergieren offline doppelt erzeugte Kanten desselben Autors auf
    denselben Record, und pro Autor existiert höchstens ein Record je Tupel.
    Records verschiedener Autoren über dieselben Endpunkte bleiben bewusst
    getrennt (perspektivischer Graph). Konsequenz: der Schreibpfad MUSS für
    Relation-Items client-bestimmte `id`s akzeptieren (additive Erweiterung
-   von `ItemWriter.createItem`, s. RelationStoreCapable Regel 2).
+   von `ItemWriter.createItem`, s. Fassaden-Regel 2).
 5. `predicate`, `from` und `to` sind nach Erstellung unveränderlich (sie
    definieren die `id`). Umhängen ist Delete + Create. Veränderbar sind nur
    die domänenspezifischen Kanten-Felder in `data` und `confirmationRef`.
@@ -111,7 +122,7 @@ Regeln:
     u. a. genau einen `from`- und einen `to`-Eintrag, die ID-Regel und die
     reservierten Vertragsfelder `predicate`/`confirmationRef`).
 
-## RelationStoreCapable
+## RelationRecordCapable und RelationRecordWriterCapable (der „RelationStore")
 
 ```ts
 interface RelationRecord {
@@ -149,7 +160,8 @@ interface RelationRecordFilter {
   endpoint?: string
 }
 
-interface RelationStoreCapable {
+// Lesen und Schreiben sind getrennte Capabilities (analog Confirmations, 05)
+interface RelationRecordCapable {
   getRelationRecords(filter?: RelationRecordFilter): Promise<RelationRecord[]>
   observeRelationRecords(filter?: RelationRecordFilter): Observable<RelationRecord[]>
   /**
@@ -159,6 +171,9 @@ interface RelationStoreCapable {
    */
   getRelationNeighbors(endpoint: string, predicate?: string): Promise<Item[]>
   observeRelationNeighbors(endpoint: string, predicate?: string): Observable<Item[]>
+}
+
+interface RelationRecordWriterCapable {
   createRelationRecord(input: RelationRecordInput): Promise<RelationRecord>
   updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord>
   deleteRelationRecord(id: string): Promise<void>
@@ -170,8 +185,10 @@ Regeln:
 1. `RelationRecord` ist die typisierte Projektion des Relation-Items: die
    Endpunkt-Relations werden auf die Strings `from`/`to` abgebildet, die
    domänenspezifischen `data`-Felder (alles außer `predicate` und
-   `confirmationRef`) auf `fields`. `RelationStoreCapable` ist eine
-   Fassade, kein eigener Speicher.
+   `confirmationRef`) auf `fields`. Der RelationStore ist eine Fassade,
+   kein eigener Speicher. Lesen und Schreiben sind getrennte Capabilities
+   (analog Confirmations, 05): read-only Connectoren bieten nur
+   `RelationRecordCapable`, ohne Schreib-Stubs.
 2. Der Vertrag MUSS durch eine generische Default-Implementierung über
    `DataInterface` + `ItemWriter` erfüllbar sein
    (`observe({ type: "relation" })` + Projektion + Filter). Connectoren
@@ -202,8 +219,10 @@ Regeln:
    Deep-Merge); `confirmationRef: null` entfernt die Referenz;
    `fields`-Schlüssel, die mit Vertragsfeldern kollidieren (`predicate`,
    `confirmationRef`), werden abgelehnt.
-5. Type Guard: `hasRelationStore(c)`, analog zu den bestehenden Guards in
-   `packages/data-interface/src/index.ts`.
+5. Type Guards: `hasRelationRecords(c)` und `hasRelationRecordWriter(c)`,
+   analog zum Confirmations-Paar in
+   `packages/data-interface/src/index.ts` (BaseConnector-Defaults zählen
+   nicht als Unterstützung).
 6. `RelationCapable` (`getRelatedItems`) bleibt unverändert und operiert
    auf eingebetteten Relations. Es löst RelationRecords NICHT auf:
    `getRelatedItems(person, "knows")` filtert nach `relations[].predicate`,
