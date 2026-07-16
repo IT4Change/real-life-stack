@@ -122,6 +122,7 @@ import {
 const RLS_SPACE_TYPE = "rls"
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
 const CONTACT_PROFILE_REFRESH_INTERVAL_MS = 10_000
+const CONTACT_PROFILE_FULL_RESOLVE_INTERVAL_MS = 5 * 60_000
 const CONTACT_PROFILE_REFRESH_CONCURRENCY = 3
 // Overview mode: setCurrentGroup(null) = show all items from all spaces
 
@@ -301,6 +302,7 @@ export class WotConnector extends BaseConnector {
   private contactProfileRefreshTimer: ReturnType<typeof setInterval> | null = null
   private contactProfileRefreshInFlight: Promise<void> | null = null
   private contactProfileRefreshGeneration = 0
+  private contactProfileLastFullResolveAt = new Map<string, number>()
   private lastSyncStateLog: string | null = null
   private syncStateRefresh: Promise<void> = Promise.resolve()
   private deliveryMessageIds = new Map<string, string>()
@@ -1389,8 +1391,8 @@ export class WotConnector extends BaseConnector {
     // 12. Ensure private space exists (hidden space for personal items)
     await this.queuePrivateSpaceReconcile({ createIfMissing: true })
 
-    // 13. Refresh contact summaries + profiles immediately and every 10s (the
-    // Demo live-refresh cadence), with overlap protection.
+    // 13. Refresh contact summaries immediately and every 10s (the Demo
+    // live-refresh cadence), with overlap protection and throttled full profiles.
     this.startContactProfileRefresh()
 
     // 14. Retry dirty discovery publishes on mount/online/visibility, matching
@@ -1450,10 +1452,10 @@ export class WotConnector extends BaseConnector {
   /**
    * Refresh active contact projections from discovery.
    *
-   * The batch summary endpoint updates names cheaply but its 0.3.0 contract has
-   * no avatar field. Therefore each batch is followed by the Demo's profile
-   * resolve/cache pattern so avatar additions, changes, and removals reach both
-   * ContactInfo and the User projection backed by PersonalDoc contacts.
+   * The cheap batch endpoint detects name changes every 10 seconds. Full profile
+   * resolves only run for changed names, new contacts, or after five minutes.
+   * Trade-off: because the 0.3.0 summary has no avatar/bio fields, avatar- or
+   * bio-only changes can take up to five minutes to reach ContactInfo and User.
    */
   private async refreshContactProfiles(generation = this.contactProfileRefreshGeneration): Promise<void> {
     const storage = this.storage
@@ -1467,15 +1469,25 @@ export class WotConnector extends BaseConnector {
     if (generation !== this.contactProfileRefreshGeneration) return
 
     const summaries = await this.graphCacheStore.getEntries(contactDids)
+    const refreshStartedAt = Date.now()
     for (let i = 0; i < contacts.length; i += CONTACT_PROFILE_REFRESH_CONCURRENCY) {
       if (generation !== this.contactProfileRefreshGeneration) return
       const batch = contacts.slice(i, i + CONTACT_PROFILE_REFRESH_CONCURRENCY)
       await Promise.allSettled(batch.map(async (contact) => {
+        const summary = summaries.get(contact.did)
+        const lastFullResolveAt = this.contactProfileLastFullResolveAt.get(contact.did)
+        const summaryNameChanged =
+          summary?.name !== undefined && (contact.name ?? null) !== summary.name
+        const fullResolveDue =
+          lastFullResolveAt === undefined ||
+          refreshStartedAt - lastFullResolveAt >= CONTACT_PROFILE_FULL_RESOLVE_INTERVAL_MS
+        if (!summaryNameChanged && !fullResolveDue) return
+
         const result = await this.discovery.resolveProfile(contact.did)
         if (generation !== this.contactProfileRefreshGeneration) return
+        this.contactProfileLastFullResolveAt.set(contact.did, Date.now())
 
         const profile = result.profile
-        const summary = summaries.get(contact.did)
         if (!profile && !summary?.name) return
 
         if (profile) {
@@ -1544,6 +1556,7 @@ export class WotConnector extends BaseConnector {
     if (this.contactProfileRefreshTimer) clearInterval(this.contactProfileRefreshTimer)
     this.contactProfileRefreshTimer = null
     this.contactProfileRefreshInFlight = null
+    this.contactProfileLastFullResolveAt.clear()
   }
 
   private installDiscoveryRetryTriggers(): void {

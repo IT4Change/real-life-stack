@@ -439,6 +439,7 @@ describe("WotConnector profile publish and contact refresh", () => {
       identity: { getDid: () => "did:key:alice" },
       contactsObs,
       contactProfileRefreshGeneration: 0,
+      contactProfileLastFullResolveAt: new Map<string, number>(),
     }
 
     await (WotConnector.prototype as any).refreshContactProfiles.call(fake)
@@ -459,6 +460,62 @@ describe("WotConnector profile publish and contact refresh", () => {
       displayName: "Bob Neu",
       avatarUrl: "new-avatar",
     })
+  })
+
+  it("does not resolve an unchanged profile again within five minutes", async () => {
+    const contact = {
+      did: "did:key:bob",
+      publicKey: "key-bob",
+      name: "Bob",
+      avatar: "avatar",
+      bio: "Bio",
+      status: "active" as const,
+      createdAt: "2026-07-15T08:00:00.000Z",
+      updatedAt: "2026-07-15T08:00:00.000Z",
+    }
+    const refreshContactSummaries = vi.fn(async () => {})
+    const resolveProfile = vi.fn(async () => ({
+      profile: {
+        did: contact.did,
+        name: contact.name,
+        avatar: contact.avatar,
+        bio: contact.bio,
+        updatedAt: contact.updatedAt,
+      },
+      didDocument: null,
+      fromCache: false,
+    }))
+    const fake = {
+      storage: {
+        getContacts: vi.fn(async () => [contact]),
+        updateContact: vi.fn(async () => {}),
+      },
+      graphCacheService: { refreshContactSummaries },
+      graphCacheStore: {
+        getEntries: vi.fn(async () => new Map([[contact.did, {
+          did: contact.did,
+          name: contact.name,
+          verificationCount: 0,
+          attestationCount: 0,
+          fetchedAt: contact.updatedAt,
+        }]])),
+        getCachedAttestations: vi.fn(async () => []),
+        getCachedVerifications: vi.fn(async () => []),
+        cacheEntry: vi.fn(async () => {}),
+      },
+      discovery: { resolveProfile },
+      contactProfileRefreshGeneration: 0,
+      contactProfileLastFullResolveAt: new Map<string, number>(),
+    }
+
+    await (WotConnector.prototype as any).refreshContactProfiles.call(fake)
+    expect(resolveProfile).toHaveBeenCalledTimes(1)
+
+    resolveProfile.mockClear()
+    await (WotConnector.prototype as any).refreshContactProfiles.call(fake)
+
+    expect(refreshContactSummaries).toHaveBeenCalledTimes(2)
+    expect(resolveProfile).toHaveBeenCalledTimes(0)
   })
 })
 
