@@ -991,15 +991,25 @@ describe("WotConnector loop-review #143: Teardown-Resilienz + Delivery-Monotonie
         })),
       },
       syncConfirmationsFromPersonalDoc: vi.fn(),
+      sendReceiptAck: vi.fn(async () => {}),
+      checkMutualVerification: vi.fn(async () => {}),
+      emitEvent: vi.fn(),
+      contactsObs: { current: [] },
+      discovery: { resolveProfile: vi.fn(async () => ({ profile: { name: "Bob" } })) },
     })
     const drain = (WotConnector.prototype as any).drainPendingVerificationSaves
 
-    // Happy-Drain: Record vorhanden, VC re-verifiziert + Bindung passt → Save + Clear.
+    // Happy-Drain: Record vorhanden, VC re-verifiziert + Bindung passt → Save + Clear
+    // + FLOW-Reproduktion: initiale Verifikation (kein inResponseTo) muss den
+    // incoming-verification-Dialog emittieren (counterVerify-Angebot, #147).
     await drain.call(fake)
     expect(saveAttestation).toHaveBeenCalledTimes(1)
     expect(saveAttestation.mock.calls[0][0]).toMatchObject({ id: "att-lost", from: "did:key:bob", to: did })
     expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false)
     expect(fake.syncConfirmationsFromPersonalDoc).toHaveBeenCalled()
+    expect(fake.emitEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "incoming-verification", fromId: "did:key:bob" }))
+    expect(fake.checkMutualVerification).toHaveBeenCalledWith("did:key:bob")
+    expect(fake.sendReceiptAck).toHaveBeenCalled()
 
     // Fremde/nicht-bindende VC (Eve): Record wird abgeräumt, aber NICHT gespeichert.
     localValues.set(

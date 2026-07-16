@@ -2393,6 +2393,20 @@ export class WotConnector extends BaseConnector {
     if (attestation.isVerification === true) {
       this.clearPendingVerificationSave(attestation.id)
     }
+    await this.finalizeIncomingAttestation(attestation, acceptedInitialVerification)
+  }
+
+  /**
+   * Post-Save-Abschluss eines eingehenden Attestats: Projektion, App-Receipt,
+   * UI-Events (incoming-verification → counterVerify-Dialog!) und Mutual-Check.
+   * Geteilt zwischen Live-Empfang und Pending-Save-Drain — der Drain darf nicht
+   * nur die Daten retten, sondern muss auch den Flow reproduzieren (sonst
+   * erscheint nach einem Neustart nie der Dialog; Loop-Review #147-Kontext).
+   */
+  private async finalizeIncomingAttestation(
+    attestation: Attestation,
+    acceptedInitialVerification: boolean,
+  ): Promise<void> {
     this.syncConfirmationsFromPersonalDoc()
 
     // App-level second tick: encrypted inbox/1.0 receipt, never transport ack.
@@ -2599,6 +2613,14 @@ export class WotConnector extends BaseConnector {
           await this.storage.saveAttestation(attestation)
         }
         this.clearPendingVerificationSave(id)
+        // Flow reproduzieren, nicht nur Daten retten: bei einer INITIALEN
+        // Verifikation (kein inResponseTo) muss der incoming-verification-
+        // Dialog erscheinen, sonst wird counterVerify() nie angeboten und die
+        // gegenseitige Verifikation bleibt für immer einseitig (#147-Kontext).
+        // Ein Record existiert nur für Gate-akzeptierte VCs → initial ⇔
+        // accept-in-person. Läuft auch, wenn der Save selbst schon durch war
+        // (Crash zwischen Save und Finalize).
+        await this.finalizeIncomingAttestation(attestation, !payload.inResponseTo)
       } catch (error) {
         console.warn("[WotConnector] Pending-Verification-Save-Drain deferred", error)
       }
