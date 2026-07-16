@@ -2590,11 +2590,12 @@ export class WotConnector extends BaseConnector {
     }
     if (this.eventCallbacks.size === 0) return // Record bleibt — Nachlieferung beim Subscribe
 
-    // Exactly-once: SYNCHRONER Claim vor jedem await — parallele Announcer
-    // (Strict-Mode-Doppel-Subscribe) oder Drain∥Announce können denselben
-    // Record nicht doppelt liefern; nur der Claim-Gewinner emittiert.
-    if (!this.claimPendingVerificationAction(attestation.id)) return
-
+    // Claim-Grenze (Vertrag #147, finale Form): erst ALLE awaits (Enrichment),
+    // DANN Listener erneut prüfen, DANN synchron claimen, DANN ohne weiteres
+    // await emittieren. Ein zu früher Claim würde die durable Aktion verlieren,
+    // wenn Tab/Enrichment zwischen Claim und Emit sterben; ein Claim nach dem
+    // Emit wäre nicht exactly-once. Parallele Announcer enrichen doppelt
+    // (harmlos), aber nur der Claim-Gewinner emittiert.
     const contact = this.contactsObs.current.find((entry) => entry.id === attestation.from)
     let peerName = contact?.name
     let peerAvatar = contact?.avatar
@@ -2605,6 +2606,8 @@ export class WotConnector extends BaseConnector {
         peerAvatar = peerAvatar ?? result.profile?.avatar ?? undefined
       } catch { /* optional profile enrichment */ }
     }
+    if (this.eventCallbacks.size === 0) return // Listener weg → Record bleibt
+    if (!this.claimPendingVerificationAction(attestation.id)) return
     this.emitEvent({
       type: "incoming-verification",
       fromId: attestation.from,

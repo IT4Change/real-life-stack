@@ -1170,4 +1170,64 @@ describe("Vertrag #147: eingehende Verifikation als durable Aktion bis zur UI-Ü
     expect(total).toBe(1)
     expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false)
   })
+
+  it("Claim-Grenze: stirbt das Enrichment vor dem Emit, bleibt die durable Aktion erhalten", async () => {
+    const localValues = new Map<string, string>()
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      writable: true,
+      value: {
+        getItem: (k: string) => localValues.get(k) ?? null,
+        setItem: (k: string, v: string) => localValues.set(k, v),
+        removeItem: (k: string) => localValues.delete(k),
+      },
+    })
+    const did = "did:key:me"
+    const payload = {
+      jti: "att-hang",
+      iss: "did:key:bob",
+      issuer: "did:key:bob",
+      validFrom: new Date().toISOString(),
+      type: ["VerifiableCredential", "WotVerification"],
+      credentialSubject: { id: did, claim: "in-person verifiziert" },
+    }
+    localValues.set(
+      `rls-wot-pending-verification-save:${did}`,
+      JSON.stringify({ "att-hang": { vcJws: "h.p.s", senderDid: "did:key:bob", saved: true } }),
+    )
+    const base = {
+      identity: { getDid: () => did },
+      storage: { getAttestation: vi.fn(async () => null) },
+      attestationWorkflow: { verifyAttestationVcJws: vi.fn(async () => payload) },
+      contactsObs: { current: [] },
+      bufferedEvents: [] as unknown[],
+    }
+    const onIncomingEvent = (WotConnector.prototype as any).onIncomingEvent
+
+    // Session 1: Enrichment hängt für immer (Tab stirbt währenddessen).
+    const session1 = Object.assign(Object.create(WotConnector.prototype), {
+      ...base,
+      eventCallbacks: new Set<(e: unknown) => void>(),
+      discovery: { resolveProfile: vi.fn(() => new Promise(() => {})) },
+    })
+    const events1: any[] = []
+    onIncomingEvent.call(session1, (e: any) => events1.push(e))
+    await new Promise((r) => setTimeout(r, 30))
+    expect(events1.filter((e) => e.type === "incoming-verification")).toHaveLength(0)
+    // Der Record DARF NICHT geclaimt sein — die Aktion überlebt den Abbruch.
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(true)
+
+    // Session 2 (Neustart): funktionierendes Enrichment → genau eine Lieferung.
+    const session2 = Object.assign(Object.create(WotConnector.prototype), {
+      ...base,
+      eventCallbacks: new Set<(e: unknown) => void>(),
+      discovery: { resolveProfile: vi.fn(async () => ({ profile: { name: "Bob" } })) },
+    })
+    const events2: any[] = []
+    onIncomingEvent.call(session2, (e: any) => events2.push(e))
+    await vi.waitFor(() => {
+      expect(events2.filter((e) => e.type === "incoming-verification")).toHaveLength(1)
+    })
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false)
+  })
 })
