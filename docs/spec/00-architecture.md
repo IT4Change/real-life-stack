@@ -34,6 +34,7 @@ Details: [01-app-composition.md](01-app-composition.md).
 6. Connectoren sind für Caching, lokale Reaktivität, Optimistic Updates und Backend-Sync verantwortlich.
 7. Generische Items und Relations sind die technische Projektionsfläche für soziale oder spielerische Semantik.
 8. RLS besitzt nicht die Semantik von RLNP, Real Life Game oder Web of Trust. RLS macht diese Semantik darstellbar und bedienbar.
+9. **Absink-Regel:** Apps unter `apps/` sind dünne Kompositionen (AppShell, Connector-Verdrahtung, Modulliste, Seeds). Wiederverwendbare Komponenten, Hooks, Verträge und Logik MÜSSEN in den Paketen leben (`packages/toolkit`, `packages/data-interface`, Connectoren) — kein Feature landet in einer App, dessen Komponente nicht im Toolkit lebt. Die Zusammenführung von Apps geschieht durch Konvergenz nach unten (gemeinsame Module), nie durch Merge von App-Code.
 
 ## Schichten
 
