@@ -15,7 +15,7 @@ import {
 import type { SpaceInfo } from "@real-life/wot-core"
 
 import { WotConnector } from "../src/wot-connector.js"
-import type { RlsSpaceDoc, SerializedItem } from "../src/types.js"
+import type { RlsSpaceDoc, SerializedItem, WotSyncState } from "../src/types.js"
 
 const yjsMockState = vi.hoisted(() => ({
   personalDoc: {} as any,
@@ -123,8 +123,8 @@ describe("WotConnector.setConfirmationAccepted() - metadata-only refresh", () =>
     expect(setConfirmationAccepted).toMatch(/syncConfirmationsFromPersonalDoc\(\)/)
   })
 
-  it("still mutates attestationMetadata.accepted", () => {
-    expect(setConfirmationAccepted).toMatch(/attestationMetadata\[id\]\.accepted\s*=\s*accepted/)
+  it("delegates acceptance metadata to the storage adapter", () => {
+    expect(setConfirmationAccepted).toMatch(/storage\.setAttestationAccepted\(id, accepted\)/)
   })
 })
 
@@ -150,10 +150,10 @@ describe("WotConnector verification boundary - source guards", () => {
     "private async checkMutualVerification",
     "// ==================== Internal: Confirmation sync",
   )
-  const receiveVerificationBranch = sliceMethod(
+  const incomingAttestationMethod = sliceMethod(
     source,
-    'if (envelope.type === "verification"',
-    'if (envelope.type === "space-invite"',
+    "private async handleIncomingAttestation",
+    "private async sendReceiptAck",
   )
 
   it("uses schema-only verification predicates", () => {
@@ -163,12 +163,30 @@ describe("WotConnector verification boundary - source guards", () => {
     expect(mutualMethod).not.toMatch(/tags\?\.includes\("verification"\)/)
   })
 
-  it("refreshes confirmations before the receive path checks for mutual verification", () => {
-    const syncIndex = receiveVerificationBranch.indexOf("this.syncConfirmationsFromPersonalDoc()")
-    const mutualIndex = receiveVerificationBranch.indexOf("this.checkMutualVerification(verification.from)")
+  it("accepts verification attestations only through the signed VC marker and workflow gate", () => {
+    expect(incomingAttestationMethod).toMatch(/attestation\.isVerification === true/)
+    expect(incomingAttestationMethod).toMatch(/acceptVerifiedVerificationAttestation/)
+    expect(incomingAttestationMethod).toMatch(/acceptVerifiedCounterVerification/)
+    expect(incomingAttestationMethod).not.toMatch(/tags\?\.includes\("verification"\)/)
+  })
+
+  it("binds the verified VC to the authenticated sender and local subject", () => {
+    expect(incomingAttestationMethod).toMatch(/payload\.iss !== senderDid/)
+    expect(incomingAttestationMethod).toMatch(/attestation\.to !== this\.identity\.getDid\(\)/)
+  })
+
+  it("refreshes the attestation projection before checking mutual verification", () => {
+    const syncIndex = incomingAttestationMethod.indexOf("this.syncConfirmationsFromPersonalDoc()")
+    const mutualIndex = incomingAttestationMethod.indexOf("this.checkMutualVerification(attestation.from)")
     expect(syncIndex).toBeGreaterThan(-1)
     expect(mutualIndex).toBeGreaterThan(-1)
     expect(syncIndex).toBeLessThan(mutualIndex)
+  })
+
+  it("projects only watchAllAttestations and never the retired verification collection", () => {
+    expect(source).toMatch(/watchAllAttestations\(\)/)
+    expect(source).not.toMatch(/\.watchAllVerifications\(\)/)
+    expect(source).not.toMatch(/envelope\.type === "verification"/)
   })
 })
 
@@ -178,6 +196,7 @@ function createConnectorObservables() {
   const confirmationsObs = createObservable<ConfirmationView[]>([])
   const relayStateObs = createObservable<RelayState>("disconnected")
   const outboxCountObs = createObservable<number>(0)
+  const syncStateObs = createObservable<WotSyncState>({ logPending: 0, outboxPending: 0 })
   const currentGroupObs = createObservable<Group | null>(null)
   const groupsObs = createObservable<Group[]>([])
   const currentUserObs = createObservable<User | null>(null)
@@ -188,6 +207,7 @@ function createConnectorObservables() {
     confirmationsObs,
     relayStateObs,
     outboxCountObs,
+    syncStateObs,
     currentGroupObs,
     groupsObs,
     currentUserObs,
@@ -236,11 +256,15 @@ function createFakeConnectorForLogout() {
     personalDocUnsub: vi.fn(),
     replication: { stop: vi.fn(async () => {}) },
     outboxAdapter: { disconnect: vi.fn(async () => {}) },
-    wsAdapter: { disconnect: vi.fn(async () => {}) },
+    transportAdapter: { disconnect: vi.fn(async () => {}) },
     contactsUnsub: vi.fn(),
-    verificationsUnsub: vi.fn(),
     attestationsUnsub: vi.fn(),
     profileUnsub: vi.fn(),
+    outboxCountUnsub: vi.fn(),
+    inboxAttestationUnsub: vi.fn(),
+    inboxReceiptUnsub: vi.fn(),
+    deliveryReceiptUnsub: vi.fn(),
+    inboxReception: { stop: vi.fn() },
     storage: { marker: "storage" },
     currentGroupId: "g1",
     currentGroupObservable: obs.currentGroupObs,
@@ -249,6 +273,7 @@ function createFakeConnectorForLogout() {
     profileObs: createObservable<User | null>(user),
     syncPendingObs: createObservable<boolean>(true),
     identity: { deleteStoredIdentity: vi.fn(async () => {}) },
+    closeRuntimeStores: vi.fn(async () => {}),
     notifyAllObservers: vi.fn(),
   }
 }
@@ -261,7 +286,6 @@ describe("WotConnector.logout() - real method regression", () => {
   it("clears auth-scoped observables when the real logout method runs", async () => {
     const fake = createFakeConnectorForLogout()
     const contactsUnsub = fake.contactsUnsub
-    const verificationsUnsub = fake.verificationsUnsub
     const attestationsUnsub = fake.attestationsUnsub
     const profileUnsub = fake.profileUnsub
 
@@ -273,12 +297,12 @@ describe("WotConnector.logout() - real method regression", () => {
     expect(fake.relayStateObs.current).toBe("disconnected")
     expect(fake.profileObs.current).toBeNull()
     expect(fake.syncPendingObs.current).toBe(false)
+    expect(fake.syncStateObs.current).toEqual({ logPending: 0, outboxPending: 0 })
     expect(fake.currentGroupObservable.current).toBeNull()
     expect(fake.groupsObservable.current).toEqual([])
     expect(fake.currentUserObs.current).toBeNull()
     expect(fake.authStateObs.current).toEqual({ status: "unauthenticated" })
     expect(contactsUnsub).toHaveBeenCalled()
-    expect(verificationsUnsub).toHaveBeenCalled()
     expect(attestationsUnsub).toHaveBeenCalled()
     expect(profileUnsub).toHaveBeenCalled()
     expect(fake.storage).toBeNull()
@@ -286,28 +310,40 @@ describe("WotConnector.logout() - real method regression", () => {
 })
 
 describe("WotConnector.setConfirmationAccepted() - real method regression", () => {
-  beforeEach(() => {
-    yjsMockState.personalDoc = {
-      attestationMetadata: {
-        "att-1": {
-          attestationId: "att-1",
-          accepted: false,
-          acceptedAt: null,
-        },
-      },
-    }
-  })
-
   it("refreshes projections after mutating attestation metadata", async () => {
+    const setAttestationAccepted = vi.fn(async () => {})
     const fake = {
+      storage: { setAttestationAccepted },
       syncConfirmationsFromPersonalDoc: vi.fn(),
     }
 
     await WotConnector.prototype.setConfirmationAccepted.call(fake as any, "att-1", true)
 
-    expect(yjsMockState.personalDoc.attestationMetadata["att-1"].accepted).toBe(true)
-    expect(yjsMockState.personalDoc.attestationMetadata["att-1"].acceptedAt).toEqual(expect.any(String))
+    expect(setAttestationAccepted).toHaveBeenCalledWith("att-1", true)
     expect(fake.syncConfirmationsFromPersonalDoc).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("WotConnector attestation receipt - authenticated sender binding", () => {
+  it("acknowledges only receipts signed by the attestation subject", async () => {
+    const setDeliveryStatus = vi.fn(async () => {})
+    const fake = {
+      storage: {
+        getAttestation: vi.fn(async () => ({
+          id: "att-1",
+          from: "did:key:alice",
+          to: "did:key:bob",
+        })),
+      },
+      setDeliveryStatus,
+    }
+    const receiveReceipt = (WotConnector.prototype as any).handleIncomingAttestationReceipt
+
+    await receiveReceipt.call(fake, "att-1", "did:key:mallory")
+    expect(setDeliveryStatus).not.toHaveBeenCalled()
+
+    await receiveReceipt.call(fake, "att-1", "did:key:bob")
+    expect(setDeliveryStatus).toHaveBeenCalledWith("att-1", "acknowledged")
   })
 })
 
