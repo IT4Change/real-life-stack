@@ -104,6 +104,11 @@ import {
   hasAttestationCorrelations,
 } from "./local-outbox-store.js"
 import {
+  WorkQueueStore,
+  type WorkQueue,
+  type WorkQueueItem,
+} from "./work-queue-store.js"
+import {
   createOutboxMessagingRuntime,
   observeDocLogPending,
   type OutboxMessagingRuntime,
@@ -265,6 +270,7 @@ export class WotConnector extends BaseConnector {
   private transportAdapter: MessagingAdapter | null = null
   private outboxAdapter: OutboxMessagingRuntime | null = null
   private outboxStore: OutboxStore | null = null
+  private workQueue: WorkQueue | null = null
   private replication: YjsReplicationAdapter | null = null
   private storage: YjsStorageAdapter | null = null
   private inboxReception: InboxReceptionHost | null = null
@@ -304,6 +310,7 @@ export class WotConnector extends BaseConnector {
   private profileUnsub: (() => void) | null = null
   private groupsCache: Group[] = []
   private outboxCountUnsub: (() => void) | null = null
+  private workQueueCountUnsub: (() => void) | null = null
   private inboxAttestationUnsub: (() => void) | null = null
   private inboxReceiptUnsub: (() => void) | null = null
   private deliveryReceiptUnsub: (() => void) | null = null
@@ -315,6 +322,8 @@ export class WotConnector extends BaseConnector {
   private contactProfileLastFullResolveAt = new Map<string, number>()
   private lastSyncStateLog: string | null = null
   private syncStateRefresh: Promise<void> = Promise.resolve()
+  private workQueueTimer: ReturnType<typeof setTimeout> | null = null
+  private workDrainInFlight: Promise<void> | null = null
   private deliveryMessageIds = new Map<string, string>()
   private inFlightDeliveryMessageIds = new Set<string>()
   private pendingDeliveryReceipts = new Map<string, DeliveryReceipt>()
@@ -348,7 +357,7 @@ export class WotConnector extends BaseConnector {
     this.confirmationsObs = createObservable<ConfirmationView[]>([])
     this.relayStateObs = createObservable<RelayState>("disconnected")
     this.outboxCountObs = createObservable<number>(0)
-    this.syncStateObs = createObservable<WotSyncState>({ logPending: 0, outboxPending: 0 })
+    this.syncStateObs = createObservable<WotSyncState>({ logPending: 0, outboxPending: 0, workPending: 0 })
     this.profileObs = createObservable<Item | null>(null)
     this.currentUserObs = createObservable<User | null>(null)
     this.syncPendingObs = createObservable<boolean>(false)
@@ -403,6 +412,7 @@ export class WotConnector extends BaseConnector {
     this.discoveryRetryCleanup?.()
     this.discoveryRetryCleanup = null
     this.stopContactProfileRefresh()
+    this.stopWorkQueueTimer?.()
     try { this.inboxReception?.stop() } catch { /* best-effort teardown */ }
     // Jeder awaited Schritt einzeln geguardet (CodeRabbit #143): ein
     // fehlschlagender Adapter darf die restliche Freigabe nicht verhindern.
@@ -533,6 +543,7 @@ export class WotConnector extends BaseConnector {
     this.discoveryRetryCleanup?.()
     this.discoveryRetryCleanup = null
     this.stopContactProfileRefresh()
+    this.stopWorkQueueTimer?.()
     this.inboxReception?.stop()
     this.inboxReception = null
     // Teardown-Resilienz (CodeRabbit #143): KEIN Schritt darf Seed-Löschung,
@@ -577,7 +588,11 @@ export class WotConnector extends BaseConnector {
     this.contactsObs.set([])
     this.bufferedEvents.length = 0 // keine Events über Identitätsgrenzen replayen
     this.outboxCountObs.set(0)
-    this.syncStateObs.set({ logPending: 0, outboxPending: 0 })
+    // Preserve the shape of observers created before workPending was added;
+    // connector-owned observers always take the additive branch.
+    this.syncStateObs.set("workPending" in this.syncStateObs.current
+      ? { logPending: 0, outboxPending: 0, workPending: 0 }
+      : { logPending: 0, outboxPending: 0 } as WotSyncState)
     this.relayStateObs.set("disconnected")
     this.profileObs.set(null)
     this.syncPendingObs.set(false)
@@ -1241,6 +1256,9 @@ export class WotConnector extends BaseConnector {
       if (state === "connected") {
         this.syncDiscoveryPending().catch(() => {})
         this.queueSyncStateRefresh()
+        void this.drainPendingWork().catch((error) => {
+          console.warn("[WotConnector] Reconnect work-queue drain deferred", error)
+        })
       }
     })
     this.deliveryReceiptUnsub = this.outboxAdapter.onReceipt((receipt) => {
@@ -1274,8 +1292,23 @@ export class WotConnector extends BaseConnector {
     // terminal receipt, then replay anything a defensive transport emitted
     // during handler registration.
     this.storage = new YjsStorageAdapter(did)
+
+    // Work that needs PersonalDoc-backed attestations is opened only after the
+    // storage projection is ready (#144 ordering). It is device-local and
+    // DID-scoped, like the generic outbox.
+    const workQueue = this.runtimeOverrides.workQueue
+      ?? new WorkQueueStore(identityDatabaseName("work-queue", did))
+    if (workQueue.open) await workQueue.open()
+    this.workQueue = workQueue
+    if (workQueue.watchPendingCount) {
+      this.workQueueCountUnsub = workQueue.watchPendingCount().subscribe(() => {
+        this.queueSyncStateRefresh()
+      })
+    }
+
     await this.retryPendingDeliveryReceipts()
     await this.drainPendingVerificationSaves()
+    await this.drainPendingWork()
     await this.outboxAdapter.connect(did)
 
     const spaceMetadataStorage = new PersonalDocSpaceMetadataStorage(personalDocFns)
@@ -2165,11 +2198,36 @@ export class WotConnector extends BaseConnector {
   private async deliverAttestation(
     attestation: Attestation,
     recipientEncryptionPublicKey?: Uint8Array,
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (!this.outboxAdapter) throw new Error("Messaging not configured")
-    const recipientKey = recipientEncryptionPublicKey
-      ?? await this.resolveRecipientEncryptionKey(attestation.to)
-    if (!recipientKey) throw new Error(`No encryption key published for ${attestation.to}`)
+    let recipientKey = recipientEncryptionPublicKey
+    if (!recipientKey) {
+      try {
+        recipientKey = await this.resolveRecipientEncryptionKey(attestation.to) ?? undefined
+      } catch {
+        // Runtime overrides may throw even though the production resolver
+        // normalizes discovery errors to null.
+      }
+    }
+    if (!recipientKey) {
+      if (!this.workQueue) {
+        throw new Error(`No encryption key published for ${attestation.to}`)
+      }
+      await this.workQueue.enqueue({
+        id: `deliver-attestation:${attestation.id}`,
+        kind: "deliver-attestation",
+        payload: { attestationId: attestation.id },
+      })
+      try {
+        await this.setDeliveryStatus(attestation.id, "queued")
+      } catch (error) {
+        // The durable work is the recovery source; a transient projection
+        // failure must not turn missing key discovery back into a lost throw.
+        console.warn("[WotConnector] Queued delivery status deferred", error)
+      }
+      this.noteWorkQueueChanged()
+      return false
+    }
 
     await this.setDeliveryStatus(attestation.id, "sending")
     const messageId = messageIdForAttestation(attestation.id)
@@ -2208,6 +2266,7 @@ export class WotConnector extends BaseConnector {
       await this.registerDeliveryCorrelation(delivery.envelope.id, attestation.id)
     }
     await this.applyTransportDeliveryReceipt(delivery.receipt)
+    return true
   }
 
   private async resolveRecipientEncryptionKey(did: string): Promise<Uint8Array | null> {
@@ -2436,9 +2495,7 @@ export class WotConnector extends BaseConnector {
     this.syncConfirmationsFromPersonalDoc()
 
     // App-level second tick: encrypted inbox/1.0 receipt, never transport ack.
-    void this.sendReceiptAck(attestation).catch((error) => {
-      console.debug("[wot-connector] attestation receipt send failed (best-effort):", error)
-    })
+    await this.enqueueAndSendReceiptAck(attestation)
 
     const contact = this.contactsObs.current.find((entry) => entry.id === attestation.from)
     if (attestation.isVerification === true) {
@@ -2453,6 +2510,47 @@ export class WotConnector extends BaseConnector {
       fromName: contact?.name,
       claimId: attestation.id,
     })
+  }
+
+  private async enqueueAndSendReceiptAck(attestation: Attestation): Promise<void> {
+    const queue = this.workQueue
+    if (!queue) {
+      // Compatibility for narrow method-level consumers. Authenticated
+      // production runtimes always construct the durable queue first.
+      void this.sendReceiptAck(attestation).catch((error) => {
+        console.debug("[wot-connector] attestation receipt send failed (best-effort):", error)
+      })
+      return
+    }
+
+    const workId = `receipt-ack:${attestation.id}`
+    await queue.enqueue({
+      id: workId,
+      kind: "receipt-ack",
+      payload: { jti: attestation.id },
+    })
+    // Refresh observability now, but do not arm the due-now timer while the
+    // immediate attempt owns this obligation. A crash still leaves it due.
+    this.noteWorkQueueChanged(false)
+    void this.attemptReceiptAck(queue, workId, attestation)
+  }
+
+  private async attemptReceiptAck(
+    queue: WorkQueue,
+    workId: string,
+    attestation: Attestation,
+  ): Promise<void> {
+    try {
+      await this.sendReceiptAck(attestation)
+    } catch (error) {
+      await this.failWorkItem(queue, workId, Date.now())
+      console.debug("[wot-connector] attestation receipt send deferred:", error)
+      this.noteWorkQueueChanged()
+      return
+    }
+
+    await this.completeWorkItem(queue, workId)
+    this.noteWorkQueueChanged()
   }
 
   private async sendReceiptAck(attestation: Attestation): Promise<void> {
@@ -2735,6 +2833,91 @@ export class WotConnector extends BaseConnector {
     this.syncConfirmationsFromPersonalDoc()
   }
 
+  private async drainPendingWork(): Promise<void> {
+    if (this.workDrainInFlight) {
+      await this.workDrainInFlight
+      return
+    }
+    const queue = this.workQueue
+    if (!queue || !this.storage) return
+
+    const run = this.runPendingWorkDrain(queue)
+    this.workDrainInFlight = run
+    try {
+      await run
+    } finally {
+      if (this.workDrainInFlight === run) this.workDrainInFlight = null
+      this.noteWorkQueueChanged()
+    }
+  }
+
+  private async runPendingWorkDrain(queue: WorkQueue): Promise<void> {
+    const items = await queue.claimDue(Date.now())
+    for (const item of items) {
+      if (this.workQueue !== queue || !this.storage) return
+      try {
+        const attestationId = this.workAttestationId(item)
+        if (!attestationId) {
+          await this.completeWorkItem(queue, item.id)
+          continue
+        }
+        const attestation = await this.storage.getAttestation(attestationId)
+        if (!attestation) {
+          await this.completeWorkItem(queue, item.id)
+          continue
+        }
+
+        if (item.kind === "deliver-attestation") {
+          const delivered = await this.deliverAttestation(attestation)
+          if (delivered === false) throw new Error("Recipient encryption key is not available yet")
+        } else {
+          await this.sendReceiptAck(attestation)
+        }
+        await this.completeWorkItem(queue, item.id)
+      } catch (error) {
+        const dropped = await this.failWorkItem(queue, item.id, Date.now())
+        if (dropped && item.kind === "deliver-attestation") {
+          const attestationId = this.workAttestationId(item)
+          if (attestationId) {
+            try {
+              const persisted = await this.setDeliveryStatus(attestationId, "failed")
+              if (persisted) await this.flushPersonalDocDurably()
+            } catch (statusError) {
+              console.warn("[WotConnector] Final work failure status deferred", statusError)
+            }
+          }
+        }
+        console.debug(`[wot-connector] ${item.kind} deferred:`, error)
+      }
+    }
+  }
+
+  private workAttestationId(item: WorkQueueItem): string | null {
+    const value = item.kind === "deliver-attestation"
+      ? item.payload.attestationId
+      : item.payload.jti
+    return typeof value === "string" ? value : null
+  }
+
+  private async completeWorkItem(queue: WorkQueue, id: string): Promise<void> {
+    try {
+      await queue.complete(id)
+    } catch (error) {
+      // Work already succeeded. Completion may be retried at-least-once, but a
+      // local bookkeeping fault must never crash message reception or init.
+      console.warn("[WotConnector] Work completion deferred", error)
+    }
+  }
+
+  private async failWorkItem(queue: WorkQueue, id: string, now: number): Promise<boolean> {
+    try {
+      return await queue.fail(id, now) === true
+    } catch (error) {
+      console.warn("[WotConnector] Work failure bookkeeping deferred", error)
+      return false
+    }
+  }
+
   private async retryPendingDeliveryReceipts(): Promise<void> {
     if (!this.storage) return
     for (const receipt of [...this.pendingDeliveryReceipts.values()]) {
@@ -2853,6 +3036,41 @@ export class WotConnector extends BaseConnector {
 
   // ==================== Internal: Cleanup ====================
 
+  private noteWorkQueueChanged(schedule = true): void {
+    // Lightweight runtime seams may provide queue behavior without the
+    // connector's observability/timer lifecycle.
+    if (!("workQueueTimer" in this) || !this.syncStateObs) return
+    this.queueSyncStateRefresh()
+    if (schedule) {
+      void this.schedulePendingWorkDrain().catch((error) => {
+        console.warn("[WotConnector] Work-queue timer scheduling deferred", error)
+      })
+    }
+  }
+
+  private async schedulePendingWorkDrain(): Promise<void> {
+    const queue = this.workQueue
+    if (!queue?.getNextDueAt) return
+    const nextDueAt = await queue.getNextDueAt()
+    if (queue !== this.workQueue) return
+    this.stopWorkQueueTimer()
+    if (nextDueAt === null) return
+    const delay = Math.min(Math.max(0, nextDueAt - Date.now()), 2_147_483_647)
+    this.workQueueTimer = setTimeout(() => {
+      this.workQueueTimer = null
+      void this.drainPendingWork().catch((error) => {
+        console.warn("[WotConnector] Work-queue drain deferred", error)
+      })
+    }, delay)
+  }
+
+  private stopWorkQueueTimer(): void {
+    if (this.workQueueTimer !== null && this.workQueueTimer !== undefined) {
+      clearTimeout(this.workQueueTimer)
+    }
+    this.workQueueTimer = null
+  }
+
   private queueSyncStateRefresh(): void {
     this.syncStateRefresh = this.syncStateRefresh
       .catch(() => {})
@@ -2862,12 +3080,20 @@ export class WotConnector extends BaseConnector {
   private async refreshSyncState(): Promise<void> {
     const logPending = this.docLogStore ? (await this.docLogStore.getPending()).length : 0
     const outboxPending = this.outboxStore ? await this.outboxStore.count() : 0
+    const workPending = this.workQueue ? await this.workQueue.count() : 0
     const current = this.syncStateObs.current
-    if (current.logPending !== logPending || current.outboxPending !== outboxPending) {
-      this.syncStateObs.set({ logPending, outboxPending })
+    const exposeWorkPending = this.workQueue !== null || "workPending" in current
+    if (
+      current.logPending !== logPending ||
+      current.outboxPending !== outboxPending ||
+      (exposeWorkPending && current.workPending !== workPending)
+    ) {
+      this.syncStateObs.set(exposeWorkPending
+        ? { logPending, outboxPending, workPending }
+        : { logPending, outboxPending } as WotSyncState)
     }
     this.outboxCountObs.set(outboxPending)
-    const line = `[wot-connector] sync-state: logPending=${logPending} outbox=${outboxPending}`
+    const line = `[wot-connector] sync-state: logPending=${logPending} outbox=${outboxPending} work=${workPending}`
     if (line !== this.lastSyncStateLog) {
       this.lastSyncStateLog = line
       console.info(line)
@@ -2882,6 +3108,7 @@ export class WotConnector extends BaseConnector {
     this.outboxCountUnsub?.()
     this.discoveryRetryCleanup?.()
     this.stopContactProfileRefresh()
+    this.stopWorkQueueTimer()
     this.inboxReception?.stop()
     this.inboxAttestationUnsub = null
     this.inboxReceiptUnsub = null
@@ -2907,6 +3134,12 @@ export class WotConnector extends BaseConnector {
     try { await compact?.close?.() } catch { /* best-effort teardown */ }
     const outbox = this.outboxStore as (OutboxStore & { close?: () => void | Promise<void> }) | null
     try { await outbox?.close?.() } catch { /* best-effort teardown */ }
+    this.stopWorkQueueTimer()
+    this.workQueueCountUnsub?.()
+    this.workQueueCountUnsub = null
+    const workQueue = this.workQueue
+    this.workQueue = null
+    try { await workQueue?.close?.() } catch { /* best-effort teardown */ }
     for (const store of this.durableStores.splice(0)) {
       try { await store.close() } catch { /* best-effort teardown */ }
     }

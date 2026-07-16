@@ -13,6 +13,7 @@ export const IDENTITY_DATABASE_PREFIXES = {
   memberUpdatePending: "wot-member-update-pending",
   messageIdHistory: "wot-message-id-history",
   outbox: "wot-outbox",
+  "work-queue": "wot-work-queue",
   spaceCompact: "rls-yjs-space-compact-store",
 } as const
 

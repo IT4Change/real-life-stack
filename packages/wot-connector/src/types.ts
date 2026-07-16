@@ -8,6 +8,7 @@ import type {
   OutboxStore,
 } from "@real-life/wot-core/ports"
 import type { YjsCompactStore } from "@real-life/adapter-yjs"
+import type { WorkQueue } from "./work-queue-store.js"
 
 // --- WoT Connector Configuration ---
 
@@ -22,6 +23,8 @@ export interface WotConnectorRuntimeOverrides {
   messaging?: MessagingAdapter
   /** Device-local generic outbox. Production creates an IndexedDB store. */
   outboxStore?: OutboxStore
+  /** Device-local key-discovery and app-receipt work queue. */
+  workQueue?: WorkQueue
   /** Shared Personal-Doc/Space log store and deviceId owner. */
   docLogStore?: DocLogStore
   keyManagement?: KeyManagementPort
@@ -35,6 +38,7 @@ export interface WotConnectorRuntimeOverrides {
 export interface WotSyncState {
   logPending: number
   outboxPending: number
+  workPending: number
 }
 
 // --- Automerge SpaceDoc Schema ---
