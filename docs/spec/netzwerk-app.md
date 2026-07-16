@@ -242,3 +242,10 @@ Implementierung kanonisch.
   connector-divergente IDs. (2) Ziel-Absatz „Sichtbarkeit, author" →
   `createdBy`; Sichtbarkeit über Space/Berechtigungen. **Beide übernommen**
   (Folgecommit in #142).
+- R12 (16.07., Codex, 3. Pass, P2-Sicherheitslücken in Kapitel 09):
+  (1) „Kanonische signierte Payload" war undefiniert → normiert auf
+  RFC 8785 (JCS), JWS über exakt diese Bytes, tiebreak = sha256 derselben
+  Bytes (lowercase Hex). (2) Erst-Tombstone konnte fremde Signer-Bindung
+  etablieren (TOFU-Gate als flippbarer Diskriminator) → Bindung entsteht
+  NUR über Snapshots mit `item ≠ null`; Tombstone zu unbekanntem
+  Schlüssel wird ignoriert. **Beide übernommen** (Folgecommit in #142).

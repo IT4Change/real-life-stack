@@ -34,10 +34,17 @@ interface MirrorSnapshot {
   item: SerializedItem | null
   /** MUSS bei item ≠ null gleich item.createdBy sein (Invariante 5) */
   authorDid: string
-  /** JWS des Autors über ALLE obigen Felder, inkl. targetSpaceId */
+  /** JWS des Autors über die kanonische Payload (s. unten) */
   signature: string
 }
 ```
+
+**Kanonische signierte Payload:** Die Felder `homeSpaceId`, `itemId`,
+`targetSpaceId`, `version`, `item`, `authorDid` werden nach **RFC 8785
+(JSON Canonicalization Scheme)** serialisiert (UTF-8). Die JWS signiert
+exakt diese Bytes; `tiebreak` in Invariante 6 ist `sha256` über dieselben
+Bytes (lowercase Hex). Damit sind Signaturprüfung und Versionsvergleich
+implementierungsunabhängig deterministisch.
 
 ## Invarianten
 
@@ -64,8 +71,14 @@ interface MirrorSnapshot {
    erreichen den Mirror erst, wenn der Autor den gemergten Home-Stand neu
    publiziert. Die Erst-Annahme bindet `(homeSpaceId, itemId)` an die
    Signer-DID; spätere Snapshots mit anderem Signer MÜSSEN verworfen
-   werden (kein Umhängen der Identität). Delegation an weitere Signer
-   (z. B. UCAN) ist außerhalb dieses Vertrags.
+   werden (kein Umhängen der Identität). Die Bindung entsteht NUR durch
+   einen Snapshot mit `item ≠ null` — dort ist `authorDid` gegen
+   `item.createdBy` prüfbar. Tombstones etablieren NIE eine Bindung: ein
+   Tombstone zu einem unbekannten `(homeSpaceId, itemId)` wird ignoriert
+   (es gibt nichts zu löschen); sonst könnte ein gefälschter
+   Erst-Tombstone die Identität fremdbinden und die Snapshots des echten
+   Autors dauerhaft aussperren. Delegation an weitere Signer (z. B. UCAN)
+   ist außerhalb dieses Vertrags.
 6. Empfänger MÜSSEN die Signatur gegen die gebundene Signer-DID prüfen und
    DÜRFEN einen Snapshot nur übernehmen, wenn seine `version` in der
    totalen Ordnung STRIKT größer ist als die zuletzt akzeptierte.
@@ -91,7 +104,7 @@ interface MirrorSnapshot {
    akzeptierte `version` und Signer-DID gespeichert — sonst ließe sich
    nach dem Tombstone ein älterer, gültig signierter Snapshot wieder
    einspielen (Resurrection). Ein Tombstone löscht Inhalt, nie die
-   Versionsmarke.
+   Versionsmarke — und etabliert nie eine Erst-Bindung (Invariante 5).
 9. E2EE-Grenze: die Bridge ist Mitglied beider Spaces und verschlüsselt für
    den Ziel-Space neu; Relay und Nicht-Mitglieder sehen weiterhin nur
    Ciphertext. Ein Mirror macht Inhalte für alle Mitglieder des Ziel-Space
