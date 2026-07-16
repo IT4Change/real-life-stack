@@ -1111,4 +1111,63 @@ describe("Vertrag #147: eingehende Verifikation als durable Aktion bis zur UI-Ü
     await new Promise((r) => setTimeout(r, 20))
     expect(events2.filter((e) => e.type === "incoming-verification")).toHaveLength(0)
   })
+
+  it("React-Strict-Mode: subscribe A → cleanup → subscribe B startet parallele Announcer — B erhält die Aktion GENAU EINMAL", async () => {
+    const localValues = new Map<string, string>()
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      writable: true,
+      value: {
+        getItem: (k: string) => localValues.get(k) ?? null,
+        setItem: (k: string, v: string) => localValues.set(k, v),
+        removeItem: (k: string) => localValues.delete(k),
+      },
+    })
+    const did = "did:key:me"
+    const payload = {
+      jti: "att-strict",
+      iss: "did:key:bob",
+      issuer: "did:key:bob",
+      validFrom: new Date().toISOString(),
+      type: ["VerifiableCredential", "WotVerification"],
+      credentialSubject: { id: did, claim: "in-person verifiziert" },
+    }
+    // Durabler Record mit erledigter Daten-Hälfte (saved) — die Aktion wartet auf die UI.
+    localValues.set(
+      `rls-wot-pending-verification-save:${did}`,
+      JSON.stringify({ "att-strict": { vcJws: "h.p.s", senderDid: "did:key:bob", saved: true } }),
+    )
+    const session = Object.assign(Object.create(WotConnector.prototype), {
+      identity: { getDid: () => did },
+      storage: { getAttestation: vi.fn(async () => null) },
+      attestationWorkflow: { verifyAttestationVcJws: vi.fn(async () => payload) },
+      contactsObs: { current: [] },
+      discovery: { resolveProfile: vi.fn(async () => ({ profile: { name: "Bob" } })) },
+      eventCallbacks: new Set<(e: unknown) => void>(),
+      bufferedEvents: [] as unknown[],
+    })
+    const onIncomingEvent = (WotConnector.prototype as any).onIncomingEvent
+
+    // Strict-Mode-Ablauf: A subscribed (startet Announcer 1), cleanup, B subscribed
+    // (startet Announcer 2) — beide Läufe überlappen.
+    const eventsA: any[] = []
+    const unsubA = onIncomingEvent.call(session, (e: any) => eventsA.push(e))
+    unsubA()
+    const eventsB: any[] = []
+    onIncomingEvent.call(session, (e: any) => eventsB.push(e))
+
+    await vi.waitFor(() => {
+      const total =
+        eventsA.filter((e) => e.type === "incoming-verification").length +
+        eventsB.filter((e) => e.type === "incoming-verification").length
+      expect(total).toBe(1)
+    })
+    // Kurz nachlaufen lassen: es darf keine ZWEITE Lieferung mehr eintreffen.
+    await new Promise((r) => setTimeout(r, 30))
+    const total =
+      eventsA.filter((e) => e.type === "incoming-verification").length +
+      eventsB.filter((e) => e.type === "incoming-verification").length
+    expect(total).toBe(1)
+    expect(localValues.has(`rls-wot-pending-verification-save:${did}`)).toBe(false)
+  })
 })

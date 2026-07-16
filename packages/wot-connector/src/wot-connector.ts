@@ -2585,10 +2585,15 @@ export class WotConnector extends BaseConnector {
     acceptedInitialVerification: boolean,
   ): Promise<void> {
     if (!acceptedInitialVerification) {
-      this.clearPendingVerificationSave(attestation.id)
+      this.claimPendingVerificationAction(attestation.id)
       return
     }
     if (this.eventCallbacks.size === 0) return // Record bleibt — Nachlieferung beim Subscribe
+
+    // Exactly-once: SYNCHRONER Claim vor jedem await — parallele Announcer
+    // (Strict-Mode-Doppel-Subscribe) oder Drain∥Announce können denselben
+    // Record nicht doppelt liefern; nur der Claim-Gewinner emittiert.
+    if (!this.claimPendingVerificationAction(attestation.id)) return
 
     const contact = this.contactsObs.current.find((entry) => entry.id === attestation.from)
     let peerName = contact?.name
@@ -2600,9 +2605,6 @@ export class WotConnector extends BaseConnector {
         peerAvatar = peerAvatar ?? result.profile?.avatar ?? undefined
       } catch { /* optional profile enrichment */ }
     }
-    // Exactly-once: Record VOR dem Emit räumen (ein werfender UI-Callback gilt
-    // als Übernahme; er wird ohnehin geschluckt).
-    this.clearPendingVerificationSave(attestation.id)
     this.emitEvent({
       type: "incoming-verification",
       fromId: attestation.from,
@@ -2660,6 +2662,27 @@ export class WotConnector extends BaseConnector {
       pending[id] = { ...pending[id], saved: true }
       localStorage.setItem(this.pendingVerificationSaveKey(), JSON.stringify(pending))
     } catch { /* best-effort */ }
+  }
+
+  /**
+   * CLAIM (Vertrags-Primitiv, #147): atomares check-and-delete des Records —
+   * synchron, daher im Single-Thread-JS race-frei gegen parallele Announcer/
+   * Drains (React-Strict-Mode: subscribe A → cleanup → subscribe B startet
+   * zwei Announce-Läufe; nur wer den Claim gewinnt, darf emittieren).
+   * Gibt true genau EINMAL pro Record zurück.
+   */
+  private claimPendingVerificationAction(id: string): boolean {
+    try {
+      const pending = this.readPendingVerificationSaves()
+      if (!(id in pending)) return false
+      delete pending[id]
+      const key = this.pendingVerificationSaveKey()
+      if (Object.keys(pending).length === 0) localStorage.removeItem(key)
+      else localStorage.setItem(key, JSON.stringify(pending))
+      return true
+    } catch {
+      return false
+    }
   }
 
   private clearPendingVerificationSave(id: string): void {
