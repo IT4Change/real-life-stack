@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { formatMnemonicForCopy } from "../mnemonic-format.js"
 import {
   MnemonicGrid,
   MnemonicVerify,
@@ -98,7 +99,7 @@ export function OnboardingFlow({ connector, onComplete, onSwitchToRecovery }: On
   }
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(mnemonic.join(" "))
+    await navigator.clipboard.writeText(formatMnemonicForCopy(mnemonic))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

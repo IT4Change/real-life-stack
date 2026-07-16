@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { cleanMnemonicInput } from "../mnemonic-format.js"
 import {
   PassphraseConfirm,
   Button,
@@ -32,7 +33,10 @@ export function RecoveryFlow({ connector, onComplete, onBack }: RecoveryFlowProp
     BiometricService.isAvailable().then(setBiometricAvailable)
   }, [])
 
-  const words = mnemonic.trim().split(/\s+/)
+  // Normalisiert alle Einfüge-Formate (nummerierte Zeilen/Inline, plain) —
+  // Parität mit der WoT-App, deren Copy nummerierte Zeilen liefert.
+  const cleanedMnemonic = cleanMnemonicInput(mnemonic)
+  const words = cleanedMnemonic ? cleanedMnemonic.split(" ") : []
   const mnemonicValid = words.length === 12 && words.every((w) => w.length > 0)
 
   // Biometric recovery path: generates random passphrase, stores via biometrics.
