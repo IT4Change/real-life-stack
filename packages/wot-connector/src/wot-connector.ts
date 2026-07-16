@@ -27,11 +27,7 @@ import {
 } from "@real-life-stack/data-interface"
 
 import {
-  OutboxMessagingAdapter,
-  PersonalDocOutboxStore,
   PersonalDocSpaceMetadataStorage,
-  GroupKeyService,
-  HttpDiscoveryAdapter,
   OfflineFirstDiscoveryAdapter,
   InMemoryPublishStateStore,
   InMemoryGraphCacheStore,
@@ -39,26 +35,46 @@ import {
   AttestationWorkflow,
   IdentityWorkflow,
   WebCryptoProtocolCryptoAdapter,
-  IndexedDbIdentitySeedVault,
   CompactStorageManager,
   TracedCompactStorageManager,
-  TracedOutboxMessagingAdapter,
   getMetrics,
   getDefaultDisplayName,
   signEnvelope,
   verifyEnvelope,
 } from "@real-life/wot-core"
-import { x25519MultibaseToPublicKeyBytes } from "@real-life/wot-core/protocol"
+import { HttpDiscoveryAdapter } from "@real-life/wot-core/adapters/discovery/http"
+import { WebSocketMessagingAdapter } from "@real-life/wot-core/adapters/messaging/websocket"
+import {
+  IndexedDbIdentitySeedVault,
+  IndexedDBDocLogStore,
+  IndexedDBKeyManagementAdapter,
+  IndexedDBMemberUpdatePendingStore,
+  IndexedDBMessageIdHistory,
+} from "@real-life/wot-core/adapters/storage/indexeddb"
+import {
+  decodeBase64Url,
+  encryptionKeyMultibaseFromDidDocument,
+  isDidcommMessage,
+  parseQrChallenge,
+  x25519MultibaseToPublicKeyBytes,
+} from "@real-life/wot-core/protocol"
 import type {
+  Attestation,
   SpaceInfo,
-  SpaceHandle,
-  Subscribable,
-  MessagingAdapter,
   MessageEnvelope,
-  MessageType,
   PublicProfile,
   PublicIdentitySession,
-} from "@real-life/wot-core"
+} from "@real-life/wot-core/types"
+import type {
+  DocLogStore,
+  KeyManagementPort,
+  MemberUpdatePendingStore,
+  MessageIdHistoryPort,
+  MessagingAdapter,
+  OutboxStore,
+  SpaceHandle,
+  WireMessage,
+} from "@real-life/wot-core/ports"
 import {
   YjsReplicationAdapter,
   YjsStorageAdapter,
@@ -69,21 +85,46 @@ import {
   onYjsPersonalDocChange,
   changeYjsPersonalDoc,
   flushYjsPersonalDoc,
-  refreshYjsPersonalDocFromVault,
 } from "@real-life/adapter-yjs"
-import type { PersonalDoc } from "@real-life/adapter-yjs"
+import type { YjsCompactStore } from "@real-life/adapter-yjs"
 
-import type { WotConnectorConfig, RlsSpaceDoc, SerializedItem } from "./types.js"
+import type {
+  WotConnectorConfig,
+  WotConnectorRuntimeOverrides,
+  WotSyncState,
+  RlsSpaceDoc,
+  SerializedItem,
+} from "./types.js"
 import { serializeItem, deserializeItem } from "./serialization.js"
 import { CrossGroupIndex } from "./CrossGroupIndex.js"
-import { mapPersonalDocConfirmations } from "./confirmations.js"
-import { CompatibleWebSocketMessagingAdapter } from "./compatible-websocket-messaging-adapter.js"
+import { projectAttestationConfirmations } from "./confirmations.js"
+import { LocalOutboxStore } from "./local-outbox-store.js"
+import {
+  createOutboxMessagingRuntime,
+  observeDocLogPending,
+  type OutboxMessagingRuntime,
+} from "./messaging-runtime.js"
+import { InboxReceptionHost } from "./inbox-reception-host.js"
+import {
+  attestationFromVerifiedVc,
+  messageIdForAttestation,
+  sendAttestationInbox,
+  sendAttestationReceipt,
+} from "./attestation-wire.js"
 
 // --- Constants ---
 
 const RLS_SPACE_TYPE = "rls"
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
 // Overview mode: setCurrentGroup(null) = show all items from all spaces
+
+type DeliveryStatus = "sending" | "queued" | "delivered" | "acknowledged" | "failed"
+const DELIVERY_STATUS_RANK: Record<Exclude<DeliveryStatus, "failed">, number> = {
+  sending: 0,
+  queued: 1,
+  delivered: 2,
+  acknowledged: 3,
+}
 
 class WorkflowBackedIdentity implements PublicIdentitySession {
   private readonly workflow: IdentityWorkflow
@@ -191,20 +232,29 @@ function isVerificationConfirmation(c: ConfirmationView): boolean {
 
 export class WotConnector extends BaseConnector {
   private config: WotConnectorConfig
+  private runtimeOverrides: WotConnectorRuntimeOverrides
   private identity: WorkflowBackedIdentity
   private httpDiscovery: HttpDiscoveryAdapter
   private discovery: OfflineFirstDiscoveryAdapter
   private publishStateStore: InMemoryPublishStateStore
   private graphCacheStore: InMemoryGraphCacheStore
-  private verificationWorkflow = new VerificationWorkflow({ crypto: new WebCryptoProtocolCryptoAdapter() })
-  private attestationWorkflow = new AttestationWorkflow({ crypto: new WebCryptoProtocolCryptoAdapter() })
+  private protocolCrypto = new WebCryptoProtocolCryptoAdapter()
+  private verificationWorkflow = new VerificationWorkflow({ crypto: this.protocolCrypto })
+  private attestationWorkflow = new AttestationWorkflow({ crypto: this.protocolCrypto })
 
   // Adapters (initialized after auth)
-  private wsAdapter: CompatibleWebSocketMessagingAdapter | null = null
-  private outboxAdapter: OutboxMessagingAdapter | null = null
+  private transportAdapter: MessagingAdapter | null = null
+  private outboxAdapter: OutboxMessagingRuntime | null = null
+  private outboxStore: OutboxStore | null = null
   private replication: YjsReplicationAdapter | null = null
-  private groupKeyService: GroupKeyService | null = null
   private storage: YjsStorageAdapter | null = null
+  private inboxReception: InboxReceptionHost | null = null
+  private docLogStore: DocLogStore | null = null
+  private keyManagement: KeyManagementPort | null = null
+  private memberUpdateStore: MemberUpdatePendingStore | null = null
+  private messageIdHistory: MessageIdHistoryPort | null = null
+  private spaceCompactStore: YjsCompactStore | null = null
+  private durableStores: Array<{ close(): void | Promise<void> }> = []
 
   // State
   private currentGroupId: string | null = null
@@ -220,7 +270,6 @@ export class WotConnector extends BaseConnector {
   private personalDocUnsub: (() => void) | null = null
   private privateSpaceReconcile: Promise<void> = Promise.resolve()
   private contactsUnsub: (() => void) | null = null
-  private verificationsUnsub: (() => void) | null = null
   private attestationsUnsub: (() => void) | null = null
 
   // Observables (stable references — backing changes on group switch)
@@ -229,14 +278,19 @@ export class WotConnector extends BaseConnector {
   private confirmationsObs: ReactiveObservable<ConfirmationView[]>
   private relayStateObs: ReactiveObservable<RelayState>
   private outboxCountObs: ReactiveObservable<number>
+  private syncStateObs: ReactiveObservable<WotSyncState>
   private profileObs: ReactiveObservable<Item | null>
   private currentUserObs: ReactiveObservable<User | null>
   private syncPendingObs: ReactiveObservable<boolean>
   private profileUnsub: (() => void) | null = null
   private groupsCache: Group[] = []
-
-  // Verification challenge state (in-progress challenges)
-  private pendingChallenge: { code: string; nonce: string } | null = null
+  private outboxCountUnsub: (() => void) | null = null
+  private inboxAttestationUnsub: (() => void) | null = null
+  private inboxReceiptUnsub: (() => void) | null = null
+  private deliveryReceiptUnsub: (() => void) | null = null
+  private lastSyncStateLog: string | null = null
+  private syncStateRefresh: Promise<void> = Promise.resolve()
+  private deliveryMessageIds = new Map<string, string>()
 
   // Incoming event listeners
   private eventCallbacks = new Set<(event: IncomingEvent) => void>()
@@ -247,9 +301,10 @@ export class WotConnector extends BaseConnector {
   private relatedObservables = new Map<string, ReactiveObservable<Item[]>>()
   private relatedObservableParams = new Map<string, { itemId: string; predicate?: string; options?: RelatedItemsOptions }>()
 
-  constructor(config: WotConnectorConfig) {
+  constructor(config: WotConnectorConfig, runtimeOverrides: WotConnectorRuntimeOverrides = {}) {
     super()
     this.config = config
+    this.runtimeOverrides = runtimeOverrides
     this.identity = new WorkflowBackedIdentity()
     this.httpDiscovery = new HttpDiscoveryAdapter(config.profilesUrl)
     this.publishStateStore = new InMemoryPublishStateStore()
@@ -263,6 +318,7 @@ export class WotConnector extends BaseConnector {
     this.confirmationsObs = createObservable<ConfirmationView[]>([])
     this.relayStateObs = createObservable<RelayState>("disconnected")
     this.outboxCountObs = createObservable<number>(0)
+    this.syncStateObs = createObservable<WotSyncState>({ logPending: 0, outboxPending: 0 })
     this.profileObs = createObservable<Item | null>(null)
     this.currentUserObs = createObservable<User | null>(null)
     this.syncPendingObs = createObservable<boolean>(false)
@@ -306,13 +362,17 @@ export class WotConnector extends BaseConnector {
     this.spacesSubscriptionUnsub?.()
     this.personalDocUnsub?.()
     this.contactsUnsub?.()
-    this.verificationsUnsub?.()
     this.attestationsUnsub?.()
     this.profileUnsub?.()
+    this.outboxCountUnsub?.()
+    this.inboxAttestationUnsub?.()
+    this.inboxReceiptUnsub?.()
+    this.deliveryReceiptUnsub?.()
+    this.inboxReception?.stop()
     await this.replication?.stop()
     await this.outboxAdapter?.disconnect()
-    await this.wsAdapter?.disconnect()
     await resetYjsPersonalDoc()
+    await this.closeRuntimeStores()
 
     for (const obs of this.itemObservables.values()) obs.destroy()
     for (const obs of this.itemByIdObservables.values()) obs.destroy()
@@ -325,6 +385,7 @@ export class WotConnector extends BaseConnector {
     this.confirmationsObs.destroy()
     this.relayStateObs.destroy()
     this.outboxCountObs.destroy()
+    this.syncStateObs.destroy()
     this.profileObs.destroy()
     this.syncPendingObs.destroy()
     for (const obs of this.memberObservables.values()) obs.destroy()
@@ -423,24 +484,30 @@ export class WotConnector extends BaseConnector {
     this.privateSpaceId = null
     this.spacesSubscriptionUnsub?.()
     this.personalDocUnsub?.()
+    this.inboxAttestationUnsub?.()
+    this.inboxAttestationUnsub = null
+    this.inboxReceiptUnsub?.()
+    this.inboxReceiptUnsub = null
+    this.deliveryReceiptUnsub?.()
+    this.deliveryReceiptUnsub = null
+    this.inboxReception?.stop()
+    this.inboxReception = null
     await this.replication?.stop()
     await this.outboxAdapter?.disconnect()
-    await this.wsAdapter?.disconnect()
 
     this.contactsUnsub?.()
     this.contactsUnsub = null
-    this.verificationsUnsub?.()
-    this.verificationsUnsub = null
     this.attestationsUnsub?.()
     this.attestationsUnsub = null
     this.profileUnsub?.()
     this.profileUnsub = null
+    this.outboxCountUnsub?.()
+    this.outboxCountUnsub = null
     this.storage = null
 
-    this.wsAdapter = null
+    this.transportAdapter = null
     this.outboxAdapter = null
     this.replication = null
-    this.groupKeyService = null
     this.currentGroupId = null
     this.currentGroupObservable.set(null)
     this.groupsCache = []
@@ -452,10 +519,13 @@ export class WotConnector extends BaseConnector {
     this.confirmationsObs.set([])
     this.contactsObs.set([])
     this.outboxCountObs.set(0)
+    this.syncStateObs.set({ logPending: 0, outboxPending: 0 })
     this.relayStateObs.set("disconnected")
     this.profileObs.set(null)
     this.syncPendingObs.set(false)
 
+    await resetYjsPersonalDoc()
+    await this.closeRuntimeStores()
     await deleteYjsPersonalDocDB()
     await this.identity.deleteStoredIdentity()
 
@@ -1029,6 +1099,10 @@ export class WotConnector extends BaseConnector {
   private async bootstrapAdapters(): Promise<void> {
     const did = this.identity.getDid()
 
+    if (this.replication || this.outboxAdapter || this.docLogStore) {
+      await this.teardownRuntimeForIdentitySwitch()
+    }
+
     // Identity switch cleanup
     const prevDid = safeLocalStorage("rls-wot-active-did")
     if (prevDid && prevDid !== did) {
@@ -1036,21 +1110,80 @@ export class WotConnector extends BaseConnector {
     }
     try { localStorage.setItem("rls-wot-active-did", did) } catch { /* ignore */ }
 
-    // 1. WebSocket connect (MUST happen before PersonalDoc so it can receive sync messages)
-    this.wsAdapter = new CompatibleWebSocketMessagingAdapter(this.config.relayUrl, {
-      signBrokerAuthBytes: (signingBytes: Uint8Array) => this.identity.signEd25519(signingBytes),
+    // Stable deviceId: the durable log owns the nonce namespace. Resolve it
+    // before constructing the transport and reuse the exact same ID everywhere.
+    const rawDocLogStore = this.runtimeOverrides.docLogStore
+      ?? new IndexedDBDocLogStore(`wot-doc-log:${did}`)
+    await rawDocLogStore.init()
+    const deviceId = await rawDocLogStore.resolveConnectDeviceId()
+    this.docLogStore = observeDocLogPending(rawDocLogStore, () => this.queueSyncStateRefresh())
+
+    this.keyManagement = this.runtimeOverrides.keyManagement
+      ?? new IndexedDBKeyManagementAdapter(`wot-key-management:${did}`)
+    this.memberUpdateStore = this.runtimeOverrides.memberUpdateStore
+      ?? new IndexedDBMemberUpdatePendingStore(`wot-member-update-pending:${did}`)
+    this.messageIdHistory = this.runtimeOverrides.messageIdHistory
+      ?? new IndexedDBMessageIdHistory(`wot-message-id-history:${did}`)
+
+    const closeCandidates: unknown[] = [
+      rawDocLogStore,
+      this.keyManagement,
+      this.memberUpdateStore,
+      this.messageIdHistory,
+    ]
+    this.durableStores = closeCandidates.filter(
+      (store): store is { close(): void | Promise<void> } =>
+        typeof (store as { close?: unknown } | null)?.close === "function",
+    )
+
+    const localOutbox = this.runtimeOverrides.outboxStore
+      ?? new LocalOutboxStore(`wot-outbox:${did}`)
+    if ("open" in localOutbox && typeof localOutbox.open === "function") {
+      await localOutbox.open()
+    }
+    this.outboxStore = localOutbox
+
+    // Sync-003 WebSocket auth. Heartbeat values are intentionally omitted:
+    // core's 15s interval / 5s timeout defaults are the production contract.
+    this.transportAdapter = this.runtimeOverrides.messaging
+      ?? new WebSocketMessagingAdapter(this.config.relayUrl, {
+        deviceId,
+        signBrokerAuthTranscript: (bytes: Uint8Array) => this.identity.signEd25519(bytes),
+      })
+    this.outboxAdapter = createOutboxMessagingRuntime({
+      messaging: this.transportAdapter,
+      outboxStore: localOutbox,
+      trace: this.runtimeOverrides.traceMessaging,
     })
 
-    // Register relay state listener BEFORE connect so we catch the 'connected' event
-    this.wsAdapter.onStateChange((state) => {
+    // Register state and inbox ownership BEFORE connect: the broker can deliver
+    // its initial queue immediately after authentication.
+    this.outboxAdapter.onStateChange((state) => {
       this.relayStateObs.set(state as RelayState)
-      // Update PersistenceMetrics so DebugSnapshot reflects relay status
       getMetrics().setRelayStatus(state === "connected", this.config.relayUrl, 0)
-      // Retry pending discovery publishes on reconnect
       if (state === "connected") {
         this.syncDiscoveryPending().catch(() => {})
+        this.queueSyncStateRefresh()
       }
     })
+    this.deliveryReceiptUnsub = this.outboxAdapter.onReceipt((receipt) => {
+      const attestationId = this.deliveryMessageIds.get(receipt.messageId)
+      if (!attestationId) return
+      if (receipt.status === "delivered") {
+        void this.setDeliveryStatus(attestationId, "delivered")
+      } else if (receipt.status === "failed") {
+        void this.setDeliveryStatus(attestationId, "failed")
+      }
+    })
+
+    this.inboxReception = new InboxReceptionHost({
+      messaging: this.outboxAdapter,
+      identity: this.identity,
+      crypto: this.protocolCrypto,
+      messageIdHistory: this.messageIdHistory,
+    })
+    this.inboxReception.start()
+    await this.outboxAdapter.connect(did)
 
     const personalDocFns = {
       getPersonalDoc: getYjsPersonalDoc,
@@ -1058,60 +1191,60 @@ export class WotConnector extends BaseConnector {
       onPersonalDocChange: onYjsPersonalDocChange,
     }
 
-    const outboxStore = new PersonalDocOutboxStore(personalDocFns)
-    const rawOutbox = new OutboxMessagingAdapter(this.wsAdapter, outboxStore, {
-      skipTypes: ["profile-update", "attestation-ack", "personal-sync"] as MessageType[],
-    })
-    this.outboxAdapter = new TracedOutboxMessagingAdapter(rawOutbox) as unknown as OutboxMessagingAdapter
-    await this.wsAdapter.connect(did)
-
-    // 2. PersonalDoc (Yjs-based, multi-device sync)
+    // PersonalDoc uses the SAME durable log store and SAME deviceId as the
+    // broker registration and Space replication. No Vault is wired in this slice.
     await initYjsPersonalDoc(
       this.identity,
-      this.outboxAdapter as unknown as MessagingAdapter,
-      this.config.vaultUrl,
+      this.outboxAdapter,
+      undefined,
+      undefined,
+      { docLogStore: this.docLogStore, deviceId },
     )
 
-    // 3. Now that PersonalDoc is ready, connect OutboxAdapter to enable
-    //    flush + auto-reconnect. wsAdapter.connect() is idempotent, so this
-    //    just triggers flushOutbox() + _startAutoReconnect() without reconnecting.
-    await this.outboxAdapter.connect(did)
     const spaceMetadataStorage = new PersonalDocSpaceMetadataStorage(personalDocFns)
+    this.spaceCompactStore = this.runtimeOverrides.compactStore
+      ?? new TracedCompactStorageManager(new CompactStorageManager(`rls-yjs-space-compact-store:${did}`))
+    if ("open" in this.spaceCompactStore && typeof this.spaceCompactStore.open === "function") {
+      await this.spaceCompactStore.open()
+    }
 
-    // 4. Group Keys
-    this.groupKeyService = new GroupKeyService()
-
-    // 5. CompactStore for Yjs spaces
-    const spaceCompactStore = new TracedCompactStorageManager(new CompactStorageManager("rls-yjs-space-compact-store"))
-    await spaceCompactStore.open()
-
-    // 6. Replication (Yjs)
     this.replication = new YjsReplicationAdapter({
       identity: this.identity,
-      messaging: this.outboxAdapter as unknown as MessagingAdapter,
-      groupKeyService: this.groupKeyService,
+      messaging: this.outboxAdapter,
+      keyManagement: this.keyManagement,
+      memberUpdateStore: this.memberUpdateStore,
+      messageIdHistory: this.messageIdHistory,
       metadataStorage: spaceMetadataStorage,
-      vaultUrl: this.config.vaultUrl,
-      compactStore: spaceCompactStore,
+      compactStore: this.spaceCompactStore,
+      brokerUrls: [this.config.relayUrl],
       flushPersonalDoc: flushYjsPersonalDoc,
-      refreshPersonalDocFromVault: refreshYjsPersonalDocFromVault,
+      docLogStore: this.docLogStore,
+      deviceId,
+      enableLogSync: true,
     })
     await this.replication.start()
 
-    // 7. Outbox pending count → outboxCountObs
-    if (outboxStore.watchPendingCount) {
-      outboxStore.watchPendingCount().subscribe((count: number) => {
+    if (localOutbox.watchPendingCount) {
+      this.outboxCountUnsub = localOutbox.watchPendingCount().subscribe((count: number) => {
         this.outboxCountObs.set(count)
+        this.queueSyncStateRefresh()
       })
     }
+    this.outboxCountObs.set(await localOutbox.count())
+    await this.refreshSyncState()
 
-    // 8. Incoming message handler (verification, space-invite)
-    this.wsAdapter.onMessage(async (envelope) => {
-      await this.handleIncomingMessage(envelope)
+    // Transitional Old-World messages remain separate from inbox/1.0.
+    this.outboxAdapter.onMessage(async (message: WireMessage) => {
+      if (!isDidcommMessage(message)) await this.handleIncomingMessage(message as MessageEnvelope)
     })
 
-    // 9. Storage adapter for reactive contacts and confirmations
     this.storage = new YjsStorageAdapter(did)
+    this.inboxAttestationUnsub = this.inboxReception.onAttestation((delivery) =>
+      this.handleIncomingAttestation(delivery.vcJws, delivery.senderDid),
+    )
+    this.inboxReceiptUnsub = this.inboxReception.onAttestationReceipt((receipt) =>
+      this.handleIncomingAttestationReceipt(receipt.jti, receipt.senderDid),
+    )
 
     // PersonalDoc changes -> discover new spaces (not full state broadcast,
     // which would mutate PersonalDoc and create an infinite loop).
@@ -1171,8 +1304,8 @@ export class WotConnector extends BaseConnector {
     // Initial local contacts read done.
     this.contactsObs.markLoaded()
 
-    // Reactive confirmations via StorageAdapter (verifications + attestations)
-    this.verificationsUnsub = this.storage.watchAllVerifications().subscribe(() => this.syncConfirmationsFromPersonalDoc())
+    // Trust-002 verifications are attestations with the signed
+    // WotVerification VC type. watchAllVerifications() is intentionally empty.
     this.attestationsUnsub = this.storage.watchAllAttestations().subscribe(() => this.syncConfirmationsFromPersonalDoc())
     this.syncConfirmationsFromPersonalDoc()
 
@@ -1262,7 +1395,7 @@ export class WotConnector extends BaseConnector {
       const envelope: MessageEnvelope = {
         v: 1,
         id: crypto.randomUUID(),
-        type: "profile-update" as MessageType,
+        type: "profile-update",
         fromDid: did,
         toDid: contact.did,
         createdAt: new Date().toISOString(),
@@ -1711,6 +1844,11 @@ export class WotConnector extends BaseConnector {
     return this.outboxCountObs
   }
 
+  /** Connector-specific observability until core exposes richer sync counters. */
+  observeSyncState(): Observable<WotSyncState> {
+    return this.syncStateObs
+  }
+
   // ==================== Confirmation writing ====================
 
   override async issueConfirmation(input: ConfirmationIssueInput): Promise<ConfirmationView> {
@@ -1721,73 +1859,20 @@ export class WotConnector extends BaseConnector {
       claim,
       tags,
     })
-    const did = attestation.from
-    const id = attestation.id
-    const now = attestation.createdAt
-
-    // Store as attestation in PersonalDoc
-    changeYjsPersonalDoc((doc: any) => {
-      if (!doc.attestations) doc.attestations = {} as any
-      doc.attestations[id] = {
-        id,
-        attestationId: id,
-        fromDid: did,
-        toDid: subjectId,
-        claim,
-        tagsJson: tags ? JSON.stringify(tags) : null,
-        context: null,
-        createdAt: now,
-        vcJws: attestation.vcJws,
-      } as any
-      if (!doc.attestationMetadata) doc.attestationMetadata = {} as any
-      doc.attestationMetadata[id] = {
-        attestationId: id,
-        accepted: true,
-        acceptedAt: now,
-        deliveryStatus: "queued",
-      } as any
-    })
+    if (!this.storage) throw new Error("Not authenticated")
+    await this.storage.saveAttestation(attestation)
+    await this.storage.setAttestationAccepted(attestation.id, true)
     this.syncConfirmationsFromPersonalDoc()
-
-    // Send attestation via relay
-    if (this.outboxAdapter) {
-      const envelope: MessageEnvelope = {
-        v: 1,
-        id,
-        type: "attestation" as MessageType,
-        fromDid: did,
-        toDid: subjectId,
-        createdAt: now,
-        encoding: "json",
-        payload: JSON.stringify(attestation),
-        signature: attestation.vcJws,
-      }
-      this.outboxAdapter.send(envelope).then((receipt) => {
-        const status = receipt.reason === "queued-in-outbox" ? "queued" : "delivered"
-        changeYjsPersonalDoc((doc: any) => {
-          if (doc.attestationMetadata?.[id]) {
-            doc.attestationMetadata[id].deliveryStatus = status
-          }
-        })
-        this.syncConfirmationsFromPersonalDoc()
-      }).catch(() => {
-        changeYjsPersonalDoc((doc: any) => {
-          if (doc.attestationMetadata?.[id]) {
-            doc.attestationMetadata[id].deliveryStatus = "failed"
-          }
-        })
-        this.syncConfirmationsFromPersonalDoc()
-      })
-    }
+    void this.deliverAttestation(attestation).catch(() => {})
 
     return {
-      id,
-      issuerId: did,
+      id: attestation.id,
+      issuerId: attestation.from,
       subjectId,
       claim,
       ...(tags ? { tags } : {}),
       schema: "wot:attestation",
-      createdAt: now,
+      createdAt: attestation.createdAt,
       trustLevel: "signed-attested",
       source: "wot",
       isAccepted: true,
@@ -1795,15 +1880,9 @@ export class WotConnector extends BaseConnector {
   }
 
   override async setConfirmationAccepted(id: string, accepted: boolean): Promise<void> {
-    changeYjsPersonalDoc((doc: any) => {
-      if (doc.attestationMetadata?.[id]) {
-        doc.attestationMetadata[id].accepted = accepted
-        doc.attestationMetadata[id].acceptedAt = accepted ? new Date().toISOString() : null
-      }
-    })
-    // Metadata-only changes do not trigger the verifications/attestations
-    // watchers, so refresh the confirmation projection explicitly. Other
-    // metadata-only update paths call this at their own mutation sites.
+    if (!this.storage) throw new Error("Not authenticated")
+    await this.storage.setAttestationAccepted(id, accepted)
+    // Metadata-only changes do not trigger the attestation watcher.
     this.syncConfirmationsFromPersonalDoc()
   }
 
@@ -1811,16 +1890,19 @@ export class WotConnector extends BaseConnector {
 
   override async createVerificationChallenge(): Promise<VerificationChallenge> {
     const displayName = getYjsPersonalDoc()?.profile?.name ?? getDefaultDisplayName(this.identity.getDid())
-    const { code, challenge } = await this.verificationWorkflow.createChallenge(this.identity, displayName)
-    const nonce = challenge.nonce
-    this.pendingChallenge = { code, nonce }
-    return { code, nonce }
+    const { rawJson, challenge } = await this.verificationWorkflow.createOnlineQrChallenge(
+      this.identity,
+      displayName,
+      { broker: this.config.relayUrl },
+    )
+    return { code: rawJson, nonce: challenge.nonce }
   }
 
   override async prepareVerificationResponse(challengeCode: string): Promise<EncounterPeerInfo> {
-    const parsed = JSON.parse(atob(challengeCode))
-    const peerId = parsed.fromDid as string
-    let peerName = parsed.fromName as string | undefined
+    const parsed = parseQrChallenge(challengeCode)
+    if (parsed.did === this.identity.getDid()) throw new Error("Cannot verify own identity")
+    const peerId = parsed.did
+    let peerName = parsed.name
     let peerAvatar: string | undefined
 
     // Resolve avatar from local contacts first, then discovery
@@ -1841,159 +1923,127 @@ export class WotConnector extends BaseConnector {
   }
 
   override async confirmVerificationResponse(challengeCode: string): Promise<void> {
-    const did = this.identity.getDid()
-
-    // Parse to get the peer's info
-    const parsed = JSON.parse(atob(challengeCode))
-    const peerDid = parsed.fromDid
-    const peerName = parsed.fromName as string | undefined
-    const peerPublicKey = parsed.fromPublicKey as string | undefined
-    const nonce = parsed.nonce
-
-    // Create our verification of the peer (from=us, to=peer)
-    const verification = await this.verificationWorkflow.createVerificationFor(this.identity, peerDid, nonce)
-
-    // Add contact if not exists, activate if pending
-    const now = new Date().toISOString()
-    let resolvedName = peerName
-    let avatar: string | undefined
-    let bio: string | undefined
-    let publicKey = peerPublicKey
-    try {
-      const result = await this.discovery.resolveProfile(peerDid)
-      if (result.profile) {
-        resolvedName = resolvedName ?? result.profile.name ?? undefined
-        avatar = result.profile.avatar ?? undefined
-        bio = result.profile.bio ?? undefined
-        publicKey = publicKey ?? this.getEncryptionPublicKeyMultibase(result)
-      }
-    } catch { /* Discovery unavailable */ }
-
-    // Store verification + add/activate contact in PersonalDoc
-    changeYjsPersonalDoc((doc: any) => {
-      if (!doc.verifications) doc.verifications = {} as any
-      doc.verifications[verification.id] = {
-        id: verification.id,
-        fromDid: verification.from,
-        toDid: verification.to,
-        timestamp: verification.timestamp,
-        proofJson: JSON.stringify(verification.proof),
-        locationJson: null,
-      } as any
-
-      // Add or activate the contact
-      if (!doc.contacts) doc.contacts = {} as any
-      if (!doc.contacts[peerDid]) {
-        doc.contacts[peerDid] = {
-          did: peerDid,
-          publicKey: publicKey ?? "",
-          name: resolvedName ?? null,
-          avatar: avatar ?? null,
-          bio: bio ?? null,
-          status: "active",
-          createdAt: now,
-          updatedAt: now,
-        } as any
-      } else {
-        doc.contacts[peerDid].status = "active"
-        doc.contacts[peerDid].updatedAt = now
-        if (resolvedName && !doc.contacts[peerDid].name) doc.contacts[peerDid].name = resolvedName as any
-      }
+    if (!this.storage) throw new Error("Not authenticated")
+    const challenge = parseQrChallenge(challengeCode)
+    if (challenge.did === this.identity.getDid()) throw new Error("Cannot verify own identity")
+    const verification = await this.verificationWorkflow.createVerificationAttestation({
+      issuer: this.identity,
+      subjectDid: challenge.did,
+      challengeNonce: challenge.nonce,
     })
-
-    // Send verification to peer via relay
-    if (this.outboxAdapter) {
-      const envelope: MessageEnvelope = {
-        v: 1,
-        id: verification.id,
-        type: "verification",
-        fromDid: did,
-        toDid: peerDid,
-        createdAt: now,
-        encoding: "json",
-        payload: JSON.stringify(verification),
-        signature: verification.proof.proofValue,
-      }
-      this.outboxAdapter.send(envelope).catch(() => {}) // Non-blocking — outbox handles retry
-    }
-
-    // Sync confirmations so the verification we just wrote is in confirmation projection
+    await this.upsertActiveContact(challenge.did, challenge.name)
+    await this.storage.saveAttestation(verification)
     this.syncConfirmationsFromPersonalDoc()
-    // Check if mutual (we just sent ours, peer's may already exist)
-    this.checkMutualVerification(peerDid)
+    void this.deliverAttestation(verification, decodeBase64Url(challenge.enc)).catch(() => {})
+    this.checkMutualVerification(challenge.did)
   }
 
   override async counterVerify(targetId: string): Promise<void> {
+    if (!this.storage) throw new Error("Not authenticated")
     const did = this.identity.getDid()
-    const nonce = crypto.randomUUID()
-    const verification = await this.verificationWorkflow.createVerificationFor(this.identity, targetId, nonce)
-    const now = new Date().toISOString()
+    const original = (await this.storage.getReceivedAttestations())
+      .filter((attestation) =>
+        attestation.from === targetId &&
+        attestation.to === did &&
+        attestation.isVerification === true &&
+        !attestation.inResponseTo,
+      )
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0]
+    if (!original) throw new Error("No incoming verification attestation found")
 
-    // Resolve peer profile + add/activate contact
-    let resolvedName: string | undefined
+    const counter = await this.verificationWorkflow.createCounterVerificationAttestation({
+      issuer: this.identity,
+      subjectDid: targetId,
+      inResponseTo: original.id,
+    })
+    await this.upsertActiveContact(targetId)
+    await this.storage.saveAttestation(counter)
+    this.syncConfirmationsFromPersonalDoc()
+    void this.deliverAttestation(counter).catch(() => {})
+    this.checkMutualVerification(targetId)
+  }
+
+  private async deliverAttestation(
+    attestation: Attestation,
+    recipientEncryptionPublicKey?: Uint8Array,
+  ): Promise<void> {
+    if (!this.outboxAdapter) throw new Error("Messaging not configured")
+    const recipientKey = recipientEncryptionPublicKey
+      ?? await this.resolveRecipientEncryptionKey(attestation.to)
+    if (!recipientKey) throw new Error(`No encryption key published for ${attestation.to}`)
+
+    await this.setDeliveryStatus(attestation.id, "sending")
+    try {
+      const messageId = messageIdForAttestation(attestation.id)
+      this.deliveryMessageIds.set(messageId, attestation.id)
+      const { envelope, receipt } = await sendAttestationInbox({
+        identity: this.identity,
+        attestation,
+        recipientEncryptionPublicKey: recipientKey,
+        messaging: this.outboxAdapter,
+        crypto: this.protocolCrypto,
+        messageId,
+      })
+      this.deliveryMessageIds.set(envelope.id, attestation.id)
+      if (receipt.reason === "queued-in-outbox") {
+        await this.setDeliveryStatus(attestation.id, "queued")
+      } else if (receipt.status === "accepted" || receipt.status === "delivered") {
+        await this.setDeliveryStatus(attestation.id, "delivered")
+      }
+    } catch (error) {
+      await this.setDeliveryStatus(attestation.id, "failed")
+      throw error
+    }
+  }
+
+  private async resolveRecipientEncryptionKey(did: string): Promise<Uint8Array | null> {
+    try {
+      const result = await this.discovery.resolveProfile(did)
+      const multibase = encryptionKeyMultibaseFromDidDocument(result.didDocument)
+      return multibase ? x25519MultibaseToPublicKeyBytes(multibase) : null
+    } catch {
+      return null
+    }
+  }
+
+  private async upsertActiveContact(did: string, preferredName?: string): Promise<void> {
+    if (!this.storage) throw new Error("Not authenticated")
+    const now = new Date().toISOString()
+    let name = preferredName
     let avatar: string | undefined
     let bio: string | undefined
-    let publicKey: string | undefined
+    let publicKey = ""
     try {
-      const result = await this.discovery.resolveProfile(targetId)
-      if (result.profile) {
-        resolvedName = result.profile.name ?? undefined
-        avatar = result.profile.avatar ?? undefined
-        bio = result.profile.bio ?? undefined
-        publicKey = this.getEncryptionPublicKeyMultibase(result)
-      }
-    } catch { /* Discovery unavailable */ }
+      const result = await this.discovery.resolveProfile(did)
+      name = name || result.profile?.name || undefined
+      avatar = result.profile?.avatar || undefined
+      bio = result.profile?.bio || undefined
+      publicKey = this.getEncryptionPublicKeyMultibase(result) ?? ""
+    } catch { /* Discovery is optional for the QR-backed first delivery. */ }
 
-    changeYjsPersonalDoc((doc: any) => {
-      if (!doc.verifications) doc.verifications = {} as any
-      doc.verifications[verification.id] = {
-        id: verification.id,
-        fromDid: verification.from,
-        toDid: verification.to,
-        timestamp: verification.timestamp,
-        proofJson: JSON.stringify(verification.proof),
-        locationJson: null,
-      } as any
-
-      // Add or activate contact
-      if (!doc.contacts) doc.contacts = {} as any
-      if (!doc.contacts[targetId]) {
-        doc.contacts[targetId] = {
-          did: targetId,
-          publicKey: publicKey ?? "",
-          name: resolvedName ?? null,
-          avatar: avatar ?? null,
-          bio: bio ?? null,
-          status: "active",
-          createdAt: now,
-          updatedAt: now,
-        } as any
-      } else {
-        doc.contacts[targetId].status = "active"
-        doc.contacts[targetId].updatedAt = now
-      }
-    })
-
-    // Send via relay
-    if (this.outboxAdapter) {
-      const envelope: MessageEnvelope = {
-        v: 1,
-        id: verification.id,
-        type: "verification",
-        fromDid: did,
-        toDid: targetId,
-        createdAt: now,
-        encoding: "json",
-        payload: JSON.stringify(verification),
-        signature: verification.proof.proofValue,
-      }
-      this.outboxAdapter.send(envelope).catch(() => {})
+    const existing = await this.storage.getContact(did)
+    if (existing) {
+      await this.storage.updateContact({
+        ...existing,
+        status: "active",
+        updatedAt: now,
+        ...(name && !existing.name ? { name } : {}),
+        ...(avatar && !existing.avatar ? { avatar } : {}),
+        ...(bio && !existing.bio ? { bio } : {}),
+        ...(publicKey && !existing.publicKey ? { publicKey } : {}),
+      })
+      return
     }
-
-    // Sync confirmations so the counter-verification we just wrote is in confirmation projection
-    this.syncConfirmationsFromPersonalDoc()
-    // Check if mutual (we just counter-verified, so both sides exist now)
-    this.checkMutualVerification(targetId)
+    await this.storage.addContact({
+      did,
+      publicKey,
+      name,
+      avatar,
+      bio,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    })
   }
 
   override getVerificationStatus(contactId: string): VerificationDirection {
@@ -2033,60 +2083,6 @@ export class WotConnector extends BaseConnector {
   private async handleIncomingMessage(envelope: MessageEnvelope): Promise<void> {
     const did = this.identity.getDid()
 
-    if (envelope.type === "verification" && envelope.toDid === did) {
-      // Incoming verification — verify signature, save, emit event
-      try {
-        const verification = JSON.parse(envelope.payload)
-        if (!verification.id || !verification.from || !verification.to || !verification.proof) return
-
-        const isValid = await this.verificationWorkflow.verifySignature(verification)
-        if (!isValid) return
-
-        // Save to PersonalDoc
-        changeYjsPersonalDoc((doc: any) => {
-          if (!doc.verifications) doc.verifications = {} as any
-          doc.verifications[verification.id] = {
-            id: verification.id,
-            fromDid: verification.from,
-            toDid: verification.to,
-            timestamp: verification.timestamp,
-            proofJson: JSON.stringify(verification.proof),
-            locationJson: null,
-          } as any
-        })
-        this.syncConfirmationsFromPersonalDoc()
-
-        // Check if this matches our pending challenge nonce (= they scanned our QR)
-        const nonce = this.pendingChallenge?.nonce
-        if (nonce && verification.id.includes(nonce)) {
-          this.pendingChallenge = null // Nonce consumed
-
-          // Resolve peer info (local contacts first, discovery as fallback)
-          const knownContact = this.contactsObs.current.find((c) => c.id === verification.from)
-          let peerName = knownContact?.name ?? undefined
-          let peerAvatar = knownContact?.avatar ?? undefined
-          if (!peerName) {
-            try {
-              const result = await this.discovery.resolveProfile(verification.from)
-              peerName = result.profile?.name ?? undefined
-              peerAvatar = result.profile?.avatar ?? undefined
-            } catch { /* ignore */ }
-          }
-
-          this.emitEvent({
-            type: "incoming-verification",
-            fromId: verification.from,
-            fromName: peerName,
-            fromAvatar: peerAvatar,
-            challengeCode: envelope.payload, // Pass for counter-verify
-          })
-        }
-
-        // Check for mutual verification
-        this.checkMutualVerification(verification.from)
-      } catch { /* ignore malformed */ }
-    }
-
     if (envelope.type === "space-invite" && envelope.toDid === did) {
       try {
         const payload = JSON.parse(envelope.payload)
@@ -2108,79 +2104,6 @@ export class WotConnector extends BaseConnector {
           spaceName: payload.spaceInfo?.name ?? payload.spaceName ?? "Unnamed Space",
           spaceImage: payload.spaceInfo?.image ?? undefined,
         })
-      } catch { /* ignore malformed */ }
-    }
-
-    if (envelope.type === "attestation" && envelope.toDid === did) {
-      try {
-        const attestation = JSON.parse(envelope.payload)
-        if (!attestation.id || !attestation.from || !attestation.to || !attestation.vcJws) return
-        if (!(await this.attestationWorkflow.verifyAttestation(attestation))) return
-
-        // Store in PersonalDoc
-        changeYjsPersonalDoc((doc: any) => {
-          if (!doc.attestations) doc.attestations = {} as any
-          doc.attestations[attestation.id] = {
-            id: attestation.id,
-            attestationId: attestation.id,
-            fromDid: attestation.from,
-            toDid: attestation.to,
-            claim: attestation.claim,
-            tagsJson: attestation.tags ? JSON.stringify(attestation.tags) : null,
-            context: attestation.context ?? null,
-            createdAt: attestation.createdAt,
-            vcJws: attestation.vcJws,
-          } as any
-          if (!doc.attestationMetadata) doc.attestationMetadata = {} as any
-          doc.attestationMetadata[attestation.id] = {
-            attestationId: attestation.id,
-            accepted: false,
-            acceptedAt: null,
-            deliveryStatus: null,
-          } as any
-        })
-
-        // Send ACK (fire-and-forget)
-        if (this.outboxAdapter) {
-          const ackEnvelope: MessageEnvelope = {
-            v: 1,
-            id: `ack-${attestation.id}`,
-            type: "attestation-ack" as MessageType,
-            fromDid: did,
-            toDid: attestation.from,
-            createdAt: new Date().toISOString(),
-            encoding: "json",
-            payload: JSON.stringify({ attestationId: attestation.id }),
-            signature: "",
-          }
-          signEnvelope(ackEnvelope, this.identity.sign.bind(this.identity))
-            .then((signed) => this.outboxAdapter!.send(signed))
-            .catch(() => {})
-        }
-
-        // Emit event for UI
-        const contact = this.contactsObs.current.find((c) => c.id === attestation.from)
-        this.emitEvent({
-          type: "incoming-claim",
-          fromId: attestation.from,
-          fromName: contact?.name,
-          claimId: attestation.id,
-        })
-      } catch { /* ignore malformed */ }
-    }
-
-    if (envelope.type === "attestation-ack" && envelope.toDid === did) {
-      try {
-        const { attestationId } = JSON.parse(envelope.payload)
-        if (!attestationId) return
-
-        // Update delivery status in PersonalDoc
-        changeYjsPersonalDoc((doc: any) => {
-          if (doc.attestationMetadata?.[attestationId]) {
-            doc.attestationMetadata[attestationId].deliveryStatus = "acknowledged"
-          }
-        })
-        this.syncConfirmationsFromPersonalDoc()
       } catch { /* ignore malformed */ }
     }
 
@@ -2209,6 +2132,112 @@ export class WotConnector extends BaseConnector {
         }
       } catch { /* ignore */ }
     }
+  }
+
+  private async handleIncomingAttestation(vcJws: string, senderDid: string): Promise<void> {
+    if (!this.storage) throw new Error("Storage not ready")
+
+    let payload: Awaited<ReturnType<AttestationWorkflow["verifyAttestationVcJws"]>>
+    try {
+      payload = await this.attestationWorkflow.verifyAttestationVcJws(vcJws)
+    } catch (error) {
+      // Pure VC verification failure is deterministic: conclude without storing.
+      console.debug("[wot-connector] incoming attestation rejected (invalid VC-JWS):", error)
+      return
+    }
+    const attestation = attestationFromVerifiedVc(payload, vcJws)
+
+    // Bind the verified VC to the authenticated Inner-JWS sender and local DID.
+    if (payload.iss !== senderDid || attestation.from !== senderDid) return
+    if (attestation.to !== this.identity.getDid()) return
+
+    let acceptedInitialVerification = false
+    if (attestation.isVerification === true) {
+      const decision = payload.inResponseTo
+        ? await this.verificationWorkflow.acceptVerifiedCounterVerification(this.identity, payload)
+        : await this.verificationWorkflow.acceptVerifiedVerificationAttestation(this.identity, payload)
+      if (decision.decision !== "accept-in-person" && decision.decision !== "accept-mutual-in-person") {
+        return
+      }
+      acceptedInitialVerification = decision.decision === "accept-in-person"
+    }
+
+    const existing = await this.storage.getAttestation(attestation.id)
+    if (!existing) await this.storage.saveAttestation(attestation)
+    this.syncConfirmationsFromPersonalDoc()
+
+    // App-level second tick: encrypted inbox/1.0 receipt, never transport ack.
+    void this.sendReceiptAck(attestation).catch((error) => {
+      console.debug("[wot-connector] attestation receipt send failed (best-effort):", error)
+    })
+
+    const contact = this.contactsObs.current.find((entry) => entry.id === attestation.from)
+    if (attestation.isVerification === true) {
+      if (acceptedInitialVerification) {
+        let peerName = contact?.name
+        let peerAvatar = contact?.avatar
+        if (!peerName || !peerAvatar) {
+          try {
+            const result = await this.discovery.resolveProfile(attestation.from)
+            peerName = peerName ?? result.profile?.name ?? undefined
+            peerAvatar = peerAvatar ?? result.profile?.avatar ?? undefined
+          } catch { /* optional profile enrichment */ }
+        }
+        this.emitEvent({
+          type: "incoming-verification",
+          fromId: attestation.from,
+          fromName: peerName,
+          fromAvatar: peerAvatar,
+          challengeCode: attestation.vcJws,
+        })
+      }
+      this.checkMutualVerification(attestation.from)
+      return
+    }
+
+    this.emitEvent({
+      type: "incoming-claim",
+      fromId: attestation.from,
+      fromName: contact?.name,
+      claimId: attestation.id,
+    })
+  }
+
+  private async sendReceiptAck(attestation: Attestation): Promise<void> {
+    if (!this.outboxAdapter) throw new Error("Messaging not configured")
+    const recipientKey = await this.resolveRecipientEncryptionKey(attestation.from)
+    if (!recipientKey) throw new Error(`No encryption key published for ${attestation.from}`)
+    await sendAttestationReceipt({
+      identity: this.identity,
+      issuerDid: attestation.from,
+      jti: attestation.id,
+      recipientEncryptionPublicKey: recipientKey,
+      messaging: this.outboxAdapter,
+      crypto: this.protocolCrypto,
+    })
+  }
+
+  private async handleIncomingAttestationReceipt(jti: string, senderDid: string): Promise<void> {
+    if (!this.storage) throw new Error("Storage not ready")
+    const attestation = await this.storage.getAttestation(jti)
+    // Forgery hardening: only the signed attestation's subject may acknowledge it.
+    if (!attestation || attestation.to !== senderDid) {
+      console.debug("[wot-connector] receipt from unexpected sender ignored")
+      return
+    }
+    await this.setDeliveryStatus(jti, "acknowledged")
+  }
+
+  private async setDeliveryStatus(attestationId: string, next: DeliveryStatus): Promise<void> {
+    if (!this.storage) return
+    const doc = getYjsPersonalDoc()
+    const current = doc.attestationMetadata?.[attestationId]?.deliveryStatus as DeliveryStatus | null | undefined
+    if (current === next) return
+    if (current === "acknowledged") return
+    if (next !== "failed" && current && current !== "failed" && DELIVERY_STATUS_RANK[next] <= DELIVERY_STATUS_RANK[current]) {
+      return
+    }
+    await this.storage.setDeliveryStatus(attestationId, next)
   }
 
   private async checkMutualVerification(peerId: string): Promise<void> {
@@ -2241,6 +2270,7 @@ export class WotConnector extends BaseConnector {
   // ==================== Internal: Confirmation sync ====================
 
   private syncConfirmationsFromPersonalDoc(): void {
+    if (!this.storage) return
     let doc: ReturnType<typeof getYjsPersonalDoc>
     try {
       doc = getYjsPersonalDoc()
@@ -2249,17 +2279,11 @@ export class WotConnector extends BaseConnector {
       return
     }
 
-    const verifications = doc.verifications ?? {}
-    const attestations = doc.attestations ?? {}
-    const metadata = doc.attestationMetadata ?? {}
-
-    this.confirmationsObs.set(
-      mapPersonalDocConfirmations({
-        verifications: verifications as Record<string, { id: string; fromDid: string; toDid: string; timestamp: string }>,
-        attestations: attestations as Record<string, { id: string; fromDid: string; toDid: string; claim: string; tagsJson: string | null; createdAt: string }>,
-        attestationMetadata: metadata as Record<string, { attestationId: string; accepted: boolean }>,
-      }),
-    )
+    const attestations = this.storage.watchAllAttestations().getValue()
+    this.confirmationsObs.set(projectAttestationConfirmations(
+      attestations,
+      doc.attestationMetadata as Record<string, { attestationId: string; accepted: boolean }>,
+    ))
 
   }
 
@@ -2294,6 +2318,66 @@ export class WotConnector extends BaseConnector {
   }
 
   // ==================== Internal: Cleanup ====================
+
+  private queueSyncStateRefresh(): void {
+    this.syncStateRefresh = this.syncStateRefresh
+      .catch(() => {})
+      .then(() => this.refreshSyncState())
+  }
+
+  private async refreshSyncState(): Promise<void> {
+    const logPending = this.docLogStore ? (await this.docLogStore.getPending()).length : 0
+    const outboxPending = this.outboxStore ? await this.outboxStore.count() : 0
+    const current = this.syncStateObs.current
+    if (current.logPending !== logPending || current.outboxPending !== outboxPending) {
+      this.syncStateObs.set({ logPending, outboxPending })
+    }
+    this.outboxCountObs.set(outboxPending)
+    const line = `[wot-connector] sync-state: logPending=${logPending} outbox=${outboxPending}`
+    if (line !== this.lastSyncStateLog) {
+      this.lastSyncStateLog = line
+      console.info(line)
+    }
+  }
+
+  private async teardownRuntimeForIdentitySwitch(): Promise<void> {
+    this.inboxAttestationUnsub?.()
+    this.inboxReceiptUnsub?.()
+    this.deliveryReceiptUnsub?.()
+    this.outboxCountUnsub?.()
+    this.inboxReception?.stop()
+    this.inboxAttestationUnsub = null
+    this.inboxReceiptUnsub = null
+    this.deliveryReceiptUnsub = null
+    this.outboxCountUnsub = null
+    this.inboxReception = null
+    await this.replication?.stop()
+    await this.outboxAdapter?.disconnect()
+    await resetYjsPersonalDoc()
+    await this.closeRuntimeStores()
+    this.replication = null
+    this.outboxAdapter = null
+    this.transportAdapter = null
+    this.storage = null
+  }
+
+  private async closeRuntimeStores(): Promise<void> {
+    const compact = this.spaceCompactStore as (YjsCompactStore & { close?: () => void | Promise<void> }) | null
+    await compact?.close?.()
+    const outbox = this.outboxStore as (OutboxStore & { close?: () => void | Promise<void> }) | null
+    await outbox?.close?.()
+    for (const store of this.durableStores.splice(0)) {
+      try { await store.close() } catch { /* best-effort teardown */ }
+    }
+    this.spaceCompactStore = null
+    this.outboxStore = null
+    this.docLogStore = null
+    this.keyManagement = null
+    this.memberUpdateStore = null
+    this.messageIdHistory = null
+    this.deliveryMessageIds.clear()
+    this.lastSyncStateLog = null
+  }
 
   private async cleanupOldIdentity(): Promise<void> {
     // Delete old IndexedDB databases to prevent data leaks between identities

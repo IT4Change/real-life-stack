@@ -1,11 +1,40 @@
 import type { Relation } from "@real-life-stack/data-interface"
+import type {
+  DocLogStore,
+  KeyManagementPort,
+  MemberUpdatePendingStore,
+  MessageIdHistoryPort,
+  MessagingAdapter,
+  OutboxStore,
+} from "@real-life/wot-core/ports"
+import type { YjsCompactStore } from "@real-life/adapter-yjs"
 
 // --- WoT Connector Configuration ---
 
 export interface WotConnectorConfig {
   relayUrl: string
   profilesUrl: string
-  vaultUrl?: string
+}
+
+/** Test/runtime seams for the protocol transport and durable stores. */
+export interface WotConnectorRuntimeOverrides {
+  /** Raw transport. Production creates a Sync-003 WebSocket adapter. */
+  messaging?: MessagingAdapter
+  /** Device-local generic outbox. Production creates an IndexedDB store. */
+  outboxStore?: OutboxStore
+  /** Shared Personal-Doc/Space log store and deviceId owner. */
+  docLogStore?: DocLogStore
+  keyManagement?: KeyManagementPort
+  memberUpdateStore?: MemberUpdatePendingStore
+  messageIdHistory?: MessageIdHistoryPort
+  compactStore?: YjsCompactStore
+  /** Tests can disable trace decoration without changing transport semantics. */
+  traceMessaging?: boolean
+}
+
+export interface WotSyncState {
+  logPending: number
+  outboxPending: number
 }
 
 // --- Automerge SpaceDoc Schema ---
