@@ -138,6 +138,11 @@ const DELIVERY_STATUS_RANK: Record<Exclude<DeliveryStatus, "failed">, number> = 
   delivered: 2,
   acknowledged: 3,
 }
+const TERMINAL_DELIVERY_STATUSES = new Set<DeliveryStatus>([
+  "delivered",
+  "acknowledged",
+  "failed",
+])
 
 class WorkflowBackedIdentity implements PublicIdentitySession {
   private readonly workflow: IdentityWorkflow
@@ -312,6 +317,7 @@ export class WotConnector extends BaseConnector {
   private syncStateRefresh: Promise<void> = Promise.resolve()
   private deliveryMessageIds = new Map<string, string>()
   private inFlightDeliveryMessageIds = new Set<string>()
+  private pendingDeliveryReceipts = new Map<string, DeliveryReceipt>()
 
   // Incoming event listeners
   private eventCallbacks = new Set<(event: IncomingEvent) => void>()
@@ -1219,7 +1225,6 @@ export class WotConnector extends BaseConnector {
       messageIdHistory: this.messageIdHistory,
     })
     this.inboxReception.start()
-    await this.outboxAdapter.connect(did)
 
     const personalDocFns = {
       getPersonalDoc: getYjsPersonalDoc,
@@ -1234,6 +1239,14 @@ export class WotConnector extends BaseConnector {
       this.outboxAdapter,
       { docLogStore: this.docLogStore, deviceId },
     )
+
+    // OutboxMessagingAdapter.connect() immediately starts a fire-and-forget
+    // flush. Make the PersonalDoc projection writable before that can emit a
+    // terminal receipt, then replay anything a defensive transport emitted
+    // during handler registration.
+    this.storage = new YjsStorageAdapter(did)
+    await this.retryPendingDeliveryReceipts()
+    await this.outboxAdapter.connect(did)
 
     const spaceMetadataStorage = new PersonalDocSpaceMetadataStorage(personalDocFns)
     this.spaceCompactStore = this.runtimeOverrides.compactStore
@@ -1284,7 +1297,6 @@ export class WotConnector extends BaseConnector {
       if (!isDidcommMessage(message)) await this.handleIncomingMessage(message as MessageEnvelope)
     })
 
-    this.storage = new YjsStorageAdapter(did)
     this.inboxAttestationUnsub = this.inboxReception.onAttestation((delivery) =>
       this.handleIncomingAttestation(delivery.vcJws, delivery.senderDid),
     )
@@ -2144,8 +2156,8 @@ export class WotConnector extends BaseConnector {
         messageId,
       })
     } catch (error) {
-      await this.setDeliveryStatus(attestation.id, "failed")
-      await this.clearDeliveryCorrelation(messageId).catch(() => {})
+      const persisted = await this.setDeliveryStatus(attestation.id, "failed")
+      if (persisted) await this.clearDeliveryCorrelation(messageId).catch(() => {})
       throw error
     }
 
@@ -2404,11 +2416,12 @@ export class WotConnector extends BaseConnector {
   }
 
   private async clearDeliveryCorrelation(messageId: string): Promise<void> {
-    this.deliveryMessageIds.delete(messageId)
-    this.inFlightDeliveryMessageIds.delete(messageId)
     if (this.outboxStore && hasAttestationCorrelations(this.outboxStore)) {
       await this.outboxStore.clearAttestationCorrelation(messageId)
     }
+    this.deliveryMessageIds.delete(messageId)
+    this.inFlightDeliveryMessageIds.delete(messageId)
+    this.pendingDeliveryReceipts.delete(messageId)
   }
 
   private async clearDeliveryCorrelationsForAttestation(attestationId: string): Promise<void> {
@@ -2421,40 +2434,69 @@ export class WotConnector extends BaseConnector {
   private async applyTransportDeliveryReceipt(receipt: DeliveryReceipt): Promise<void> {
     const attestationId = this.deliveryMessageIds.get(receipt.messageId)
     if (!attestationId) return
-    if (receipt.reason === "queued-in-outbox") {
-      await this.setDeliveryStatus(attestationId, "queued")
+
+    const next = receipt.reason === "queued-in-outbox"
+      ? "queued"
+      : receipt.status === "failed" ? "failed" : "delivered"
+    try {
+      const persisted = await this.setDeliveryStatus(attestationId, next)
+      if (!persisted) {
+        this.pendingDeliveryReceipts.set(receipt.messageId, receipt)
+        return
+      }
+    } catch (error) {
+      // The transport callback must never turn a temporary PersonalDoc write
+      // failure into an unhandled rejection or a lost terminal correlation.
+      this.pendingDeliveryReceipts.set(receipt.messageId, receipt)
+      console.warn("[WotConnector] Delivery receipt persistence deferred", error)
       return
     }
 
-    await this.setDeliveryStatus(
-      attestationId,
-      receipt.status === "failed" ? "failed" : "delivered",
-    )
-    await this.clearDeliveryCorrelation(receipt.messageId).catch(() => {})
+    if (receipt.reason === "queued-in-outbox") {
+      this.pendingDeliveryReceipts.delete(receipt.messageId)
+      return
+    }
+
+    // Atomicity boundary: the correlation is released only after the terminal
+    // status is durably present in the PersonalDoc.
+    await this.clearDeliveryCorrelation(receipt.messageId).catch((error) => {
+      console.warn("[WotConnector] Delivery correlation cleanup deferred", error)
+    })
+  }
+
+  private async retryPendingDeliveryReceipts(): Promise<void> {
+    if (!this.storage) return
+    for (const receipt of [...this.pendingDeliveryReceipts.values()]) {
+      await this.applyTransportDeliveryReceipt(receipt)
+    }
   }
 
   private async pruneDeliveryCorrelations(): Promise<void> {
-    if (!this.outboxStore) return
+    if (!this.outboxStore || !this.storage) return
     const pendingMessageIds = new Set(
       (await this.outboxStore.getPending()).map((entry) => entry.envelope.id),
     )
-    for (const messageId of this.deliveryMessageIds.keys()) {
-      if (!pendingMessageIds.has(messageId) && !this.inFlightDeliveryMessageIds.has(messageId)) {
-        this.deliveryMessageIds.delete(messageId)
+    const doc = getYjsPersonalDoc()
+    for (const [messageId, attestationId] of this.deliveryMessageIds) {
+      if (pendingMessageIds.has(messageId) || this.inFlightDeliveryMessageIds.has(messageId)) continue
+      const status = doc.attestationMetadata?.[attestationId]?.deliveryStatus as DeliveryStatus | undefined
+      if (status && TERMINAL_DELIVERY_STATUSES.has(status)) {
+        await this.clearDeliveryCorrelation(messageId).catch(() => {})
       }
     }
   }
 
-  private async setDeliveryStatus(attestationId: string, next: DeliveryStatus): Promise<void> {
-    if (!this.storage) return
+  private async setDeliveryStatus(attestationId: string, next: DeliveryStatus): Promise<boolean> {
+    if (!this.storage) return false
     const doc = getYjsPersonalDoc()
     const current = doc.attestationMetadata?.[attestationId]?.deliveryStatus as DeliveryStatus | null | undefined
-    if (current === next) return
-    if (current === "acknowledged") return
+    if (current === next) return true
+    if (current === "acknowledged") return true
     if (next !== "failed" && current && current !== "failed" && DELIVERY_STATUS_RANK[next] <= DELIVERY_STATUS_RANK[current]) {
-      return
+      return true
     }
     await this.storage.setDeliveryStatus(attestationId, next)
+    return true
   }
 
   private async checkMutualVerification(peerId: string): Promise<void> {
@@ -2599,6 +2641,7 @@ export class WotConnector extends BaseConnector {
     this.messageIdHistory = null
     this.deliveryMessageIds.clear()
     this.inFlightDeliveryMessageIds.clear()
+    this.pendingDeliveryReceipts.clear()
     this.lastSyncStateLog = null
   }
 

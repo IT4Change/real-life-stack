@@ -43,8 +43,10 @@ describe("WotConnector attestation delivery state", () => {
       protocolCrypto: {},
       deliveryMessageIds: new Map<string, string>(),
       inFlightDeliveryMessageIds: new Set<string>(),
+      pendingDeliveryReceipts: new Map<string, DeliveryReceipt>(),
       setDeliveryStatus: vi.fn(async (_attestationId: string, status: string) => {
         statuses.push(status)
+        return true
       }),
     })
 
@@ -62,12 +64,16 @@ describe("WotConnector attestation delivery state", () => {
     "removes terminal %s receipt correlations from the runtime map",
     async (status) => {
       const deliveryMessageIds = new Map([[receipt(status).messageId, attestation.id]])
-      const setDeliveryStatus = vi.fn(async () => {})
+      const setDeliveryStatus = vi.fn(async (_attestationId: string, _status: string) => {})
       const fake = Object.assign(Object.create(WotConnector.prototype), {
         outboxStore: null,
         deliveryMessageIds,
         inFlightDeliveryMessageIds: new Set<string>(),
-        setDeliveryStatus,
+        pendingDeliveryReceipts: new Map<string, DeliveryReceipt>(),
+        setDeliveryStatus: vi.fn(async (...args: Parameters<typeof setDeliveryStatus>) => {
+          await setDeliveryStatus(...args)
+          return true
+        }),
       })
 
       await (WotConnector.prototype as any).applyTransportDeliveryReceipt.call(
@@ -89,12 +95,16 @@ describe("WotConnector attestation delivery state", () => {
       reason: "queued-in-outbox",
     }
     const deliveryMessageIds = new Map([[queuedReceipt.messageId, attestation.id]])
-    const setDeliveryStatus = vi.fn(async () => {})
+    const setDeliveryStatus = vi.fn(async (_attestationId: string, _status: string) => {})
     const fake = Object.assign(Object.create(WotConnector.prototype), {
       outboxStore: null,
       deliveryMessageIds,
       inFlightDeliveryMessageIds: new Set<string>(),
-      setDeliveryStatus,
+      pendingDeliveryReceipts: new Map<string, DeliveryReceipt>(),
+      setDeliveryStatus: vi.fn(async (...args: Parameters<typeof setDeliveryStatus>) => {
+        await setDeliveryStatus(...args)
+        return true
+      }),
     })
 
     await (WotConnector.prototype as any).applyTransportDeliveryReceipt.call(
@@ -104,5 +114,48 @@ describe("WotConnector attestation delivery state", () => {
 
     expect(deliveryMessageIds.get(queuedReceipt.messageId)).toBe(attestation.id)
     expect(setDeliveryStatus).toHaveBeenCalledWith(attestation.id, "queued")
+  })
+
+  it("persists an early terminal receipt after storage init before releasing its correlation", async () => {
+    const terminalReceipt = receipt("delivered")
+    const deliveryMessageIds = new Map([[terminalReceipt.messageId, attestation.id]])
+    const pendingDeliveryReceipts = new Map<string, DeliveryReceipt>()
+    const events: string[] = []
+    const clearAttestationCorrelation = vi.fn(async () => {
+      events.push("correlation-cleared")
+    })
+    const fake = Object.assign(Object.create(WotConnector.prototype), {
+      storage: null as object | null,
+      outboxStore: {
+        setAttestationCorrelation: vi.fn(async () => {}),
+        clearAttestationCorrelation,
+        getAttestationCorrelations: vi.fn(async () => []),
+      },
+      deliveryMessageIds,
+      inFlightDeliveryMessageIds: new Set<string>(),
+      pendingDeliveryReceipts,
+      setDeliveryStatus: vi.fn(async (_attestationId: string, status: string) => {
+        if (!fake.storage) return false
+        events.push(`status-persisted:${status}`)
+        return true
+      }),
+    })
+
+    await (WotConnector.prototype as any).applyTransportDeliveryReceipt.call(
+      fake,
+      terminalReceipt,
+    )
+
+    expect(events).toEqual([])
+    expect(deliveryMessageIds.get(terminalReceipt.messageId)).toBe(attestation.id)
+    expect(pendingDeliveryReceipts.get(terminalReceipt.messageId)).toBe(terminalReceipt)
+    expect(clearAttestationCorrelation).not.toHaveBeenCalled()
+
+    fake.storage = {}
+    await (WotConnector.prototype as any).retryPendingDeliveryReceipts.call(fake)
+
+    expect(events).toEqual(["status-persisted:delivered", "correlation-cleared"])
+    expect(deliveryMessageIds.has(terminalReceipt.messageId)).toBe(false)
+    expect(pendingDeliveryReceipts.has(terminalReceipt.messageId)).toBe(false)
   })
 })

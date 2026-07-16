@@ -117,6 +117,24 @@ describe("WotConnector.logout() - auth-scoped observable reset", () => {
   })
 })
 
+describe("WotConnector bootstrap - delivery receipt ordering", () => {
+  const bootstrap = sliceMethod(
+    readConnectorSource(),
+    "private async bootstrapAdapters",
+    "private async setAuthAuthenticated",
+  )
+
+  it("makes PersonalDoc storage writable before connect starts the automatic outbox flush", () => {
+    const personalDocInit = bootstrap.indexOf("await initNamespacedYjsPersonalDoc(")
+    const storageInit = bootstrap.indexOf("this.storage = new YjsStorageAdapter(did)")
+    const connect = bootstrap.indexOf("await this.outboxAdapter.connect(did)")
+
+    expect(personalDocInit).toBeGreaterThan(-1)
+    expect(storageInit).toBeGreaterThan(personalDocInit)
+    expect(connect).toBeGreaterThan(storageInit)
+  })
+})
+
 describe("WotConnector.setConfirmationAccepted() - metadata-only refresh", () => {
   const source = readConnectorSource()
   const setConfirmationAccepted = sliceMethod(
