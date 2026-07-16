@@ -205,25 +205,30 @@ bis P5 (versionierte RelationTypeDefinition im Space).
 
 ### 5. Person-Runtime-Pfad (WoT-Connector)
 
-- **Festlegung avatarUrl:** `person/v1` wird von `format: uri` auf
-  **`format: uri-reference` + `minLength: 1`** geändert (einzige
-  Schema-Änderung dieses Schnitts; `minLength`, weil der leere String
-  eine gültige URI-Referenz ist und ohne ihn konform bliebe). Begründung:
-  Der Bestand enthält relative Referenzen (z. B. `pic.jpg` in der
-  bestehenden Regression) und data-URIs; ein reines Umbenennen wäre nicht
-  konform, und Werte in der Projektion auszulassen würde über den
-  Profil-Edit-Roundtrip gespeicherte Avatare löschen (Datenverlust).
-  `uri-reference` ist die kleinste ehrliche Änderung; der Netzwerk-Seed
-  (absolute URLs) bleibt gültig. Das `person/v1`-Example bekommt einen
-  Fall mit relativer Referenz. Die Projektion emittiert `avatarUrl` nur
-  bei nicht-leerem Storage-Wert.
+- **Festlegung avatarUrl:** `person/v1.avatarUrl` verliert den
+  `format`-Constraint und wird **`type: string` + `minLength: 1`**
+  (einzige Schema-Änderung dieses Schnitts). Begründung: Der Storage
+  akzeptiert heute beliebige Strings (`updateProfile`), der Bestand
+  enthält relative Referenzen (z. B. `pic.jpg`) und potenziell freie
+  Strings, die auch `uri-reference` nicht abdeckt (`hello world`,
+  kaputtes Percent-Encoding). Werte in der Projektion auszulassen würde
+  über den Profil-Edit-Roundtrip gespeicherte Avatare löschen
+  (Datenverlust); Write-Validierung/Migration ist ein eigener Schnitt.
+  Für diesen migrationsfreien Schnitt ist string+minLength die einzige
+  Schema-Aussage, die der Vertrag garantieren kann. Die `description` im
+  Schema dokumentiert die Intention (URI-Referenz auf ein Bild); die
+  Rück-Verschärfung auf `format: uri-reference` kommt, wenn ein späterer
+  Schnitt Write-Validierung + Bestands-Migration bringt. Der
+  Netzwerk-Seed (absolute URLs) bleibt gültig; das `person/v1`-Example
+  bekommt einen Fall mit relativer Referenz. Die Projektion emittiert
+  `avatarUrl` nur bei nicht-leerem Storage-Wert.
 - **TDD, Vertragstest zuerst:** `getMyProfile()` liefert ein Item, das
   **per AJV gegen person/v1 validiert** (nicht nur Feldnamen prüfen):
   `data.displayName` (nie `name`; `getDefaultDisplayName`-Fallback
   garantiert Präsenz), `data.avatarUrl`, `@context` via `deriveContext`
-  enthält person/v1 — inklusive Legacy-Fall `avatar: "pic.jpg"` →
-  `avatarUrl: "pic.jpg"` ist konform. Dann grün machen, ohne den Test zu
-  ändern.
+  enthält person/v1 — inklusive der Legacy-Fälle `avatar: "pic.jpg"`
+  und `avatar: "hello world"` (freier String) → beide konform. Dann grün
+  machen, ohne den Test zu ändern.
 - Projektion in `profileObs` und im `updateMyProfile`-Fallback umstellen.
   **Speicherformat NICHT migrieren:** das personal-doc-Profil
   (`{name, avatar, bio}`) bleibt exakt wie es ist — nur die Item-Projektion
@@ -262,7 +267,7 @@ bis P5 (versionierte RelationTypeDefinition im Space).
    `connectedWith` symmetric, fester ID-Vektor über
    `relationStoreOptionsFrom(NETWORK_RELATION_PREDICATES)`.
 5. `getMyProfile()`-Vertragstest: AJV-Validierung gegen person/v1 inkl.
-   `@context` und Legacy-Avatar-Fall (`pic.jpg`).
+   `@context` und Legacy-Avatar-Fällen (`pic.jpg`, freier String).
 6. Auf allen enumerierten person-Item-Pfaden kein `data.name`/`data.avatar`
    mehr (grep-Beweis im PR-Body; die Nicht-Ziel-Verträge sind ausgenommen).
 7. `item-types.ts` enthält kein `GeoLocation` und kein `data.tags` mehr;
@@ -294,9 +299,12 @@ bis P5 (versionierte RelationTypeDefinition im Space).
 - Keine Storage-Migration (personal doc, space docs).
 - Kein gemeinsamer Runtime-Schema-Validator: AJV bleibt Test-Werkzeug;
   Schema-Validierung zur Laufzeit ist nicht Teil dieses Schnitts.
+- Keine Write-Validierung für Profil-Felder und keine
+  Avatar-Bestands-Migration (Voraussetzung für eine spätere
+  Rück-Verschärfung des avatarUrl-Formats, eigener Schnitt).
 - Keine Spec-Änderungen außer: Vokabular-Indizes (06, spec/README,
   schemas/README, glossary) und `person/v1.avatarUrl` →
-  `uri-reference` + `minLength: 1` (Scope 5).
+  `type: string` + `minLength: 1` ohne `format` (Scope 5).
 
 ## Leitplanken
 
