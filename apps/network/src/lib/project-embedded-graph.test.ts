@@ -12,12 +12,16 @@ describe("projectEmbeddedGraph", () => {
     expect(first).toEqual(second)
     expect(first.nodes).toHaveLength(312)
     expect(first.edges).toHaveLength(388)
-    expect(first.nodes).toContainEqual({
+    const marie = first.nodes.find(({ id }) => id === "person-marie")
+    expect(marie).toMatchObject({
       id: "person-marie",
       label: "Marie",
       type: "person",
-      avatarUrl: "https://talx.dod.ngo/media/avatars/MS3PPW_22hqsdk_thumbnail_default.webp",
     })
+    expect(marie?.avatarUrl).toMatch(/^data:image\/webp;base64,/)
+    const avatarNodes = first.nodes.filter(({ avatarUrl }) => avatarUrl !== undefined)
+    expect(avatarNodes).toHaveLength(111)
+    expect(avatarNodes.every(({ avatarUrl }) => avatarUrl?.startsWith("data:image/"))).toBe(true)
     expect(first.edges).toContainEqual({
       id: "person-adam::attends::event-ntyghs",
       sourceId: "person-adam",

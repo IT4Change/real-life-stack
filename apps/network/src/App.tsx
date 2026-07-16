@@ -44,8 +44,9 @@ import {
   type Workspace,
 } from "@real-life-stack/toolkit"
 
-import { projectEmbeddedGraph } from "./lib/project-embedded-graph"
+import { dwebCampDetailAvatarUrl } from "./data/avatar-detail-urls"
 import { resolveNetworkAvatarSources } from "./lib/avatar-sources"
+import { projectEmbeddedGraph } from "./lib/project-embedded-graph"
 
 const GRAPH_TYPES: readonly GraphTypeDescriptor[] = [
   { id: "person", label: "Personen", color: "#2a78d6", darkColor: "#3987e5" },
@@ -64,8 +65,12 @@ interface AppProps {
 }
 
 function initialDarkMode(): boolean {
-  const stored = localStorage.getItem(THEME_KEY)
-  if (stored) return stored === "dark"
+  try {
+    const stored = window.localStorage.getItem(THEME_KEY)
+    if (stored) return stored === "dark"
+  } catch {
+    // Storage can be unavailable in privacy-restricted browsing contexts.
+  }
   return window.matchMedia("(prefers-color-scheme: dark)").matches
 }
 
@@ -129,7 +134,7 @@ function IconTooltip({ label, children }: { label: string; children: React.React
 
 function safeImageField(item: Item, field: string): string | null {
   const value = item.data[field]
-  return typeof value === "string" && /^(?:data:image\/|https?:\/\/)/.test(value)
+  return typeof value === "string" && /^(?:data:image\/|https:\/\/)/.test(value)
     ? value
     : null
 }
@@ -139,9 +144,10 @@ function NetworkDetailAvatar({ item }: { item: Item }) {
     safeImageField(item, "avatarUrl") ??
     safeImageField(item, "avatar") ??
     safeImageField(item, "avatarThumbnail")
-  const sources = storedSource ? resolveNetworkAvatarSources(storedSource) : null
-  const primarySource = sources?.detailUrl ?? null
-  const fallbackSource = sources?.graphUrl ?? null
+  const storedSources = storedSource ? resolveNetworkAvatarSources(storedSource) : null
+  const curatedDetailSource = dwebCampDetailAvatarUrl(item)
+  const primarySource = curatedDetailSource ?? storedSources?.detailUrl ?? null
+  const fallbackSource = curatedDetailSource ? storedSource : storedSources?.graphUrl ?? null
   const [source, setSource] = useState(primarySource)
 
   useEffect(() => {
@@ -366,7 +372,11 @@ function NetworkShell() {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark)
-    localStorage.setItem(THEME_KEY, isDark ? "dark" : "light")
+    try {
+      window.localStorage.setItem(THEME_KEY, isDark ? "dark" : "light")
+    } catch {
+      // Applying the in-memory theme must not depend on persistent storage.
+    }
   }, [isDark])
 
   useEffect(() => {

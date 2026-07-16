@@ -7,6 +7,22 @@ export interface AdaptivePanelStackEntry {
   insetActive?: boolean
 }
 
+const ADAPTIVE_PANEL_Z_INDEX_BASE = 59
+const ADAPTIVE_PANEL_Z_INDEX_CEILING = 64
+const ADAPTIVE_PANEL_Z_INDEX_CAPACITY =
+  ADAPTIVE_PANEL_Z_INDEX_CEILING - ADAPTIVE_PANEL_Z_INDEX_BASE
+
+/**
+ * Keeps the active panel at the top of the adaptive-panel layer without
+ * crossing into the dialog layer at z-index 65. Stacks that exceed the normal
+ * five slots grow downward, preserving a distinct visual order for every
+ * panel.
+ */
+export function getAdaptivePanelZIndex(order: number, stackSize: number): number {
+  const overflow = Math.max(0, stackSize - ADAPTIVE_PANEL_Z_INDEX_CAPACITY)
+  return ADAPTIVE_PANEL_Z_INDEX_BASE + order - overflow
+}
+
 /**
  * Tracks open panels in presentation order. Modal and drawer overlays must not
  * erase the layout inset owned by an open sidebar underneath them.
@@ -15,35 +31,42 @@ export class AdaptivePanelStack {
   private entries: Array<AdaptivePanelStackEntry & {
     id: symbol
     order: number
-    onOrderChange?: (order: number) => void
+    onOrderChange?: (order: number, stackSize: number) => void
   }> = []
 
   upsert(
     id: symbol,
     entry: AdaptivePanelStackEntry,
-    onOrderChange?: (order: number) => void,
+    onOrderChange?: (order: number, stackSize: number) => void,
   ): number {
     const index = this.entries.findIndex((candidate) => candidate.id === id)
     if (index === -1) {
       const order = this.entries.length + 1
       this.entries.push({ id, order, onOrderChange, ...entry })
-      onOrderChange?.(order)
+      this.notifyOrderChanges()
       return order
     }
     const order = this.entries[index].order
     const notify = onOrderChange ?? this.entries[index].onOrderChange
     this.entries[index] = { id, order, onOrderChange: notify, ...entry }
-    notify?.(order)
+    notify?.(order, this.entries.length)
     return order
   }
 
   remove(id: symbol): void {
-    this.entries = this.entries.filter((entry) => entry.id !== id)
+    const index = this.entries.findIndex((entry) => entry.id === id)
+    if (index === -1) return
+
+    this.entries.splice(index, 1)
+    this.notifyOrderChanges()
+  }
+
+  private notifyOrderChanges(): void {
+    const stackSize = this.entries.length
     this.entries.forEach((entry, index) => {
       const order = index + 1
-      if (entry.order === order) return
       entry.order = order
-      entry.onOrderChange?.(order)
+      entry.onOrderChange?.(order, stackSize)
     })
   }
 

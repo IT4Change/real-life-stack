@@ -1,7 +1,6 @@
 import { deriveContext, type Item, type Relation } from "@real-life-stack/data-interface"
 
 import rawGraph from "./graph.json" with { type: "json" }
-import { resolveNetworkAvatarSources } from "../lib/avatar-sources"
 
 export const DWEB_CAMP_SEED_CREATED_AT = "2026-07-16T00:00:00.000Z"
 export const DWEB_CAMP_SEED_CREATOR = "seed:dwebcamp-2026"
@@ -178,10 +177,7 @@ export function buildDwebCampSeedItems(graph: DwebCampGraphData = dwebCampGraph)
 
   const persons = graph.persons.map((displayName) => {
     const id = requireId(personIds, displayName, "person")
-    const avatarSource = graph.avatars[displayName]
-    const avatarUrl = avatarSource
-      ? resolveNetworkAvatarSources(avatarSource).detailUrl
-      : null
+    const avatarUrl = graph.avatars[displayName]
     return baseItem(
       id,
       "person",

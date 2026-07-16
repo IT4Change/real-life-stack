@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   AdaptivePanelScrollLock,
   AdaptivePanelStack,
+  getAdaptivePanelZIndex,
 } from "../src/components/layout/adaptive-panel-stack"
 
 describe("AdaptivePanelStack", () => {
@@ -79,6 +80,43 @@ describe("AdaptivePanelStack", () => {
 
     expect(stack.getInsets()).toEqual({ left: 0, right: 0 })
     expect(stack.isTopmost(sidebar)).toBe(true)
+  })
+
+  it("keeps deep stacks distinct and below the dialog layer", () => {
+    const stack = new AdaptivePanelStack()
+    const positions = new Map<symbol, { order: number; size: number }>()
+    const panels = Array.from({ length: 8 }, (_, index) => Symbol(`panel-${index}`))
+
+    expect(
+      Array.from({ length: 5 }, (_, index) => getAdaptivePanelZIndex(index + 1, 5)),
+    ).toEqual([60, 61, 62, 63, 64])
+
+    for (const panel of panels) {
+      stack.upsert(
+        panel,
+        { mode: "modal", side: "right", sidebarWidth: 400 },
+        (order, size) => positions.set(panel, { order, size }),
+      )
+    }
+
+    const layers = panels.map((panel) => {
+      const position = positions.get(panel)!
+      return getAdaptivePanelZIndex(position.order, position.size)
+    })
+
+    expect(layers).toEqual([57, 58, 59, 60, 61, 62, 63, 64])
+    expect(new Set(layers).size).toBe(panels.length)
+    expect(Math.max(...layers)).toBeLessThan(65)
+    expect(stack.isTopmost(panels.at(-1)!)).toBe(true)
+
+    stack.remove(panels[3])
+    const remainingPanels = panels.filter((panel) => panel !== panels[3])
+    const compactedLayers = remainingPanels.map((panel) => {
+      const position = positions.get(panel)!
+      return getAdaptivePanelZIndex(position.order, position.size)
+    })
+
+    expect(compactedLayers).toEqual([58, 59, 60, 61, 62, 63, 64])
   })
 })
 

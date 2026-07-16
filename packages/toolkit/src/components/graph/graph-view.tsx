@@ -4,12 +4,14 @@ import {
   forwardRef,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from "react"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 import {
   approachOpacity,
   createLayoutNodes,
@@ -22,6 +24,14 @@ import {
   type GraphCamera,
   type LayoutNode,
 } from "./force-layout"
+import {
+  initialGesture,
+  isSafeImageUrl,
+  resumePanAfterPinch,
+  selectionAnnouncement,
+  shouldSelectOnPointerFinish,
+  type PointerGesture,
+} from "./graph-view-helpers"
 import type { GraphEdge, GraphTypeDescriptor, GraphViewHandle, GraphViewProps } from "./types"
 
 const DEFAULT_NODE_TYPES: readonly GraphTypeDescriptor[] = [
@@ -48,44 +58,6 @@ interface FocusTarget {
 interface DrawOptions {
   advanceSimulation?: boolean
   advanceTransitions?: boolean
-}
-
-interface PointerGesture {
-  mode: "idle" | "pan" | "drag" | "pinch"
-  pointerId: number | null
-  nodeId: string | null
-  startX: number
-  startY: number
-  lastX: number
-  lastY: number
-  moved: boolean
-  dragOffsetX: number
-  dragOffsetY: number
-  pinchDistance: number
-  pinchZoom: number
-  pinchWorldX: number
-  pinchWorldY: number
-}
-
-const initialGesture = (): PointerGesture => ({
-  mode: "idle",
-  pointerId: null,
-  nodeId: null,
-  startX: 0,
-  startY: 0,
-  lastX: 0,
-  lastY: 0,
-  moved: false,
-  dragOffsetX: 0,
-  dragOffsetY: 0,
-  pinchDistance: 0,
-  pinchZoom: 1,
-  pinchWorldX: 0,
-  pinchWorldY: 0,
-})
-
-function isSafeImageUrl(value: string): boolean {
-  return value.startsWith("data:image/") || value.startsWith("https://") || value.startsWith("http://")
 }
 
 function truncateLabel(value: string): string {
@@ -121,6 +93,8 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
 ) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const instructionsId = useId()
+  const [announcement, setAnnouncement] = useState("")
   const layoutRef = useRef<LayoutNode[]>([])
   const edgeRef = useRef<readonly GraphEdge[]>([])
   const selectedRef = useRef<string | null>(selectedNodeId)
@@ -559,6 +533,8 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
 
   drawRef.current = draw
 
+  // Canvas colors depend on an ancestor's `.dark` class, which can change on a
+  // parent render without changing any GraphView prop or draw dependency.
   useEffect(() => {
     scheduleDraw()
   })
@@ -683,7 +659,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
-    if (allowSelection && gesture.pointerId === event.pointerId && !gesture.moved) {
+    if (shouldSelectOnPointerFinish(gesture, event.pointerId, allowSelection)) {
       onSelectedNodeChange(pickNode(position.x, position.y)?.id ?? null)
     }
     if (pointersRef.current.size === 0) {
@@ -692,15 +668,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       event.currentTarget.style.cursor = "grab"
     } else if (pointersRef.current.size === 1) {
       const [remainingId, remainingPosition] = [...pointersRef.current.entries()][0]
-      gestureRef.current = {
-        ...initialGesture(),
-        mode: "pan",
-        pointerId: remainingId,
-        startX: remainingPosition.x,
-        startY: remainingPosition.y,
-        lastX: remainingPosition.x,
-        lastY: remainingPosition.y,
-      }
+      gestureRef.current = resumePanAfterPinch(remainingId, remainingPosition)
     }
     scheduleDraw()
   }, [onSelectedNodeChange, pickNode, pointerPosition, scheduleDraw])
@@ -743,6 +711,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLCanvasElement>) => {
     if (event.key === "Escape") {
       onSelectedNodeChange(null)
+      setAnnouncement("Auswahl aufgehoben.")
       return
     }
     const direction = event.key === "ArrowRight" || event.key === "ArrowDown"
@@ -761,6 +730,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
         : (current + direction + nodes.length) % nodes.length
     const next = nodes[nextIndex]
     onSelectedNodeChange(next.id)
+    setAnnouncement(selectionAnnouncement(next.label))
     focusNode(next.id)
   }, [focusNode, nodes, onSelectedNodeChange])
 
@@ -771,6 +741,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
         className="block h-full w-full cursor-grab touch-none outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         role="application"
         aria-label={`${ariaLabel}. ${nodes.length} Knoten, ${validEdges.length} Verbindungen.`}
+        aria-describedby={instructionsId}
         tabIndex={0}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -784,6 +755,12 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
         }}
         onKeyDown={handleKeyDown}
       />
+      <p id={instructionsId} className="sr-only">
+        Pfeiltasten wählen Knoten aus. Escape hebt die Auswahl auf.
+      </p>
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </p>
       {nodes.length === 0 && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center px-6 text-center">
           <p className="text-sm font-medium text-muted-foreground">Noch keine Einträge</p>

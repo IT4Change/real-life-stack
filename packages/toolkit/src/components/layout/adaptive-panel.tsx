@@ -12,7 +12,11 @@ import {
 import { cn } from "../../lib/utils"
 import { useIsCompact } from "../../hooks/use-mobile"
 import { X, Maximize2, PanelRight, GripHorizontal, Pin, PinOff } from "lucide-react"
-import { adaptivePanelScrollLock, adaptivePanelStack } from "./adaptive-panel-stack"
+import {
+  adaptivePanelScrollLock,
+  adaptivePanelStack,
+  getAdaptivePanelZIndex,
+} from "./adaptive-panel-stack"
 
 export type PanelMode = "modal" | "sidebar" | "drawer"
 
@@ -184,7 +188,13 @@ export function AdaptivePanel({
   const contentRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number | null>(null)
   const stackIdRef = useRef(Symbol("adaptive-panel"))
-  const [stackOrder, setStackOrder] = useState(0)
+  const [stackPosition, setStackPosition] = useState({ order: 0, size: 0 })
+
+  const updateStackPosition = useCallback((order: number, size: number) => {
+    setStackPosition((current) =>
+      current.order === order && current.size === size ? current : { order, size }
+    )
+  }, [])
 
   // Remember last drawer/sidebar sizes for restore after modal round-trip
   const lastDrawerYRef = useRef(100 - drawerInitialHeight * 100)
@@ -231,7 +241,7 @@ export function AdaptivePanel({
   useLayoutEffect(() => {
     const id = stackIdRef.current
     if ((open || visible) && (!suspended || mode === "sidebar")) {
-      const order = adaptivePanelStack.upsert(
+      adaptivePanelStack.upsert(
         id,
         {
           mode,
@@ -239,15 +249,16 @@ export function AdaptivePanel({
           sidebarWidth: currentSidebarWidth,
           insetActive: open && !animatingOut,
         },
-        setStackOrder,
+        updateStackPosition,
       )
-      setStackOrder((current) => current === order ? current : order)
     } else {
       adaptivePanelStack.remove(id)
-      setStackOrder(0)
+      setStackPosition((current) =>
+        current.order === 0 && current.size === 0 ? current : { order: 0, size: 0 }
+      )
     }
     syncAdaptivePanelInsets()
-  }, [mode, open, visible, animatingOut, currentSidebarWidth, side, suspended])
+  }, [mode, open, visible, animatingOut, currentSidebarWidth, side, suspended, updateStackPosition])
 
   useLayoutEffect(() => {
     return () => {
@@ -533,7 +544,7 @@ export function AdaptivePanel({
 
   const isOpen = open && !animatingOut
   const isLeft = side === "left"
-  const panelZIndex = Math.min(64, 59 + stackOrder)
+  const panelZIndex = getAdaptivePanelZIndex(stackPosition.order, stackPosition.size)
 
   // Drawer-specific computed values
   const drawerTransition = isDragging

@@ -55,7 +55,7 @@ describe("DWebCamp seed importer", () => {
     }
   })
 
-  it("maps links and canonical high-resolution avatar URLs", () => {
+  it("maps links and bundled avatars to the canonical avatarUrl field", () => {
     const quiet = dwebCampSeedItems.find(({ id }) => id === "project-quiet")
     expect(quiet?.data).toEqual({
       title: "Quiet",
@@ -64,16 +64,19 @@ describe("DWebCamp seed importer", () => {
     })
 
     const marie = dwebCampSeedItems.find(({ id }) => id === "person-marie")
-    expect(marie?.data).toEqual({
-      displayName: "Marie",
-      avatarUrl: "https://talx.dod.ngo/media/avatars/MS3PPW_22hqsdk.webp",
-    })
+    expect(marie?.data.displayName).toBe("Marie")
+    expect(marie?.data.avatarUrl).toMatch(/^data:image\/webp;base64,/)
 
     const andrea = dwebCampSeedItems.find(({ id }) => id === "person-andrea-ferrante")
-    expect(andrea?.data).toEqual({
-      displayName: "Andrea Ferrante",
-      avatarUrl: "https://dwebcamp.org/media/andrea_ferrante.jpg",
-    })
+    expect(andrea?.data.displayName).toBe("Andrea Ferrante")
+    expect(andrea?.data.avatarUrl).toMatch(/^data:image\/jpeg;base64,/)
+
+    const avatarUrls = dwebCampSeedItems
+      .filter(({ type }) => type === "person")
+      .map(({ data }) => data.avatarUrl)
+      .filter((value): value is string => typeof value === "string")
+    expect(avatarUrls).toHaveLength(111)
+    expect(avatarUrls.every((url) => url.startsWith("data:image/"))).toBe(true)
   })
 
   it("derives vocabulary contexts from each imported item shape", () => {
