@@ -39,8 +39,9 @@ universelles Item-Feld.
 verbundene Items, keine Relations-Records.
 
 **Ziel:** eigenständige, versionierte **RelationRecords** (id, type, from,
-to, fields wie `tense`, Sichtbarkeit, author) mit CRUD, Beobachtung und
-Berechtigung — ein **neuer Vertrag `RelationStoreCapable`**. Das ist ein
+to, fields wie `tense`, `createdBy`; Sichtbarkeit über Space und
+bestehende Berechtigungen) mit CRUD, Beobachtung und Berechtigung — ein
+**neuer Vertrag `RelationStoreCapable`**. Das ist ein
 Architektur-Entscheid → **P0**, nicht P1-Nebenarbeit.
 
 **Entschieden (P0, 15.07.):** RelationRecords sind **Items mit
@@ -236,3 +237,8 @@ Implementierung kanonisch.
   abgelehnt; P1b-Neighbors lösen nur lokale `item:`-Targets. (4) Exakte
   Abnahme-Invarianten im Brief (700 Seed-Items, 312 Knoten/388 Kanten,
   192/97/99, Doppel-Import stabil). **Alle vier übernommen.**
+- R11 (16.07., Codex, 2. Pass auf PR #142): (1) ID-Regel normiert:
+  byte-genaues UTF-8, KEINE Unicode-Normalisierung, lowercase Hex — sonst
+  connector-divergente IDs. (2) Ziel-Absatz „Sichtbarkeit, author" →
+  `createdBy`; Sichtbarkeit über Space/Berechtigungen. **Beide übernommen**
+  (Folgecommit in #142).

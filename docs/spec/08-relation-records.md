@@ -72,6 +72,10 @@ Regeln:
 4. Die Item-`id` MUSS deterministisch aus dem Tupel
    `(createdBy, predicate, from, to)` abgeleitet werden:
    `"rel-" + hex(sha256(createdBy + "\n" + predicate + "\n" + from + "\n" + to))`.
+   Normierung: die vier Strings gehen **byte-genau als UTF-8** in den Hash
+   ein — ohne Unicode-Normalisierung (kein NFC/NFD, kein Trimming, kein
+   Case-Folding); `hex` ist **lowercase**. Nur so erzeugen alle
+   Connectoren für dasselbe Tupel dieselbe `id`.
    Damit konvergieren offline doppelt erzeugte Kanten desselben Autors auf
    denselben Record, und pro Autor existiert höchstens ein Record je Tupel.
    Records verschiedener Autoren über dieselben Endpunkte bleiben bewusst
