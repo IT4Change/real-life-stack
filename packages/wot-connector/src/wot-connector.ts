@@ -29,6 +29,7 @@ import {
 import {
   PersonalDocSpaceMetadataStorage,
   OfflineFirstDiscoveryAdapter,
+  GraphCacheService,
   InMemoryPublishStateStore,
   InMemoryGraphCacheStore,
   VerificationWorkflow,
@@ -62,6 +63,7 @@ import type {
   Attestation,
   SpaceInfo,
   MessageEnvelope,
+  IncomingSpaceInvite,
   PublicProfile,
   PublicIdentitySession,
 } from "@real-life/wot-core/types"
@@ -119,6 +121,8 @@ import {
 
 const RLS_SPACE_TYPE = "rls"
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
+const CONTACT_PROFILE_REFRESH_INTERVAL_MS = 10_000
+const CONTACT_PROFILE_REFRESH_CONCURRENCY = 3
 // Overview mode: setCurrentGroup(null) = show all items from all spaces
 
 type DeliveryStatus = "sending" | "queued" | "delivered" | "acknowledged" | "failed"
@@ -241,6 +245,7 @@ export class WotConnector extends BaseConnector {
   private discovery: OfflineFirstDiscoveryAdapter
   private publishStateStore: InMemoryPublishStateStore
   private graphCacheStore: InMemoryGraphCacheStore
+  private graphCacheService: GraphCacheService
   private protocolCrypto = new WebCryptoProtocolCryptoAdapter()
   private verificationWorkflow = new VerificationWorkflow({ crypto: this.protocolCrypto })
   private attestationWorkflow = new AttestationWorkflow({ crypto: this.protocolCrypto })
@@ -291,6 +296,11 @@ export class WotConnector extends BaseConnector {
   private inboxAttestationUnsub: (() => void) | null = null
   private inboxReceiptUnsub: (() => void) | null = null
   private deliveryReceiptUnsub: (() => void) | null = null
+  private spaceInviteUnsub: (() => void) | null = null
+  private discoveryRetryCleanup: (() => void) | null = null
+  private contactProfileRefreshTimer: ReturnType<typeof setInterval> | null = null
+  private contactProfileRefreshInFlight: Promise<void> | null = null
+  private contactProfileRefreshGeneration = 0
   private lastSyncStateLog: string | null = null
   private syncStateRefresh: Promise<void> = Promise.resolve()
   private deliveryMessageIds = new Map<string, string>()
@@ -313,6 +323,7 @@ export class WotConnector extends BaseConnector {
     this.publishStateStore = new InMemoryPublishStateStore()
     this.graphCacheStore = new InMemoryGraphCacheStore()
     this.discovery = new OfflineFirstDiscoveryAdapter(this.httpDiscovery, this.publishStateStore, this.graphCacheStore)
+    this.graphCacheService = new GraphCacheService(this.discovery, this.graphCacheStore)
     this.authStateObs = createObservable<AuthState>({ status: "loading" })
     // Contacts load async from local storage during init; start unloaded so the
     // UI can tell "loading contacts" from "loaded, no contacts" (markLoaded after
@@ -371,6 +382,11 @@ export class WotConnector extends BaseConnector {
     this.inboxAttestationUnsub?.()
     this.inboxReceiptUnsub?.()
     this.deliveryReceiptUnsub?.()
+    this.spaceInviteUnsub?.()
+    this.spaceInviteUnsub = null
+    this.discoveryRetryCleanup?.()
+    this.discoveryRetryCleanup = null
+    this.stopContactProfileRefresh()
     this.inboxReception?.stop()
     await this.replication?.stop()
     await this.outboxAdapter?.disconnect()
@@ -493,6 +509,11 @@ export class WotConnector extends BaseConnector {
     this.inboxReceiptUnsub = null
     this.deliveryReceiptUnsub?.()
     this.deliveryReceiptUnsub = null
+    this.spaceInviteUnsub?.()
+    this.spaceInviteUnsub = null
+    this.discoveryRetryCleanup?.()
+    this.discoveryRetryCleanup = null
+    this.stopContactProfileRefresh()
     this.inboxReception?.stop()
     this.inboxReception = null
     await this.replication?.stop()
@@ -562,9 +583,11 @@ export class WotConnector extends BaseConnector {
       if (updates.avatar !== undefined) doc.profile.avatar = updates.avatar || null
       doc.profile.updatedAt = now
     })
-    // Re-publish to discovery server + notify all contacts
-    this.publishProfile().catch(() => {})
-    this.broadcastProfileUpdate().catch(() => {})
+    // OfflineFirstDiscoveryAdapter turns network failure into a dirty profile
+    // that syncPending() retries on init/online/visibility. Awaiting here makes
+    // sure the dirty marker exists before the UI considers the update complete.
+    await this.publishProfile()
+    void this.broadcastProfileUpdate().catch(() => {})
     return (await this.getCurrentUser())!
   }
 
@@ -832,6 +855,8 @@ export class WotConnector extends BaseConnector {
     }
 
     const keyBytes = x25519MultibaseToPublicKeyBytes(encryptionPublicKey)
+    // 0.3.0 membership API: addMember builds the ECIES inbox space-invite,
+    // requires the adapter's configured brokerUrls, and sends member updates.
     await this.replication.addMember(groupId, userId, keyBytes)
     void this.notifyMemberObservers(groupId)
   }
@@ -1223,6 +1248,13 @@ export class WotConnector extends BaseConnector {
       deviceId,
       enableLogSync: true,
     })
+    // Membership inbox ownership lives in the replication adapter. Subscribe
+    // before start(), because the relay may deliver a queued invite immediately.
+    this.spaceInviteUnsub = this.replication.onSpaceInvite((invite) => {
+      void this.handleIncomingSpaceInvite(invite).catch((error) => {
+        console.warn("[WotConnector] Failed to project incoming space invite", error)
+      })
+    })
     await this.replication.start()
 
     if (localOutbox.watchPendingCount) {
@@ -1234,7 +1266,8 @@ export class WotConnector extends BaseConnector {
     this.outboxCountObs.set(await localOutbox.count())
     await this.refreshSyncState()
 
-    // Transitional Old-World messages remain separate from inbox/1.0.
+    // Transitional non-membership messages (currently profile-update) remain
+    // separate from inbox/1.0. Membership is owned by YjsReplicationAdapter.
     this.outboxAdapter.onMessage(async (message: WireMessage) => {
       if (!isDidcommMessage(message)) await this.handleIncomingMessage(message as MessageEnvelope)
     })
@@ -1356,8 +1389,13 @@ export class WotConnector extends BaseConnector {
     // 12. Ensure private space exists (hidden space for personal items)
     await this.queuePrivateSpaceReconcile({ createIfMissing: true })
 
-    // 13. Sync contact profiles from discovery server (non-blocking)
-    this.syncContactProfiles().catch(() => {})
+    // 13. Refresh contact summaries + profiles immediately and every 10s (the
+    // Demo live-refresh cadence), with overlap protection.
+    this.startContactProfileRefresh()
+
+    // 14. Retry dirty discovery publishes on mount/online/visibility, matching
+    // the Demo's OfflineFirstDiscoveryAdapter integration.
+    this.installDiscoveryRetryTriggers()
   }
 
   private async setAuthAuthenticated(): Promise<void> {
@@ -1409,30 +1447,125 @@ export class WotConnector extends BaseConnector {
     }
   }
 
-  /** Sync all contact profiles from discovery server (called on init, parallel) */
-  private async syncContactProfiles(): Promise<void> {
-    if (!this.storage) return
-    const contacts = await this.storage.getContacts()
+  /**
+   * Refresh active contact projections from discovery.
+   *
+   * The batch summary endpoint updates names cheaply but its 0.3.0 contract has
+   * no avatar field. Therefore each batch is followed by the Demo's profile
+   * resolve/cache pattern so avatar additions, changes, and removals reach both
+   * ContactInfo and the User projection backed by PersonalDoc contacts.
+   */
+  private async refreshContactProfiles(generation = this.contactProfileRefreshGeneration): Promise<void> {
     const storage = this.storage
-    await Promise.allSettled(contacts.map(async (contact) => {
-      const result = await this.discovery.resolveProfile(contact.did)
-      const profile = result.profile
-      if (!profile?.name) return
+    if (!storage) return
 
-      const needsUpdate =
-        (contact.name || null) !== (profile.name || null) ||
-        (contact.avatar || null) !== (profile.avatar || null) ||
-        (contact.bio || null) !== (profile.bio || null)
+    const contacts = (await storage.getContacts()).filter((contact) => contact.status === "active")
+    if (generation !== this.contactProfileRefreshGeneration || contacts.length === 0) return
 
-      if (needsUpdate) {
-        await storage.updateContact({
-          ...contact,
-          name: profile.name,
-          ...(profile.avatar ? { avatar: profile.avatar } : {}),
-          ...(profile.bio ? { bio: profile.bio } : {}),
-        })
-      }
-    }))
+    const contactDids = contacts.map((contact) => contact.did)
+    await this.graphCacheService.refreshContactSummaries(contactDids)
+    if (generation !== this.contactProfileRefreshGeneration) return
+
+    const summaries = await this.graphCacheStore.getEntries(contactDids)
+    for (let i = 0; i < contacts.length; i += CONTACT_PROFILE_REFRESH_CONCURRENCY) {
+      if (generation !== this.contactProfileRefreshGeneration) return
+      const batch = contacts.slice(i, i + CONTACT_PROFILE_REFRESH_CONCURRENCY)
+      await Promise.allSettled(batch.map(async (contact) => {
+        const result = await this.discovery.resolveProfile(contact.did)
+        if (generation !== this.contactProfileRefreshGeneration) return
+
+        const profile = result.profile
+        const summary = summaries.get(contact.did)
+        if (!profile && !summary?.name) return
+
+        if (profile) {
+          const [attestations, verifications] = await Promise.all([
+            this.graphCacheStore.getCachedAttestations(contact.did).catch(() => []),
+            this.graphCacheStore.getCachedVerifications(contact.did).catch(() => []),
+          ])
+          if (generation !== this.contactProfileRefreshGeneration) return
+          await this.graphCacheStore.cacheEntry(contact.did, {
+            profile,
+            attestations,
+            verifications,
+            didDocument: result.didDocument ?? null,
+          })
+        }
+
+        const nextName = profile?.name ?? summary?.name ?? contact.name
+        // A resolved profile is authoritative even when avatar/bio are absent:
+        // undefined clears stale PersonalDoc fields through YjsStorageAdapter.
+        const nextAvatar = profile ? profile.avatar : contact.avatar
+        const nextBio = profile ? profile.bio : contact.bio
+        const needsUpdate =
+          (contact.name || null) !== (nextName || null) ||
+          (contact.avatar || null) !== (nextAvatar || null) ||
+          (contact.bio || null) !== (nextBio || null)
+
+        if (needsUpdate && generation === this.contactProfileRefreshGeneration) {
+          await storage.updateContact({
+            ...contact,
+            name: nextName ?? undefined,
+            avatar: nextAvatar,
+            bio: nextBio,
+            updatedAt: new Date().toISOString(),
+          })
+        }
+      }))
+    }
+  }
+
+  private requestContactProfileRefresh(): void {
+    if (this.contactProfileRefreshInFlight) return
+    const generation = this.contactProfileRefreshGeneration
+    let refresh: Promise<void>
+    refresh = this.refreshContactProfiles(generation)
+      .catch((error) => {
+        console.warn("[WotConnector] Contact profile refresh failed", error)
+      })
+      .finally(() => {
+        if (this.contactProfileRefreshInFlight === refresh) {
+          this.contactProfileRefreshInFlight = null
+        }
+      })
+    this.contactProfileRefreshInFlight = refresh
+  }
+
+  private startContactProfileRefresh(): void {
+    this.stopContactProfileRefresh()
+    this.requestContactProfileRefresh()
+    this.contactProfileRefreshTimer = setInterval(() => {
+      this.requestContactProfileRefresh()
+    }, CONTACT_PROFILE_REFRESH_INTERVAL_MS)
+  }
+
+  private stopContactProfileRefresh(): void {
+    this.contactProfileRefreshGeneration += 1
+    if (this.contactProfileRefreshTimer) clearInterval(this.contactProfileRefreshTimer)
+    this.contactProfileRefreshTimer = null
+    this.contactProfileRefreshInFlight = null
+  }
+
+  private installDiscoveryRetryTriggers(): void {
+    this.discoveryRetryCleanup?.()
+
+    const retry = () => {
+      void this.syncDiscoveryPending().catch(() => {})
+      this.requestContactProfileRefresh()
+    }
+    retry()
+
+    const handleOnline = () => retry()
+    const handleVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") retry()
+    }
+
+    if (typeof window !== "undefined") window.addEventListener("online", handleOnline)
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", handleVisible)
+    this.discoveryRetryCleanup = () => {
+      if (typeof window !== "undefined") window.removeEventListener("online", handleOnline)
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", handleVisible)
+    }
   }
 
   /** Retry all pending discovery publish operations (profile, verifications, attestations) */
@@ -2081,33 +2214,39 @@ export class WotConnector extends BaseConnector {
     }
   }
 
-  private async handleIncomingMessage(envelope: MessageEnvelope): Promise<void> {
-    const did = this.identity.getDid()
+  /**
+   * Project a verified, already-applied adapter invite into RLS. The adapter has
+   * imported keys/metadata and accepted the space before emitting this event;
+   * RLS therefore only refreshes its Group projection and opens the existing
+   * invite UI flow.
+   */
+  private async handleIncomingSpaceInvite(invite: IncomingSpaceInvite): Promise<void> {
+    if (!this.replication) return
 
-    if (envelope.type === "space-invite" && envelope.toDid === did) {
+    this.updateGroupsFromSpaces(await this.replication.getSpaces())
+    const group = this.groupsCache.find((candidate) => candidate.id === invite.spaceId)
+
+    let inviterName = this.contactsObs.current.find((contact) => contact.id === invite.fromDid)?.name
+    if (!inviterName) {
+      inviterName = (await this.graphCacheStore.getEntry(invite.fromDid))?.name
+    }
+    if (!inviterName) {
       try {
-        const payload = JSON.parse(envelope.payload)
-        let inviterName: string | undefined
-        const contact = this.contactsObs.current.find((c) => c.id === envelope.fromDid)
-        inviterName = contact?.name ?? undefined
-        if (!inviterName) {
-          try {
-            const result = await this.discovery.resolveProfile(envelope.fromDid)
-            inviterName = result.profile?.name ?? undefined
-          } catch { /* ignore */ }
-        }
-
-        this.emitEvent({
-          type: "space-invite",
-          fromId: envelope.fromDid,
-          fromName: inviterName,
-          spaceId: payload.spaceId,
-          spaceName: payload.spaceInfo?.name ?? payload.spaceName ?? "Unnamed Space",
-          spaceImage: payload.spaceInfo?.image ?? undefined,
-        })
-      } catch { /* ignore malformed */ }
+        inviterName = (await this.discovery.resolveProfile(invite.fromDid)).profile?.name ?? undefined
+      } catch { /* optional display metadata */ }
     }
 
+    this.emitEvent({
+      type: "space-invite",
+      fromId: invite.fromDid,
+      fromName: inviterName,
+      spaceId: invite.spaceId,
+      spaceName: group?.name ?? invite.spaceName ?? "Unnamed Space",
+      spaceImage: typeof group?.data?.image === "string" ? group.data.image : undefined,
+    })
+  }
+
+  private async handleIncomingMessage(envelope: MessageEnvelope): Promise<void> {
     if (envelope.type === "profile-update") {
       try {
         // Verify signature — reject spoofed profile updates
@@ -2345,12 +2484,17 @@ export class WotConnector extends BaseConnector {
     this.inboxAttestationUnsub?.()
     this.inboxReceiptUnsub?.()
     this.deliveryReceiptUnsub?.()
+    this.spaceInviteUnsub?.()
     this.outboxCountUnsub?.()
+    this.discoveryRetryCleanup?.()
+    this.stopContactProfileRefresh()
     this.inboxReception?.stop()
     this.inboxAttestationUnsub = null
     this.inboxReceiptUnsub = null
     this.deliveryReceiptUnsub = null
+    this.spaceInviteUnsub = null
     this.outboxCountUnsub = null
+    this.discoveryRetryCleanup = null
     this.inboxReception = null
     await this.replication?.stop()
     await this.outboxAdapter?.disconnect()

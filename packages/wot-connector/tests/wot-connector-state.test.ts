@@ -56,6 +56,7 @@ vi.mock("@real-life/wot-core", () => {
     GroupKeyService: EmptyAdapter,
     HttpDiscoveryAdapter: EmptyAdapter,
     OfflineFirstDiscoveryAdapter: EmptyAdapter,
+    GraphCacheService: EmptyAdapter,
     InMemoryPublishStateStore: EmptyAdapter,
     InMemoryGraphCacheStore: EmptyAdapter,
     VerificationWorkflow: EmptyAdapter,
@@ -265,6 +266,7 @@ function createFakeConnectorForLogout() {
     inboxReceiptUnsub: vi.fn(),
     deliveryReceiptUnsub: vi.fn(),
     inboxReception: { stop: vi.fn() },
+    stopContactProfileRefresh: vi.fn(),
     storage: { marker: "storage" },
     currentGroupId: "g1",
     currentGroupObservable: obs.currentGroupObs,
@@ -321,6 +323,239 @@ describe("WotConnector.setConfirmationAccepted() - real method regression", () =
 
     expect(setAttestationAccepted).toHaveBeenCalledWith("att-1", true)
     expect(fake.syncConfirmationsFromPersonalDoc).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("WotConnector profile publish and contact refresh", () => {
+  beforeEach(() => {
+    yjsMockState.personalDoc = {
+      profile: {
+        did: "did:key:alice",
+        name: "Alice",
+        bio: null,
+        avatar: null,
+        createdAt: "2026-07-16T08:00:00.000Z",
+        updatedAt: "2026-07-16T08:00:00.000Z",
+      },
+      contacts: {},
+    }
+  })
+
+  it("publishes the updated profile through discovery before resolving updateProfile", async () => {
+    const publishProfile = vi.fn(async () => {})
+    const broadcastProfileUpdate = vi.fn(async () => {})
+    const fake = {
+      identity: { getDid: () => "did:key:alice" },
+      discovery: { publishProfile },
+      broadcastProfileUpdate,
+      currentUserObs: createObservable<User | null>({ id: "did:key:alice", displayName: "Alice" }),
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    await WotConnector.prototype.updateProfile.call(fake as any, {
+      name: "Alice Neu",
+      avatar: "data:image/png;base64,new-avatar",
+    })
+
+    expect(publishProfile).toHaveBeenCalledTimes(1)
+    expect(publishProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        did: "did:key:alice",
+        name: "Alice Neu",
+        avatar: "data:image/png;base64,new-avatar",
+      }),
+      fake.identity,
+    )
+    expect(broadcastProfileUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it("refreshes summaries and projects a changed avatar into contacts and users", async () => {
+    const oldContact = {
+      did: "did:key:bob",
+      publicKey: "key-bob",
+      name: "Bob Alt",
+      avatar: "old-avatar",
+      bio: "Alt",
+      status: "active" as const,
+      createdAt: "2026-07-15T08:00:00.000Z",
+      updatedAt: "2026-07-15T08:00:00.000Z",
+    }
+    yjsMockState.personalDoc.contacts[oldContact.did] = { ...oldContact }
+
+    const contactsObs = createObservable<ContactInfo[]>([{
+      id: oldContact.did,
+      name: oldContact.name,
+      avatar: oldContact.avatar,
+      bio: oldContact.bio,
+      status: oldContact.status,
+      createdAt: oldContact.createdAt,
+      updatedAt: oldContact.updatedAt,
+    }])
+    const updateContact = vi.fn(async (contact: typeof oldContact) => {
+      yjsMockState.personalDoc.contacts[contact.did] = { ...contact }
+      contactsObs.set([{
+        id: contact.did,
+        name: contact.name,
+        avatar: contact.avatar,
+        bio: contact.bio,
+        status: contact.status,
+        createdAt: contact.createdAt,
+        updatedAt: contact.updatedAt,
+      }])
+    })
+    const refreshContactSummaries = vi.fn(async () => {})
+    const cacheEntry = vi.fn(async () => {})
+    const fake = {
+      storage: {
+        getContacts: vi.fn(async () => [oldContact]),
+        updateContact,
+      },
+      graphCacheService: { refreshContactSummaries },
+      graphCacheStore: {
+        getEntries: vi.fn(async () => new Map([[oldContact.did, {
+          did: oldContact.did,
+          name: "Bob Neu",
+          verificationCount: 1,
+          attestationCount: 0,
+          fetchedAt: "2026-07-16T09:00:00.000Z",
+        }]])),
+        getCachedAttestations: vi.fn(async () => []),
+        getCachedVerifications: vi.fn(async () => []),
+        cacheEntry,
+      },
+      discovery: {
+        resolveProfile: vi.fn(async () => ({
+          profile: {
+            did: oldContact.did,
+            name: "Bob Neu",
+            avatar: "new-avatar",
+            bio: "Neu",
+            updatedAt: "2026-07-16T09:00:00.000Z",
+          },
+          didDocument: null,
+          fromCache: false,
+        })),
+      },
+      identity: { getDid: () => "did:key:alice" },
+      contactsObs,
+      contactProfileRefreshGeneration: 0,
+    }
+
+    await (WotConnector.prototype as any).refreshContactProfiles.call(fake)
+
+    expect(refreshContactSummaries).toHaveBeenCalledWith([oldContact.did])
+    expect(cacheEntry).toHaveBeenCalledTimes(1)
+    expect(updateContact).toHaveBeenCalledWith(expect.objectContaining({
+      did: oldContact.did,
+      name: "Bob Neu",
+      avatar: "new-avatar",
+      bio: "Neu",
+    }))
+    expect(contactsObs.current[0].avatar).toBe("new-avatar")
+
+    const user = await WotConnector.prototype.getUser.call(fake as any, oldContact.did)
+    expect(user).toEqual({
+      id: oldContact.did,
+      displayName: "Bob Neu",
+      avatarUrl: "new-avatar",
+    })
+  })
+})
+
+describe("WotConnector Yjs membership routing", () => {
+  const source = readConnectorSource()
+  const legacyHandler = sliceMethod(
+    source,
+    "private async handleIncomingMessage",
+    "private async handleIncomingAttestation",
+  )
+
+  it("uses addMember so the replication adapter owns outgoing ECIES invites", async () => {
+    const addMember = vi.fn(async () => {})
+    const notifyMemberObservers = vi.fn(async () => {})
+    const fake = {
+      replication: { addMember },
+      discovery: {
+        resolveProfile: vi.fn(async () => ({
+          profile: { did: "did:key:bob", name: "Bob" },
+          didDocument: {
+            keyAgreement: [{ publicKeyMultibase: "z6LSfakeBobKey" }],
+          },
+        })),
+      },
+      notifyMemberObservers,
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    await WotConnector.prototype.inviteMember.call(fake as any, "space-1", "did:key:bob")
+
+    expect(addMember).toHaveBeenCalledWith("space-1", "did:key:bob", expect.any(Uint8Array))
+    expect(notifyMemberObservers).toHaveBeenCalledWith("space-1")
+  })
+
+  it("projects an applied onSpaceInvite event into groups and the RLS invite flow", async () => {
+    const space: SpaceInfo = {
+      id: "space-1",
+      type: "shared",
+      name: "Garten",
+      image: "garden.png",
+      appTag: "rls",
+      members: ["did:key:alice", "did:key:bob"],
+      createdAt: "2026-07-16T09:00:00.000Z",
+    }
+    const groupsObservable = createObservable<Group[]>([])
+    const emitted: any[] = []
+    const fake = {
+      replication: {
+        getSpaces: vi.fn(async () => [space]),
+        watchSpaces: vi.fn(() => ({ getValue: () => [space] })),
+      },
+      groupsCache: [] as Group[],
+      groupsObservable,
+      privateSpaceId: null,
+      currentGroupId: null,
+      currentGroupObservable: createObservable<Group | null>(null),
+      memberObservables: new Map(),
+      queuePrivateSpaceReconcile: vi.fn(async () => {}),
+      notifyAllObservers: vi.fn(),
+      contactsObs: createObservable<ContactInfo[]>([{
+        id: "did:key:alice",
+        name: "Alice",
+        status: "active",
+        createdAt: "2026-07-15T08:00:00.000Z",
+        updatedAt: "2026-07-15T08:00:00.000Z",
+      }]),
+      graphCacheStore: { getEntry: vi.fn(async () => null) },
+      discovery: { resolveProfile: vi.fn() },
+      eventCallbacks: new Set([(event: unknown) => emitted.push(event)]),
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    await (WotConnector.prototype as any).handleIncomingSpaceInvite.call(fake, {
+      spaceId: space.id,
+      spaceName: space.name,
+      fromDid: "did:key:alice",
+      inviteMessageId: "invite-1",
+    })
+
+    expect(groupsObservable.current).toEqual([expect.objectContaining({
+      id: space.id,
+      name: "Garten",
+      data: expect.objectContaining({ image: "garden.png" }),
+    })])
+    expect(emitted).toEqual([expect.objectContaining({
+      type: "space-invite",
+      fromId: "did:key:alice",
+      fromName: "Alice",
+      spaceId: space.id,
+      spaceName: "Garten",
+      spaceImage: "garden.png",
+    })])
+  })
+
+  it("subscribes to onSpaceInvite and has no Old-World space-invite envelope handler", () => {
+    expect(source).toMatch(/replication\.onSpaceInvite\(/)
+    expect(legacyHandler).not.toMatch(/envelope\.type === "space-invite"/)
   })
 })
 
