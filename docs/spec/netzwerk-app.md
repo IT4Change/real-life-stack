@@ -146,6 +146,24 @@ divergieren Item und Log bei Offline-Merges.
   Verification-Flow.
 - **P5 — Malleable:** Type/View/Relation-Editoren.
 
+## Konvergenz-Strategie mit der Referenz-App (entschieden 16.07.)
+
+**Konvergenz nach unten statt Merge nach oben.** Die Referenz-App ist mehr
+als ein Schaufenster und bleibt eigenständig; es gibt keinen App-Merge und
+keinen „Stabwechsel". Zusammenführung heißt: alles Dauerhafte sinkt in die
+geteilten Schichten ab (Verträge → `data-interface`, Komponenten/Hooks →
+`toolkit`, Views → Space Modules), Apps bleiben dünne Presets über
+derselben Modulliste. Normativ verankert als Architekturregel 9
+([00-architecture.md](00-architecture.md), Absink-Regel) — gilt damit auch
+für Implementierungs-Runs. Nach P3/P4 können beide Apps dieselben Module
+registrieren; P5 (malleable) macht die Modulliste pro Space konfigurierbar.
+
+**Vorschnitt vor P3 — Typen-Konsolidierung:** `item-types.ts` und die
+Vokabulare werden die eine Quelle für Referenz- UND Netzwerk-Typen:
+`project/v1` und `resource/v1` ergänzen (person/event/place existieren),
+Rest-Drift aus der Juni-Serie schließen. Eigener kleiner PR, damit die
+Linsen (P3) auf sauberen Typen aufsetzen.
+
 ## Prozess
 
 Plan: Anton + Eli → **Multi-Model-Review** (Runde 1 absolviert, Befunde
