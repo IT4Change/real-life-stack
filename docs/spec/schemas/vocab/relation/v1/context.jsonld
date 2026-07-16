@@ -1,0 +1,12 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "rls": "https://real-life-stack.org/vocab/relation/v1#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "predicate": { "@id": "rls:predicate", "@type": "xsd:string" },
+    "confirmationRef": { "@id": "rls:confirmationRef", "@type": "@id" },
+    "from": { "@id": "rls:from", "@type": "@id" },
+    "to": { "@id": "rls:to", "@type": "@id" }
+  }
+}

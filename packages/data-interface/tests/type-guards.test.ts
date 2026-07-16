@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest"
 import {
   isWritable,
   hasRelations,
+  hasRelationRecords,
+  hasRelationRecordWriter,
   hasGroups,
   isAuthenticatable,
   hasMultiSource,
@@ -16,7 +18,7 @@ import {
   BaseConnector,
   createObservable,
 } from "../src/index.js"
-import type { ConfirmationView, DataInterface, Item, ItemFilter, Observable } from "../src/index.js"
+import type { ConfirmationView, CreateItemInput, DataInterface, Item, ItemFilter, Observable } from "../src/index.js"
 
 // Minimal DataInterface stub
 function createStub(extra: Record<string, unknown> = {}): DataInterface {
@@ -75,6 +77,29 @@ describe("Type Guards", () => {
         getRelatedItems: async () => [],
         observeRelatedItems: () => ({ current: [], subscribe: () => () => {} }),
       }))).toBe(true)
+    })
+  })
+
+  describe("relation record capability guards", () => {
+    it("keeps read and write capabilities independent and requires complete method sets", () => {
+      const reads = createStub({
+        getRelationRecords: async () => [],
+        observeRelationRecords: () => ({ current: [], subscribe: () => () => {} }),
+        getRelationNeighbors: async () => [],
+        observeRelationNeighbors: () => ({ current: [], subscribe: () => () => {} }),
+      })
+      expect(hasRelationRecords(reads)).toBe(true)
+      expect(hasRelationRecordWriter(reads)).toBe(false)
+      expect(hasRelationRecords(createStub({ getRelationRecords: async () => [] }))).toBe(false)
+
+      const writes = createStub({
+        createRelationRecord: async () => ({}),
+        updateRelationRecord: async () => ({}),
+        deleteRelationRecord: async () => {},
+      })
+      expect(hasRelationRecordWriter(writes)).toBe(true)
+      expect(hasRelationRecords(writes)).toBe(false)
+      expect(hasRelationRecordWriter(createStub({ createRelationRecord: async () => ({}) }))).toBe(false)
     })
   })
 
@@ -229,7 +254,7 @@ describe("Type Guards", () => {
         async getItem(_id: string): Promise<Item | null> {
           return null
         }
-        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+        async createItem(_item: CreateItemInput): Promise<Item> {
           throw new Error("not supported")
         }
         async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {
@@ -248,7 +273,7 @@ describe("Type Guards", () => {
         async getItem(_id: string): Promise<Item | null> {
           return null
         }
-        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+        async createItem(_item: CreateItemInput): Promise<Item> {
           throw new Error("not supported")
         }
         async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {
@@ -270,7 +295,7 @@ describe("Type Guards", () => {
         async getItem(_id: string): Promise<Item | null> {
           return null
         }
-        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+        async createItem(_item: CreateItemInput): Promise<Item> {
           throw new Error("not supported")
         }
         async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {
@@ -292,7 +317,7 @@ describe("Type Guards", () => {
         async getItem(_id: string): Promise<Item | null> {
           return null
         }
-        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+        async createItem(_item: CreateItemInput): Promise<Item> {
           throw new Error("not supported")
         }
         async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {
@@ -345,7 +370,7 @@ describe("Type Guards", () => {
         async getItem(_id: string): Promise<Item | null> {
           return null
         }
-        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+        async createItem(_item: CreateItemInput): Promise<Item> {
           throw new Error("not supported")
         }
         async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {
@@ -389,7 +414,7 @@ describe("Type Guards", () => {
         async getItem(_id: string): Promise<Item | null> {
           return null
         }
-        async createItem(_item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+        async createItem(_item: CreateItemInput): Promise<Item> {
           throw new Error("not supported")
         }
         async updateItem(_id: string, _updates: Partial<Item>): Promise<Item> {

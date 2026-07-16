@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
-import type { Item, ItemFilter, RelatedItemsOptions, User } from "@real-life-stack/data-interface"
+import type { CreateItemInput, Item, ItemFilter, RelatedItemsOptions, User } from "@real-life-stack/data-interface"
 import { BaseConnector, createObservable, findRelatedItems, matchesFilter, type ReactiveObservable } from "@real-life-stack/data-interface"
 import { ConnectorProvider } from "@/hooks/connector-context"
 import { ItemDetailPanel } from "./item-detail-panel"
@@ -32,8 +32,18 @@ class StoryConnector extends BaseConnector {
     return this.items.find((i) => i.id === id) ?? null
   }
 
-  async createItem(item: Omit<Item, "id" | "createdAt">): Promise<Item> {
-    const created: Item = { ...item, id: `item-${this.nextId++}`, createdAt: new Date().toISOString() }
+  async createItem(item: CreateItemInput): Promise<Item> {
+    if (item.id !== undefined) {
+      const existing = this.items.find((candidate) => candidate.id === item.id)
+      if (existing) return existing
+    }
+    let id = item.id
+    if (id === undefined) {
+      do {
+        id = `item-${this.nextId++}`
+      } while (this.items.some((candidate) => candidate.id === id))
+    }
+    const created: Item = { ...item, id, createdAt: new Date().toISOString() }
     this.items.push(created)
     this.refreshRelated()
     return created

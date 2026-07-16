@@ -1,4 +1,5 @@
 import type {
+  CreateItemInput,
   Item,
   ItemFilter,
   Group,
@@ -794,16 +795,8 @@ export class WotConnector extends BaseConnector {
     return deserializeItem(serialized)
   }
 
-  override async createItem(item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+  override async createItem(item: CreateItemInput): Promise<Item> {
     await this.handleReady
-
-    const id = crypto.randomUUID()
-    const newItem: Item = {
-      ...item,
-      id,
-      createdAt: new Date().toISOString(),
-    }
-    const serialized = serializeItem(newItem)
 
     // In overview mode, create in private space
     if (this.currentGroupId === null) {
@@ -812,24 +805,46 @@ export class WotConnector extends BaseConnector {
         throw new Error("Private space not available")
       }
       const privateHandle = await this.replication.openSpace<RlsSpaceDoc>(this.privateSpaceId)
-      privateHandle.transact((doc) => {
-        if (!doc.items) doc.items = {}
-        doc.items[id] = serialized
-      })
-      privateHandle.close()
-      this.crossGroupIndex?.reindexGroup(this.privateSpaceId)
-      this.notifyAllObservers()
-      return newItem
+      try {
+        return this.createItemOnHandle(privateHandle, item, this.privateSpaceId)
+      } finally {
+        privateHandle.close()
+      }
     }
 
     const handle = this.currentHandle
     if (!handle) throw new Error("No active group selected")
+    return this.createItemOnHandle(handle, item, this.currentGroupId)
+  }
+
+  private createItemOnHandle(
+    handle: SpaceHandle<RlsSpaceDoc>,
+    item: CreateItemInput,
+    spaceId: string,
+  ): Item {
+    const currentItems = handle.getDoc().items ?? {}
+    if (item.id !== undefined && currentItems[item.id]) {
+      return deserializeItem(currentItems[item.id])
+    }
+
+    let id = item.id
+    if (id === undefined) {
+      do {
+        id = crypto.randomUUID()
+      } while (currentItems[id])
+    }
+    const newItem: Item = {
+      ...item,
+      id,
+      createdAt: new Date().toISOString(),
+    }
+    const serialized = serializeItem(newItem)
 
     handle.transact((doc) => {
       if (!doc.items) doc.items = {}
       doc.items[id] = serialized
     })
-    if (this.currentGroupId) this.crossGroupIndex?.reindexGroup(this.currentGroupId)
+    this.crossGroupIndex?.reindexGroup(spaceId)
     this.notifyAllObservers()
     return newItem
   }

@@ -1,6 +1,7 @@
 import type {
   FullConnector,
   Item,
+  CreateItemInput,
   ItemFilter,
   Group,
   User,
@@ -228,7 +229,7 @@ export abstract class BaseConnector implements FullConnector {
 
   abstract getItems(filter?: ItemFilter): Promise<Item[]>
   abstract getItem(id: string): Promise<Item | null>
-  abstract createItem(item: Omit<Item, "id" | "createdAt">): Promise<Item>
+  abstract createItem(item: CreateItemInput): Promise<Item>
   abstract updateItem(id: string, updates: Partial<Item>): Promise<Item>
   abstract deleteItem(id: string): Promise<void>
 

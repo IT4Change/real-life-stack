@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import type { RlsSpaceDoc, SerializedItem } from "../src/types.js"
-import type { Item, ItemFilter } from "@real-life-stack/data-interface"
+import type { CreateItemInput, Item, ItemFilter } from "@real-life-stack/data-interface"
 
 /**
  * We can't easily instantiate a real WotConnector in unit tests because
@@ -51,9 +51,17 @@ class FakeSpaceHandle {
 
 function createItemOnHandle(
   handle: FakeSpaceHandle,
-  input: Omit<Item, "id" | "createdAt">,
+  input: CreateItemInput,
 ): Item {
-  const id = crypto.randomUUID()
+  const existing = input.id !== undefined ? handle.getDoc().items[input.id] : undefined
+  if (existing) return deserializeItem(existing)
+
+  let id = input.id
+  if (id === undefined) {
+    do {
+      id = crypto.randomUUID()
+    } while (handle.getDoc().items[id])
+  }
   const newItem: Item = { ...input, id, createdAt: new Date().toISOString() }
   const serialized = serializeItem(newItem)
   handle.transact((doc) => {
@@ -154,6 +162,25 @@ describe("Item CRUD (CRDT-agnostic contract)", () => {
       const doc = handle.getDoc()
       expect(typeof doc.items[item.id].createdAt).toBe("string")
       expect(doc.items[item.id].createdAt).toBe(item.createdAt)
+    })
+
+    it("preserves a client ID and returns an existing item unchanged", () => {
+      const created = createItemOnHandle(handle, {
+        id: "rel-fixed",
+        type: "relation",
+        createdBy: "did:key:z6MkTest",
+        data: { predicate: "knows", level: "met" },
+      })
+      const duplicate = createItemOnHandle(handle, {
+        id: "rel-fixed",
+        type: "relation",
+        createdBy: "did:key:z6MkTest",
+        data: { predicate: "knows", level: "replacement" },
+      })
+
+      expect(created.id).toBe("rel-fixed")
+      expect(duplicate).toEqual(created)
+      expect(Object.keys(handle.getDoc().items)).toEqual(["rel-fixed"])
     })
   })
 

@@ -1,4 +1,6 @@
 import type {
+  CreateItemInput,
+  DefaultRelationStoreOptions,
   FullConnector,
   Item,
   ItemFilter,
@@ -8,9 +10,21 @@ import type {
   AuthState,
   AuthMethod,
   RelatedItemsOptions,
+  RelationRecord,
+  RelationRecordCapable,
+  RelationRecordFilter,
+  RelationRecordInput,
+  RelationRecordUpdate,
+  RelationRecordWriterCapable,
   Source,
 } from "@real-life-stack/data-interface"
-import { createObservable, matchesFilter, findRelatedItems, applyPagination } from "@real-life-stack/data-interface"
+import {
+  applyPagination,
+  createDefaultRelationStore,
+  createObservable,
+  findRelatedItems,
+  matchesFilter,
+} from "@real-life-stack/data-interface"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers, demoGroupItems } from "@real-life-stack/data-interface/demo-data"
 
 export interface MockConnectorSeed {
@@ -21,7 +35,26 @@ export interface MockConnectorSeed {
   groupItems?: Record<string, string[]>
 }
 
-export class MockConnector implements FullConnector {
+export interface MockConnectorOptions {
+  symmetricRelationPredicates?: DefaultRelationStoreOptions["symmetricPredicates"]
+}
+
+function deduplicateItems(items: readonly Item[]): Item[] {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+}
+
+function copyGroupItems(groupItems: Record<string, string[]> | undefined): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(groupItems ?? {}).map(([groupId, itemIds]) => [groupId, [...new Set(itemIds)]])
+  )
+}
+
+export class MockConnector implements FullConnector, RelationRecordCapable, RelationRecordWriterCapable {
   private items: Item[]
   private notifyScheduled = false
   private groups: Group[]
@@ -38,9 +71,10 @@ export class MockConnector implements FullConnector {
   private singleItemObservables = new Map<string, ReturnType<typeof createObservable<Item | null>>>()
   private relatedObservables = new Map<string, ReturnType<typeof createObservable<Item[]>>>()
   private relatedObservableParams = new Map<string, { itemId: string; predicate?: string; options?: RelatedItemsOptions }>()
+  private relationStore: RelationRecordCapable & RelationRecordWriterCapable
   private nextItemId = 100
 
-  constructor(seed?: MockConnectorSeed) {
+  constructor(seed?: MockConnectorSeed, options: MockConnectorOptions = {}) {
     const data = seed ?? {
       items: demoItems,
       groups: demoGroups,
@@ -49,11 +83,11 @@ export class MockConnector implements FullConnector {
       groupItems: demoGroupItems,
     }
 
-    this.items = [...data.items]
+    this.items = deduplicateItems(data.items)
     this.groups = data.groups.filter((g) => (g.data?.scope as string) !== "aggregate")
     this.users = [...data.users]
     this.groupMembers = { ...data.groupMembers }
-    this.groupItems = { ...(data.groupItems ?? {}) }
+    this.groupItems = copyGroupItems(data.groupItems)
     this.currentGroup = null
     this.currentUser = this.users[0] ?? null
     this.currentUserObs = createObservable<User | null>(this.currentUser)
@@ -64,6 +98,12 @@ export class MockConnector implements FullConnector {
     )
     this.groupsObs = createObservable<Group[]>([...this.groups])
     this.currentGroupObs = createObservable<Group | null>(this.currentGroup)
+    this.relationStore = createDefaultRelationStore(
+      this,
+      options.symmetricRelationPredicates === undefined
+        ? undefined
+        : { symmetricPredicates: options.symmetricRelationPredicates },
+    )
   }
 
   async init(): Promise<void> {
@@ -233,20 +273,23 @@ export class MockConnector implements FullConnector {
     return this.singleItemObservables.get(id)!
   }
 
-  async createItem(item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+  async createItem(item: CreateItemInput): Promise<Item> {
+    if (item.id !== undefined) {
+      const existing = this.items.find((candidate) => candidate.id === item.id)
+      if (existing) return existing
+    }
+
+    const id = item.id ?? this.allocateItemId()
     const newItem: Item = {
       ...item,
-      id: `item-${this.nextItemId++}`,
+      id,
       createdAt: new Date().toISOString(),
     }
     this.items.push(newItem)
 
     // Register item in current group's scope
     const groupId = this.currentGroup?.id
-    if (groupId && groupId !== "all") {
-      if (!this.groupItems[groupId]) this.groupItems[groupId] = []
-      this.groupItems[groupId].push(newItem.id)
-    }
+    if (groupId) this.registerItemInGroup(newItem.id, groupId)
 
     this.notifyObservers()
     return newItem
@@ -262,7 +305,37 @@ export class MockConnector implements FullConnector {
 
   async deleteItem(id: string): Promise<void> {
     this.items = this.items.filter((i) => i.id !== id)
+    for (const groupId of Object.keys(this.groupItems)) {
+      this.groupItems[groupId] = this.groupItems[groupId].filter((itemId) => itemId !== id)
+    }
     this.notifyObservers()
+  }
+
+  /**
+   * Privileged fixture/ETL path. Seed Items already carry their canonical IDs,
+   * timestamps and authors, so they deliberately bypass the auth-bound writers.
+   */
+  injectSeedItems(items: readonly Item[], groupId?: string): Item[] {
+    const targetGroupId = groupId ?? this.currentGroup?.id
+    const injected: Item[] = []
+    let changed = false
+
+    for (const item of items) {
+      let stored = this.items.find((candidate) => candidate.id === item.id)
+      if (!stored) {
+        stored = item
+        this.items.push(stored)
+        changed = true
+      }
+      injected.push(stored)
+
+      if (targetGroupId && this.registerItemInGroup(stored.id, targetGroupId)) {
+        changed = true
+      }
+    }
+
+    if (changed) this.notifyObservers()
+    return injected
   }
 
   getItemGroupId(itemId: string): string | null {
@@ -278,9 +351,38 @@ export class MockConnector implements FullConnector {
       this.groupItems[gid] = this.groupItems[gid].filter((id) => id !== itemId)
     }
     // Add to target group
-    if (!this.groupItems[targetGroupId]) this.groupItems[targetGroupId] = []
-    this.groupItems[targetGroupId].push(itemId)
+    this.registerItemInGroup(itemId, targetGroupId)
     this.notifyObservers()
+  }
+
+  // --- Relation Records ---
+
+  getRelationRecords(filter?: RelationRecordFilter): Promise<RelationRecord[]> {
+    return this.relationStore.getRelationRecords(filter)
+  }
+
+  observeRelationRecords(filter?: RelationRecordFilter): Observable<RelationRecord[]> {
+    return this.relationStore.observeRelationRecords(filter)
+  }
+
+  getRelationNeighbors(endpoint: string, predicate?: string): Promise<Item[]> {
+    return this.relationStore.getRelationNeighbors(endpoint, predicate)
+  }
+
+  observeRelationNeighbors(endpoint: string, predicate?: string): Observable<Item[]> {
+    return this.relationStore.observeRelationNeighbors(endpoint, predicate)
+  }
+
+  createRelationRecord(input: RelationRecordInput): Promise<RelationRecord> {
+    return this.relationStore.createRelationRecord(input)
+  }
+
+  updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord> {
+    return this.relationStore.updateRelationRecord(id, updates)
+  }
+
+  deleteRelationRecord(id: string): Promise<void> {
+    return this.relationStore.deleteRelationRecord(id)
   }
 
   // --- Relations ---
@@ -360,6 +462,22 @@ export class MockConnector implements FullConnector {
   }
 
   // --- Internal ---
+
+  private allocateItemId(): string {
+    let id: string
+    do {
+      id = `item-${this.nextItemId++}`
+    } while (this.items.some((item) => item.id === id))
+    return id
+  }
+
+  private registerItemInGroup(itemId: string, groupId: string): boolean {
+    if (groupId === "all") return false
+    if (!this.groupItems[groupId]) this.groupItems[groupId] = []
+    if (this.groupItems[groupId].includes(itemId)) return false
+    this.groupItems[groupId].push(itemId)
+    return true
+  }
 
   private notifyGroupObservers(): void {
     this.groupsObs.set([...this.groups])

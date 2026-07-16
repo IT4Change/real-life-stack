@@ -39,6 +39,10 @@ function createProfileReactivity(did: string) {
     }
   }
 
+  const notifyPersonalDocChange = () => {
+    for (const cb of listeners) cb()
+  }
+
   // Simulates changeYjsPersonalDoc
   const changeProfile = (updates: Partial<PersonalDocProfile>) => {
     const now = new Date().toISOString()
@@ -51,7 +55,7 @@ function createProfileReactivity(did: string) {
       ...updates,
     }
     // Fire all listeners (simulates Yjs doc change event)
-    for (const cb of listeners) cb()
+    notifyPersonalDocChange()
   }
 
   // This mirrors WotConnector's bootstrapAdapters profile subscription
@@ -89,6 +93,7 @@ function createProfileReactivity(did: string) {
     profileObs,
     syncPendingObs,
     changeProfile,
+    notifyPersonalDocChange,
     cleanup: profileUnsub,
   }
 }
@@ -144,7 +149,7 @@ describe("Profile Reactivity — observeMyProfile()", () => {
   })
 
   it("does NOT fire when profile is unchanged", () => {
-    const { profileObs, changeProfile } = createProfileReactivity(DID)
+    const { profileObs, changeProfile, notifyPersonalDocChange } = createProfileReactivity(DID)
     changeProfile({ name: "Anton", bio: "Hello" })
 
     const updates: (Item | null)[] = []
@@ -152,8 +157,7 @@ describe("Profile Reactivity — observeMyProfile()", () => {
 
     // Simulate a PersonalDoc change that doesn't touch profile
     // (e.g. contact added — in real code, onYjsPersonalDocChange fires for any change)
-    // Since we only call changeProfile with the same data, the JSON key matches → no fire
-    changeProfile({ name: "Anton", bio: "Hello" })
+    notifyPersonalDocChange()
 
     expect(updates).toHaveLength(0)
   })

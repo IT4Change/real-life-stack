@@ -1,4 +1,5 @@
 import type {
+  CreateItemInput,
   FullConnector,
   Item,
   ItemFilter,
@@ -324,10 +325,16 @@ export class LocalConnector implements FullConnector {
     return this.singleItemObservables.get(id)!
   }
 
-  async createItem(item: Omit<Item, "id" | "createdAt">): Promise<Item> {
+  async createItem(item: CreateItemInput): Promise<Item> {
+    if (item.id !== undefined) {
+      const existing = this.items.find((candidate) => candidate.id === item.id)
+      if (existing) return existing
+    }
+
+    const id = item.id ?? this.allocateItemId()
     const newItem: Item = {
       ...item,
-      id: `item-${this.nextItemId++}`,
+      id,
       createdAt: new Date().toISOString(),
     }
     this.items.push(newItem)
@@ -340,6 +347,14 @@ export class LocalConnector implements FullConnector {
     await this.persist()
     this.broadcast({ type: "items-changed" })
     return newItem
+  }
+
+  private allocateItemId(): string {
+    let id: string
+    do {
+      id = `item-${this.nextItemId++}`
+    } while (this.items.some((item) => item.id === id))
+    return id
   }
 
   async updateItem(id: string, updates: Partial<Item>): Promise<Item> {

@@ -1,4 +1,4 @@
-import type { Item, Group, User, AuthState, Relation } from "@real-life-stack/data-interface"
+import type { CreateItemInput, Item, Group, User, AuthState, Relation } from "@real-life-stack/data-interface"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers } from "@real-life-stack/data-interface/demo-data"
 import { publish } from "./pubsub.js"
 
@@ -41,9 +41,27 @@ export function getItem(id: string): Item | null {
   return items.find((i) => i.id === id) ?? null
 }
 
-export function createItem(input: { type: string; createdBy: string; data: Record<string, unknown>; relations?: Item["relations"] }): Item {
+type StoreCreateItemInput = Pick<
+  CreateItemInput,
+  "id" | "type" | "createdBy" | "data" | "relations"
+>
+
+function allocateItemId(): string {
+  let id: string
+  do {
+    id = `item-${nextItemId++}`
+  } while (items.some((item) => item.id === id))
+  return id
+}
+
+export function createItem(input: StoreCreateItemInput): Item {
+  if (input.id !== undefined) {
+    const existing = items.find((item) => item.id === input.id)
+    if (existing) return existing
+  }
+
   const item: Item = {
-    id: `item-${nextItemId++}`,
+    id: input.id ?? allocateItemId(),
     type: input.type,
     createdAt: new Date().toISOString(),
     createdBy: input.createdBy,

@@ -1,77 +1,169 @@
-import { describe, expect, it } from "vitest"
-import { VOCAB_BASE, VOCAB_PERSON } from "@real-life-stack/data-interface"
+import {
+  relationRecordFromItem,
+  VOCAB_BASE,
+  VOCAB_PERSON,
+  VOCAB_RELATION,
+  type Item,
+  type RelationRecord,
+} from "@real-life-stack/data-interface"
+import { MockConnector } from "@real-life-stack/mock-connector"
+import { beforeAll, describe, expect, it } from "vitest"
 
 import {
   buildDwebCampSeedItems,
+  dwebCampDomainItems,
   dwebCampItemId,
-  dwebCampSeedItems,
+  DWEB_CAMP_SEED_CREATED_AT,
+  DWEB_CAMP_SEED_CREATOR,
+  NETWORK_RELATION_STORE_OPTIONS,
   slugSeedValue,
 } from "./network-seed"
 
+let seedItems: Item[]
+let relationItems: Item[]
+let relationRecords: RelationRecord[]
+
+beforeAll(async () => {
+  seedItems = await buildDwebCampSeedItems()
+  relationItems = seedItems.filter(({ type }) => type === "relation")
+  relationRecords = relationItems
+    .map(relationRecordFromItem)
+    .filter((record): record is RelationRecord => record !== null)
+})
+
 describe("DWebCamp seed importer", () => {
-  it("imports the exact source inventory with stable unique ids", () => {
-    expect(dwebCampSeedItems.filter(({ type }) => type === "event")).toHaveLength(109)
-    expect(dwebCampSeedItems.filter(({ type }) => type === "person")).toHaveLength(138)
-    expect(dwebCampSeedItems.filter(({ type }) => type === "project")).toHaveLength(65)
-    expect(dwebCampSeedItems).toHaveLength(312)
-    expect(new Set(dwebCampSeedItems.map(({ id }) => id)).size).toBe(312)
+  it("imports the exact domain and relation inventories with stable unique ids", () => {
+    expect(dwebCampDomainItems.filter(({ type }) => type === "event")).toHaveLength(109)
+    expect(dwebCampDomainItems.filter(({ type }) => type === "person")).toHaveLength(138)
+    expect(dwebCampDomainItems.filter(({ type }) => type === "project")).toHaveLength(65)
+    expect(dwebCampDomainItems).toHaveLength(312)
+    expect(relationItems).toHaveLength(388)
+    expect(relationRecords).toHaveLength(388)
+    expect(seedItems).toHaveLength(700)
+    expect(new Set(seedItems.map(({ id }) => id)).size).toBe(700)
 
     expect(dwebCampItemId("event", "SJXE8X")).toBe("event-sjxe8x")
     expect(dwebCampItemId("person", "Václav Pavlín")).toBe("person-vaclav-pavlin")
     expect(slugSeedValue("The Open Co-op")).toBe("the-open-co-op")
-    expect(buildDwebCampSeedItems()).toEqual(buildDwebCampSeedItems())
   })
 
-  it("maps source relations to embedded item targets with the specified metadata", () => {
-    const relations = dwebCampSeedItems.flatMap(({ relations = [] }) => relations)
-    expect(relations.filter(({ predicate }) => predicate === "attends")).toHaveLength(192)
-    expect(relations.filter(({ predicate }) => predicate === "connectedWith")).toHaveLength(97)
-    expect(relations.filter(({ predicate }) => predicate === "partOf")).toHaveLength(112)
-    expect(relations).toHaveLength(401)
+  it("builds the same ordered fixture more than once", async () => {
+    expect(await buildDwebCampSeedItems()).toEqual(await buildDwebCampSeedItems())
+  })
 
-    const adam = dwebCampSeedItems.find(({ id }) => id === "person-adam")
-    expect(adam?.relations).toContainEqual({
+  it("re-imports the fixture into one MockConnector without duplicate ids or memberships", async () => {
+    const connector = new MockConnector({
+      items: [],
+      groups: [
+        { id: "dwebcamp", name: "DWebCamp" },
+        { id: "my-network", name: "Mein Netzwerk" },
+      ],
+      users: [{ id: "did:example:network-local-user", displayName: "Mein Profil" }],
+      groupMembers: {
+        dwebcamp: ["did:example:network-local-user"],
+        "my-network": ["did:example:network-local-user"],
+      },
+      groupItems: { dwebcamp: [], "my-network": [] },
+    }, {
+      symmetricRelationPredicates: NETWORK_RELATION_STORE_OPTIONS.symmetricPredicates,
+    })
+
+    connector.injectSeedItems(await buildDwebCampSeedItems(), "dwebcamp")
+    connector.injectSeedItems(await buildDwebCampSeedItems(), "dwebcamp")
+
+    connector.setCurrentGroup("dwebcamp")
+    const importedItems = await connector.getItems()
+    expect(importedItems).toHaveLength(700)
+    expect(new Set(importedItems.map(({ id }) => id)).size).toBe(700)
+    expect(importedItems.filter(({ type }) => type !== "relation")).toHaveLength(312)
+    expect(importedItems.filter(({ type }) => type === "relation")).toHaveLength(388)
+
+    connector.setCurrentGroup("my-network")
+    expect(await connector.getItems()).toEqual([])
+    await connector.dispose()
+  })
+
+  it("stores all graph edges as relation records and none on domain items", () => {
+    expect(relationRecords.filter(({ predicate }) => predicate === "attends")).toHaveLength(192)
+    expect(relationRecords.filter(({ predicate }) => predicate === "connectedWith")).toHaveLength(97)
+    const partOfRecords = relationRecords.filter(({ predicate }) => predicate === "partOf")
+    expect(partOfRecords).toHaveLength(99)
+    for (const record of partOfRecords) {
+      const contexts = record.fields?.contexts
+      expect(Array.isArray(contexts)).toBe(true)
+      expect(contexts).toEqual([...new Set(contexts as string[])].sort())
+      expect(record.fields).not.toHaveProperty("context")
+    }
+    expect(dwebCampDomainItems.every(({ relations }) => relations === undefined)).toBe(true)
+
+    const adamAttends = relationRecords.find(({ id }) => (
+      id === "rel-a51546e70eb70bec300eb5d67fa96c5a8fdee4adb7e61e7469b44226378b8117"
+    ))
+    expect(adamAttends).toEqual({
+      id: "rel-a51546e70eb70bec300eb5d67fa96c5a8fdee4adb7e61e7469b44226378b8117",
       predicate: "attends",
-      target: "item:event-ntyghs",
-      meta: { tense: "has-been", role: "speaker" },
-    })
-    expect(adam?.relations).toContainEqual({
-      predicate: "partOf",
-      target: "item:project-sig0lease",
-      meta: { context: "NTYGHS" },
+      from: "item:person-adam",
+      to: "item:event-ntyghs",
+      fields: { tense: "has-been", role: "speaker" },
+      createdAt: DWEB_CAMP_SEED_CREATED_AT,
+      createdBy: DWEB_CAMP_SEED_CREATOR,
     })
 
-    const event = dwebCampSeedItems.find(({ id }) => id === "event-3kgbef")
-    expect(event?.relations).toContainEqual({
+    expect(relationRecords).toContainEqual({
+      id: "rel-5b412a2b673962f16ff89324a7a9cb84b90d5c412d10203e66f62f6dcdb00bbc",
       predicate: "connectedWith",
-      target: "item:project-fsfe",
+      from: "item:event-3kgbef",
+      to: "item:project-fsfe",
+      createdAt: DWEB_CAMP_SEED_CREATED_AT,
+      createdBy: DWEB_CAMP_SEED_CREATOR,
     })
-    expect(event?.tags).toContain("community-commons")
 
-    const itemIds = new Set(dwebCampSeedItems.map(({ id }) => id))
-    for (const relation of relations) {
-      expect(relation.target.startsWith("item:")).toBe(true)
-      expect(itemIds.has(relation.target.slice("item:".length))).toBe(true)
+    expect(relationRecords).toContainEqual({
+      id: "rel-085da6d0eebd92ec79206b933acdd1f075f6c4f02f560fa0c1df9d9f7e5758bc",
+      predicate: "partOf",
+      from: "item:person-michael-suantak",
+      to: "item:project-asorcom",
+      fields: { contexts: ["BE7GHD", "JYFKLK", "V9L89B"] },
+      createdAt: DWEB_CAMP_SEED_CREATED_AT,
+      createdBy: DWEB_CAMP_SEED_CREATOR,
+    })
+  })
+
+  it("emits valid local endpoints and fixture metadata for every relation item", () => {
+    const domainIds = new Set(dwebCampDomainItems.map(({ id }) => id))
+
+    for (const record of relationRecords) {
+      expect(record.from.startsWith("item:")).toBe(true)
+      expect(record.to.startsWith("item:")).toBe(true)
+      expect(domainIds.has(record.from.slice("item:".length))).toBe(true)
+      expect(domainIds.has(record.to.slice("item:".length))).toBe(true)
+      expect(record.createdBy).toBe(DWEB_CAMP_SEED_CREATOR)
+      expect(record.createdAt).toBe(DWEB_CAMP_SEED_CREATED_AT)
+    }
+    for (const item of relationItems) {
+      expect(item["@context"]).toEqual([VOCAB_BASE, VOCAB_RELATION])
+      expect(item.relations?.filter(({ predicate }) => predicate === "from")).toHaveLength(1)
+      expect(item.relations?.filter(({ predicate }) => predicate === "to")).toHaveLength(1)
     }
   })
 
   it("maps links and bundled avatars to the canonical avatarUrl field", () => {
-    const quiet = dwebCampSeedItems.find(({ id }) => id === "project-quiet")
+    const quiet = dwebCampDomainItems.find(({ id }) => id === "project-quiet")
     expect(quiet?.data).toEqual({
       title: "Quiet",
       website: "https://tryquiet.org",
       repo: "https://github.com/TryQuiet/quiet",
     })
 
-    const marie = dwebCampSeedItems.find(({ id }) => id === "person-marie")
+    const marie = dwebCampDomainItems.find(({ id }) => id === "person-marie")
     expect(marie?.data.displayName).toBe("Marie")
     expect(marie?.data.avatarUrl).toMatch(/^data:image\/webp;base64,/)
 
-    const andrea = dwebCampSeedItems.find(({ id }) => id === "person-andrea-ferrante")
+    const andrea = dwebCampDomainItems.find(({ id }) => id === "person-andrea-ferrante")
     expect(andrea?.data.displayName).toBe("Andrea Ferrante")
     expect(andrea?.data.avatarUrl).toMatch(/^data:image\/jpeg;base64,/)
 
-    const avatarUrls = dwebCampSeedItems
+    const avatarUrls = dwebCampDomainItems
       .filter(({ type }) => type === "person")
       .map(({ data }) => data.avatarUrl)
       .filter((value): value is string => typeof value === "string")
@@ -80,9 +172,9 @@ describe("DWebCamp seed importer", () => {
   })
 
   it("derives vocabulary contexts from each imported item shape", () => {
-    const event = dwebCampSeedItems.find(({ type }) => type === "event")
-    const person = dwebCampSeedItems.find(({ type }) => type === "person")
-    const project = dwebCampSeedItems.find(({ type }) => type === "project")
+    const event = dwebCampDomainItems.find(({ type }) => type === "event")
+    const person = dwebCampDomainItems.find(({ type }) => type === "person")
+    const project = dwebCampDomainItems.find(({ type }) => type === "project")
 
     expect(event?.["@context"]).toEqual([VOCAB_BASE])
     expect(person?.["@context"]).toEqual([VOCAB_BASE, VOCAB_PERSON])

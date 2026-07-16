@@ -39,6 +39,42 @@ describe("LocalConnector — Relations Reactivity", () => {
     await connector.authenticate("local", {})
   })
 
+  it("preserves client IDs and returns duplicates unchanged", async () => {
+    const created = await connector.createItem({
+      id: "client-id",
+      type: "note",
+      createdBy: "user-1",
+      data: { title: "first" },
+    })
+    const duplicate = await connector.createItem({
+      id: "client-id",
+      type: "note",
+      createdBy: "user-1",
+      data: { title: "replacement" },
+    })
+
+    expect(created.id).toBe("client-id")
+    expect(duplicate).toBe(created)
+    expect(await connector.getItems()).toEqual([created])
+  })
+
+  it("skips occupied generated IDs", async () => {
+    await connector.createItem({
+      id: "item-100",
+      type: "note",
+      createdBy: "user-1",
+      data: {},
+    })
+
+    const generated = await connector.createItem({
+      type: "note",
+      createdBy: "user-1",
+      data: {},
+    })
+
+    expect(generated.id).toBe("item-101")
+  })
+
   it("observeRelatedItems returns comments via reverse lookup", async () => {
     const post = await connector.createItem(
       makeItem({ type: "post", createdBy: "user-1", data: { title: "Hello" } })

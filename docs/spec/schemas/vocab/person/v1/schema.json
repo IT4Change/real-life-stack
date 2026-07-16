@@ -21,6 +21,11 @@
         },
         "bio": {
           "type": "string"
+        },
+        "did": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional stable identity used to bind person items to confirmations."
         }
       }
     }

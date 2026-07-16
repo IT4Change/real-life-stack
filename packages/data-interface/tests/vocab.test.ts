@@ -6,6 +6,7 @@ import {
   VOCAB_PLACE,
   VOCAB_TASK,
   VOCAB_PERSON,
+  VOCAB_RELATION,
 } from "../src/index.js"
 
 describe("deriveContext", () => {
@@ -65,6 +66,17 @@ describe("deriveContext", () => {
 
   it("does NOT add person/v1 for other types even with person-like fields", () => {
     expect(deriveContext("post", { displayName: "Anton" })).not.toContain(VOCAB_PERSON)
+  })
+
+  it("adds relation/v1 when type === 'relation'", () => {
+    expect(deriveContext("relation", { predicate: "knows" })).toEqual([
+      VOCAB_BASE,
+      VOCAB_RELATION,
+    ])
+  })
+
+  it("does NOT add relation/v1 based on a predicate field alone", () => {
+    expect(deriveContext("post", { predicate: "knows" })).not.toContain(VOCAB_RELATION)
   })
 
   it("composes multiple vocabs: event + place for an event with a location", () => {
