@@ -116,3 +116,23 @@ describe("Vertrag #145 — WorkQueueStore Durability & Lebenszyklus", () => {
     await store.close()
   })
 })
+
+describe("Vertrag #145 — Store-Nachschärfung: claimImmediate (In-Session-Ownership)", () => {
+  it("claimImmediate gewinnt genau einmal; claimDue überspringt geclaimte Items; complete gibt frei", async () => {
+    const WorkQueueStore = await loadStore()
+    const store = new WorkQueueStore(DB) as InstanceType<Awaited<ReturnType<typeof loadStore>>> & {
+      claimImmediate(id: string): boolean
+    }
+    await store.open()
+    await store.enqueue({ id: "w1", kind: "receipt-ack", payload: {} })
+
+    expect(store.claimImmediate("w1")).toBe(true)
+    expect(store.claimImmediate("w1")).toBe(false) // bereits in Session-Besitz
+    expect(await store.claimDue(Date.now())).toHaveLength(0) // Drain überspringt
+
+    await store.complete("w1")
+    // Nach complete ist das Item weg UND der Claim freigegeben
+    expect(store.claimImmediate("w1")).toBe(true) // kein Record mehr, aber Claim-Mechanik frei
+    await store.close()
+  })
+})

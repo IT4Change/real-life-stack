@@ -266,3 +266,74 @@ describe("Vertrag #145 — Nachschärfung aus Loop-Review (Blocker 1+2)", () => 
     expect(wq.fail).not.toHaveBeenCalled()
   })
 })
+
+describe("Vertrag #145 — Nachschärfung Runde 2 (Cap-Terminal, API-Additivität, Receipt-Ownership)", () => {
+  it("V3 (Cap-Terminal): verwirft der Attempt-Cap die letzte Retry-Autorität, wird der Status terminal failed + durabel geflusht", async () => {
+    const statuses: string[] = []
+    const flush = vi.fn(async () => {})
+    const wq = {
+      enqueue: vi.fn(async () => {}),
+      complete: vi.fn(async () => {}),
+      fail: vi.fn(async () => true), // Cap erreicht → Record verworfen (dropped)
+      claimDue: vi.fn(async () => []),
+      count: vi.fn(async () => 0),
+      claimImmediate: vi.fn(() => true),
+    }
+    const fake = Object.assign(Object.create(WotConnector.prototype), {
+      outboxAdapter: {},
+      workQueue: wq,
+      runtimeGeneration: 0,
+      resolveRecipientEncryptionKey: vi.fn(async () => null),
+      setDeliveryStatus: vi.fn(async (_id: string, s: string) => { statuses.push(s); return true }),
+      flushPersonalDocDurably: flush,
+      noteWorkQueueChanged: vi.fn(),
+    })
+
+    await (WotConnector.prototype as any).deliverAttestation.call(fake, attestation)
+
+    // Kein still verlorener Auftrag: nach dem Drop MUSS der terminale Ausgang
+    // sichtbar sein — failed, crash-fest geflusht (kein Retry-Record mehr da).
+    expect(statuses).toContain("failed")
+    expect(statuses.indexOf("failed")).toBeGreaterThan(statuses.indexOf("queued"))
+    expect(flush).toHaveBeenCalled()
+  })
+
+  it("API-Additivität: WotSyncState.workPending ist optional (kein Breaking Change)", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { fileURLToPath } = await import("node:url")
+    const { dirname, resolve } = await import("node:path")
+    const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../src/types.ts"), "utf8")
+    const block = src.slice(src.indexOf("interface WotSyncState"), src.indexOf("}", src.indexOf("interface WotSyncState")))
+    expect(block).toMatch(/workPending\?:/) // optional — bestehende Konsumenten bleiben gültig
+  })
+
+  it("V2 (Ownership): der Direktversuch claimt das Receipt-Item — verliert er den Claim, sendet er nicht", async () => {
+    const sendReceiptAck = vi.fn(async () => {})
+    const wqWon = {
+      enqueue: vi.fn(async () => {}),
+      complete: vi.fn(async () => {}),
+      fail: vi.fn(async () => false),
+      claimDue: vi.fn(async () => []),
+      count: vi.fn(async () => 0),
+      claimImmediate: vi.fn(() => true),
+    }
+    const mkFake = (wq: unknown) => Object.assign(Object.create(WotConnector.prototype), {
+      workQueue: wq,
+      runtimeGeneration: 0,
+      identity: { getDid: () => "did:key:me" },
+      sendReceiptAck,
+      noteWorkQueueChanged: vi.fn(),
+    })
+
+    await (WotConnector.prototype as any).enqueueAndSendReceiptAck.call(mkFake(wqWon), attestation)
+    await vi.waitFor(() => expect(sendReceiptAck).toHaveBeenCalledTimes(1))
+    expect(wqWon.claimImmediate).toHaveBeenCalledWith("receipt-ack:att-1")
+
+    // Claim verloren (Drain besitzt das Item) → KEIN paralleler Zweitversand.
+    sendReceiptAck.mockClear()
+    const wqLost = { ...wqWon, enqueue: vi.fn(async () => {}), claimImmediate: vi.fn(() => false) }
+    await (WotConnector.prototype as any).enqueueAndSendReceiptAck.call(mkFake(wqLost), attestation)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(sendReceiptAck).not.toHaveBeenCalled()
+  })
+})
