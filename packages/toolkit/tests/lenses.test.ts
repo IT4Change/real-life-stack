@@ -17,12 +17,15 @@ import type { MapAdapter, MapMarkerSpec } from "../src/components/map/adapter"
 import {
   SINGLE_MARKER_ZOOM,
   fitMapLensViewport,
+  initialMapLensViewportContext,
   initialMapLensViewportState,
   mapLensViewportStateForAdapter,
   mapLensMarkers,
   mountMapLensAdapter,
   updateMapLensViewport,
+  updateMapLensViewportForResetKey,
 } from "../src/components/lens/map-lens"
+import { drawerHeightFromY } from "../src/components/layout/adaptive-panel"
 import {
   focusActiveItemInVisibleAreaOnce,
   focusActiveItemOnce,
@@ -228,6 +231,7 @@ describe("read-only lenses", () => {
     expect(focusActiveItemInVisibleAreaOnce(null, "task-1", target, { bottomInset: 440 }, focus)).toBe("task-1")
     expect(focus).toHaveBeenCalledWith(target, { bottomInset: 440 })
     expect(selectionFocusScrollMarginBlockEnd({ bottomInset: 440 })).toBe("440px")
+    expect(drawerHeightFromY(45, 800)).toBe(440)
 
     const items = [item("task-1", "task", { title: "Aktive Aufgabe", status: "open" })]
     const listMarkup = renderToStaticMarkup(createElement(ListView, {
@@ -261,6 +265,8 @@ describe("Map and Calendar lenses", () => {
       item("event-1", "event", { title: "Ohne Position", start: "2026-07-08T19:15:00+02:00" }),
       item("line-1", "place", { title: "Linie", position: { type: "LineString", coordinates: [[12.4, 52.1], [12.5, 52.2]] } }),
       item("invalid-1", "place", { title: "Ungültig", position: { type: "Point", coordinates: ["12.4", 52.1] } }),
+      item("invalid-elevation", "place", { title: "Ungültige Höhe", position: { type: "Point", coordinates: [12.4, 52.1, "oops"] } }),
+      item("invalid-four-coordinates", "place", { title: "Zu viele Werte", position: { type: "Point", coordinates: [12.4, 52.1, 38, 99] } }),
       item("nan-1", "place", { title: "NaN", position: { type: "Point", coordinates: [Number.NaN, 52.1] } }),
       item("infinity-1", "place", { title: "Unendlich", position: { type: "Point", coordinates: [12.4, Number.POSITIVE_INFINITY] } }),
       item("latitude-1", "place", { title: "Zu weit nördlich", position: { type: "Point", coordinates: [12.4, 91] } }),
@@ -296,23 +302,26 @@ describe("Map and Calendar lenses", () => {
     expect(adapter.fitBounds).toHaveBeenLastCalledWith({ west: 12.4, south: 52.1, east: 12.6, north: 52.3 })
   })
 
-  it("7/8: a selected marker focuses once in its unobscured visible area and takes precedence over aggregate auto-fit", () => {
+  it("7/8: a selected marker re-centres for a changed live drawer inset and takes precedence over aggregate auto-fit", () => {
     const adapter = mapAdapter()
     const markers: MapMarkerSpec[] = [
       { id: "place-1", position: [12.4, 52.1] },
       { id: "place-2", position: [12.6, 52.3] },
     ]
 
-    let state = updateMapLensViewport(adapter, null, false, "place-1", markers, { bottomInset: 440 })
+    let state = updateMapLensViewport(adapter, initialMapLensViewportState(), "place-1", markers, { bottomInset: 440 })
     expect(adapter.focusOn).toHaveBeenCalledWith([12.4, 52.1], { animate: false, bottomInset: 440 })
     expect(adapter.fitBounds).not.toHaveBeenCalled()
-    expect(state).toEqual({ lastFocusedItemId: "place-1", autoFitted: false })
+    expect(state).toEqual({ selectionFocus: { itemId: "place-1", bottomInset: 440 }, autoFitted: false })
 
-    state = updateMapLensViewport(adapter, state.lastFocusedItemId, state.autoFitted, "place-1", markers, { bottomInset: 440 })
+    state = updateMapLensViewport(adapter, state, "place-1", markers, { bottomInset: 440 })
     expect(adapter.focusOn).toHaveBeenCalledTimes(1)
     expect(adapter.fitBounds).not.toHaveBeenCalled()
 
-    state = updateMapLensViewport(adapter, state.lastFocusedItemId, state.autoFitted, undefined, markers, { bottomInset: 440 })
+    state = updateMapLensViewport(adapter, state, "place-1", markers, { bottomInset: 640 })
+    expect(adapter.focusOn).toHaveBeenLastCalledWith([12.4, 52.1], { animate: false, bottomInset: 640 })
+
+    state = updateMapLensViewport(adapter, state, undefined, markers, { bottomInset: 640 })
     expect(state.autoFitted).toBe(true)
     expect(adapter.fitBounds).toHaveBeenCalledTimes(1)
   })
@@ -325,14 +334,13 @@ describe("Map and Calendar lenses", () => {
     const firstAdapter = mapAdapter()
     const secondAdapter = mapAdapter()
 
-    const focused = updateMapLensViewport(firstAdapter, null, false, "place-1", markers)
-    expect(focused).toEqual({ lastFocusedItemId: "place-1", autoFitted: false })
+    const focused = updateMapLensViewport(firstAdapter, initialMapLensViewportState(), "place-1", markers)
+    expect(focused).toEqual({ selectionFocus: { itemId: "place-1", bottomInset: 0 }, autoFitted: false })
     const replacementState = mapLensViewportStateForAdapter(firstAdapter, secondAdapter, focused)
     expect(replacementState).toEqual(initialMapLensViewportState())
     updateMapLensViewport(
       secondAdapter,
-      replacementState.lastFocusedItemId,
-      replacementState.autoFitted,
+      replacementState,
       "place-1",
       markers,
     )
@@ -342,12 +350,29 @@ describe("Map and Calendar lenses", () => {
     const newSpaceState = initialMapLensViewportState()
     updateMapLensViewport(
       thirdAdapter,
-      newSpaceState.lastFocusedItemId,
-      newSpaceState.autoFitted,
+      newSpaceState,
       undefined,
       markers,
     )
     expect(thirdAdapter.fitBounds).toHaveBeenCalledTimes(1)
+  })
+
+  it("7: a real viewportResetKey change re-arms the MapLens viewport effect and fits again", () => {
+    const adapter = mapAdapter()
+    const markers: MapMarkerSpec[] = [
+      { id: "place-1", position: [12.4, 52.1] },
+      { id: "place-2", position: [12.6, 52.3] },
+    ]
+    let context = initialMapLensViewportContext()
+
+    context = updateMapLensViewportForResetKey(adapter, context, "space-a", undefined, markers)
+    expect(adapter.fitBounds).toHaveBeenCalledTimes(1)
+
+    context = updateMapLensViewportForResetKey(adapter, context, "space-a", undefined, markers)
+    expect(adapter.fitBounds).toHaveBeenCalledTimes(1)
+
+    context = updateMapLensViewportForResetKey(adapter, context, "space-b", undefined, markers)
+    expect(adapter.fitBounds).toHaveBeenCalledTimes(2)
   })
 
   it("7: StrictMode cleanup leaves exactly one mounted map adapter", async () => {

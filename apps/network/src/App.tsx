@@ -43,7 +43,6 @@ import {
   useCurrentGroup,
   useGroups,
   useItems,
-  useIsCompact,
   useModulePanel,
   useRelationRecords,
   type GraphEdge,
@@ -72,7 +71,6 @@ const GRAPH_TYPES: readonly GraphTypeDescriptor[] = [
 
 const ALL_GRAPH_TYPES = new Set(GRAPH_TYPES.map(({ id }) => id))
 const THEME_KEY = "rls-network-theme"
-const DETAIL_DRAWER_FRACTION = 0.55
 const DETAIL_PANEL_MODES: PanelMode[] = ["sidebar", "drawer"]
 const PROFILE_PANEL_MODES: PanelMode[] = ["modal"]
 
@@ -405,7 +403,6 @@ function NetworkShell() {
     isLoading: relationRecordsLoading,
     supported: relationRecordsSupported,
   } = useRelationRecords()
-  const isCompact = useIsCompact()
   const graphRef = useRef<GraphViewHandle>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [activeLens, setActiveLens] = useState<NetworkLens>("graph")
@@ -414,6 +411,7 @@ function NetworkShell() {
   const [enabledTypes, setEnabledTypes] = useState(() => new Set(ALL_GRAPH_TYPES))
   const [isDark, setIsDark] = useState(initialDarkMode)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [detailDrawerHeight, setDetailDrawerHeight] = useState(0)
   const currentUser = useOptionalCurrentUser(connector)
 
   useEffect(() => {
@@ -470,9 +468,10 @@ function NetworkShell() {
   const selectedItem = selectedNodeId ? itemById.get(selectedNodeId) ?? null : null
   const taskBoardItems = useMemo(() => networkTaskBoardItems(domainItems), [domainItems])
   const createMapAdapter = useCallback(() => new MapLibreMapAdapter(), [])
-  const selectionFocusVisibleArea = isCompact
-    ? { bottomInset: window.innerHeight * DETAIL_DRAWER_FRACTION }
-    : undefined
+  const selectionFocusVisibleArea = useMemo(
+    () => detailDrawerHeight > 0 ? { bottomInset: detailDrawerHeight } : undefined,
+    [detailDrawerHeight],
+  )
   const marketplaceItems = useMemo(
     () => domainItems.filter((item) => item.type === "resource"),
     [domainItems],
@@ -546,6 +545,7 @@ function NetworkShell() {
         sidebarWidth="420px"
         sidebarMinWidth="300px"
         sidebarMaxWidth="70vw"
+        onDrawerHeightChange={setDetailDrawerHeight}
       >
         <DetailPanelController
           item={selectedItem}

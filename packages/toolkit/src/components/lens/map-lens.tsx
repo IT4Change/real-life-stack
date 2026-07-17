@@ -4,8 +4,10 @@ import type { Item } from "@real-life-stack/data-interface"
 import { latLngFromPoint } from "../../lib/geo"
 import { getItemColor } from "../../lib/utils"
 import {
-  focusActiveItemInVisibleAreaOnce,
+  focusActiveItemInVisibleArea,
+  initialSelectionFocusVisibleAreaState,
   type SelectionFocusVisibleArea,
+  type SelectionFocusVisibleAreaState,
 } from "../../lib/selection-focus"
 import type { MapAdapter, MapBounds, MapMarkerSpec, MapMountOptions } from "../map"
 
@@ -85,23 +87,33 @@ export function fitMapLensViewport(adapter: MapAdapter, markers: readonly MapMar
 
 /** Selection uses the shared lens gate and panel-aware visible-area semantics. */
 export function focusMapLensMarkerOnce(
-  lastFocusedItemId: string | null,
+  selectionFocus: SelectionFocusVisibleAreaState,
   activeItemId: string | null | undefined,
   markers: readonly MapMarkerSpec[],
   visibleArea: SelectionFocusVisibleArea | undefined,
   focus: (marker: MapMarkerSpec, visibleArea: SelectionFocusVisibleArea) => void,
-): string | null {
+): SelectionFocusVisibleAreaState {
   const marker = markers.find(({ id }) => id === activeItemId) ?? null
-  return focusActiveItemInVisibleAreaOnce(lastFocusedItemId, activeItemId, marker, visibleArea, focus)
+  return focusActiveItemInVisibleArea(selectionFocus, activeItemId, marker, visibleArea, focus)
 }
 
 export interface MapLensViewportState {
-  lastFocusedItemId: string | null
+  selectionFocus: SelectionFocusVisibleAreaState
   autoFitted: boolean
 }
 
 export function initialMapLensViewportState(): MapLensViewportState {
-  return { lastFocusedItemId: null, autoFitted: false }
+  return { selectionFocus: initialSelectionFocusVisibleAreaState(), autoFitted: false }
+}
+
+export interface MapLensViewportContext {
+  initialized: boolean
+  resetKey: string | number | undefined
+  state: MapLensViewportState
+}
+
+export function initialMapLensViewportContext(): MapLensViewportContext {
+  return { initialized: false, resetKey: undefined, state: initialMapLensViewportState() }
 }
 
 /** A replacement adapter owns a fresh map and must not inherit prior viewport gates. */
@@ -116,15 +128,14 @@ export function mapLensViewportStateForAdapter(
 /** Apply selection before the one-time aggregate viewport fit. */
 export function updateMapLensViewport(
   adapter: MapAdapter,
-  lastFocusedItemId: string | null,
-  autoFitted: boolean,
+  state: MapLensViewportState,
   activeItemId: string | null | undefined,
   markers: readonly MapMarkerSpec[],
   visibleArea?: SelectionFocusVisibleArea,
-): { lastFocusedItemId: string | null; autoFitted: boolean } {
+): MapLensViewportState {
   const activeMarker = markers.find(({ id }) => id === activeItemId)
-  const nextFocusedItemId = focusMapLensMarkerOnce(
-    lastFocusedItemId,
+  const selectionFocus = focusMapLensMarkerOnce(
+    state.selectionFocus,
     activeItemId,
     markers,
     visibleArea,
@@ -133,12 +144,34 @@ export function updateMapLensViewport(
       ...(focusVisibleArea.bottomInset ? { bottomInset: focusVisibleArea.bottomInset } : {}),
     }),
   )
-  if (activeMarker || autoFitted) {
-    return { lastFocusedItemId: nextFocusedItemId, autoFitted }
+  if (activeMarker || state.autoFitted) {
+    return { selectionFocus, autoFitted: state.autoFitted }
   }
   return {
-    lastFocusedItemId: nextFocusedItemId,
+    selectionFocus,
     autoFitted: fitMapLensViewport(adapter, markers),
+  }
+}
+
+/**
+ * The MapLens viewport-effect transition. A new reset key invalidates both
+ * selection and auto-fit gates before the same render's viewport action runs.
+ */
+export function updateMapLensViewportForResetKey(
+  adapter: MapAdapter,
+  context: MapLensViewportContext,
+  viewportResetKey: string | number | undefined,
+  activeItemId: string | null | undefined,
+  markers: readonly MapMarkerSpec[],
+  visibleArea?: SelectionFocusVisibleArea,
+): MapLensViewportContext {
+  const state = !context.initialized || context.resetKey !== viewportResetKey
+    ? initialMapLensViewportState()
+    : context.state
+  return {
+    initialized: true,
+    resetKey: viewportResetKey,
+    state: updateMapLensViewport(adapter, state, activeItemId, markers, visibleArea),
   }
 }
 
@@ -212,7 +245,7 @@ export function MapLens({
   const initialViewRef = useRef(initialView)
   const [adapter, setAdapter] = useState<MapAdapter | null>(null)
   const adapterOwnerRef = useRef<MapAdapter | null>(null)
-  const viewportStateRef = useRef<MapLensViewportState>(initialMapLensViewportState())
+  const viewportContextRef = useRef<MapLensViewportContext>(initialMapLensViewportContext())
   const markers = useMemo(() => mapLensMarkers(items, activeItemId), [activeItemId, items])
   const itemsByMarkerId = useMemo(
     () => new Map(items.filter(({ type }) => type !== "relation").map((item) => [item.id, item])),
@@ -233,11 +266,14 @@ export function MapLens({
       createAdapter,
       initialView: initialViewRef.current,
       onMounted: (candidate) => {
-        viewportStateRef.current = mapLensViewportStateForAdapter(
-          adapterOwnerRef.current,
-          candidate,
-          viewportStateRef.current,
-        )
+        viewportContextRef.current = {
+          ...viewportContextRef.current,
+          state: mapLensViewportStateForAdapter(
+            adapterOwnerRef.current,
+            candidate,
+            viewportContextRef.current.state,
+          ),
+        }
         adapterOwnerRef.current = candidate
         setAdapter(candidate)
       },
@@ -262,25 +298,20 @@ export function MapLens({
   }, [adapter, itemsByMarkerId, onItemClick])
 
   useEffect(() => {
-    viewportStateRef.current = initialMapLensViewportState()
-  }, [viewportResetKey])
-
-  useEffect(() => {
     if (!adapter) return
     try {
-      const next = updateMapLensViewport(
+      viewportContextRef.current = updateMapLensViewportForResetKey(
         adapter,
-        viewportStateRef.current.lastFocusedItemId,
-        viewportStateRef.current.autoFitted,
+        viewportContextRef.current,
+        viewportResetKey,
         activeItemId,
         markers,
         selectionFocusVisibleArea,
       )
-      viewportStateRef.current = next
     } catch {
       // Keep the gate armed: a later render may use an adapter that is ready.
     }
-  }, [activeItemId, adapter, markers, selectionFocusVisibleArea])
+  }, [activeItemId, adapter, markers, selectionFocusVisibleArea, viewportResetKey])
 
   return (
     <section aria-label="Kartenansicht" className="relative h-full min-h-80">

@@ -34,13 +34,17 @@ export function ListView({ items, activeItemId, selectionFocusVisibleArea, onIte
   const scrollMarginBlockEnd = selectionFocusScrollMarginBlockEnd(selectionFocusVisibleArea)
 
   useEffect(() => {
+    lastFocusedItemIdRef.current = null
+  }, [selectionFocusVisibleArea?.bottomInset])
+
+  useEffect(() => {
     lastFocusedItemIdRef.current = focusActiveItemOnce(
       lastFocusedItemIdRef.current,
       activeItemId,
       activeItem ? activeElementRef.current : null,
       (element) => element.scrollIntoView({ block: "center" }),
     )
-  }, [activeItem, activeItemId])
+  }, [activeItem, activeItemId, selectionFocusVisibleArea?.bottomInset])
 
   if (visibleItems.length === 0) {
     return <p className="text-sm text-muted-foreground">Keine Einträge vorhanden.</p>

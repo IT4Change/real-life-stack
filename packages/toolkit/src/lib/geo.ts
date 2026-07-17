@@ -8,8 +8,8 @@
 
 export interface GeoJSONPoint {
   type: "Point"
-  /** GeoJSON convention: [longitude, latitude] */
-  coordinates: [number, number]
+  /** GeoJSON convention: [longitude, latitude, optional elevation] */
+  coordinates: [number, number, elevation?: number]
 }
 
 /** Build a GeoJSON Point from latitude / longitude (any order, named). */
@@ -21,13 +21,15 @@ export function pointFromLatLng(lat: number, lng: number): GeoJSONPoint {
 export function latLngFromPoint(point: unknown): { lat: number; lng: number } | null {
   if (!point || typeof point !== "object") return null
   const p = point as Record<string, unknown>
-  if (p.type !== "Point" || !Array.isArray(p.coordinates) || p.coordinates.length < 2) return null
-  const [lng, lat] = p.coordinates as number[]
   if (
-    typeof lat !== "number" ||
-    typeof lng !== "number" ||
-    !Number.isFinite(lat) ||
-    !Number.isFinite(lng) ||
+    p.type !== "Point" ||
+    !Array.isArray(p.coordinates) ||
+    p.coordinates.length < 2 ||
+    p.coordinates.length > 3 ||
+    !p.coordinates.every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate))
+  ) return null
+  const [lng, lat] = p.coordinates
+  if (
     lng < -180 || lng > 180 ||
     lat < -90 || lat > 90
   ) return null

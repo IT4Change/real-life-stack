@@ -68,6 +68,8 @@ export interface ModulePanelProviderProps {
   /** Hide the panel without unmounting (keeps composer state) — e.g. while
    *  the user picks a location on the underlying map. */
   suspended?: boolean
+  /** Receives the current drawer height so the owning shell can avoid it. */
+  onDrawerHeightChange?: (height: number) => void
 }
 
 /**
@@ -89,6 +91,7 @@ export function ModulePanelProvider({
   pinned,
   onPinnedChange,
   suspended,
+  onDrawerHeightChange,
 }: ModulePanelProviderProps) {
   const [current, setCurrent] = useState<ModulePanelEntry | null>(null)
   // Hold a ref to the current entry's `onClose` so an explicit close()
@@ -129,6 +132,7 @@ export function ModulePanelProvider({
         pinned={pinned}
         onPinnedChange={onPinnedChange}
         suspended={suspended}
+        onDrawerHeightChange={onDrawerHeightChange}
         backdrop={current?.backdrop ?? true}
       >
         {current?.content ?? null}

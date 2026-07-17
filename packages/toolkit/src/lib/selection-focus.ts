@@ -4,6 +4,23 @@ export interface SelectionFocusVisibleArea {
   bottomInset?: number
 }
 
+/** Focus state for surfaces that must re-centre when their covered area changes. */
+export interface SelectionFocusVisibleAreaState {
+  itemId: string | null
+  bottomInset: number
+}
+
+function normalizedBottomInset(visibleArea: SelectionFocusVisibleArea | undefined): number {
+  const bottomInset = visibleArea?.bottomInset
+  return typeof bottomInset === "number" && Number.isFinite(bottomInset) && bottomInset > 0
+    ? bottomInset
+    : 0
+}
+
+export function initialSelectionFocusVisibleAreaState(): SelectionFocusVisibleAreaState {
+  return { itemId: null, bottomInset: 0 }
+}
+
 /**
  * Focus an active item at most once for each contiguous rendered selection.
  *
@@ -42,6 +59,25 @@ export function focusActiveItemInVisibleAreaOnce<T>(
     target,
     (resolvedTarget) => focus(resolvedTarget, visibleArea ?? {}),
   )
+}
+
+/**
+ * Focus an active item once per visible-area geometry. A drawer-height change
+ * is a new geometry, so the existing selection is deliberately re-centred.
+ */
+export function focusActiveItemInVisibleArea<T>(
+  state: SelectionFocusVisibleAreaState,
+  activeItemId: string | null | undefined,
+  target: T | null,
+  visibleArea: SelectionFocusVisibleArea | undefined,
+  focus: (target: T, visibleArea: SelectionFocusVisibleArea) => void,
+): SelectionFocusVisibleAreaState {
+  if (!activeItemId || !target) return initialSelectionFocusVisibleAreaState()
+  const bottomInset = normalizedBottomInset(visibleArea)
+  if (state.itemId === activeItemId && state.bottomInset === bottomInset) return state
+
+  focus(target, visibleArea ?? {})
+  return { itemId: activeItemId, bottomInset }
 }
 
 /**

@@ -223,6 +223,10 @@ export function KanbanBoard({
   const lastFocusedItemIdRef = useRef<string | null>(null)
   const scrollMarginBlockEnd = selectionFocusScrollMarginBlockEnd(selectionFocusVisibleArea)
 
+  useEffect(() => {
+    lastFocusedItemIdRef.current = null
+  }, [selectionFocusVisibleArea?.bottomInset])
+
   const resolvedColumns = useMemo(() => {
     if (columns) return columns
     if (statusField === "status") return defaultColumns
@@ -359,7 +363,7 @@ export function KanbanBoard({
       activeItemIsRendered ? activeCardRef.current : null,
       (element) => element.scrollIntoView({ block: "center", inline: "center" }),
     )
-  }, [activeItemId, activeItemIsRendered, itemsByColumn])
+  }, [activeItemId, activeItemIsRendered, itemsByColumn, selectionFocusVisibleArea?.bottomInset])
 
   const handleFloatingDrop = useCallback(
     (e: DragEvent, columnId: string) => {
