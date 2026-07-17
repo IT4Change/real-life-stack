@@ -25,14 +25,6 @@ Real Life Stack provides a shared technical foundation:
 - **Backend-agnostic** – connector architecture for REST, local-first, P2P, or E2EE
 - **Trust-based identity** – a Web of Trust built through real-world encounters
 
-### The Activation Cycle
-
-```text
-Propose → Plan → Act → Build trust → Share successes → ↩
-```
-
-Real Life Stack supports the whole cycle: from the idea, to making arrangements, to acting together locally. Real collaboration grows a trust network ([Web of Trust](https://web-of-trust.de)) that strengthens the community over time.
-
 ---
 
 ## Architecture
@@ -58,13 +50,21 @@ Real Life Stack supports the whole cycle: from the idea, to making arrangements,
 └──────────────────────────────────────────────────────────┘
 ```
 
-### App Shell + Space Modules
+### App Shell
 
-The **App Shell** is the global frame. **Space Modules** (Kanban, Calendar, Map, Feed, ...) are surfaces that can be enabled per space. Each group chooses which Space Modules it uses. Space Modules do not only check the item type but also which data fields are present (`status` → Kanban, `start`/`end` → Calendar, `location` → Map).
+The **App Shell** is the global frame: it hosts navigation, the current space, and the surfaces that all modules share.
 
-### Hooks + DataInterface
+### Space Modules
 
-The hooks are a thin layer between UI and connector — they translate observables into React state and mutations into promises. The **DataInterface** defines the read-only core contract: reading items and observing them reactively. Additional abilities such as writing, groups, identity, or relations are detected via capability interfaces (`ItemWriter`, `GroupManager`, `Authenticatable`, ...). UI surfaces only know these interfaces, never the backend.
+**Space Modules** (Kanban, Calendar, Map, Feed, ...) are surfaces that can be enabled per space. Each group chooses which Space Modules it uses. Space Modules do not only check the item type but also which data fields are present (`status` → Kanban, `start`/`end` → Calendar, `position` → Map).
+
+### Hooks
+
+The hooks are a thin layer between UI and connector — they translate observables into React state and mutations into promises.
+
+### DataInterface
+
+The **DataInterface** defines the read-only core contract: reading items and observing them reactively. Additional abilities such as writing, groups, identity, or relations are detected via capability interfaces (`ItemWriter`, `GroupManager`, `Authenticatable`, ...). UI surfaces only know these interfaces, never the backend.
 
 ### Connectors
 
