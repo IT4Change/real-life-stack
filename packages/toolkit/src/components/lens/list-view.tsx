@@ -69,31 +69,33 @@ export function ListView({ items, activeItemId, selectionFocusVisibleArea, selec
 
   return (
     <div ref={scrollElementRef} aria-label="Listenansicht" data-virtualizer-item-count={visibleItems.length} className="h-full overflow-y-auto">
-      <section className="relative" style={{ height: virtualizer.getTotalSize() }}>
-        {virtualizer.getVirtualItems().map((virtualItem) => {
-          const item = visibleItems[virtualItem.index]
-          if (!item) return null
-          const adornments = getItemPreviewAdornments(item)
-          return (
-            <div
-              key={item.id}
-              data-index={virtualItem.index}
-              ref={virtualizer.measureElement}
-              className="absolute left-0 w-full pb-2"
-              style={{ transform: `translateY(${virtualItem.start}px)` }}
-            >
-              <ItemPreview
-                item={item}
-                author={null}
-                density="compact"
-                active={item.id === activeItemId}
-                {...adornments}
-                onClick={onItemClick ? () => onItemClick(item) : undefined}
-              />
-            </div>
-          )
-        })}
-      </section>
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+        <section className="relative" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((virtualItem) => {
+            const item = visibleItems[virtualItem.index]
+            if (!item) return null
+            const adornments = getItemPreviewAdornments(item)
+            return (
+              <div
+                key={item.id}
+                data-index={virtualItem.index}
+                ref={virtualizer.measureElement}
+                className="absolute left-0 w-full pb-2"
+                style={{ transform: `translateY(${virtualItem.start}px)` }}
+              >
+                <ItemPreview
+                  item={item}
+                  author={null}
+                  density="compact"
+                  active={item.id === activeItemId}
+                  {...adornments}
+                  onClick={onItemClick ? () => onItemClick(item) : undefined}
+                />
+              </div>
+            )
+          })}
+        </section>
+      </div>
     </div>
   )
 }

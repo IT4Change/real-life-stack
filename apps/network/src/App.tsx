@@ -633,16 +633,13 @@ function NetworkShell() {
               />
             )}
             {deferredLens === "list" && (
-              <div className="h-full p-4 sm:p-6">
-                <div className="mx-auto h-full min-h-0 max-w-6xl">
-                  <CollectionView
-                    items={domainItems}
-                    activeItemId={selectedNodeId ?? undefined}
-                    selectionFocusVisibleArea={selectionFocusVisibleArea}
-                    onItemClick={(item) => selectItem(item.id)}
-                  />
-                </div>
-              </div>
+              <CollectionView
+                className="h-full"
+                items={domainItems}
+                activeItemId={selectedNodeId ?? undefined}
+                selectionFocusVisibleArea={selectionFocusVisibleArea}
+                onItemClick={(item) => selectItem(item.id)}
+              />
             )}
             {deferredLens === "kanban" && (
               <div className="h-full overflow-y-auto p-4 sm:p-6">
@@ -682,20 +679,18 @@ function NetworkShell() {
               </div>
             )}
             {deferredLens === "marketplace" && (
-              <div className="h-full p-4 sm:p-6">
-                <div className="mx-auto flex h-full min-h-0 max-w-3xl flex-col gap-4">
-                  <header>
-                    <h1 className="text-xl font-semibold">Marktplatz</h1>
-                    <p className="text-sm text-muted-foreground">Ressourcen aus dem aktuellen Space</p>
-                  </header>
-                  <CollectionView
-                    className="flex-1"
-                    items={marketplaceItems}
-                    activeItemId={selectedNodeId ?? undefined}
-                    selectionFocusVisibleArea={selectionFocusVisibleArea}
-                    onItemClick={(item) => selectItem(item.id)}
-                  />
-                </div>
+              <div className="flex h-full min-h-0 flex-col gap-4">
+                <header className="mx-auto w-full max-w-6xl px-4 pt-4 sm:px-6 sm:pt-6">
+                  <h1 className="text-xl font-semibold">Marktplatz</h1>
+                  <p className="text-sm text-muted-foreground">Ressourcen aus dem aktuellen Space</p>
+                </header>
+                <CollectionView
+                  className="min-h-0 flex-1"
+                  items={marketplaceItems}
+                  activeItemId={selectedNodeId ?? undefined}
+                  selectionFocusVisibleArea={selectionFocusVisibleArea}
+                  onItemClick={(item) => selectItem(item.id)}
+                />
               </div>
             )}
 

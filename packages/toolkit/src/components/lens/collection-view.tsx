@@ -43,27 +43,29 @@ export function CollectionView({
 
   return (
     <section aria-label="Sammlungsansicht" className={cn("flex h-full min-h-0 flex-col gap-4", className)}>
-      <div role="group" aria-label="Darstellung" className="flex justify-end gap-1">
-        <Button
-          type="button"
-          variant={layout === "list" ? "secondary" : "ghost"}
-          size="icon"
-          aria-label="Listenansicht"
-          aria-pressed={layout === "list"}
-          onClick={() => setLayout("list")}
-        >
-          <List className="size-4" />
-        </Button>
-        <Button
-          type="button"
-          variant={layout === "grid" ? "secondary" : "ghost"}
-          size="icon"
-          aria-label="Rasteransicht"
-          aria-pressed={layout === "grid"}
-          onClick={() => setLayout("grid")}
-        >
-          <Grid2X2 className="size-4" />
-        </Button>
+      <div className="mx-auto flex w-full max-w-6xl justify-end px-4 sm:px-6">
+        <div role="group" aria-label="Darstellung" className="flex gap-1">
+          <Button
+            type="button"
+            variant={layout === "list" ? "secondary" : "ghost"}
+            size="icon"
+            aria-label="Listenansicht"
+            aria-pressed={layout === "list"}
+            onClick={() => setLayout("list")}
+          >
+            <List className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant={layout === "grid" ? "secondary" : "ghost"}
+            size="icon"
+            aria-label="Rasteransicht"
+            aria-pressed={layout === "grid"}
+            onClick={() => setLayout("grid")}
+          >
+            <Grid2X2 className="size-4" />
+          </Button>
+        </div>
       </div>
       <div className="min-h-0 flex-1">
         {layout === "list" ? (

@@ -84,6 +84,7 @@ describe("read-only lenses", () => {
     expect(markup).not.toContain("<input")
     expect(markup.match(/data-preview-density="compact"/g)).toHaveLength(2)
     expect(markup).toContain('data-virtualizer-item-count="2"')
+    expect(markup).toContain('class="mx-auto w-full max-w-6xl px-4 sm:px-6"')
   })
 
   it("1/3: SSR renders a deterministic virtual subset while retaining every reachable list item", () => {
@@ -123,6 +124,8 @@ describe("read-only lenses", () => {
     expect(markup).toContain(">initiative<")
     expect(markup).not.toContain("Unsichtbare Kante")
     expect(markup.match(/data-preview-density="comfortable"/g)).toHaveLength(5)
+    expect(markup).toContain('class="mx-auto w-full max-w-6xl px-4 sm:px-6"')
+    expect(markup).toContain('class="absolute left-0 grid w-full gap-4 pb-4"')
   })
 
   it("1/8: CollectionView keeps list and grid as densities and re-arms the active focus gate per layout", () => {
@@ -138,6 +141,8 @@ describe("read-only lenses", () => {
     expect(gridMarkup).toContain('aria-label="Rasteransicht" aria-pressed="true"')
     expect(gridMarkup).toContain('aria-label="Listenansicht" aria-pressed="false"')
     expect(gridMarkup).toContain('data-preview-density="comfortable"')
+    expect(listMarkup).toContain('class="mx-auto flex w-full max-w-6xl justify-end px-4 sm:px-6"')
+    expect(gridMarkup).toContain('class="mx-auto flex w-full max-w-6xl justify-end px-4 sm:px-6"')
     expect(collectionFocusGateKey("list", "task-1")).toBe("list:task-1")
     expect(collectionFocusGateKey("grid", "task-1")).toBe("grid:task-1")
 

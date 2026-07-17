@@ -26,6 +26,9 @@ function gridColumnsForWidth(width: number): number {
   return 1
 }
 
+/** Included in each measured row so virtual rows never overlap vertically. */
+const GRID_ROW_GAP = 16
+
 /** A read-only grid composed from comfortable ItemPreview cards. */
 export function GridView({ items, activeItemId, selectionFocusVisibleArea, selectionFocusGateKey, onItemClick }: GridViewProps) {
   const visibleItems = lensItems(items)
@@ -37,7 +40,7 @@ export function GridView({ items, activeItemId, selectionFocusVisibleArea, selec
   )
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: rows.length,
-    estimateSize: () => 172,
+    estimateSize: () => 172 + GRID_ROW_GAP,
     initialRect: { width: 1024, height: 720 },
     overscan: 2,
     getScrollElement: () => scrollElementRef.current,
@@ -84,27 +87,29 @@ export function GridView({ items, activeItemId, selectionFocusVisibleArea, selec
 
   return (
     <div ref={scrollElementRef} aria-label="Rasteransicht" data-virtualizer-item-count={visibleItems.length} className="h-full overflow-y-auto">
-      <section className="relative" style={{ height: virtualizer.getTotalSize() }}>
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          return (
-            <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
-              ref={virtualizer.measureElement}
-              className="absolute left-0 grid w-full gap-3"
-              style={{
-                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
-            >
-              {rows[virtualRow.index]?.map((item) => {
-                const adornments = getItemPreviewAdornments(item)
-                return <ItemPreview key={item.id} item={item} author={null} density="comfortable" active={item.id === activeItemId} {...adornments} onClick={onItemClick ? () => onItemClick(item) : undefined} />
-              })}
-            </div>
-          )
-        })}
-      </section>
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+        <section className="relative" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            return (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                className="absolute left-0 grid w-full gap-4 pb-4"
+                style={{
+                  gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                {rows[virtualRow.index]?.map((item) => {
+                  const adornments = getItemPreviewAdornments(item)
+                  return <ItemPreview key={item.id} item={item} author={null} density="comfortable" active={item.id === activeItemId} {...adornments} onClick={onItemClick ? () => onItemClick(item) : undefined} />
+                })}
+              </div>
+            )
+          })}
+        </section>
+      </div>
     </div>
   )
 }
