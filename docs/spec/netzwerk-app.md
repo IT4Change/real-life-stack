@@ -141,10 +141,23 @@ divergieren Item und Log bei Offline-Merges.
   (keine Migrationsmaschinerie); Nutzdaten-Migration existiert zu diesem
   Zeitpunkt nicht, weil P1a keine Nutzdaten-Editoren hat.
 - **P2 — Mirror/Bridge:** Multi-Space mit explizitem E2EE-/Konfliktmodell.
-- **P3 — Linsen:** List/Grid/Suche/Filter generisch.
-- **P4 — Verdrahtung + Fluss:** Map (inkl. Bild-Modus), Kalender, Kanban,
-  Verification-Flow.
-- **P5 — Malleable:** Type/View/Relation-Editoren.
+- **P3 — Linsen:** alle sechs Sichtweisen auf denselben Item-Bestand
+  vervollständigen — List, Grid, Kanban neu; Map (inkl. Bild-Modus) und
+  Kalender verdrahten; Graph existiert. Eine **Linse** ist eine
+  austauschbare Sichtweise auf dieselben Daten (technisch ein Space
+  Module, [00-architecture.md](00-architecture.md)/[01](01-app-composition.md));
+  welche Linse ein Item zeigt, entscheidet die Feld-Komposition
+  ([06](06-schema-composition.md)): Kalender bei `start`, Map bei
+  `position`, Kanban bei `status`, Graph über RelationRecords, List/Grid
+  generisch. Marketplace = List über Ressourcen.
+- **P4 — AppShell:** Suche und Filter als **Shell-Zustand über der
+  aktiven Linse** (eine Filtermenge, jede Linse konsumiert sie,
+  Linsenwechsel behält den Filter — heutiger `ItemListFilter` ist
+  Display-Filter pro Modul und wandert dafür eine Ebene hoch) sowie der
+  Verification-Flow (per 00-architecture ohnehin App-Shell-Zuständigkeit).
+- **P5 — Item-Detail:** Überarbeitung der Item-Detail-Ansichten
+  (Detail-Panel, typspezifische Darstellungen, Relationen im Detail).
+- **P6 — Malleable:** Type/View/Relation-Editoren (ehemals P5).
 
 ## Konvergenz-Strategie mit der Referenz-App (entschieden 16.07.)
 
@@ -155,8 +168,9 @@ geteilten Schichten ab (Verträge → `data-interface`, Komponenten/Hooks →
 `toolkit`, Views → Space Modules), Apps bleiben dünne Presets über
 derselben Modulliste. Normativ verankert als Architekturregel 9
 ([00-architecture.md](00-architecture.md), Absink-Regel) — gilt damit auch
-für Implementierungs-Runs. Nach P3/P4 können beide Apps dieselben Module
-registrieren; P5 (malleable) macht die Modulliste pro Space konfigurierbar.
+für Implementierungs-Runs. Nach P3 können beide Apps dieselben Linsen
+(Space Modules) registrieren; P6 (malleable) macht die Modulliste pro
+Space konfigurierbar.
 
 **Vorschnitt vor P3 — Typen-Konsolidierung:** `item-types.ts` und die
 Vokabulare werden die eine Quelle für Referenz- UND Netzwerk-Typen:
@@ -325,3 +339,12 @@ Implementierung kanonisch.
   nackte itemId. (2) Retention verbindlich: Überschreitet der Bestand
   beim Schreiben das Cap, MUSS der Connector prunen — „nie prunen" ist
   nicht spec-konform. **Beide übernommen** (Folgecommit in #142).
+- Phasen-Neuschnitt (17.07., Anton): Die sechs Views (Graph, List, Grid,
+  Kanban, Map, Kalender) sind **Linsen** — unterschiedliche Sichtweisen
+  auf denselben Item-Bestand (Begriff „Linse" bleibt vorerst neben
+  „Space Module"; Terminologie-Entscheidung offen). Suche, Filter und
+  Verification-Flow gehören zur **AppShell**, nicht zu den Linsen.
+  Konsequenz: P3 = alle Linsen (inkl. Map/Kalender-Verdrahtung, vorher
+  P4), P4 = AppShell (Suche/Filter als Shell-Zustand, Verification),
+  P5 = Item-Detail-Ansichten (neu), Malleable rückt auf P6. P2
+  Mirror/Bridge bleibt unverändert im Plan.
