@@ -70,7 +70,9 @@ The **DataInterface** defines the read-only core contract: reading items and obs
 
 Each connector implements the DataInterface and only the capabilities its data source supports. The **MockConnector** (in-memory) is used for development, the **LocalConnector** for local IndexedDB persistence with cross-tab sync, the **GraphQL connector** for classic servers, and the **WoT connector** (Yjs/CRDT + E2EE) for decentralized, encrypted collaboration.
 
-### RLNP and Real Life Game
+---
+
+## RLNP and Real Life Game
 
 Real Life Stack does not own the social or game semantics. It makes them displayable and usable as a backend-agnostic UI and connector layer. The social meaning comes from the [Real Life Network Protocol](https://github.com/real-life-org/real-life-network-protocol), the optional game semantics from the [Real Life Game](https://github.com/real-life-org/real-life-game). Details: [docs/concepts/rlnp-game-integration.md](docs/concepts/rlnp-game-integration.md).
 
@@ -130,13 +132,6 @@ Binding Space Module specs live in [docs/spec/modules/](docs/spec/modules/). The
 - **Modular architecture** – AppShell pattern for different apps
 
 **[Landing page →](https://web-of-trust.de)** | **[Demo →](https://web-of-trust.de/demo)** | **[GitHub →](https://github.com/real-life-org/web-of-trust)**
-
----
-
-## Reference Projects
-
-- [Utopia Map](https://github.com/utopia-os/utopia-map/) – map platform for local networking
-- [ocelot.social](https://github.com/Ocelot-Social-Community/ocelot.social) – social network for communities
 
 ---
 
