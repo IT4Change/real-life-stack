@@ -1090,14 +1090,16 @@ function DayCalendar({ visibleDate, eventsByDay, onEventClick, onCreateEvent }: 
   const lastScrolledItemIdRef = useRef<string | null>(null)
 
   // Linsen-Vertrag: nach dem Sprung in die Tagesansicht das aktive Event
-  // einmalig zentrieren (Gate pro activeItemId; kein Verbrauch, solange
-  // das Event nicht auf diesem Tag gerendert ist; User-Scroll bleibt frei).
+  // einmalig zentrieren — über den GEMEINSAMEN Gate-Helper (re-armt bei
+  // geleertem activeItemId, verbraucht nie ohne gerendertes Ziel,
+  // kapert keinen User-Scroll).
   useEffect(() => {
-    if (!activeItemId || lastScrolledItemIdRef.current === activeItemId) return
-    const element = activeCardRef.current
-    if (!element) return
-    lastScrolledItemIdRef.current = activeItemId
-    element.scrollIntoView({ block: "center" })
+    lastScrolledItemIdRef.current = focusActiveItemOnce(
+      lastScrolledItemIdRef.current,
+      activeItemId,
+      activeCardRef.current,
+      (element) => element.scrollIntoView({ block: "center" }),
+    )
   }, [activeItemId, dayEvents])
 
   return (

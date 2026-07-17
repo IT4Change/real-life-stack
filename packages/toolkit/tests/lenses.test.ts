@@ -561,6 +561,13 @@ describe("Map and Calendar lenses", () => {
     expect(focus).toHaveBeenCalledTimes(1)
     gate = focusCalendarItemOnce(gate, "event-1", [target], focus)
     expect(focus).toHaveBeenCalledTimes(1)
+
+    // Re-arm-Vertrag (lens-active-item-center-once): A → leer → A
+    // zentriert die NEUE zusammenhängende Auswahl erneut genau einmal.
+    gate = focusCalendarItemOnce(gate, null, [target], focus)
+    expect(gate).toBeNull()
+    gate = focusCalendarItemOnce(gate, "event-1", [target], focus)
+    expect(focus).toHaveBeenCalledTimes(2)
   })
 
   it("8: month cells keep natural order — a hidden active event opens the day view instead", () => {
