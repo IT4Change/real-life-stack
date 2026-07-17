@@ -840,7 +840,6 @@ function MonthCalendar({
   onEventClick,
   onCreateEvent,
 }: MonthCalendarProps) {
-  const activeItemId = useContext(CalendarActiveItemContext)
   const days = useMemo(
     () => buildCalendarDays(
       visibleDate.getFullYear(),
