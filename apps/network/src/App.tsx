@@ -470,6 +470,9 @@ function NetworkShell() {
   const selectedItem = selectedNodeId ? itemById.get(selectedNodeId) ?? null : null
   const taskBoardItems = useMemo(() => networkTaskBoardItems(domainItems), [domainItems])
   const createMapAdapter = useCallback(() => new MapLibreMapAdapter(), [])
+  const selectionFocusVisibleArea = isCompact
+    ? { bottomInset: window.innerHeight * DETAIL_DRAWER_FRACTION }
+    : undefined
   const marketplaceItems = useMemo(
     () => domainItems.filter((item) => item.type === "resource"),
     [domainItems],
@@ -606,7 +609,7 @@ function NetworkShell() {
                 selectedNodeId={selectedNodeId}
                 onSelectedNodeChange={handleSelectedNodeChange}
                 fitViewKey={currentGroup?.id ?? "none"}
-                selectionFocusBottomInset={isCompact ? window.innerHeight * DETAIL_DRAWER_FRACTION : 0}
+                selectionFocusBottomInset={selectionFocusVisibleArea?.bottomInset ?? 0}
                 ariaLabel={`Netzwerkgraph ${activeWorkspace?.name ?? ""}`}
               />
             )}
@@ -616,6 +619,7 @@ function NetworkShell() {
                   <ListView
                     items={domainItems}
                     activeItemId={selectedNodeId ?? undefined}
+                    selectionFocusVisibleArea={selectionFocusVisibleArea}
                     onItemClick={(item) => selectItem(item.id)}
                   />
                 </div>
@@ -627,6 +631,7 @@ function NetworkShell() {
                   <GridView
                     items={domainItems}
                     activeItemId={selectedNodeId ?? undefined}
+                    selectionFocusVisibleArea={selectionFocusVisibleArea}
                     onItemClick={(item) => selectItem(item.id)}
                   />
                 </div>
@@ -639,6 +644,7 @@ function NetworkShell() {
                     items={taskBoardItems}
                     readOnly={!isWritable(connector)}
                     activeItemId={selectedNodeId ?? undefined}
+                    selectionFocusVisibleArea={selectionFocusVisibleArea}
                     onMoveItem={handleMoveTask}
                     onItemClick={(item) => selectItem(item.id)}
                   />
@@ -651,6 +657,8 @@ function NetworkShell() {
                 createAdapter={createMapAdapter}
                 initialView={{ center: [12.4066, 52.1183], zoom: 16 }}
                 activeItemId={selectedNodeId ?? undefined}
+                selectionFocusVisibleArea={selectionFocusVisibleArea}
+                viewportResetKey={currentGroup?.id ?? "none"}
                 onItemClick={(item) => selectItem(item.id)}
               />
             )}
@@ -676,6 +684,7 @@ function NetworkShell() {
                   <ListView
                     items={marketplaceItems}
                     activeItemId={selectedNodeId ?? undefined}
+                    selectionFocusVisibleArea={selectionFocusVisibleArea}
                     onItemClick={(item) => selectItem(item.id)}
                   />
                 </div>
