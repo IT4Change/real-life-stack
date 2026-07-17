@@ -14,11 +14,13 @@ export interface GridViewProps {
   activeItemId?: string
   /** Shell-owned obstruction below the scrollable lens, e.g. a mobile drawer. */
   selectionFocusVisibleArea?: SelectionFocusVisibleArea
+  /** Re-arms the one-time focus gate when a parent changes this projection. */
+  selectionFocusGateKey?: string
   onItemClick?: (item: Item) => void
 }
 
 /** A read-only grid composed from comfortable ItemPreview cards. */
-export function GridView({ items, activeItemId, selectionFocusVisibleArea, onItemClick }: GridViewProps) {
+export function GridView({ items, activeItemId, selectionFocusVisibleArea, selectionFocusGateKey, onItemClick }: GridViewProps) {
   const visibleItems = lensItems(items)
   const activeItem = visibleItems.find(({ id }) => id === activeItemId)
   const activeElementRef = useRef<HTMLDivElement>(null)
@@ -32,7 +34,7 @@ export function GridView({ items, activeItemId, selectionFocusVisibleArea, onIte
   useEffect(() => {
     lastFocusedItemIdRef.current = focusActiveItemOnce(
       lastFocusedItemIdRef.current,
-      activeItemId,
+      selectionFocusGateKey && activeItemId ? `${selectionFocusGateKey}:${activeItemId}` : activeItemId,
       activeItem ? activeElementRef.current : null,
       (element) => element.scrollIntoView({ block: "center" }),
     )

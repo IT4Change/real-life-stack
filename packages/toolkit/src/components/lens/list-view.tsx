@@ -13,6 +13,8 @@ export interface ListViewProps {
   activeItemId?: string
   /** Shell-owned obstruction below the scrollable lens, e.g. a mobile drawer. */
   selectionFocusVisibleArea?: SelectionFocusVisibleArea
+  /** Re-arms the one-time focus gate when a parent changes this projection. */
+  selectionFocusGateKey?: string
   onItemClick?: (item: Item) => void
 }
 
@@ -26,7 +28,7 @@ export function lensItems(items: readonly Item[]): Item[] {
  * Filtering belongs to the calling shell; this component deliberately has no
  * filter controls of its own.
  */
-export function ListView({ items, activeItemId, selectionFocusVisibleArea, onItemClick }: ListViewProps) {
+export function ListView({ items, activeItemId, selectionFocusVisibleArea, selectionFocusGateKey, onItemClick }: ListViewProps) {
   const visibleItems = lensItems(items)
   const activeItem = visibleItems.find(({ id }) => id === activeItemId)
   const activeElementRef = useRef<HTMLDivElement>(null)
@@ -40,7 +42,7 @@ export function ListView({ items, activeItemId, selectionFocusVisibleArea, onIte
   useEffect(() => {
     lastFocusedItemIdRef.current = focusActiveItemOnce(
       lastFocusedItemIdRef.current,
-      activeItemId,
+      selectionFocusGateKey && activeItemId ? `${selectionFocusGateKey}:${activeItemId}` : activeItemId,
       activeItem ? activeElementRef.current : null,
       (element) => element.scrollIntoView({ block: "center" }),
     )

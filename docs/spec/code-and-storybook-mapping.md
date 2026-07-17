@@ -21,7 +21,7 @@ Der Toolkit-Code muss die RLS-Taxonomie nicht in jedem Ordnernamen exakt spiegel
 | App Shell | `packages/toolkit/src/components/layout/`, `auth/`, `contacts/`, `debug/` | Navbar, BottomNav, WorkspaceSwitcher, UserMenu, ProfileDialog, ContactsDialog, VerificationDialog, DebugDashboard |
 | Space Modules | `packages/toolkit/src/components/feed/`, `kanban/`, `calendar/`, `map/` | Feed, Kanban / Tasks, Calendar, Map |
 | Module Components | geteilte Top-Level-Ordner (`comments/`, `reactions/`, `composer/`, `detail/`, `preview/`) oder Unterordner innerhalb von Space Modules | ItemPreview + Adornments (ItemTypeBadge, ItemMetaRow, ItemCommentCount), ContentComposer, ReactionBar, CommentSection, ItemDetailPanel, KanbanCard, KanbanToolbar |
-| Read-only Lenses | `packages/toolkit/src/components/lens/` | ListView, GridView; Apps kombinieren sie mit ihren Presets |
+| Read-only Lenses | `packages/toolkit/src/components/lens/` | CollectionView (List/Grid-Dichte), ListView, GridView; Apps kombinieren sie mit ihren Presets |
 | Primitives | `packages/toolkit/src/components/primitives/` | Button, Card, Dialog, Input, Tabs |
 | Hooks | `packages/toolkit/src/hooks/` | useItems, useComments, useReactions, useConfirmations |
 | Logik-Helfer (modulübergreifend) | `packages/toolkit/src/lib/` | applyItemListFilter (Display-Filter), parseEventDate / isAllDayDate |
@@ -104,13 +104,14 @@ Mutations-Callbacks ein.
 
 | Spec-Begriff | Code | Storybook | Daten-/Capability-Annahme |
 |---|---|---|---|
-| Generische Listen-Linse | `components/lens/list-view.tsx` | `RLS/Module Components/Lenses/ListView` | alle Nicht-Relation-Items; kein lokaler Filter; `activeItemId?` und optionaler Sichtbereichs-Inset aus der Shell |
+| Generische Sammlungs-Linse | `components/lens/collection-view.tsx` | `RLS/Module Components/Lenses/CollectionView` | alle Nicht-Relation-Items; session-lokaler Listen-/Raster-Toggle; `activeItemId?` und optionaler Sichtbereichs-Inset aus der Shell |
+| Generische Listen-Projektion | `components/lens/list-view.tsx` | `RLS/Module Components/Lenses/ListView` | Baustein der CollectionView: kompakte Dichte ohne lokalen Filter |
 | Generische Linsen-Karte | `components/preview/item-preview.tsx` + `preview/item-type-meta.tsx` | Linsen-Stories | ItemPreview: List kompakt, Grid komfortabel; `active` nutzt den geteilten Glow; Typ-Meta für Person, Projekt, Ressource und Event sowie Typ-Badge-Fallback |
-| Typspezifische Raster-Linse | `components/lens/grid-view.tsx` | `RLS/Module Components/Lenses/GridView` | alle Nicht-Relation-Items; komponiert die geteilten Preview-Adornments; `activeItemId?` und optionaler Sichtbereichs-Inset aus der Shell |
+| Typspezifische Raster-Projektion | `components/lens/grid-view.tsx` | `RLS/Module Components/Lenses/GridView` | Baustein der CollectionView: komfortable Dichte mit geteilten Preview-Adornments |
 | Read-only Karten-Linse | `components/lens/map-lens.tsx` | `RLS/Module Components/Lenses/MapLens` | Nicht-Relation-Items mit gültigem GeoJSON-`Point`; `createAdapter` erzeugt pro Mount eine frische Engine; ein Marker zentriert im Shell-Sichtbereich bei Zoom 16, mehrere nutzen `fitBounds`; `viewportResetKey` re-armt beim Bestandswechsel; kein lokaler Filter |
 
-Die Listen-, Grid- und Map-Linsen sind presentationale, read-only Module
-Components. List/Grid komponieren keine eigene Card-Fläche; die Map-Linse
+Die CollectionView und die Map-Linse sind presentationale, read-only Module
+Components. List/Grid sind deren wiederverwendbare Dichte-Projektionen und komponieren keine eigene Card-Fläche; die Map-Linse
 rendert die geteilten Marker-Primitive. Die App-Shell besitzt Filter- und
 Selektionszustand; `activeItemId` überlebt den Linsenwechsel. Karten-Linsen
 heben den passenden `ItemPreview` hervor, die Map ihren Marker; beide

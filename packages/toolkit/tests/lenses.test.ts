@@ -38,6 +38,7 @@ import {
 import { formatEventRange } from "../src/components/preview/item-meta-row"
 import { GridView } from "../src/components/lens/grid-view"
 import { ListView } from "../src/components/lens/list-view"
+import { CollectionView, collectionFocusGateKey } from "../src/components/lens/collection-view"
 
 function item(id: string, type: string, data: Record<string, unknown>, createdAt = "2026-07-08T10:00:00.000Z"): Item {
   return { id, type, createdAt, createdBy: "seed", data }
@@ -106,6 +107,26 @@ describe("read-only lenses", () => {
     expect(markup).toContain(">initiative<")
     expect(markup).not.toContain("Unsichtbare Kante")
     expect(markup.match(/data-preview-density="comfortable"/g)).toHaveLength(5)
+  })
+
+  it("1/8: CollectionView keeps list and grid as densities and re-arms the active focus gate per layout", () => {
+    const items = [item("task-1", "task", { title: "Aktive Aufgabe", status: "open" })]
+    const listMarkup = renderToStaticMarkup(createElement(CollectionView, { items, activeItemId: "task-1" }))
+    const gridMarkup = renderToStaticMarkup(createElement(CollectionView, { items, activeItemId: "task-1", defaultLayout: "grid" }))
+
+    expect(listMarkup).toContain('aria-label="Rasteransicht wählen"')
+    expect(listMarkup).toContain('data-preview-density="compact"')
+    expect(gridMarkup).toContain('aria-label="Listenansicht wählen"')
+    expect(gridMarkup).toContain('data-preview-density="comfortable"')
+    expect(collectionFocusGateKey("list", "task-1")).toBe("list:task-1")
+    expect(collectionFocusGateKey("grid", "task-1")).toBe("grid:task-1")
+
+    const scrollIntoView = vi.fn()
+    const target = { scrollIntoView }
+    const focus = (element: typeof target) => element.scrollIntoView({ block: "center" })
+    let gate = focusActiveItemOnce(null, collectionFocusGateKey("list", "task-1"), target, focus)
+    gate = focusActiveItemOnce(gate, collectionFocusGateKey("grid", "task-1"), target, focus)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
   })
 
   it("1/2/6: read-only resource board groups usable kind values only and exposes no drag action", () => {

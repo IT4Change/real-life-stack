@@ -96,6 +96,7 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 ## Linsen
 
 - [x] **lens-no-local-filter-toolbar**: List-, Grid- und read-only-Kanban-Linsen bringen keine eigene Filter-Toolbar mit
+- [x] **lens-density-is-toggle**: Darstellungsdichte ist ein Toggle innerhalb einer Linse, nie eine eigene Linse; die Projektion definiert die Linse
 - [x] **lens-read-only-no-drag**: Read-only-Kanban-Karten bieten keine Drag- oder Drop-Affordance
 - [x] **lens-item-preview-composition**: List/Grid-Karten verwenden ausschließlich ItemPreview (List compact, Grid comfortable) plus Preview-Adornments
 - [x] **grid-type-specific-cards**: Geteilte Preview-Adornments zeigen Person, Projekt, Ressource und Event mit ihren jeweils verwertbaren Feldern; sonstige Typen behalten einen Typ-Badge
@@ -177,3 +178,4 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 | 2026-07-17 | Read-only-Linsen ohne lokale Filter- oder Drag-Affordances dokumentiert |
 | 2026-07-17 | Linsen-Karten auf ItemPreview plus geteilte Typ-Adornments zurückgeführt |
 | 2026-07-17 | Selektionskontinuität für Linsen: Shell-State, gemeinsamer Highlight- und Einmal-Zentrierungs-Vertrag |
+| 2026-07-17 | Listen- und Rasterdichte zur CollectionView-Linse mit session-lokalem Toggle zusammengeführt |
