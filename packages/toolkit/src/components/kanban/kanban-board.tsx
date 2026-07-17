@@ -28,6 +28,10 @@ export const defaultColumns: KanbanColumn[] = [
 export interface KanbanBoardProps {
   items: Item[]
   columns?: KanbanColumn[]
+  /** Field whose non-empty string value determines a card's column. */
+  statusField?: string
+  /** Presentation-only board: cards cannot be dragged or dropped. */
+  readOnly?: boolean
   users?: User[]
   onMoveItem?: (itemId: string, newStatus: string, position: number) => void
   onItemClick?: (item: Item) => void
@@ -57,18 +61,19 @@ function getAssigneeIds(item: Item): string[] {
 interface KanbanCardProps {
   item: Item
   users?: User[]
+  readOnly: boolean
   isDragged: boolean
   active?: boolean
   /** Optional header badge (e.g. „Privat") next to the card title. */
   headerAdornment?: ReactNode
   /** Colour of the active glow when this card's item is open in the panel. */
   glowColor?: string
-  onDragStart: (e: DragEvent, itemId: string) => void
+  onDragStart?: (e: DragEvent, itemId: string) => void
   onDragEnd?: () => void
   onClick?: (item: Item) => void
 }
 
-function KanbanCard({ item, users, isDragged, active, headerAdornment, glowColor, onDragStart, onDragEnd, onClick }: KanbanCardProps) {
+function KanbanCard({ item, users, readOnly, isDragged, active, headerAdornment, glowColor, onDragStart, onDragEnd, onClick }: KanbanCardProps) {
   const assigneeIds = getAssigneeIds(item)
   const userMap = new Map((users ?? []).map((u) => [u.id, u]))
   const assignees = assigneeIds.map((id) => userMap.get(id)).filter((u): u is User => u != null)
@@ -90,11 +95,14 @@ function KanbanCard({ item, users, isDragged, active, headerAdornment, glowColor
   // ItemPreview handles `onClick`.
   return (
     <div
-      draggable
-      onDragStart={(e) => onDragStart(e, item.id)}
-      onDragEnd={onDragEnd}
+      data-item-id={item.id}
+      {...(!readOnly ? {
+        draggable: true,
+        onDragStart: (e: DragEvent<HTMLDivElement>) => onDragStart?.(e, item.id),
+        onDragEnd,
+      } : {})}
       className={cn(
-        "cursor-grab active:cursor-grabbing select-none",
+        !readOnly && "cursor-grab active:cursor-grabbing select-none",
         isDragged && "opacity-50"
       )}
     >
@@ -133,9 +141,36 @@ function DropIndicator({ visible }: { visible: boolean }) {
   )
 }
 
+function itemColumnValue(item: Item, statusField: string, columns: readonly KanbanColumn[]): string | null {
+  if (item.type === "relation") return null
+
+  const value = item.data[statusField]
+  if (statusField === "status") {
+    const rawStatus = typeof value === "string" ? value : columns[0]?.id
+    return rawStatus ? normalizeStatus(rawStatus) : null
+  }
+
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null
+}
+
+function compareTextAsc(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/** Stable, data-derived ordering used by presentation-only boards. */
+export function sortReadOnlyKanbanItems(items: readonly Item[]): Item[] {
+  return [...items].sort((a, b) => (
+    compareTextAsc(a.createdAt, b.createdAt) ||
+    compareTextAsc(typeof a.data.title === "string" ? a.data.title : "", typeof b.data.title === "string" ? b.data.title : "") ||
+    compareTextAsc(a.id, b.id)
+  ))
+}
+
 export function KanbanBoard({
   items,
-  columns = defaultColumns,
+  columns,
+  statusField = "status",
+  readOnly = false,
   users,
   onMoveItem,
   onItemClick,
@@ -152,13 +187,25 @@ export function KanbanBoard({
   const [collapsedColumnIds, setCollapsedColumnIds] = useState<Set<string>>(new Set())
   const [hiddenChipHoverColumn, setHiddenChipHoverColumn] = useState<string | null>(null)
 
+  const resolvedColumns = useMemo(() => {
+    if (columns) return columns
+    if (statusField === "status") return defaultColumns
+
+    const ids = new Set<string>()
+    for (const item of items) {
+      const value = itemColumnValue(item, statusField, [])
+      if (value) ids.add(value)
+    }
+    return [...ids].sort(compareTextAsc).map((id) => ({ id, label: id }))
+  }, [columns, items, statusField])
+
   const visibleColumns = useMemo(
-    () => columns.filter((col) => !hiddenColumnIds.has(col.id)),
-    [columns, hiddenColumnIds]
+    () => resolvedColumns.filter((col) => !hiddenColumnIds.has(col.id)),
+    [resolvedColumns, hiddenColumnIds]
   )
   const hiddenColumns = useMemo(
-    () => columns.filter((col) => hiddenColumnIds.has(col.id)),
-    [columns, hiddenColumnIds]
+    () => resolvedColumns.filter((col) => hiddenColumnIds.has(col.id)),
+    [resolvedColumns, hiddenColumnIds]
   )
 
   const toggleHideColumn = useCallback((columnId: string) => {
@@ -261,20 +308,23 @@ export function KanbanBoard({
 
   const itemsByColumn = useMemo(() => {
     const map = new Map<string, Item[]>()
-    for (const col of columns) {
+    for (const col of resolvedColumns) {
       map.set(col.id, [])
     }
     for (const item of items) {
-      const rawStatus = (item.data.status as string) ?? columns[0]?.id
-      const status = normalizeStatus(rawStatus)
-      const list = map.get(status)
+      const columnId = itemColumnValue(item, statusField, resolvedColumns)
+      const list = columnId ? map.get(columnId) : undefined
       if (list) list.push(item)
     }
     for (const list of map.values()) {
-      list.sort((a, b) => ((a.data.order as number) ?? 0) - ((b.data.order as number) ?? 0))
+      if (readOnly) {
+        list.splice(0, list.length, ...sortReadOnlyKanbanItems(list))
+      } else {
+        list.sort((a, b) => ((a.data.order as number) ?? 0) - ((b.data.order as number) ?? 0))
+      }
     }
     return map
-  }, [items, columns])
+  }, [items, readOnly, resolvedColumns, statusField])
 
   const handleFloatingDrop = useCallback(
     (e: DragEvent, columnId: string) => {
@@ -328,7 +378,7 @@ export function KanbanBoard({
   return (
     <div className="@container">
       {/* Hidden Columns Bar — Desktop only */}
-      {hiddenColumns.length > 0 && (
+      {!readOnly && hiddenColumns.length > 0 && (
         <div className="hidden @3xl:flex flex-wrap gap-2 mb-3">
           {hiddenColumns.map((column) => {
             const columnItems = itemsByColumn.get(column.id) ?? []
@@ -372,7 +422,7 @@ export function KanbanBoard({
         style={{ '--kanban-cols': `repeat(${visibleColumns.length}, minmax(0, 1fr))` } as React.CSSProperties}
       >
         {/* Desktop: only visible columns. Mobile: all columns (hiddenColumnIds ignored). */}
-        {columns.map((column) => {
+        {resolvedColumns.map((column) => {
           const isHiddenDesktop = hiddenColumnIds.has(column.id)
           const isCollapsed = collapsedColumnIds.has(column.id)
           const columnItems = itemsByColumn.get(column.id) ?? []
@@ -385,15 +435,17 @@ export function KanbanBoard({
                 isHiddenDesktop && "@3xl:hidden",
                 dragOverColumn === column.id && "border-primary/50 bg-primary/5"
               )}
-              onDragOver={(e) => handleColumnDragOver(e, column.id, columnItems.length)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, column.id, columnItems.length)}
+              {...(!readOnly ? {
+                onDragOver: (e: DragEvent<HTMLDivElement>) => handleColumnDragOver(e, column.id, columnItems.length),
+                onDragLeave: handleDragLeave,
+                onDrop: (e: DragEvent<HTMLDivElement>) => handleDrop(e, column.id, columnItems.length),
+              } : {})}
             >
               <CardHeader className={cn("px-3", isCollapsed ? "pb-0 @3xl:pb-1" : "pb-1")}>
                 <CardTitle className="text-sm font-medium flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     {/* Mobile: collapse toggle */}
-                    <button
+                    {!readOnly && <button
                       type="button"
                       onClick={() => toggleCollapseColumn(column.id)}
                       className="@3xl:hidden p-0.5 rounded hover:bg-muted transition-colors"
@@ -403,7 +455,7 @@ export function KanbanBoard({
                         ? <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         : <ChevronDown className="h-4 w-4 text-muted-foreground" />
                       }
-                    </button>
+                    </button>}
                     <span>{column.label}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -411,7 +463,7 @@ export function KanbanBoard({
                       {columnItems.length}
                     </span>
                     {/* Desktop: hide button */}
-                    <button
+                    {!readOnly && <button
                       type="button"
                       onClick={() => toggleHideColumn(column.id)}
                       disabled={visibleColumns.length <= 1}
@@ -422,7 +474,7 @@ export function KanbanBoard({
                       aria-label={`Spalte "${column.label}" ausblenden`}
                     >
                       <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
+                    </button>}
                   </div>
                 </CardTitle>
               </CardHeader>
@@ -431,18 +483,21 @@ export function KanbanBoard({
                 "space-y-0 min-h-[40px] @3xl:min-h-[60px] px-3 pb-1",
                 isCollapsed && "hidden @3xl:block"
               )}>
-                <DropIndicator
+                {!readOnly && <DropIndicator
                   visible={dropTarget?.columnId === column.id && dropTarget.index === 0}
-                />
+                />}
                 {columnItems.map((item, idx) => (
                   <div
                     key={item.id}
-                    onDragOver={(e) => handleCardDragOver(e, column.id, idx)}
+                    {...(!readOnly ? {
+                      onDragOver: (e: DragEvent<HTMLDivElement>) => handleCardDragOver(e, column.id, idx),
+                    } : {})}
                     className="py-1"
                   >
                     <KanbanCard
                       item={item}
                       users={users}
+                      readOnly={readOnly}
                       isDragged={draggedItemId === item.id}
                       active={activeItemId === item.id}
                       headerAdornment={renderCardAdornment?.(item)}
@@ -451,11 +506,11 @@ export function KanbanBoard({
                       onDragEnd={handleDragEnd}
                       onClick={onItemClick}
                     />
-                    <DropIndicator
+                    {!readOnly && <DropIndicator
                       visible={
                         dropTarget?.columnId === column.id && dropTarget.index === idx + 1
                       }
-                    />
+                    />}
                   </div>
                 ))}
               </CardContent>
@@ -467,10 +522,10 @@ export function KanbanBoard({
       {/* Floating Drop Bar — visible during drag for quick column changes.
           NOTE: HTML Drag & Drop API does not work on mobile touch devices.
           For Capacitor/mobile, @dnd-kit or manual touch handling will be needed. */}
-      {draggedItemId !== null && (
+      {!readOnly && draggedItemId !== null && (
         <div className="fixed bottom-20 left-4 right-4 z-40 animate-in slide-in-from-bottom-4 fade-in @3xl:hidden">
           <div className="flex flex-wrap gap-2 p-2 rounded-xl border bg-background/95 backdrop-blur shadow-lg">
-            {columns.filter((col) => col.id !== draggedItemColumnId).map((column) => (
+            {resolvedColumns.filter((col) => col.id !== draggedItemColumnId).map((column) => (
               <div
                 key={column.id}
                 onDragOver={(e) => {

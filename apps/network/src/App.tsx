@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ExternalLink,
   Filter,
+  Grid2X2,
+  KanbanSquare,
+  List,
   Maximize2,
   Moon,
   Search,
@@ -17,7 +20,10 @@ import {
   Button,
   ConnectorProvider,
   GraphView,
+  GridView,
   Input,
+  KanbanBoard,
+  ListView,
   Navbar,
   NavbarCenter,
   NavbarEnd,
@@ -61,6 +67,16 @@ const DETAIL_DRAWER_FRACTION = 0.55
 const DETAIL_PANEL_MODES: PanelMode[] = ["sidebar", "drawer"]
 const PROFILE_PANEL_MODES: PanelMode[] = ["modal"]
 
+type NetworkLens = "graph" | "list" | "grid" | "kanban" | "marketplace"
+
+const NETWORK_LENSES: ReadonlyArray<{ id: NetworkLens; label: string }> = [
+  { id: "graph", label: "Graph" },
+  { id: "list", label: "Liste" },
+  { id: "grid", label: "Raster" },
+  { id: "kanban", label: "Board" },
+  { id: "marketplace", label: "Marktplatz" },
+]
+
 interface AppProps {
   connector: DataInterface
 }
@@ -100,6 +116,17 @@ function nodeTitle(item: Item): string {
 
 function graphTypeLabel(type: string): string {
   return GRAPH_TYPES.find(({ id }) => id === type)?.label ?? type
+}
+
+function hasUsableKind(item: Item): boolean {
+  return item.type !== "relation" && typeof item.data.kind === "string" && item.data.kind.trim().length > 0
+}
+
+function NetworkLensIcon({ lens }: { lens: NetworkLens }) {
+  if (lens === "list" || lens === "marketplace") return <List className="size-4" />
+  if (lens === "grid") return <Grid2X2 className="size-4" />
+  if (lens === "kanban") return <KanbanSquare className="size-4" />
+  return null
 }
 
 function predicateLabel(predicate: string): string {
@@ -369,6 +396,7 @@ function NetworkShell() {
   const isCompact = useIsCompact()
   const graphRef = useRef<GraphViewHandle>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [activeLens, setActiveLens] = useState<NetworkLens>("graph")
   const [query, setQuery] = useState("")
   const [filterOpen, setFilterOpen] = useState(false)
   const [enabledTypes, setEnabledTypes] = useState(() => new Set(ALL_GRAPH_TYPES))
@@ -428,6 +456,14 @@ function NetworkShell() {
     [graph.edges, visibleNodeIds],
   )
   const selectedItem = selectedNodeId ? itemById.get(selectedNodeId) ?? null : null
+  const resourceBoardItems = useMemo(
+    () => domainItems.filter((item) => item.type === "resource" && hasUsableKind(item)),
+    [domainItems],
+  )
+  const marketplaceItems = useMemo(
+    () => domainItems.filter((item) => item.type === "resource"),
+    [domainItems],
+  )
   const selectedConnections = useMemo(
     () => selectedNodeId
       ? graph.edges.filter(({ sourceId, targetId }) => sourceId === selectedNodeId || targetId === selectedNodeId)
@@ -473,6 +509,10 @@ function NetworkShell() {
     handleSelectedNodeChange(nodeId)
     setQuery("")
   }, [handleSelectedNodeChange, nodeById])
+  const selectItem = useCallback((itemId: string) => {
+    if (!itemById.has(itemId)) return
+    handleSelectedNodeChange(itemId)
+  }, [handleSelectedNodeChange, itemById])
   const closeDetail = useCallback(() => setSelectedNodeId(null), [])
 
   const handleWorkspaceChange = useCallback((workspace: Workspace) => {
@@ -519,9 +559,21 @@ function NetworkShell() {
               />
             </NavbarStart>
             <NavbarCenter>
-              <p className="text-sm tabular-nums text-muted-foreground">
-                {visibleNodes.length} Knoten · {visibleEdges.length} Verbindungen
-              </p>
+              <div className="flex items-center gap-1" aria-label="Netzwerkansicht">
+                {NETWORK_LENSES.map((lens) => (
+                  <Button
+                    key={lens.id}
+                    type="button"
+                    size="sm"
+                    variant={activeLens === lens.id ? "secondary" : "ghost"}
+                    aria-pressed={activeLens === lens.id}
+                    onClick={() => setActiveLens(lens.id)}
+                  >
+                    <NetworkLensIcon lens={lens.id} />
+                    <span className="hidden lg:inline">{lens.label}</span>
+                  </Button>
+                ))}
+              </div>
             </NavbarCenter>
             <NavbarEnd>
               <IconTooltip label={isDark ? "Helles Design" : "Dunkles Design"}>
@@ -542,18 +594,51 @@ function NetworkShell() {
           </Navbar>
 
           <AppShellMain className="relative min-h-0 overflow-hidden">
-            <GraphView
-              ref={graphRef}
-              nodes={visibleNodes}
-              edges={visibleEdges}
-              nodeTypes={GRAPH_TYPES}
-              selectedNodeId={selectedNodeId}
-              onSelectedNodeChange={handleSelectedNodeChange}
-              fitViewKey={currentGroup?.id ?? "none"}
-              ariaLabel={`Netzwerkgraph ${activeWorkspace?.name ?? ""}`}
-            />
+            {activeLens === "graph" && (
+              <GraphView
+                ref={graphRef}
+                nodes={visibleNodes}
+                edges={visibleEdges}
+                nodeTypes={GRAPH_TYPES}
+                selectedNodeId={selectedNodeId}
+                onSelectedNodeChange={handleSelectedNodeChange}
+                fitViewKey={currentGroup?.id ?? "none"}
+                ariaLabel={`Netzwerkgraph ${activeWorkspace?.name ?? ""}`}
+              />
+            )}
+            {activeLens === "list" && (
+              <div className="h-full overflow-y-auto p-4 sm:p-6">
+                <ListView items={domainItems} onItemClick={(item) => selectItem(item.id)} />
+              </div>
+            )}
+            {activeLens === "grid" && (
+              <div className="h-full overflow-y-auto p-4 sm:p-6">
+                <GridView items={domainItems} onItemClick={(item) => selectItem(item.id)} />
+              </div>
+            )}
+            {activeLens === "kanban" && (
+              <div className="h-full overflow-y-auto p-4 sm:p-6">
+                <KanbanBoard
+                  items={resourceBoardItems}
+                  statusField="kind"
+                  readOnly
+                  onItemClick={(item) => selectItem(item.id)}
+                />
+              </div>
+            )}
+            {activeLens === "marketplace" && (
+              <div className="h-full overflow-y-auto p-4 sm:p-6">
+                <div className="mx-auto max-w-3xl space-y-4">
+                  <header>
+                    <h1 className="text-xl font-semibold">Marktplatz</h1>
+                    <p className="text-sm text-muted-foreground">Ressourcen aus dem aktuellen Space</p>
+                  </header>
+                  <ListView items={marketplaceItems} onItemClick={(item) => selectItem(item.id)} />
+                </div>
+              </div>
+            )}
 
-            <div className="absolute left-3 top-3 z-20 w-[min(22rem,calc(100%-1.5rem))] sm:left-4 sm:top-4">
+            {activeLens === "graph" && <div className="absolute left-3 top-3 z-20 w-[min(22rem,calc(100%-1.5rem))] sm:left-4 sm:top-4">
               <label htmlFor="network-search" className="sr-only">Netzwerk durchsuchen</label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -602,9 +687,9 @@ function NetworkShell() {
                   )}
                 </div>
               )}
-            </div>
+            </div>}
 
-            <div
+            {activeLens === "graph" && <div
               className={`absolute bottom-4 left-4 z-20 overflow-hidden border bg-background/95 shadow-lg backdrop-blur-md transition-[width,height,border-radius] duration-200 ${
                 filterOpen ? "h-48 w-56 rounded-md" : "size-11 rounded-md"
               }`}
@@ -651,9 +736,9 @@ function NetworkShell() {
                   </button>
                 </IconTooltip>
               )}
-            </div>
+            </div>}
 
-            <div
+            {activeLens === "graph" && <div
               className="absolute bottom-4 z-20 transition-[right] duration-300"
               style={{ right: "calc(1rem + var(--adaptive-panel-margin-right, 0px))" }}
             >
@@ -669,14 +754,14 @@ function NetworkShell() {
                   <Maximize2 />
                 </Button>
               </IconTooltip>
-            </div>
+            </div>}
 
             {isLoading && (
               <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/50">
                 <p className="text-sm text-muted-foreground">Netzwerk wird geladen</p>
               </div>
             )}
-            {!relationRecordsSupported && (
+            {activeLens === "graph" && !relationRecordsSupported && (
               <div className="absolute inset-0 z-30 grid place-items-center bg-background px-6 text-center">
                 <p className="text-sm text-muted-foreground">
                   Netzwerkdaten sind mit diesem Connector nicht verfügbar.

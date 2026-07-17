@@ -6,6 +6,7 @@ import {
 } from "@real-life-stack/data-interface"
 
 import rawGraph from "./graph.json" with { type: "json" }
+import campSchedule from "./camp-schedule.json" with { type: "json" }
 import {
   NETWORK_RELATION_STORE_OPTIONS,
   type NetworkRelationPredicate,
@@ -40,7 +41,20 @@ export interface DwebCampGraphData {
 
 export const dwebCampGraph = rawGraph as unknown as DwebCampGraphData
 
-type SeedItemType = "event" | "person" | "project"
+type SeedItemType = "event" | "person" | "project" | "resource"
+
+interface DwebCampResource {
+  title: string
+  kind: string
+  availability: string
+  venue: string | null
+}
+
+interface DwebCampSchedule {
+  resources: DwebCampResource[]
+}
+
+const dwebCampSchedule = campSchedule as DwebCampSchedule
 
 export function slugSeedValue(value: string): string {
   const slug = value
@@ -162,6 +176,20 @@ export function buildDwebCampDomainItems(graph: DwebCampGraphData = dwebCampGrap
   return [...events, ...persons, ...projects]
 }
 
+export function buildDwebCampResourceItems(
+  schedule: DwebCampSchedule = dwebCampSchedule,
+): Item[] {
+  const resourceIds = indexIds("resource", schedule.resources.map(({ title }) => title))
+
+  return schedule.resources.map(({ title, kind, availability }) => (
+    baseItem(requireId(resourceIds, title, "resource"), "resource", {
+      title,
+      kind,
+      availability,
+    })
+  ))
+}
+
 interface SeedRelation {
   predicate: NetworkRelationPredicate
   from: string
@@ -250,8 +278,9 @@ export async function buildDwebCampSeedItems(
   graph: DwebCampGraphData = dwebCampGraph,
 ): Promise<Item[]> {
   const domainItems = buildDwebCampDomainItems(graph)
+  const resourceItems = buildDwebCampResourceItems()
   const relationItems = await Promise.all(buildDwebCampSeedRelations(graph).map(buildRelationItem))
-  return [...domainItems, ...relationItems]
+  return [...domainItems, ...resourceItems, ...relationItems]
 }
 
 export const dwebCampDomainItems = buildDwebCampDomainItems()
