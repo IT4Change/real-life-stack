@@ -43,7 +43,7 @@ export function CollectionView({
 
   return (
     <section aria-label="Sammlungsansicht" className={cn("flex h-full min-h-0 flex-col gap-4", className)}>
-      <div className="mx-auto flex w-full max-w-6xl justify-end px-4 sm:px-6">
+      <div className="mx-auto flex w-full max-w-6xl justify-end px-4 pt-4 sm:px-6 sm:pt-6">
         <div role="group" aria-label="Darstellung" className="flex gap-1">
           <Button
             type="button"

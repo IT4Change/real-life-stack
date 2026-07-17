@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import { useVirtualizer } from "@tanstack/react-virtual"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { Item } from "@real-life-stack/data-interface"
 
 import {
@@ -8,6 +7,7 @@ import {
 } from "../../lib/selection-focus"
 import { getItemPreviewAdornments, ItemPreview } from "../preview"
 import { lensItems } from "./list-view"
+import { GRID_CARD_ESTIMATE, GRID_LANE_GAP, gridLaneLayout, gridLaneRange } from "./grid-lane-layout"
 
 export interface GridViewProps {
   items: readonly Item[]
@@ -26,31 +26,60 @@ function gridColumnsForWidth(width: number): number {
   return 1
 }
 
-/** Included in each measured row so virtual rows never overlap vertically. */
-const GRID_ROW_GAP = 16
-
 /** A read-only grid composed from comfortable ItemPreview cards. */
 export function GridView({ items, activeItemId, selectionFocusVisibleArea, selectionFocusGateKey, onItemClick }: GridViewProps) {
   const visibleItems = lensItems(items)
   const lastFocusedItemIdRef = useRef<string | null>(null)
   const scrollElementRef = useRef<HTMLDivElement>(null)
+  const measuredHeightsRef = useRef(new Map<number, number>())
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const [columns, setColumns] = useState(3)
-  const rows = Array.from({ length: Math.ceil(visibleItems.length / columns) }, (_, rowIndex) =>
-    visibleItems.slice(rowIndex * columns, (rowIndex + 1) * columns),
+  const [geometryVersion, setGeometryVersion] = useState(0)
+  const [viewport, setViewport] = useState({ offset: 0, height: 720 })
+  const layout = useMemo(
+    () => gridLaneLayout(visibleItems.length, columns, measuredHeightsRef.current),
+    [columns, geometryVersion, visibleItems],
   )
-  const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
-    count: rows.length,
-    estimateSize: () => 172 + GRID_ROW_GAP,
-    initialRect: { width: 1024, height: 720 },
-    overscan: 2,
-    getScrollElement: () => scrollElementRef.current,
-    measureElement: (element) => element.getBoundingClientRect().height,
-    getItemKey: (index) => rows[index]?.map(({ id }) => id).join(":") ?? index,
-  })
+  const virtualItems = useMemo(
+    () => gridLaneRange(layout, Math.max(0, viewport.offset - 2 * GRID_CARD_ESTIMATE), viewport.offset + viewport.height + 2 * GRID_CARD_ESTIMATE),
+    [layout, viewport],
+  )
+
+  const updateViewport = useCallback(() => {
+    const scrollElement = scrollElementRef.current
+    if (!scrollElement) return
+    setViewport((current) => {
+      const next = { offset: scrollElement.scrollTop, height: scrollElement.clientHeight || 720 }
+      return current.offset === next.offset && current.height === next.height ? current : next
+    })
+  }, [])
+
+  const measureElement = useCallback((element: HTMLDivElement | null) => {
+    if (!element) return
+    const index = Number(element.dataset.index)
+    if (!Number.isInteger(index)) return
+    const updateSize = () => {
+      const size = element.getBoundingClientRect().height
+      if (Math.abs((measuredHeightsRef.current.get(index) ?? GRID_CARD_ESTIMATE) - size) < 0.5) return
+      measuredHeightsRef.current.set(index, size)
+      setGeometryVersion((version) => version + 1)
+    }
+    updateSize()
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserverRef.current ??= new ResizeObserver(updateSize)
+      resizeObserverRef.current.observe(element)
+    }
+  }, [])
+
   const selectionVirtualizer = useMemo(() => ({
-    scrollToIndex: virtualizer.scrollToIndex,
-    scrollBy: (delta: number) => virtualizer.scrollToOffset((virtualizer.scrollOffset ?? 0) + delta),
-  }), [virtualizer])
+    scrollToIndex: (index: number) => {
+      const placement = layout.placements[index]
+      const scrollElement = scrollElementRef.current
+      if (!placement || !scrollElement) return
+      scrollElement.scrollTo({ top: Math.max(0, placement.start - (scrollElement.clientHeight - placement.size) / 2) })
+    },
+    scrollBy: (delta: number) => scrollElementRef.current?.scrollBy({ top: delta }),
+  }), [layout])
 
   useEffect(() => {
     const updateLayout = () => {
@@ -67,6 +96,16 @@ export function GridView({ items, activeItemId, selectionFocusVisibleArea, selec
   }, [])
 
   useEffect(() => {
+    updateViewport()
+    const scrollElement = scrollElementRef.current
+    if (!scrollElement) return
+    scrollElement.addEventListener("scroll", updateViewport, { passive: true })
+    return () => scrollElement.removeEventListener("scroll", updateViewport)
+  }, [updateViewport])
+
+  useEffect(() => () => resizeObserverRef.current?.disconnect(), [])
+
+  useEffect(() => {
     lastFocusedItemIdRef.current = null
   }, [selectionFocusVisibleArea?.bottomInset, selectionFocusGateKey])
 
@@ -75,7 +114,7 @@ export function GridView({ items, activeItemId, selectionFocusVisibleArea, selec
     lastFocusedItemIdRef.current = focusVirtualItemOnce(
       lastFocusedItemIdRef.current,
       selectionFocusGateKey && activeItemId ? `${selectionFocusGateKey}:${activeItemId}` : activeItemId,
-      itemIndex < 0 ? undefined : Math.floor(itemIndex / columns),
+      itemIndex < 0 ? undefined : itemIndex,
       selectionVirtualizer,
       selectionFocusVisibleArea,
     )
@@ -86,25 +125,26 @@ export function GridView({ items, activeItemId, selectionFocusVisibleArea, selec
   }
 
   return (
-    <div ref={scrollElementRef} aria-label="Rasteransicht" data-virtualizer-item-count={visibleItems.length} className="h-full overflow-y-auto">
+    <div ref={scrollElementRef} onScroll={updateViewport} aria-label="Rasteransicht" data-virtualizer-item-count={visibleItems.length} className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
-        <section className="relative" style={{ height: virtualizer.getTotalSize() }}>
-          {virtualizer.getVirtualItems().map((virtualRow) => {
+        <section className="relative" style={{ height: layout.totalSize }}>
+          {virtualItems.map((placement) => {
+            const item = visibleItems[placement.index]
+            if (!item) return null
+            const adornments = getItemPreviewAdornments(item)
             return (
               <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
-                className="absolute left-0 grid w-full gap-4 pb-4"
+                key={item.id}
+                data-index={placement.index}
+                ref={measureElement}
+                className="absolute"
                 style={{
-                  gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                  transform: `translateY(${virtualRow.start}px)`,
+                  width: `calc((100% - ${(columns - 1) * GRID_LANE_GAP}px) / ${columns})`,
+                  left: `calc(${placement.lane} * ((100% - ${(columns - 1) * GRID_LANE_GAP}px) / ${columns} + ${GRID_LANE_GAP}px))`,
+                  transform: `translateY(${placement.start}px)`,
                 }}
               >
-                {rows[virtualRow.index]?.map((item) => {
-                  const adornments = getItemPreviewAdornments(item)
-                  return <ItemPreview key={item.id} item={item} author={null} density="comfortable" active={item.id === activeItemId} {...adornments} onClick={onItemClick ? () => onItemClick(item) : undefined} />
-                })}
+                <ItemPreview item={item} author={null} density="comfortable" active={item.id === activeItemId} {...adornments} onClick={onItemClick ? () => onItemClick(item) : undefined} />
               </div>
             )
           })}

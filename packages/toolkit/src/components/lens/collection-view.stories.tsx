@@ -33,10 +33,14 @@ const thousandItems: Item[] = Array.from({ length: 1000 }, (_, index) => ({
   type: index % 3 === 0 ? "resource" : "task",
   createdAt: `2026-07-08T10:${String(index % 60).padStart(2, "0")}:00.000Z`,
   createdBy: "seed",
-  data: { title: `Virtueller Eintrag ${index + 1}`, ...(index % 3 === 0 ? { kind: "tool" } : { status: "open" }) },
+  data: {
+    title: `Virtueller Eintrag ${index + 1}`,
+    content: index % 4 === 0 ? "Kurzer Beschreibungstext." : index % 4 === 1 ? "Eine etwas längere Beschreibung fuer sichtbar unterschiedliche Kartenhoehen im Raster, damit die festen Lanes direkt pruefbar bleiben." : undefined,
+    ...(index % 3 === 0 ? { kind: "tool" } : { status: "open" }),
+  },
 }))
 
-/** Deterministic large fixture proving that both collection densities virtualize. */
+/** Deterministic large fixture with uneven cards for the order-stable masonry grid. */
 export const ThousandItems: Story = {
   args: { items: thousandItems },
   decorators: [(Story) => <div className="h-[36rem]"><Story /></div>],

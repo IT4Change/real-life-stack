@@ -182,3 +182,4 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 | 2026-07-17 | Selektionskontinuität für Linsen: Shell-State, gemeinsamer Highlight- und Einmal-Zentrierungs-Vertrag |
 | 2026-07-17 | Listen- und Rasterdichte zur CollectionView-Linse mit session-lokalem Toggle zusammengeführt |
 | 2026-07-17 | Vollbreite Linsen-Scroller, gemeinsamer Inhaltsrahmen und gemessene Raster-Zeilenabstände dokumentiert |
+| 2026-07-17 | CollectionView-Toggle erhält den Linsen-Innenabstand oben; Rasterkarten nutzen reihenfolgestabile, gemessene Masonry-Lanes |

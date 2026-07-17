@@ -40,6 +40,7 @@ import { formatEventRange } from "../src/components/preview/item-meta-row"
 import { GridView } from "../src/components/lens/grid-view"
 import { ListView } from "../src/components/lens/list-view"
 import { CollectionView, collectionFocusGateKey } from "../src/components/lens/collection-view"
+import { GRID_LANE_GAP, gridLaneLayout, gridLaneRange } from "../src/components/lens/grid-lane-layout"
 
 function item(id: string, type: string, data: Record<string, unknown>, createdAt = "2026-07-08T10:00:00.000Z"): Item {
   return { id, type, createdAt, createdBy: "seed", data }
@@ -125,7 +126,7 @@ describe("read-only lenses", () => {
     expect(markup).not.toContain("Unsichtbare Kante")
     expect(markup.match(/data-preview-density="comfortable"/g)).toHaveLength(5)
     expect(markup).toContain('class="mx-auto w-full max-w-6xl px-4 sm:px-6"')
-    expect(markup).toContain('class="absolute left-0 grid w-full gap-4 pb-4"')
+    expect(markup).toContain('class="absolute"')
   })
 
   it("1/8: CollectionView keeps list and grid as densities and re-arms the active focus gate per layout", () => {
@@ -141,8 +142,8 @@ describe("read-only lenses", () => {
     expect(gridMarkup).toContain('aria-label="Rasteransicht" aria-pressed="true"')
     expect(gridMarkup).toContain('aria-label="Listenansicht" aria-pressed="false"')
     expect(gridMarkup).toContain('data-preview-density="comfortable"')
-    expect(listMarkup).toContain('class="mx-auto flex w-full max-w-6xl justify-end px-4 sm:px-6"')
-    expect(gridMarkup).toContain('class="mx-auto flex w-full max-w-6xl justify-end px-4 sm:px-6"')
+    expect(listMarkup).toContain('class="mx-auto flex w-full max-w-6xl justify-end px-4 pt-4 sm:px-6 sm:pt-6"')
+    expect(gridMarkup).toContain('class="mx-auto flex w-full max-w-6xl justify-end px-4 pt-4 sm:px-6 sm:pt-6"')
     expect(collectionFocusGateKey("list", "task-1")).toBe("list:task-1")
     expect(collectionFocusGateKey("grid", "task-1")).toBe("grid:task-1")
 
@@ -150,6 +151,20 @@ describe("read-only lenses", () => {
     let gate = focusVirtualItemOnce(null, collectionFocusGateKey("list", "task-1"), 0, virtualizer, undefined)
     gate = focusVirtualItemOnce(gate, collectionFocusGateKey("grid", "task-1"), 0, virtualizer, undefined)
     expect(virtualizer.scrollToIndex).toHaveBeenCalledTimes(2)
+  })
+
+  it("1: GridView assigns uneven cards to deterministic lanes and stacks each lane without gaps", () => {
+    const layout = gridLaneLayout(9, 4, new globalThis.Map([[0, 120], [1, 240], [2, 150], [3, 180], [4, 190], [5, 110], [6, 220], [7, 140], [8, 160]]))
+
+    expect(layout.placements.map(({ index, lane }) => [index, lane])).toEqual([
+      [0, 0], [1, 1], [2, 2], [3, 3], [4, 0], [5, 1], [6, 2], [7, 3], [8, 0],
+    ])
+    for (let index = 4; index < layout.placements.length; index += 1) {
+      const placement = layout.placements[index]!
+      const previousInLane = layout.placements[index - 4]!
+      expect(placement.start).toBe(previousInLane.end + GRID_LANE_GAP)
+    }
+    expect(gridLaneRange(layout, 250, 400).map(({ index }) => index)).toEqual([4, 5, 6, 7, 8])
   })
 
   it("1/2/6: read-only resource board groups usable kind values only and exposes no drag action", () => {
