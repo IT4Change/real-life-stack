@@ -91,9 +91,9 @@ Binding Space Module specs live in [docs/spec/modules/](docs/spec/modules/). The
 | Space Module | Status | Description |
 |-------|--------|--------------|
 | [**Feed**](docs/spec/modules/feed.md) | Draft v0.1 + implemented | Activity stream across all Space Modules: what is happening in the community? |
-| [**Kanban / Tasks**](docs/spec/modules/kanban.md) | Draft v0.1 + implemented | Organize tasks and workflows within a space |
+| [**Kanban / Tasks**](docs/spec/modules/kanban.md) | Draft v0.2 + implemented | Organize tasks and workflows within a space |
 | [**Calendar**](docs/spec/modules/calendar.md) | Draft v0.1 + implemented | Plan events, coordinate dates, manage invitations |
-| [**Map**](docs/spec/modules/map.md) | Draft v0.1 + implemented | Visualize local places, resources, and activities on a map |
+| [**Map**](docs/spec/modules/map.md) | Draft v0.2 + implemented | Visualize local places, resources, and activities on a map |
 | **Marketplace** | planned | Make offers, needs, resources, and possible matches visible |
 | **Quests** | planned | Show quest overview, quest log, quest runs, evidence, and completion status |
 | **Campaign View** | planned | Display adventures, campaigns, and world state as a game view |
@@ -200,8 +200,8 @@ import { MockConnector } from "@real-life-stack/mock-connector"
 const connector = new MockConnector()
 await connector.init()
 
-const tasks = await connector.getItems({ type: "task" })  // 5 demo tasks
-const groups = await connector.getGroups()                  // 3 demo groups
+const tasks = await connector.getItems({ type: "task" })  // 12 demo tasks
+const groups = await connector.getGroups()                  // 4 demo groups
 
 // Observe reactively
 const obs = connector.observe({ type: "task" })

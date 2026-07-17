@@ -1,6 +1,7 @@
 {
   "name": "@real-life-stack/data-interface",
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/src/index.js",
   "module": "./dist/src/index.js",
