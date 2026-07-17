@@ -241,10 +241,16 @@ function PrivacyContentDe() {
         Es werden keine Daten ohne Einwilligung erhoben.
       </p>
 
-      <h2 className="text-xl font-semibold mt-8 mb-3">5. Tracking & Analytics</h2>
+      <h2 className="text-xl font-semibold mt-8 mb-3">5. Reichweitenmessung & Analytics</h2>
       <p>
-        <strong>Es gibt kein Tracking.</strong> Keine Analytics, keine Cookies, keine Werbe-IDs.
-        Die App enthält keine Drittanbieter-SDKs die Nutzerdaten sammeln.
+        Diese Website nutzt eine <strong>selbst gehostete, cookielose Reichweitenmessung</strong>{' '}
+        (Plausible Analytics auf tracking.utopia-lab.org). Erfasst werden aggregierte Seitenaufrufe
+        (aufgerufene Seite, Referrer, Gerätetyp, Land) – ohne Cookies, ohne personenbezogene Profile
+        und ohne Weitergabe an Dritte.
+      </p>
+      <p>
+        <strong>Die App selbst enthält kein Tracking.</strong> Keine Analytics, keine Cookies,
+        keine Werbe-IDs und keine Drittanbieter-SDKs, die Nutzerdaten sammeln.
       </p>
 
       <h2 className="text-xl font-semibold mt-8 mb-3">6. Datenlöschung</h2>
@@ -323,10 +329,16 @@ function PrivacyContentEn() {
         No data is collected without consent.
       </p>
 
-      <h2 className="text-xl font-semibold mt-8 mb-3">5. Tracking & Analytics</h2>
+      <h2 className="text-xl font-semibold mt-8 mb-3">5. Audience Measurement & Analytics</h2>
       <p>
-        <strong>There is no tracking.</strong> No analytics, no cookies, no advertising IDs.
-        The app contains no third-party SDKs that collect user data.
+        This website uses <strong>self-hosted, cookie-free audience measurement</strong>{' '}
+        (Plausible Analytics on tracking.utopia-lab.org). It records aggregated page views
+        (visited page, referrer, device type, country) – without cookies, without personal
+        profiles, and without sharing data with third parties.
+      </p>
+      <p>
+        <strong>The app itself contains no tracking.</strong> No analytics, no cookies,
+        no advertising IDs, and no third-party SDKs that collect user data.
       </p>
 
       <h2 className="text-xl font-semibold mt-8 mb-3">6. Data Deletion</h2>
@@ -369,7 +381,11 @@ function PrivacyPage() {
     <div className="min-h-screen bg-background">
       <Header />
       <main className="pt-24 pb-16 px-4">
-        <article className="max-w-3xl mx-auto prose prose-stone dark:prose-invert" dir="ltr">
+        <article
+          className="max-w-3xl mx-auto prose prose-stone dark:prose-invert"
+          lang={language === 'de' ? 'de' : 'en'}
+          dir="ltr"
+        >
           {language === 'de' ? <PrivacyContentDe /> : <PrivacyContentEn />}
         </article>
       </main>
