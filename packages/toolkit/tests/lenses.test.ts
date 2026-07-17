@@ -33,6 +33,7 @@ import { drawerHeightFromY } from "../src/components/layout/adaptive-panel"
 import {
   focusActiveItemInVisibleAreaOnce,
   focusActiveItemOnce,
+  focusVirtualItemOnce,
   selectionFocusScrollMarginBlockEnd,
 } from "../src/lib/selection-focus"
 import { formatEventRange } from "../src/components/preview/item-meta-row"
@@ -68,7 +69,7 @@ function mapAdapter(): MapAdapter & {
 }
 
 describe("read-only lenses", () => {
-  it("1/3: ListView renders every non-relation item and no relation record", () => {
+  it("1/3: ListView keeps every non-relation item in its virtualizer dataset and excludes relation records", () => {
     const items = [
       item("task-1", "task", { title: "Aufgabe", status: "open" }),
       item("resource-1", "resource", { title: "Lötstation", kind: "tool" }),
@@ -82,6 +83,21 @@ describe("read-only lenses", () => {
     expect(markup).not.toContain("Unsichtbare Kante")
     expect(markup).not.toContain("<input")
     expect(markup.match(/data-preview-density="compact"/g)).toHaveLength(2)
+    expect(markup).toContain('data-virtualizer-item-count="2"')
+  })
+
+  it("1/3: SSR renders a deterministic virtual subset while retaining every reachable list item", () => {
+    const items = Array.from({ length: 330 }, (_, index) => item(
+      `task-${index}`,
+      "task",
+      { title: `Aufgabe ${index}` },
+    ))
+    const markup = renderToStaticMarkup(createElement(ListView, { items }))
+
+    expect(markup).toContain('data-virtualizer-item-count="330"')
+    expect(markup).toContain("Aufgabe 0")
+    expect(markup).not.toContain("Aufgabe 329")
+    expect(markup.match(/data-preview-density="compact"/g)?.length).toBeLessThan(330)
   })
 
   it("1: GridView leaves relation records out while composing comfortable ItemPreview adornments", () => {
@@ -125,12 +141,10 @@ describe("read-only lenses", () => {
     expect(collectionFocusGateKey("list", "task-1")).toBe("list:task-1")
     expect(collectionFocusGateKey("grid", "task-1")).toBe("grid:task-1")
 
-    const scrollIntoView = vi.fn()
-    const target = { scrollIntoView }
-    const focus = (element: typeof target) => element.scrollIntoView({ block: "center" })
-    let gate = focusActiveItemOnce(null, collectionFocusGateKey("list", "task-1"), target, focus)
-    gate = focusActiveItemOnce(gate, collectionFocusGateKey("grid", "task-1"), target, focus)
-    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+    const virtualizer = { scrollToIndex: vi.fn() }
+    let gate = focusVirtualItemOnce(null, collectionFocusGateKey("list", "task-1"), 0, virtualizer, undefined)
+    gate = focusVirtualItemOnce(gate, collectionFocusGateKey("grid", "task-1"), 0, virtualizer, undefined)
+    expect(virtualizer.scrollToIndex).toHaveBeenCalledTimes(2)
   })
 
   it("1/2/6: read-only resource board groups usable kind values only and exposes no drag action", () => {
@@ -254,7 +268,7 @@ describe("read-only lenses", () => {
     expect(focusActiveItemOnce(gate, null, target, focus)).toBeNull()
   })
 
-  it("8: common visible-area focus forwards the drawer inset and scroll lenses reserve it", () => {
+  it("8: common visible-area focus forwards the drawer inset and virtual scroll lenses reserve it", () => {
     const target = { id: "task-1" }
     const focus = vi.fn()
     expect(focusActiveItemInVisibleAreaOnce(null, "task-1", target, { bottomInset: 440 }, focus)).toBe("task-1")
@@ -262,27 +276,13 @@ describe("read-only lenses", () => {
     expect(selectionFocusScrollMarginBlockEnd({ bottomInset: 440 })).toBe("440px")
     expect(drawerHeightFromY(45, 800)).toBe(440)
 
-    const items = [item("task-1", "task", { title: "Aktive Aufgabe", status: "open" })]
-    const listMarkup = renderToStaticMarkup(createElement(ListView, {
-      items,
-      activeItemId: "task-1",
-      selectionFocusVisibleArea: { bottomInset: 440 },
-    }))
-    const gridMarkup = renderToStaticMarkup(createElement(GridView, {
-      items,
-      activeItemId: "task-1",
-      selectionFocusVisibleArea: { bottomInset: 440 },
-    }))
-    const boardMarkup = renderToStaticMarkup(createElement(KanbanBoard, {
-      items,
-      activeItemId: "task-1",
-      readOnly: true,
-      selectionFocusVisibleArea: { bottomInset: 440 },
-    }))
-
-    for (const markup of [listMarkup, gridMarkup, boardMarkup]) {
-      expect(markup).toContain("scroll-margin-block-end:440px")
-    }
+    const virtualizer = { scrollToIndex: vi.fn(), scrollBy: vi.fn() }
+    let gate = focusVirtualItemOnce(null, "task-1", 23, virtualizer, { bottomInset: 440 })
+    expect(virtualizer.scrollToIndex).toHaveBeenCalledWith(23, { align: "center" })
+    expect(virtualizer.scrollBy).toHaveBeenCalledWith(220)
+    gate = focusVirtualItemOnce(gate, "task-1", 23, virtualizer, { bottomInset: 440 })
+    expect(virtualizer.scrollToIndex).toHaveBeenCalledTimes(1)
+    expect(focusVirtualItemOnce(gate, "task-2", undefined, virtualizer, undefined)).toBeNull()
   })
 })
 

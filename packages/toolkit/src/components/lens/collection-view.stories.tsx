@@ -27,3 +27,14 @@ type Story = StoryObj<typeof CollectionView>
 
 export const List: Story = { args: { items, defaultLayout: "list" } }
 export const Grid: Story = { args: { items, defaultLayout: "grid" } }
+
+const thousandItems: Item[] = Array.from({ length: 1000 }, (_, index) => ({
+  id: `virtual-item-${index}`,
+  type: index % 3 === 0 ? "resource" : "task",
+  createdAt: `2026-07-08T10:${String(index % 60).padStart(2, "0")}:00.000Z`,
+  createdBy: "seed",
+  data: { title: `Virtueller Eintrag ${index + 1}`, ...(index % 3 === 0 ? { kind: "tool" } : { status: "open" }) },
+}))
+
+/** Deterministic large fixture proving that both collection densities virtualize. */
+export const ThousandItems: Story = { args: { items: thousandItems } }

@@ -2,9 +2,11 @@
 export { cn, getTagColor, getTagAccentColor, getSpacePrimaryColor, getReadableTextColor, getItemColor, getActivePanelGlow, resolveAssetUrl } from "./lib/utils"
 export {
   focusActiveItemOnce,
+  focusVirtualItemOnce,
   focusActiveItemInVisibleAreaOnce,
   selectionFocusScrollMarginBlockEnd,
   type SelectionFocusVisibleArea,
+  type SelectionFocusVirtualizer,
 } from "./lib/selection-focus"
 export { applyItemListFilter, type ItemListFilter } from "./lib/item-filter"
 export {

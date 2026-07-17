@@ -1,9 +1,9 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useWindowVirtualizer } from "@tanstack/react-virtual"
 import type { Item } from "@real-life-stack/data-interface"
 
 import {
-  focusActiveItemOnce,
-  selectionFocusScrollMarginBlockEnd,
+  focusVirtualItemOnce,
   type SelectionFocusVisibleArea,
 } from "../../lib/selection-focus"
 import { getItemPreviewAdornments, ItemPreview } from "../preview"
@@ -30,38 +30,63 @@ export function lensItems(items: readonly Item[]): Item[] {
  */
 export function ListView({ items, activeItemId, selectionFocusVisibleArea, selectionFocusGateKey, onItemClick }: ListViewProps) {
   const visibleItems = lensItems(items)
-  const activeItem = visibleItems.find(({ id }) => id === activeItemId)
-  const activeElementRef = useRef<HTMLDivElement>(null)
   const lastFocusedItemIdRef = useRef<string | null>(null)
-  const scrollMarginBlockEnd = selectionFocusScrollMarginBlockEnd(selectionFocusVisibleArea)
+  const sectionRef = useRef<HTMLElement>(null)
+  const [scrollMargin, setScrollMargin] = useState(0)
+  const virtualizer = useWindowVirtualizer<HTMLDivElement>({
+    count: visibleItems.length,
+    estimateSize: () => 72,
+    initialRect: { width: 1024, height: 720 },
+    overscan: 4,
+    measureElement: (element) => element.getBoundingClientRect().height,
+    getItemKey: (index) => visibleItems[index]?.id ?? index,
+    scrollMargin,
+  })
+
+  useEffect(() => {
+    const updateScrollMargin = () => {
+      const section = sectionRef.current
+      if (section) setScrollMargin(section.getBoundingClientRect().top + window.scrollY)
+    }
+    updateScrollMargin()
+    window.addEventListener("resize", updateScrollMargin)
+    return () => window.removeEventListener("resize", updateScrollMargin)
+  }, [])
 
   useEffect(() => {
     lastFocusedItemIdRef.current = null
   }, [selectionFocusVisibleArea?.bottomInset])
 
   useEffect(() => {
-    lastFocusedItemIdRef.current = focusActiveItemOnce(
+    lastFocusedItemIdRef.current = focusVirtualItemOnce(
       lastFocusedItemIdRef.current,
       selectionFocusGateKey && activeItemId ? `${selectionFocusGateKey}:${activeItemId}` : activeItemId,
-      activeItem ? activeElementRef.current : null,
-      (element) => element.scrollIntoView({ block: "center" }),
+      (() => {
+        const itemIndex = visibleItems.findIndex(({ id }) => id === activeItemId)
+        return itemIndex < 0 ? undefined : itemIndex
+      })(),
+      virtualizer,
+      selectionFocusVisibleArea,
     )
-  }, [activeItem, activeItemId, selectionFocusVisibleArea?.bottomInset])
+  }, [activeItemId, selectionFocusGateKey, selectionFocusVisibleArea?.bottomInset, virtualizer, visibleItems])
 
   if (visibleItems.length === 0) {
     return <p className="text-sm text-muted-foreground">Keine Einträge vorhanden.</p>
   }
 
   return (
-    <section aria-label="Listenansicht" className="space-y-2">
-      {visibleItems.map((item) => {
+    <section ref={sectionRef} aria-label="Listenansicht" data-virtualizer-item-count={visibleItems.length} className="relative" style={{ height: virtualizer.getTotalSize() }}>
+      {virtualizer.getVirtualItems().map((virtualItem) => {
+        const item = visibleItems[virtualItem.index]
+        if (!item) return null
         const adornments = getItemPreviewAdornments(item)
         return (
           <div
             key={item.id}
-            ref={item.id === activeItemId ? activeElementRef : undefined}
-            className="[content-visibility:auto] [contain-intrinsic-block-size:auto_72px]"
-            style={item.id === activeItemId ? { scrollMarginBlockEnd } : undefined}
+            data-index={virtualItem.index}
+            ref={virtualizer.measureElement}
+            className="absolute left-0 w-full pb-2"
+            style={{ transform: `translateY(${virtualItem.start - scrollMargin}px)` }}
           >
             <ItemPreview
               item={item}
