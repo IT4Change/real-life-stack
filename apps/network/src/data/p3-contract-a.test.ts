@@ -31,9 +31,9 @@ beforeAll(async () => {
 })
 
 describe("P3-Vertrag A — Ressourcen-Seed", () => {
-  it("4a: 712 eindeutige Items; Projekte unangetastet", () => {
-    expect(seedItems).toHaveLength(712)
-    expect(new Set(seedItems.map(({ id }) => id)).size).toBe(712)
+  it("4a: 836 eindeutige Items nach Seed-Teil B; Projekte unangetastet", () => {
+    expect(seedItems).toHaveLength(836)
+    expect(new Set(seedItems.map(({ id }) => id)).size).toBe(836)
     const projects = seedItems.filter(({ type }) => type === "project")
     expect(projects).toHaveLength(65)
     for (const project of projects) {

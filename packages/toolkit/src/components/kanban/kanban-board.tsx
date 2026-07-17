@@ -2,7 +2,11 @@ import { useState, useCallback, useEffect, useMemo, useRef, type DragEvent, type
 import type { Item, User, Relation } from "@real-life-stack/data-interface"
 import { Card, CardContent, CardHeader, CardTitle } from "../primitives/card"
 import { cn } from "../../lib/utils"
-import { focusActiveItemOnce } from "../../lib/selection-focus"
+import {
+  focusActiveItemOnce,
+  selectionFocusScrollMarginBlockEnd,
+  type SelectionFocusVisibleArea,
+} from "../../lib/selection-focus"
 import { ItemPreview } from "../preview/item-preview"
 import { ItemAssignees } from "../preview/item-assignees"
 import { ItemCommentCount } from "../preview/item-comment-count"
@@ -38,6 +42,8 @@ export interface KanbanBoardProps {
   onItemClick?: (item: Item) => void
   /** Id of the item currently open in the shared panel — its card is highlighted. */
   activeItemId?: string
+  /** Shell-owned obstruction below the scrollable board, e.g. a mobile drawer. */
+  selectionFocusVisibleArea?: SelectionFocusVisibleArea
   /** Colour for the active-item glow per item (usually its origin-group colour). */
   resolveItemGroupColor?: (item: Item) => string
   /** Optional header badge per card (e.g. a „Privat" marker), rendered next to
@@ -201,6 +207,7 @@ export function KanbanBoard({
   onMoveItem,
   onItemClick,
   activeItemId,
+  selectionFocusVisibleArea,
   resolveItemGroupColor,
   renderCardAdornment,
   onExternalDrop,
@@ -214,6 +221,11 @@ export function KanbanBoard({
   const [hiddenChipHoverColumn, setHiddenChipHoverColumn] = useState<string | null>(null)
   const activeCardRef = useRef<HTMLDivElement>(null)
   const lastFocusedItemIdRef = useRef<string | null>(null)
+  const scrollMarginBlockEnd = selectionFocusScrollMarginBlockEnd(selectionFocusVisibleArea)
+
+  useEffect(() => {
+    lastFocusedItemIdRef.current = null
+  }, [selectionFocusVisibleArea?.bottomInset])
 
   const resolvedColumns = useMemo(() => {
     if (columns) return columns
@@ -351,7 +363,7 @@ export function KanbanBoard({
       activeItemIsRendered ? activeCardRef.current : null,
       (element) => element.scrollIntoView({ block: "center", inline: "center" }),
     )
-  }, [activeItemId, activeItemIsRendered, itemsByColumn])
+  }, [activeItemId, activeItemIsRendered, itemsByColumn, selectionFocusVisibleArea?.bottomInset])
 
   const handleFloatingDrop = useCallback(
     (e: DragEvent, columnId: string) => {
@@ -517,6 +529,7 @@ export function KanbanBoard({
                   <div
                     key={item.id}
                     ref={item.id === activeItemId ? activeCardRef : undefined}
+                    style={item.id === activeItemId ? { scrollMarginBlockEnd } : undefined}
                     {...(!readOnly ? {
                       onDragOver: (e: DragEvent<HTMLDivElement>) => handleCardDragOver(e, column.id, idx),
                     } : {})}

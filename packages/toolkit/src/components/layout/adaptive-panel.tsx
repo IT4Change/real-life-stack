@@ -49,6 +49,8 @@ export interface AdaptivePanelProps {
   onPinnedChange?: (pinned: boolean) => void
   onModeChange?: (mode: PanelMode) => void
   onSidebarResize?: (width: number) => void
+  /** Reports the current CSS-pixel height of an open drawer, otherwise zero. */
+  onDrawerHeightChange?: (height: number) => void
   /**
    * Temporarily hide the panel without unmounting it (content + state stay
    * alive), so a non-sidebar panel can step aside — e.g. while the user picks
@@ -79,6 +81,12 @@ function parsePx(value: string): number {
   if (value.endsWith("vw")) return (parseFloat(value) / 100) * window.innerWidth
   if (value.endsWith("rem")) return parseFloat(value) * 16
   return parseFloat(value)
+}
+
+/** Convert the drawer's top-offset percentage into its visible CSS-pixel height. */
+export function drawerHeightFromY(drawerY: number, viewportHeight: number): number {
+  if (!Number.isFinite(drawerY) || !Number.isFinite(viewportHeight) || viewportHeight <= 0) return 0
+  return Math.max(0, Math.min(100, 100 - drawerY)) * viewportHeight / 100
 }
 
 function resolveMode(
@@ -151,6 +159,7 @@ export function AdaptivePanel({
   onPinnedChange,
   onModeChange,
   onSidebarResize,
+  onDrawerHeightChange,
   suspended = false,
   backdrop = true,
   className,
@@ -205,6 +214,24 @@ export function AdaptivePanel({
     drawerYRef.current = y
     setDrawerYState(y)
   }, [])
+
+  const reportDrawerHeight = useCallback(() => {
+    onDrawerHeightChange?.(
+      open && !suspended && mode === "drawer"
+        ? drawerHeightFromY(drawerY, window.innerHeight)
+        : 0,
+    )
+  }, [drawerY, mode, onDrawerHeightChange, open, suspended])
+
+  // The drawer can stop at any drag height, not only at its initial 55%.
+  // Keep shell-owned focus geometry in sync with both dragging and viewport resize.
+  useEffect(() => {
+    reportDrawerHeight()
+    window.addEventListener("resize", reportDrawerHeight)
+    return () => window.removeEventListener("resize", reportDrawerHeight)
+  }, [reportDrawerHeight])
+
+  useEffect(() => () => onDrawerHeightChange?.(0), [onDrawerHeightChange])
 
   // Resolve mode on viewport change
   useEffect(() => {

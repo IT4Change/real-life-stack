@@ -5,10 +5,13 @@ import {
   Grid2X2,
   KanbanSquare,
   List,
+  Map as MapIcon,
   Maximize2,
   Moon,
   Search,
   Sun,
+  CalendarDays,
+  Share2,
   X,
 } from "lucide-react"
 import type { DataInterface, Item, User } from "@real-life-stack/data-interface"
@@ -17,13 +20,16 @@ import {
   AdaptivePanel,
   AppShell,
   AppShellMain,
+  BottomNav,
   Button,
+  CalendarView,
   ConnectorProvider,
   GraphView,
   GridView,
   Input,
   KanbanBoard,
   ListView,
+  MapLens,
   Navbar,
   NavbarCenter,
   NavbarEnd,
@@ -39,7 +45,6 @@ import {
   useCurrentGroup,
   useGroups,
   useItems,
-  useIsCompact,
   useModulePanel,
   useRelationRecords,
   type GraphEdge,
@@ -49,7 +54,9 @@ import {
   type PanelMode,
   type UserData,
   type Workspace,
+  type NavItem,
 } from "@real-life-stack/toolkit"
+import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 
 import { dwebCampDetailAvatarUrl } from "./data/avatar-detail-urls"
 import { resolveNetworkAvatarSources } from "./lib/avatar-sources"
@@ -67,17 +74,18 @@ const GRAPH_TYPES: readonly GraphTypeDescriptor[] = [
 
 const ALL_GRAPH_TYPES = new Set(GRAPH_TYPES.map(({ id }) => id))
 const THEME_KEY = "rls-network-theme"
-const DETAIL_DRAWER_FRACTION = 0.55
 const DETAIL_PANEL_MODES: PanelMode[] = ["sidebar", "drawer"]
 const PROFILE_PANEL_MODES: PanelMode[] = ["modal"]
 
-type NetworkLens = "graph" | "list" | "grid" | "kanban" | "marketplace"
+type NetworkLens = "graph" | "list" | "grid" | "kanban" | "map" | "calendar" | "marketplace"
 
 const NETWORK_LENSES: ReadonlyArray<{ id: NetworkLens; label: string }> = [
   { id: "graph", label: "Graph" },
   { id: "list", label: "Liste" },
   { id: "grid", label: "Raster" },
   { id: "kanban", label: "Board" },
+  { id: "map", label: "Karte" },
+  { id: "calendar", label: "Kalender" },
   { id: "marketplace", label: "Marktplatz" },
 ]
 
@@ -129,8 +137,20 @@ function NetworkLensIcon({ lens }: { lens: NetworkLens }) {
   if (lens === "list" || lens === "marketplace") return <List className="size-4" />
   if (lens === "grid") return <Grid2X2 className="size-4" />
   if (lens === "kanban") return <KanbanSquare className="size-4" />
+  if (lens === "map") return <MapIcon className="size-4" />
+  if (lens === "calendar") return <CalendarDays className="size-4" />
   return null
 }
+
+const NETWORK_LENS_NAV_ITEMS: NavItem[] = [
+  { id: "graph", label: "Graph", icon: Share2 },
+  { id: "list", label: "Liste", icon: List },
+  { id: "grid", label: "Raster", icon: Grid2X2 },
+  { id: "kanban", label: "Board", icon: KanbanSquare },
+  { id: "map", label: "Karte", icon: MapIcon },
+  { id: "calendar", label: "Kalender", icon: CalendarDays },
+  { id: "marketplace", label: "Marktplatz", icon: List },
+]
 
 function predicateLabel(predicate: string): string {
   if (predicate === "attends") return "Spricht bei"
@@ -396,7 +416,6 @@ function NetworkShell() {
     isLoading: relationRecordsLoading,
     supported: relationRecordsSupported,
   } = useRelationRecords()
-  const isCompact = useIsCompact()
   const graphRef = useRef<GraphViewHandle>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [activeLens, setActiveLens] = useState<NetworkLens>("graph")
@@ -405,6 +424,7 @@ function NetworkShell() {
   const [enabledTypes, setEnabledTypes] = useState(() => new Set(ALL_GRAPH_TYPES))
   const [isDark, setIsDark] = useState(initialDarkMode)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [detailDrawerHeight, setDetailDrawerHeight] = useState(0)
   const currentUser = useOptionalCurrentUser(connector)
 
   useEffect(() => {
@@ -460,6 +480,11 @@ function NetworkShell() {
   )
   const selectedItem = selectedNodeId ? itemById.get(selectedNodeId) ?? null : null
   const taskBoardItems = useMemo(() => networkTaskBoardItems(domainItems), [domainItems])
+  const createMapAdapter = useCallback(() => new MapLibreMapAdapter(), [])
+  const selectionFocusVisibleArea = useMemo(
+    () => detailDrawerHeight > 0 ? { bottomInset: detailDrawerHeight } : undefined,
+    [detailDrawerHeight],
+  )
   const marketplaceItems = useMemo(
     () => domainItems.filter((item) => item.type === "resource"),
     [domainItems],
@@ -533,6 +558,7 @@ function NetworkShell() {
         sidebarWidth="420px"
         sidebarMinWidth="300px"
         sidebarMaxWidth="70vw"
+        onDrawerHeightChange={setDetailDrawerHeight}
       >
         <DetailPanelController
           item={selectedItem}
@@ -586,7 +612,13 @@ function NetworkShell() {
             </NavbarEnd>
           </Navbar>
 
-          <AppShellMain className="relative min-h-0 overflow-hidden">
+          <BottomNav
+            items={NETWORK_LENS_NAV_ITEMS}
+            activeItem={activeLens}
+            onItemChange={(lens) => setActiveLens(lens as NetworkLens)}
+          />
+
+          <AppShellMain withBottomNav className="relative min-h-0 overflow-hidden">
             {activeLens === "graph" && (
               <GraphView
                 ref={graphRef}
@@ -596,7 +628,7 @@ function NetworkShell() {
                 selectedNodeId={selectedNodeId}
                 onSelectedNodeChange={handleSelectedNodeChange}
                 fitViewKey={currentGroup?.id ?? "none"}
-                selectionFocusBottomInset={isCompact ? window.innerHeight * DETAIL_DRAWER_FRACTION : 0}
+                selectionFocusBottomInset={selectionFocusVisibleArea?.bottomInset ?? 0}
                 ariaLabel={`Netzwerkgraph ${activeWorkspace?.name ?? ""}`}
               />
             )}
@@ -606,6 +638,7 @@ function NetworkShell() {
                   <ListView
                     items={domainItems}
                     activeItemId={selectedNodeId ?? undefined}
+                    selectionFocusVisibleArea={selectionFocusVisibleArea}
                     onItemClick={(item) => selectItem(item.id)}
                   />
                 </div>
@@ -617,6 +650,7 @@ function NetworkShell() {
                   <GridView
                     items={domainItems}
                     activeItemId={selectedNodeId ?? undefined}
+                    selectionFocusVisibleArea={selectionFocusVisibleArea}
                     onItemClick={(item) => selectItem(item.id)}
                   />
                 </div>
@@ -629,8 +663,32 @@ function NetworkShell() {
                     items={taskBoardItems}
                     readOnly={!isWritable(connector)}
                     activeItemId={selectedNodeId ?? undefined}
+                    selectionFocusVisibleArea={selectionFocusVisibleArea}
                     onMoveItem={handleMoveTask}
                     onItemClick={(item) => selectItem(item.id)}
+                  />
+                </div>
+              </div>
+            )}
+            {activeLens === "map" && (
+              <MapLens
+                items={domainItems}
+                createAdapter={createMapAdapter}
+                initialView={{ center: [12.4066, 52.1183], zoom: 16 }}
+                activeItemId={selectedNodeId ?? undefined}
+                selectionFocusVisibleArea={selectionFocusVisibleArea}
+                viewportResetKey={currentGroup?.id ?? "none"}
+                onItemClick={(item) => selectItem(item.id)}
+              />
+            )}
+            {activeLens === "calendar" && (
+              <div className="h-full overflow-y-auto p-4 sm:p-6">
+                <div className="mx-auto max-w-6xl">
+                  <CalendarView
+                    events={domainItems}
+                    initialVisibleDate="2026-07-08T12:00:00+02:00"
+                    activeItemId={selectedNodeId ?? undefined}
+                    onEventClick={(item) => selectItem(item.id)}
                   />
                 </div>
               </div>
@@ -645,6 +703,7 @@ function NetworkShell() {
                   <ListView
                     items={marketplaceItems}
                     activeItemId={selectedNodeId ?? undefined}
+                    selectionFocusVisibleArea={selectionFocusVisibleArea}
                     onItemClick={(item) => selectItem(item.id)}
                   />
                 </div>

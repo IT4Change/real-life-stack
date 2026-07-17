@@ -41,7 +41,7 @@ export interface DwebCampGraphData {
 
 export const dwebCampGraph = rawGraph as unknown as DwebCampGraphData
 
-type SeedItemType = "event" | "person" | "project" | "resource" | "task"
+type SeedItemType = "event" | "person" | "project" | "place" | "resource" | "task"
 
 interface DwebCampResource {
   title: string
@@ -55,12 +55,29 @@ interface DwebCampTask {
   status: string
 }
 
+interface DwebCampScheduleSession {
+  code: string
+  start: string
+  end: string
+  venue: string
+}
+
+interface DwebCampVenue {
+  name: string
+  position: {
+    type: "Point"
+    coordinates: [number, number]
+  }
+}
+
 interface DwebCampSchedule {
+  sessions: DwebCampScheduleSession[]
+  venues: DwebCampVenue[]
   resources: DwebCampResource[]
   tasks: DwebCampTask[]
 }
 
-const dwebCampSchedule = campSchedule as DwebCampSchedule
+const dwebCampSchedule = campSchedule as unknown as DwebCampSchedule
 
 export function slugSeedValue(value: string): string {
   const slug = value
@@ -108,6 +125,19 @@ function requireId(ids: ReadonlyMap<string, string>, value: string, kind: string
   return id
 }
 
+function indexScheduleSessions(schedule: DwebCampSchedule): Map<string, DwebCampScheduleSession> {
+  const sessions = new Map<string, DwebCampScheduleSession>()
+
+  for (const session of schedule.sessions) {
+    if (sessions.has(session.code)) {
+      throw new Error(`Duplicate schedule session: ${session.code}`)
+    }
+    sessions.set(session.code, session)
+  }
+
+  return sessions
+}
+
 function baseItem(
   id: string,
   type: SeedItemType,
@@ -125,11 +155,15 @@ function baseItem(
   }
 }
 
-export function buildDwebCampDomainItems(graph: DwebCampGraphData = dwebCampGraph): Item[] {
+export function buildDwebCampDomainItems(
+  graph: DwebCampGraphData = dwebCampGraph,
+  schedule: DwebCampSchedule = dwebCampSchedule,
+): Item[] {
   const eventIds = indexIds("event", graph.sessions.map(({ code }) => code))
   const personIds = indexIds("person", graph.persons)
   const projectIds = indexIds("project", graph.projects)
   const clusterIds = new Set(graph.clusters)
+  const scheduleSessions = indexScheduleSessions(schedule)
 
   const tagsByEvent = new Map<string, string[]>()
 
@@ -148,13 +182,19 @@ export function buildDwebCampDomainItems(graph: DwebCampGraphData = dwebCampGrap
 
   const events = graph.sessions.map(({ code, title, urls }) => {
     const id = requireId(eventIds, code, "session")
+    const session = scheduleSessions.get(code)
+    if (!session) throw new Error(`Missing schedule session: ${code}`)
     return baseItem(
       id,
       "event",
-      { title, urls: [...urls] },
+      { title, urls: [...urls], start: session.start, end: session.end },
       tagsByEvent.get(id),
     )
   })
+
+  for (const code of scheduleSessions.keys()) {
+    if (!eventIds.has(code)) throw new Error(`Schedule session has no graph event: ${code}`)
+  }
 
   const persons = graph.persons.map((displayName) => {
     const id = requireId(personIds, displayName, "person")
@@ -206,6 +246,20 @@ export function buildDwebCampTaskItems(
   ))
 }
 
+export function buildDwebCampPlaceItems(
+  schedule: DwebCampSchedule = dwebCampSchedule,
+): Item[] {
+  const placeIds = indexIds("place", schedule.venues.map(({ name }) => name))
+
+  return schedule.venues.map(({ name, position }) => (
+    baseItem(requireId(placeIds, name, "venue"), "place", {
+      title: name,
+      locationName: name,
+      position,
+    })
+  ))
+}
+
 interface SeedRelation {
   predicate: NetworkRelationPredicate
   from: string
@@ -213,10 +267,15 @@ interface SeedRelation {
   fields?: Record<string, unknown>
 }
 
-function buildDwebCampSeedRelations(graph: DwebCampGraphData): SeedRelation[] {
+function buildDwebCampSeedRelations(
+  graph: DwebCampGraphData,
+  schedule: DwebCampSchedule,
+): SeedRelation[] {
   const eventIds = indexIds("event", graph.sessions.map(({ code }) => code))
   const personIds = indexIds("person", graph.persons)
   const projectIds = indexIds("project", graph.projects)
+  const placeIds = indexIds("place", schedule.venues.map(({ name }) => name))
+  const scheduleSessions = indexScheduleSessions(schedule)
 
   const attends = graph.speaks.map(([person, sessionCode]): SeedRelation => ({
     predicate: "attends",
@@ -255,7 +314,17 @@ function buildDwebCampSeedRelations(graph: DwebCampGraphData): SeedRelation[] {
     fields: { contexts: [...contexts].sort() },
   }))
 
-  return [...attends, ...connectedWith, ...partOf]
+  const takesPlaceAt = schedule.sessions.map(({ code, venue }): SeedRelation => ({
+    predicate: "takesPlaceAt",
+    from: `item:${requireId(eventIds, code, "session")}`,
+    to: `item:${requireId(placeIds, venue, "venue")}`,
+  }))
+
+  for (const code of scheduleSessions.keys()) {
+    if (!eventIds.has(code)) throw new Error(`Schedule session has no graph event: ${code}`)
+  }
+
+  return [...attends, ...connectedWith, ...partOf, ...takesPlaceAt]
 }
 
 async function buildRelationItem(relation: SeedRelation): Promise<Item> {
@@ -293,11 +362,14 @@ async function buildRelationItem(relation: SeedRelation): Promise<Item> {
 export async function buildDwebCampSeedItems(
   graph: DwebCampGraphData = dwebCampGraph,
 ): Promise<Item[]> {
-  const domainItems = buildDwebCampDomainItems(graph)
+  const domainItems = buildDwebCampDomainItems(graph, dwebCampSchedule)
+  const placeItems = buildDwebCampPlaceItems(dwebCampSchedule)
   const resourceItems = buildDwebCampResourceItems()
   const taskItems = buildDwebCampTaskItems()
-  const relationItems = await Promise.all(buildDwebCampSeedRelations(graph).map(buildRelationItem))
-  return [...domainItems, ...resourceItems, ...taskItems, ...relationItems]
+  const relationItems = await Promise.all(
+    buildDwebCampSeedRelations(graph, dwebCampSchedule).map(buildRelationItem),
+  )
+  return [...domainItems, ...placeItems, ...resourceItems, ...taskItems, ...relationItems]
 }
 
 export const dwebCampDomainItems = buildDwebCampDomainItems()

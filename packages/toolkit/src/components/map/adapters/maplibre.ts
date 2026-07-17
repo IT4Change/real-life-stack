@@ -42,6 +42,7 @@ import type {
   LngLat,
   MapAdapter,
   MapCluster,
+  MapBounds,
   MapClickEvent,
   MapMarkerSpec,
   MapMountOptions,
@@ -727,6 +728,15 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     const center = view.center ?? this.lngLatTuple(map.getCenter())
     const zoom = view.zoom ?? map.getZoom()
     map.jumpTo({ center, zoom })
+  }
+
+  fitBounds(bounds: MapBounds): void {
+    const map = this.mapInstance as MlMap | null
+    if (!map) return
+    map.fitBounds([
+      [bounds.west, bounds.south],
+      [bounds.east, bounds.north],
+    ])
   }
 
   focusOn(

@@ -101,7 +101,10 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 - [x] **grid-type-specific-cards**: Geteilte Preview-Adornments zeigen Person, Projekt, Ressource und Event mit ihren jeweils verwertbaren Feldern; sonstige Typen behalten einen Typ-Badge
 - [x] **lens-selection-is-shell-state**: `activeItemId` bleibt Eigentum der App Shell bzw. des ModulePanels; ein Linsenwechsel verliert die Selektion nicht
 - [x] **lens-active-item-highlight**: Jede Linse hebt das aktive Item hervor: Karten-Linsen über `ItemPreview.active` mit neutralem Default-Glow (optional pro Caller überschreibbar), Map/Graph über ihre bestehenden Selected-Stile
-- [x] **lens-active-item-center-once**: Jede Linse zentriert das aktive, gerenderte Item einmal pro `activeItemId`; der Gate-Key wird bei fehlendem Ziel nicht verbraucht und kapert danach keinen User-Scroll
+- [x] **lens-active-item-center-once**: Jede Linse zentriert das aktive, gerenderte Item einmal pro zusammenhängender Auswahl; ein fehlendes Ziel re-armt die Folge, ohne danach User-Scroll zu kapern
+- [x] **lens-selection-visible-area**: Map, Graph und scrollbare Linsen berücksichtigen einen Shell-Bottom-Inset, damit eine Mobile-Drawer-Auswahl im nicht verdeckten Sichtbereich landet
+- [x] **lens-focus-requires-visible-highlight**: Ein Fokus-Gate wird nur verbraucht, wenn das Ziel im selben Schritt tatsächlich sichtbar und hervorgehoben ist; Monats-Overflow priorisiert daher das aktive Event
+- [x] **map-reset-awaits-fresh-inventory**: Ein Space-/Inventar-Reset fittet erst einen nicht-leeren, gegenüber dem vorherigen Render neuen Markerbestand und nie noch sichtbare Marker des alten Space
 
 ---
 

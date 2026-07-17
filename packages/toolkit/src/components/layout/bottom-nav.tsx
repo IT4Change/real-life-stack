@@ -1,7 +1,14 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import { MoreHorizontal } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../primitives/dropdown-menu"
 
 export interface NavItem {
   id: string
@@ -16,12 +23,34 @@ interface BottomNavProps {
   className?: string
 }
 
+const DEFAULT_VISIBLE_ITEM_COUNT = 4
+
+/** Keeps compact navigation touch-friendly while retaining access to every destination. */
+export function bottomNavItems(items: readonly NavItem[], activeItem: string) {
+  if (items.length <= DEFAULT_VISIBLE_ITEM_COUNT + 1) {
+    return { visibleItems: items, overflowItems: [] as readonly NavItem[] }
+  }
+
+  const overflowItems = items.slice(DEFAULT_VISIBLE_ITEM_COUNT)
+  const activeOverflowItem = overflowItems.find(({ id }) => id === activeItem)
+  return {
+    // An active overflow destination remains directly visible so its current state is never hidden.
+    visibleItems: activeOverflowItem
+      ? [...items.slice(0, DEFAULT_VISIBLE_ITEM_COUNT - 1), activeOverflowItem]
+      : items.slice(0, DEFAULT_VISIBLE_ITEM_COUNT),
+    overflowItems: activeOverflowItem
+      ? overflowItems.filter(({ id }) => id !== activeOverflowItem.id).concat(items[DEFAULT_VISIBLE_ITEM_COUNT - 1]!)
+      : overflowItems,
+  }
+}
+
 export function BottomNav({
   items,
   activeItem,
   onItemChange,
   className,
 }: BottomNavProps) {
+  const { visibleItems, overflowItems } = bottomNavItems(items, activeItem)
   return (
     <nav
       className={cn(
@@ -30,7 +59,7 @@ export function BottomNav({
       )}
     >
       <div className="flex items-center justify-around py-2">
-        {items.map((item) => {
+        {visibleItems.map((item) => {
           const Icon = item.icon
           const isActive = activeItem === item.id
 
@@ -50,6 +79,31 @@ export function BottomNav({
             </button>
           )
         })}
+        {overflowItems.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Weitere Navigation"
+                className="flex flex-col items-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <MoreHorizontal className="h-5 w-5" />
+                <span>Mehr</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="end">
+              {overflowItems.map((item) => {
+                const Icon = item.icon
+                return (
+                  <DropdownMenuItem key={item.id} onSelect={() => onItemChange(item.id)}>
+                    <Icon />
+                    {item.label}
+                  </DropdownMenuItem>
+                )
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </nav>
   )

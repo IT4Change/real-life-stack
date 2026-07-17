@@ -144,6 +144,9 @@ interface MapAdapter {
   /** Karten-Ausschnitt setzen */
   setView(view: MapViewState): void
 
+  /** Karten-Ausschnitt auf eine Bounding-Box einpassen */
+  fitBounds(bounds: MapBounds): void
+
   /** Aktuellen Ausschnitt abfragen oder beobachten */
   getView(): MapViewState
   observeView(callback: (view: MapViewState) => void): Unsubscribe
@@ -243,7 +246,7 @@ Der reale Contract lebt in `packages/toolkit/src/components/map/adapter.ts` und 
 Regeln:
 
 1. Jeder Adapter implementiert `MapAdapter` identisch. `MapView` (`apps/reference/src/views/map-view.tsx`) konsumiert ausschließlich `MapAdapter`-Typen aus dem Toolkit-Barrel `@real-life-stack/toolkit`; konkrete Adapter werden über dedizierte Subpath-Entries geladen.
-2. Der **Basis-Pfad** ist reine Adapter-Substitution: dieselben Marker (`setMarkers`), dieselben Viewport-Operationen (`setView`/`getView`/`observeView`), dieselben Click-Pfade. Modul-/UI-Code dürfen für den Basis-Pfad nicht zwischen Adaptern unterscheiden. **Erweiterte** Funktionen (Cluster, Globe) laufen ausschließlich über Capability-Detection — nie über Engine-Erkennung („ist das MapLibre?").
+2. Der **Basis-Pfad** ist reine Adapter-Substitution: dieselben Marker (`setMarkers`), dieselben Viewport-Operationen (`setView`/`fitBounds`/`getView`/`observeView`), dieselben Click-Pfade. Modul-/UI-Code dürfen für den Basis-Pfad nicht zwischen Adaptern unterscheiden. **Erweiterte** Funktionen (Cluster, Globe) laufen ausschließlich über Capability-Detection — nie über Engine-Erkennung („ist das MapLibre?").
 3. Koordinaten bleiben durchgängig `[lng, lat]` (GeoJSON, Typ `LngLat`). Eine Engine mit `[lat, lng]` (z.B. Leaflet) übersetzt im Adapter; nie sichtbar im Contract.
 
 #### Tile-/Style-Quelle als austauschbarer Parameter
@@ -255,8 +258,9 @@ Regeln:
 #### Viewport-State und Events
 
 1. Der Viewport-State ist `MapViewState` mit `center` (`LngLat`), `zoom` (number) und `bounds` (`MapBounds`: `north`/`east`/`south`/`west`). `bounds` ist ein **abgeleiteter Wert** aus dem Viewport und kein Eingabe-Parameter.
-2. Programmatische Viewport-Änderung erfolgt über `setView(view: MapViewPatch)` mit optionalem `center` und/oder `zoom`. `bounds` ist bewusst nicht Teil des Patch.
-3. Viewport-Änderungen durch Pan/Zoom werden über `observeView(callback)` gemeldet. Der reale Leaflet-Adapter feuert auf `moveend`/`zoomend`; ein Vektor-Adapter MUSS dasselbe `onMoveEnd`-Verhalten liefern (Event nach Abschluss der Bewegung, nicht pro Frame). `getView()` liefert den aktuellen `MapViewState` synchron.
+2. Programmatische Einzelpunkt-Viewport-Änderung erfolgt über `setView(view: MapViewPatch)` mit optionalem `center` und/oder `zoom`. `bounds` ist bewusst nicht Teil des Patch.
+3. Programmatisches Einpassen mehrerer Marker erfolgt über `fitBounds(bounds: MapBounds)`. Auch hier bleiben Koordinaten `[lng, lat]`; Leaflet übersetzt erst intern in seine native Reihenfolge.
+4. Viewport-Änderungen durch Pan/Zoom werden über `observeView(callback)` gemeldet. Der reale Leaflet-Adapter feuert auf `moveend`/`zoomend`; ein Vektor-Adapter MUSS dasselbe `onMoveEnd`-Verhalten liefern (Event nach Abschluss der Bewegung, nicht pro Frame). `getView()` liefert den aktuellen `MapViewState` synchron.
 
 #### Marker-Render-Hook und Click→Item
 
@@ -289,7 +293,7 @@ Das Map Module leitet aus jedem map-fähigen Item ein `MapMarkerSpec` ab. Welche
 
 | Marker-Eigenschaft | Quelle am Item | Regel |
 |---|---|---|
-| `position` | `data.position` (GeoJSON-Geometry) | Pflicht. Für v0.1 wird `Point` zu `[lng, lat]` gelesen (`data.position.coordinates`). Ohne parsebaren Point entsteht kein Marker. |
+| `position` | `data.position` (GeoJSON-Geometry) | Pflicht. Für v0.1 wird ein `Point` zu `[lng, lat]` gelesen (`data.position.coordinates`). Ohne endlichen, in `place/v1` gültigen Longitude-/Latitude-Point entsteht kein Marker. |
 | `id` | `Item.id` | Stabile Marker-Identität; Grundlage des Click→Item-Lookups. |
 | `label` | `data.title` (Fallback `Item.id`) | Marker-Label / Tooltip. |
 | `color` | `getTagAccentColor(tags[0])` | Farbe aus dem ersten Tag (deterministische Palette). Fehlt ein Tag, KÖNNEN Marker die Space-`primaryColor` als Default verwenden (Tag-Akzent hat Vorrang; siehe `04-items-relations-groups-spaces.md` → Space-Primärfarbe); andernfalls nutzt der Adapter seinen Default-Pin. |
@@ -317,6 +321,21 @@ Die Karte fragt Items **viewport-begrenzt** ab statt den vollen Satz zu laden �
 2. Ein lokaler Connector DARF `bbox` clientseitig aus dem vollen Satz filtern; ein backend-gestützter Connector (GraphQL) SOLL serverseitig einschränken, sodass nur die Items im Ausschnitt übertragen werden.
 3. **Serverseitiges Clustering** (Rückgabe aggregierter Cluster statt Einzel-Items, zoom-parametrisiert) ist die Antwort für sehr große Mengen (> ~100k). Es ist eine **zukünftige, separate Query** (nicht `ItemFilter`, der `Item[]` liefert) und Teil des GraphQL-Meilensteins, kein v0.2-Pflichtteil.
 4. Bis dahin gilt: lokaler/voller Satz → `bbox`-gefiltert → client-seitiges Clustering (`ClusterCapable`). Derselbe Modul-Code trägt später den server-geclusterten Pfad, ohne Umbau am Marker-/Adapter-Contract.
+
+### Read-only-Lens-Einbindung
+
+Eine read-only Map-Linse ist kein vollständiges Map Module. Für das volle Modul
+gelten weiterhin die viewport-begrenzte `bbox`-Abfrage und die lokalen
+Map-Filter dieses Abschnitts. Eine Lens-Einbindung darf bei einem kleinen,
+bekannten Bestand (z.B. 15 Seed-Places) den vollständigen Satz laden und
+filterlos rendern. Sie bringt keine eigene Filter-Toolbar mit; Filter- und
+Detail-Pfad bleiben Eigentum der App Shell.
+
+Bei Shell-Selektion zentriert die Lens einen gerenderten Marker einmal im
+**nicht verdeckten Sichtbereich**. Die Shell übergibt dazu ihren Bottom-Drawer-
+Inset; bei einem neuen Space-/Bestands-Kontext re-armt sie den Einpass-Gate über
+`viewportResetKey`. Ein neuer Adapter erhält dieselben Gates nie vom alten
+Adapter-Lauf.
 
 ## Layout
 

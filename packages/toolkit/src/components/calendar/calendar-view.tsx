@@ -15,6 +15,7 @@ import { Button } from "../primitives/button"
 import { Input } from "../primitives/input"
 import { cn, getItemColor, getReadableTextColor, getActivePanelGlow } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
+import { focusActiveItemOnce } from "../../lib/selection-focus"
 import { ItemPreview } from "../preview/item-preview"
 import { ItemTypeBadge } from "../preview/item-type-badge"
 import { ItemTimeRange } from "../preview/item-time-range"
@@ -77,6 +78,22 @@ interface CalendarEvent {
   tags: string[]
 }
 
+export interface CalendarFocusTarget {
+  item: Item
+  start: Date
+}
+
+/** The Calendar counterpart to the shared lens focus gate. */
+export function focusCalendarItemOnce(
+  lastFocusedItemId: string | null,
+  activeItemId: string | null | undefined,
+  events: readonly CalendarFocusTarget[],
+  focus: (date: Date) => void,
+): string | null {
+  const event = events.find(({ item }) => item.id === activeItemId) ?? null
+  return focusActiveItemOnce(lastFocusedItemId, activeItemId, event, ({ start }) => focus(start))
+}
+
 interface CalendarEventGroup {
   key: string
   date: Date
@@ -94,6 +111,12 @@ function getInitialDate(value?: Date | string): Date {
   if (!value) return new Date()
   const date = value instanceof Date ? value : new Date(value)
   return Number.isNaN(date.getTime()) ? new Date() : date
+}
+
+function getOptionalInitialDate(value?: Date | string): Date | null {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
 function toDateKey(date: Date): string {
@@ -167,6 +190,11 @@ function toCalendarEvent(item: Item): CalendarEvent | null {
     location: getLocationLabel(item.data.locationName, item.data.address),
     tags: item.tags ?? [],
   }
+}
+
+/** Calendar filters only expose items that can become an event in this view. */
+export function calendarFilterItems(events: readonly Item[]): Item[] {
+  return events.filter((item) => item.type !== "relation" && toCalendarEvent(item) !== null)
 }
 
 function compareEvents(a: CalendarEvent, b: CalendarEvent): number {
@@ -283,6 +311,8 @@ function formatDayLabel(date: Date): string {
 export interface CalendarViewProps {
   events: Item[]
   initialDate?: Date | string
+  /** Initial period only. Unlike initialDate, it never changes the "today" highlight. */
+  initialVisibleDate?: Date | string
   initialViewMode?: CalendarViewMode
   currentUserId?: string
   /** Active group/space colour — the group fallback when no per-item resolver is given. */
@@ -303,6 +333,7 @@ export interface CalendarViewProps {
 export function CalendarView({
   events,
   initialDate,
+  initialVisibleDate,
   initialViewMode = "month",
   currentUserId,
   groupColor = "#2563eb",
@@ -314,13 +345,18 @@ export function CalendarView({
   className,
 }: CalendarViewProps) {
   const today = useMemo(() => getInitialDate(initialDate), [initialDate])
-  const [visibleDate, setVisibleDate] = useState(today)
+  const initialVisibleDateValue = useMemo(
+    () => getOptionalInitialDate(initialVisibleDate) ?? today,
+    [initialVisibleDate, today],
+  )
+  const [visibleDate, setVisibleDate] = useState(initialVisibleDateValue)
   const [selectedDate, setSelectedDate] = useState(today)
   const [viewMode, setViewMode] = useState<CalendarViewMode>(initialViewMode)
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [locationFilter, setLocationFilter] = useState<LocationFilter>("all")
   const [myEventsOnly, setMyEventsOnly] = useState(false)
   const [searchText, setSearchText] = useState("")
+  const lastFocusedItemIdRef = useRef<string | null>(null)
 
   // One-way focus: jump the visible period to a date the parent asks to reveal
   // (a URL-focused event's month). Tracked by value so it fires once per new
@@ -339,24 +375,28 @@ export function CalendarView({
     setSelectedDate(focusDate)
   }, [focusDate])
 
-  const eventsAfterBar = useFilterableItems(events, filterBarValue)
+  const calendarItems = useMemo(() => calendarFilterItems(events), [events])
+  const eventsAfterBar = useFilterableItems(calendarItems, filterBarValue)
 
   const calendarEvents = useMemo(
-    () => eventsAfterBar.map(toCalendarEvent).filter((event): event is CalendarEvent => event !== null).sort(compareEvents),
+    () => eventsAfterBar
+      .map(toCalendarEvent)
+      .filter((event): event is CalendarEvent => event !== null)
+      .sort(compareEvents),
     [eventsAfterBar],
   )
 
   const availableTags = useMemo(() => {
     const seen = new Set<string>()
-    for (const event of events) for (const tag of event.tags ?? []) seen.add(tag)
+    for (const event of calendarItems) for (const tag of event.tags ?? []) seen.add(tag)
     return Array.from(seen).sort()
-  }, [events])
+  }, [calendarItems])
 
   const availableTypes = useMemo<FilterTypeOption[]>(() => {
     const seen = new Set<string>()
-    for (const event of events) seen.add(event.type)
+    for (const event of calendarItems) seen.add(event.type)
     return Array.from(seen).sort().map((id) => ({ id, label: getTypeLabel(id) }))
-  }, [events])
+  }, [calendarItems])
 
   const filteredEvents = useMemo(() => {
     const needle = searchText.trim().toLowerCase()
@@ -372,6 +412,18 @@ export function CalendarView({
       return true
     })
   }, [calendarEvents, currentUserId, locationFilter, myEventsOnly, searchText])
+
+  useEffect(() => {
+    lastFocusedItemIdRef.current = focusCalendarItemOnce(
+      lastFocusedItemIdRef.current,
+      activeItemId,
+      filteredEvents,
+      (date) => {
+        setVisibleDate(date)
+        setSelectedDate(date)
+      },
+    )
+  }, [activeItemId, filteredEvents])
 
   const eventsByDay = useMemo(
     () => {
@@ -776,6 +828,7 @@ function MonthCalendar({
   onEventClick,
   onCreateEvent,
 }: MonthCalendarProps) {
+  const activeItemId = useContext(CalendarActiveItemContext)
   const days = useMemo(
     () => buildCalendarDays(
       visibleDate.getFullYear(),
@@ -825,7 +878,7 @@ function MonthCalendar({
             </div>
 
             <div className="hidden space-y-1 md:block">
-              {day.events.slice(0, 3).map((event) => (
+              {prioritizeActiveEvent(day.events, activeItemId, 3).map((event) => (
                 <EventPill
                   key={event.item.id}
                   event={event}
@@ -848,7 +901,7 @@ function MonthCalendar({
             </div>
 
             <div className="mt-1 space-y-0.5 md:hidden">
-              {day.events.slice(0, 2).map((event) => (
+              {prioritizeActiveEvent(day.events, activeItemId, 2).map((event) => (
                 <EventPill
                   key={event.item.id}
                   event={event}
@@ -883,6 +936,17 @@ function MonthCalendar({
       </div>
     </div>
   )
+}
+
+/** An active event must be both focused and visibly highlighted, never hidden behind +N. */
+export function prioritizeActiveEvent(
+  events: readonly CalendarEvent[],
+  activeItemId: string | null | undefined,
+  limit: number,
+): readonly CalendarEvent[] {
+  const active = events.find(({ item }) => item.id === activeItemId)
+  if (!active || events.indexOf(active) < limit) return events.slice(0, limit)
+  return [active, ...events.filter((event) => event !== active).slice(0, limit - 1)]
 }
 
 interface WeekCalendarProps {
