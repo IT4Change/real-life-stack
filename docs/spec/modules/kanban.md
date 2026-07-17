@@ -55,10 +55,14 @@ Default-UI). Apps oder Spaces dürfen Spalten explizit konfigurieren.
 
 Für ein anderes `statusField` konfigurieren Apps die Spalten oder leiten
 sie aus den vorkommenden verwertbaren Werten ab. Diese Feld-Konfiguration
-ändert keine Vocabulary-Zugehörigkeit: Ein Nicht-Task-Item aktiviert nie
-`task/v1`, auch nicht wenn irgendein Feld zufällig einen Task-Enum-Wert
-trägt. Fachliche Zustände wie `kind`, Completion, Review, Verifikation
-oder Attestation werden nicht stillschweigend zu `data.status`.
+ändert keine Vocabulary-Zugehörigkeit. Die task/v1-Aktivierung bleibt
+**feldbasiert** (bewusste Entscheidung gegen Typ-Bindung): JEDES Item,
+dessen `data.status` einen Task-Enum-Wert trägt, aktiviert task/v1 und
+gehört auf das Default-Board — unabhängig vom `type`. Andere Felder
+(z. B. `kind`) aktivieren task/v1 dagegen nie, auch wenn ihre Werte
+zufällig im Task-Enum liegen. Fachliche Zustände wie `kind`, Completion,
+Review, Verifikation oder Attestation werden nicht stillschweigend zu
+`data.status`.
 
 ## Workflow- und Read-only-Regeln
 

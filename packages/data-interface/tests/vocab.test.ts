@@ -50,11 +50,11 @@ describe("deriveContext", () => {
     expect(deriveContext("task", { status: "weirdo" })).toContain(VOCAB_TASK)
   })
 
-  it("does not add task/v1 to non-task items from a status-shaped field", () => {
-    expect(deriveContext("post", { status: "open" })).not.toContain(VOCAB_TASK)
-    expect(deriveContext("post", { status: "in-progress" })).not.toContain(VOCAB_TASK)
-    expect(deriveContext("post", { status: "done" })).not.toContain(VOCAB_TASK)
-    expect(deriveContext("post", { status: "archived" })).not.toContain(VOCAB_TASK)
+  it("adds task/v1 when data.status is a spec enum value, regardless of type", () => {
+    expect(deriveContext("post", { status: "open" })).toContain(VOCAB_TASK)
+    expect(deriveContext("post", { status: "in-progress" })).toContain(VOCAB_TASK)
+    expect(deriveContext("post", { status: "done" })).toContain(VOCAB_TASK)
+    expect(deriveContext("post", { status: "archived" })).toContain(VOCAB_TASK)
   })
 
   it("does NOT add task/v1 for status outside the spec enum", () => {
@@ -109,13 +109,13 @@ describe("deriveContext", () => {
     expect(deriveContext("task", { title: "Do the thing" })).toEqual([VOCAB_BASE, VOCAB_TASK])
   })
 
-  it("preserves a deterministic order for fields and type-owned vocabularies", () => {
+  it("preserves a deterministic order: base, event, place, task, person", () => {
     const ctx = deriveContext("person", {
       start: "2026-04-01T10:00:00Z",
       position: { type: "Point", coordinates: [0, 0] },
       status: "open",
     })
-    expect(ctx).toEqual([VOCAB_BASE, VOCAB_EVENT, VOCAB_PLACE, VOCAB_PERSON])
+    expect(ctx).toEqual([VOCAB_BASE, VOCAB_EVENT, VOCAB_PLACE, VOCAB_TASK, VOCAB_PERSON])
   })
 
   it("returns a base-only array for opaque types like 'comment' or 'reaction'", () => {

@@ -15,6 +15,7 @@ export const VOCAB_RELATION = "https://real-life-stack.org/vocab/relation/v1"
 export const VOCAB_PROJECT = "https://real-life-stack.org/vocab/project/v1"
 export const VOCAB_RESOURCE = "https://real-life-stack.org/vocab/resource/v1"
 
+const TASK_STATUS_VALUES = new Set(["open", "in-progress", "done", "archived"])
 const PLACE_GEOMETRY_TYPES = new Set(["Point", "LineString", "Polygon"])
 
 function isPlaceGeometry(value: unknown): boolean {
@@ -34,9 +35,8 @@ function isPlaceGeometry(value: unknown): boolean {
  *   `place/v1` schema (`Point`, `LineString`, or `Polygon`) with a non-empty
  *   `coordinates` array. Detailed coordinate shape is validated by AJV, not
  *   here — this helper only decides whether the vocab is active.
- * - `task/v1` if `type === "task"`. Other item types do not opt into the
- *   task vocabulary merely by carrying a field named `status`; their fields
- *   may have unrelated domain semantics.
+ * - `task/v1` if `type === "task"` or `data.status` is one of the task spec
+ *   enum values (`open` | `in-progress` | `done` | `archived`).
  * - `person/v1` if `type === "person"`.
  * - `relation/v1` if `type === "relation"`.
  * - `project/v1` if `type === "project"`.
@@ -53,7 +53,7 @@ export function deriveContext(type: string, data: Record<string, unknown>): stri
     ctx.push(VOCAB_PLACE)
   }
 
-  if (type === "task") {
+  if (type === "task" || (typeof data.status === "string" && TASK_STATUS_VALUES.has(data.status))) {
     ctx.push(VOCAB_TASK)
   }
 
