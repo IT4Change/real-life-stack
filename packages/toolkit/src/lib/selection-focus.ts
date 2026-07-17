@@ -10,6 +10,12 @@ export interface SelectionFocusVisibleAreaState {
   bottomInset: number
 }
 
+/** The small virtualizer contract used by selection focus and its Node tests. */
+export interface SelectionFocusVirtualizer {
+  scrollToIndex: (index: number, options: { align: "center" }) => void
+  scrollBy?: (delta: number) => void
+}
+
 function normalizedBottomInset(visibleArea: SelectionFocusVisibleArea | undefined): number {
   const bottomInset = visibleArea?.bottomInset
   return typeof bottomInset === "number" && Number.isFinite(bottomInset) && bottomInset > 0
@@ -40,6 +46,31 @@ export function focusActiveItemOnce<T>(
 
   focus(target)
   return activeItemId
+}
+
+/**
+ * The virtual counterpart of `focusActiveItemOnce`. It deliberately gates on
+ * an item index rather than a mounted card: a selected item can be outside
+ * the current virtual range. The lower obstruction moves the centre point
+ * into the remaining visible area after the virtualizer has centred the row.
+ */
+export function focusVirtualItemOnce(
+  lastFocusedItemId: string | null,
+  activeItemId: string | null | undefined,
+  itemIndex: number | undefined,
+  virtualizer: SelectionFocusVirtualizer | null,
+  visibleArea: SelectionFocusVisibleArea | undefined,
+): string | null {
+  return focusActiveItemOnce(
+    lastFocusedItemId,
+    activeItemId,
+    itemIndex === undefined || !virtualizer ? null : { itemIndex, virtualizer },
+    ({ itemIndex: resolvedIndex, virtualizer: resolvedVirtualizer }) => {
+      resolvedVirtualizer.scrollToIndex(resolvedIndex, { align: "center" })
+      const bottomInset = normalizedBottomInset(visibleArea)
+      if (bottomInset > 0) resolvedVirtualizer.scrollBy?.(bottomInset / 2)
+    },
+  )
 }
 
 /**

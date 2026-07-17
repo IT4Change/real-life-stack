@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import {
   ExternalLink,
   Filter,
-  Grid2X2,
   KanbanSquare,
   List,
   Map as MapIcon,
@@ -11,7 +10,7 @@ import {
   Search,
   Sun,
   CalendarDays,
-  Share2,
+  Waypoints,
   X,
 } from "lucide-react"
 import type { DataInterface, Item, User } from "@real-life-stack/data-interface"
@@ -25,10 +24,9 @@ import {
   CalendarView,
   ConnectorProvider,
   GraphView,
-  GridView,
+  CollectionView,
   Input,
   KanbanBoard,
-  ListView,
   MapLens,
   Navbar,
   NavbarCenter,
@@ -77,15 +75,14 @@ const THEME_KEY = "rls-network-theme"
 const DETAIL_PANEL_MODES: PanelMode[] = ["sidebar", "drawer"]
 const PROFILE_PANEL_MODES: PanelMode[] = ["modal"]
 
-type NetworkLens = "graph" | "list" | "grid" | "kanban" | "map" | "calendar" | "marketplace"
+type NetworkLens = "graph" | "list" | "kanban" | "map" | "calendar" | "marketplace"
 
 const NETWORK_LENSES: ReadonlyArray<{ id: NetworkLens; label: string }> = [
   { id: "graph", label: "Graph" },
   { id: "list", label: "Liste" },
-  { id: "grid", label: "Raster" },
-  { id: "kanban", label: "Board" },
-  { id: "map", label: "Karte" },
+  { id: "kanban", label: "Kanban" },
   { id: "calendar", label: "Kalender" },
+  { id: "map", label: "Karte" },
   { id: "marketplace", label: "Marktplatz" },
 ]
 
@@ -135,20 +132,18 @@ function graphTypeLabel(type: string): string {
 
 function NetworkLensIcon({ lens }: { lens: NetworkLens }) {
   if (lens === "list" || lens === "marketplace") return <List className="size-4" />
-  if (lens === "grid") return <Grid2X2 className="size-4" />
   if (lens === "kanban") return <KanbanSquare className="size-4" />
   if (lens === "map") return <MapIcon className="size-4" />
   if (lens === "calendar") return <CalendarDays className="size-4" />
-  return null
+  return <Waypoints className="size-4" />
 }
 
 const NETWORK_LENS_NAV_ITEMS: NavItem[] = [
-  { id: "graph", label: "Graph", icon: Share2 },
+  { id: "graph", label: "Graph", icon: Waypoints },
   { id: "list", label: "Liste", icon: List },
-  { id: "grid", label: "Raster", icon: Grid2X2 },
-  { id: "kanban", label: "Board", icon: KanbanSquare },
-  { id: "map", label: "Karte", icon: MapIcon },
+  { id: "kanban", label: "Kanban", icon: KanbanSquare },
   { id: "calendar", label: "Kalender", icon: CalendarDays },
+  { id: "map", label: "Karte", icon: MapIcon },
   { id: "marketplace", label: "Marktplatz", icon: List },
 ]
 
@@ -419,6 +414,11 @@ function NetworkShell() {
   const graphRef = useRef<GraphViewHandle>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [activeLens, setActiveLens] = useState<NetworkLens>("graph")
+  // Urgent/Deferred-Trennung: die Nav-Buttons rendern auf activeLens
+  // (sofort), die schweren Linsen-Inhalte auf deferredLens (nachgelagert).
+  // Ein einzelner State in startTransition würde BEIDES verzögern —
+  // Button-Feedback und Inhalt kämen gemeinsam nach ~1 s (Review-Messung).
+  const deferredLens = useDeferredValue(activeLens)
   const [query, setQuery] = useState("")
   const [filterOpen, setFilterOpen] = useState(false)
   const [enabledTypes, setEnabledTypes] = useState(() => new Set(ALL_GRAPH_TYPES))
@@ -619,7 +619,7 @@ function NetworkShell() {
           />
 
           <AppShellMain withBottomNav className="relative min-h-0 overflow-hidden">
-            {activeLens === "graph" && (
+            {deferredLens === "graph" && (
               <GraphView
                 ref={graphRef}
                 nodes={visibleNodes}
@@ -632,31 +632,16 @@ function NetworkShell() {
                 ariaLabel={`Netzwerkgraph ${activeWorkspace?.name ?? ""}`}
               />
             )}
-            {activeLens === "list" && (
-              <div className="h-full overflow-y-auto p-4 sm:p-6">
-                <div className="mx-auto max-w-6xl">
-                  <ListView
-                    items={domainItems}
-                    activeItemId={selectedNodeId ?? undefined}
-                    selectionFocusVisibleArea={selectionFocusVisibleArea}
-                    onItemClick={(item) => selectItem(item.id)}
-                  />
-                </div>
-              </div>
+            {deferredLens === "list" && (
+              <CollectionView
+                className="h-full"
+                items={domainItems}
+                activeItemId={selectedNodeId ?? undefined}
+                selectionFocusVisibleArea={selectionFocusVisibleArea}
+                onItemClick={(item) => selectItem(item.id)}
+              />
             )}
-            {activeLens === "grid" && (
-              <div className="h-full overflow-y-auto p-4 sm:p-6">
-                <div className="mx-auto max-w-6xl">
-                  <GridView
-                    items={domainItems}
-                    activeItemId={selectedNodeId ?? undefined}
-                    selectionFocusVisibleArea={selectionFocusVisibleArea}
-                    onItemClick={(item) => selectItem(item.id)}
-                  />
-                </div>
-              </div>
-            )}
-            {activeLens === "kanban" && (
+            {deferredLens === "kanban" && (
               <div className="h-full overflow-y-auto p-4 sm:p-6">
                 <div className="mx-auto max-w-6xl">
                   <KanbanBoard
@@ -670,7 +655,7 @@ function NetworkShell() {
                 </div>
               </div>
             )}
-            {activeLens === "map" && (
+            {deferredLens === "map" && (
               <MapLens
                 items={domainItems}
                 createAdapter={createMapAdapter}
@@ -681,7 +666,7 @@ function NetworkShell() {
                 onItemClick={(item) => selectItem(item.id)}
               />
             )}
-            {activeLens === "calendar" && (
+            {deferredLens === "calendar" && (
               <div className="h-full overflow-y-auto p-4 sm:p-6">
                 <div className="mx-auto max-w-6xl">
                   <CalendarView
@@ -693,20 +678,19 @@ function NetworkShell() {
                 </div>
               </div>
             )}
-            {activeLens === "marketplace" && (
-              <div className="h-full overflow-y-auto p-4 sm:p-6">
-                <div className="mx-auto max-w-3xl space-y-4">
-                  <header>
-                    <h1 className="text-xl font-semibold">Marktplatz</h1>
-                    <p className="text-sm text-muted-foreground">Ressourcen aus dem aktuellen Space</p>
-                  </header>
-                  <ListView
-                    items={marketplaceItems}
-                    activeItemId={selectedNodeId ?? undefined}
-                    selectionFocusVisibleArea={selectionFocusVisibleArea}
-                    onItemClick={(item) => selectItem(item.id)}
-                  />
-                </div>
+            {deferredLens === "marketplace" && (
+              <div className="flex h-full min-h-0 flex-col gap-4">
+                <header className="mx-auto w-full max-w-6xl px-4 pt-4 sm:px-6 sm:pt-6">
+                  <h1 className="text-xl font-semibold">Marktplatz</h1>
+                  <p className="text-sm text-muted-foreground">Ressourcen aus dem aktuellen Space</p>
+                </header>
+                <CollectionView
+                  className="min-h-0 flex-1"
+                  items={marketplaceItems}
+                  activeItemId={selectedNodeId ?? undefined}
+                  selectionFocusVisibleArea={selectionFocusVisibleArea}
+                  onItemClick={(item) => selectItem(item.id)}
+                />
               </div>
             )}
 

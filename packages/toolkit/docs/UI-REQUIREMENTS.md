@@ -96,14 +96,18 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 ## Linsen
 
 - [x] **lens-no-local-filter-toolbar**: List-, Grid- und read-only-Kanban-Linsen bringen keine eigene Filter-Toolbar mit
+- [x] **lens-density-is-toggle**: Darstellungsdichte ist ein Toggle innerhalb einer Linse, nie eine eigene Linse; die Projektion definiert die Linse
 - [x] **lens-read-only-no-drag**: Read-only-Kanban-Karten bieten keine Drag- oder Drop-Affordance
 - [x] **lens-item-preview-composition**: List/Grid-Karten verwenden ausschließlich ItemPreview (List compact, Grid comfortable) plus Preview-Adornments
 - [x] **grid-type-specific-cards**: Geteilte Preview-Adornments zeigen Person, Projekt, Ressource und Event mit ihren jeweils verwertbaren Feldern; sonstige Typen behalten einen Typ-Badge
 - [x] **lens-selection-is-shell-state**: `activeItemId` bleibt Eigentum der App Shell bzw. des ModulePanels; ein Linsenwechsel verliert die Selektion nicht
 - [x] **lens-active-item-highlight**: Jede Linse hebt das aktive Item hervor: Karten-Linsen über `ItemPreview.active` mit neutralem Default-Glow (optional pro Caller überschreibbar), Map/Graph über ihre bestehenden Selected-Stile
 - [x] **lens-active-item-center-once**: Jede Linse zentriert das aktive, gerenderte Item einmal pro zusammenhängender Auswahl; ein fehlendes Ziel re-armt die Folge, ohne danach User-Scroll zu kapern
+- [x] **lens-active-item-escalates-view**: Kann die aktuelle Unter-Ansicht einer Linse das aktive Item nicht darstellen (z. B. Monatszelle voll), wechselt der Fokus-Pfad einmalig in eine Ansicht, die es kann (z. B. Tagesansicht) — nie die Darstellungs-Ordnung verbiegen, um es hineinzuzwingen
+- [x] **lens-switch-transition**: Der Wechsel der aktiven Linse ist eine React-Transition — die Auslöse-Fläche bleibt sofort responsiv, der schwere Mount der Ziel-Linse rendert nachgelagert; Flächen-Linsen virtualisieren ihre Bestände standardmäßig.
 - [x] **lens-selection-visible-area**: Map, Graph und scrollbare Linsen berücksichtigen einen Shell-Bottom-Inset, damit eine Mobile-Drawer-Auswahl im nicht verdeckten Sichtbereich landet
-- [x] **lens-focus-requires-visible-highlight**: Ein Fokus-Gate wird nur verbraucht, wenn das Ziel im selben Schritt tatsächlich sichtbar und hervorgehoben ist; Monats-Overflow priorisiert daher das aktive Event
+- [x] **lens-focus-requires-visible-highlight**: Ein Fokus-Gate wird nur verbraucht, wenn das Ziel im selben Schritt tatsächlich sichtbar und hervorgehoben ist; bei Monats-Overflow erfüllt der Wechsel in die Tagesansicht diese Pflicht (siehe lens-active-item-escalates-view — die Zell-Ordnung wird nicht verbogen)
+- [x] **lens-content-frame**: List und Grid scrollen über die volle verfügbare Breite; ihr gemeinsamer `max-w-6xl`-Inhaltsrahmen (einschließlich Toggle) ist innen zentriert. Grid-Zeilen messen ihren vertikalen Abstand mit.
 - [x] **map-reset-awaits-fresh-inventory**: Ein Space-/Inventar-Reset fittet erst einen nicht-leeren, gegenüber dem vorherigen Render neuen Markerbestand und nie noch sichtbare Marker des alten Space
 
 ---
@@ -177,3 +181,6 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 | 2026-07-17 | Read-only-Linsen ohne lokale Filter- oder Drag-Affordances dokumentiert |
 | 2026-07-17 | Linsen-Karten auf ItemPreview plus geteilte Typ-Adornments zurückgeführt |
 | 2026-07-17 | Selektionskontinuität für Linsen: Shell-State, gemeinsamer Highlight- und Einmal-Zentrierungs-Vertrag |
+| 2026-07-17 | Listen- und Rasterdichte zur CollectionView-Linse mit session-lokalem Toggle zusammengeführt |
+| 2026-07-17 | Vollbreite Linsen-Scroller, gemeinsamer Inhaltsrahmen und gemessene Raster-Zeilenabstände dokumentiert |
+| 2026-07-17 | CollectionView-Toggle erhält den Linsen-Innenabstand oben; Rasterkarten nutzen reihenfolgestabile, gemessene Masonry-Lanes |
