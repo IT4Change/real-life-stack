@@ -59,7 +59,7 @@ export function GridView({ items, activeItemId, selectionFocusVisibleArea, selec
 
   useEffect(() => {
     lastFocusedItemIdRef.current = null
-  }, [selectionFocusVisibleArea?.bottomInset])
+  }, [selectionFocusVisibleArea?.bottomInset, selectionFocusGateKey])
 
   useEffect(() => {
     const itemIndex = visibleItems.findIndex(({ id }) => id === activeItemId)

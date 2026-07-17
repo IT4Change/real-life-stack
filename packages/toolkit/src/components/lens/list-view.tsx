@@ -55,7 +55,7 @@ export function ListView({ items, activeItemId, selectionFocusVisibleArea, selec
 
   useEffect(() => {
     lastFocusedItemIdRef.current = null
-  }, [selectionFocusVisibleArea?.bottomInset])
+  }, [selectionFocusVisibleArea?.bottomInset, selectionFocusGateKey])
 
   useEffect(() => {
     lastFocusedItemIdRef.current = focusVirtualItemOnce(

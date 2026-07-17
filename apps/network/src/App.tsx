@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import {
   ExternalLink,
   Filter,
@@ -413,13 +413,12 @@ function NetworkShell() {
   } = useRelationRecords()
   const graphRef = useRef<GraphViewHandle>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [activeLens, setActiveLensState] = useState<NetworkLens>("graph")
-  // Linsen-Wechsel als Transition: der Klick (Button-Zustand) bleibt
-  // sofort responsiv, der schwere Mount der Ziel-Linse (hunderte Karten,
-  // MapLibre-Boot, Graph-Sim) rendert nachgelagert.
-  const setActiveLens = useCallback((lens: NetworkLens) => {
-    startTransition(() => setActiveLensState(lens))
-  }, [])
+  const [activeLens, setActiveLens] = useState<NetworkLens>("graph")
+  // Urgent/Deferred-Trennung: die Nav-Buttons rendern auf activeLens
+  // (sofort), die schweren Linsen-Inhalte auf deferredLens (nachgelagert).
+  // Ein einzelner State in startTransition würde BEIDES verzögern —
+  // Button-Feedback und Inhalt kämen gemeinsam nach ~1 s (Review-Messung).
+  const deferredLens = useDeferredValue(activeLens)
   const [query, setQuery] = useState("")
   const [filterOpen, setFilterOpen] = useState(false)
   const [enabledTypes, setEnabledTypes] = useState(() => new Set(ALL_GRAPH_TYPES))
@@ -620,7 +619,7 @@ function NetworkShell() {
           />
 
           <AppShellMain withBottomNav className="relative min-h-0 overflow-hidden">
-            {activeLens === "graph" && (
+            {deferredLens === "graph" && (
               <GraphView
                 ref={graphRef}
                 nodes={visibleNodes}
@@ -633,7 +632,7 @@ function NetworkShell() {
                 ariaLabel={`Netzwerkgraph ${activeWorkspace?.name ?? ""}`}
               />
             )}
-            {activeLens === "list" && (
+            {deferredLens === "list" && (
               <div className="h-full overflow-y-auto p-4 sm:p-6">
                 <div className="mx-auto max-w-6xl">
                   <CollectionView
@@ -645,7 +644,7 @@ function NetworkShell() {
                 </div>
               </div>
             )}
-            {activeLens === "kanban" && (
+            {deferredLens === "kanban" && (
               <div className="h-full overflow-y-auto p-4 sm:p-6">
                 <div className="mx-auto max-w-6xl">
                   <KanbanBoard
@@ -659,7 +658,7 @@ function NetworkShell() {
                 </div>
               </div>
             )}
-            {activeLens === "map" && (
+            {deferredLens === "map" && (
               <MapLens
                 items={domainItems}
                 createAdapter={createMapAdapter}
@@ -670,7 +669,7 @@ function NetworkShell() {
                 onItemClick={(item) => selectItem(item.id)}
               />
             )}
-            {activeLens === "calendar" && (
+            {deferredLens === "calendar" && (
               <div className="h-full overflow-y-auto p-4 sm:p-6">
                 <div className="mx-auto max-w-6xl">
                   <CalendarView
@@ -682,7 +681,7 @@ function NetworkShell() {
                 </div>
               </div>
             )}
-            {activeLens === "marketplace" && (
+            {deferredLens === "marketplace" && (
               <div className="h-full overflow-y-auto p-4 sm:p-6">
                 <div className="mx-auto max-w-3xl space-y-4">
                   <header>
