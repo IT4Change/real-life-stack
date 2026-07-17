@@ -293,7 +293,7 @@ Das Map Module leitet aus jedem map-fähigen Item ein `MapMarkerSpec` ab. Welche
 
 | Marker-Eigenschaft | Quelle am Item | Regel |
 |---|---|---|
-| `position` | `data.position` (GeoJSON-Geometry) | Pflicht. Für v0.1 wird `Point` zu `[lng, lat]` gelesen (`data.position.coordinates`). Ohne parsebaren Point entsteht kein Marker. |
+| `position` | `data.position` (GeoJSON-Geometry) | Pflicht. Für v0.1 wird ein `Point` zu `[lng, lat]` gelesen (`data.position.coordinates`). Ohne endlichen, in `place/v1` gültigen Longitude-/Latitude-Point entsteht kein Marker. |
 | `id` | `Item.id` | Stabile Marker-Identität; Grundlage des Click→Item-Lookups. |
 | `label` | `data.title` (Fallback `Item.id`) | Marker-Label / Tooltip. |
 | `color` | `getTagAccentColor(tags[0])` | Farbe aus dem ersten Tag (deterministische Palette). Fehlt ein Tag, KÖNNEN Marker die Space-`primaryColor` als Default verwenden (Tag-Akzent hat Vorrang; siehe `04-items-relations-groups-spaces.md` → Space-Primärfarbe); andernfalls nutzt der Adapter seinen Default-Pin. |
@@ -330,6 +330,12 @@ Map-Filter dieses Abschnitts. Eine Lens-Einbindung darf bei einem kleinen,
 bekannten Bestand (z.B. 15 Seed-Places) den vollständigen Satz laden und
 filterlos rendern. Sie bringt keine eigene Filter-Toolbar mit; Filter- und
 Detail-Pfad bleiben Eigentum der App Shell.
+
+Bei Shell-Selektion zentriert die Lens einen gerenderten Marker einmal im
+**nicht verdeckten Sichtbereich**. Die Shell übergibt dazu ihren Bottom-Drawer-
+Inset; bei einem neuen Space-/Bestands-Kontext re-armt sie den Einpass-Gate über
+`viewportResetKey`. Ein neuer Adapter erhält dieselben Gates nie vom alten
+Adapter-Lauf.
 
 ## Layout
 

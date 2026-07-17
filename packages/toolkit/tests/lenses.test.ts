@@ -5,18 +5,29 @@ import { describe, expect, it, vi } from "vitest"
 
 import { KanbanBoard } from "../src/components/kanban/kanban-board"
 import { kanbanItemsByColumn, defaultColumns } from "../src/components/kanban/kanban-board"
-import { CalendarView, focusCalendarItemOnce, type CalendarFocusTarget } from "../src/components/calendar/calendar-view"
+import {
+  CalendarView,
+  calendarFilterItems,
+  focusCalendarItemOnce,
+  type CalendarFocusTarget,
+} from "../src/components/calendar/calendar-view"
 import { LeafletMapAdapter } from "../src/components/map/adapters/leaflet"
 import { MapLibreMapAdapter } from "../src/components/map/adapters/maplibre"
 import type { MapAdapter, MapMarkerSpec } from "../src/components/map/adapter"
 import {
   SINGLE_MARKER_ZOOM,
   fitMapLensViewport,
+  initialMapLensViewportState,
+  mapLensViewportStateForAdapter,
   mapLensMarkers,
   mountMapLensAdapter,
   updateMapLensViewport,
 } from "../src/components/lens/map-lens"
-import { focusActiveItemOnce } from "../src/lib/selection-focus"
+import {
+  focusActiveItemInVisibleAreaOnce,
+  focusActiveItemOnce,
+  selectionFocusScrollMarginBlockEnd,
+} from "../src/lib/selection-focus"
 import { formatEventRange } from "../src/components/preview/item-meta-row"
 import { GridView } from "../src/components/lens/grid-view"
 import { ListView } from "../src/components/lens/list-view"
@@ -181,7 +192,7 @@ describe("read-only lenses", () => {
     }
   })
 
-  it("8: selection focus gates by active id and does not consume a missing target", () => {
+  it("8: selection focus gates contiguous rendered selections and re-arms after a missing target", () => {
     const scrollIntoView = vi.fn()
     const target = { scrollIntoView }
     const focus = (element: typeof target) => element.scrollIntoView({ block: "center" })
@@ -202,26 +213,68 @@ describe("read-only lenses", () => {
     expect(gate).toBe("task-2")
     expect(scrollIntoView).toHaveBeenCalledTimes(2)
 
+    gate = focusActiveItemOnce(gate, "person-3", null, focus)
+    expect(gate).toBeNull()
+    gate = focusActiveItemOnce(gate, "task-1", target, focus)
+    expect(gate).toBe("task-1")
+    expect(scrollIntoView).toHaveBeenCalledTimes(3)
+
     expect(focusActiveItemOnce(gate, null, target, focus)).toBeNull()
+  })
+
+  it("8: common visible-area focus forwards the drawer inset and scroll lenses reserve it", () => {
+    const target = { id: "task-1" }
+    const focus = vi.fn()
+    expect(focusActiveItemInVisibleAreaOnce(null, "task-1", target, { bottomInset: 440 }, focus)).toBe("task-1")
+    expect(focus).toHaveBeenCalledWith(target, { bottomInset: 440 })
+    expect(selectionFocusScrollMarginBlockEnd({ bottomInset: 440 })).toBe("440px")
+
+    const items = [item("task-1", "task", { title: "Aktive Aufgabe", status: "open" })]
+    const listMarkup = renderToStaticMarkup(createElement(ListView, {
+      items,
+      activeItemId: "task-1",
+      selectionFocusVisibleArea: { bottomInset: 440 },
+    }))
+    const gridMarkup = renderToStaticMarkup(createElement(GridView, {
+      items,
+      activeItemId: "task-1",
+      selectionFocusVisibleArea: { bottomInset: 440 },
+    }))
+    const boardMarkup = renderToStaticMarkup(createElement(KanbanBoard, {
+      items,
+      activeItemId: "task-1",
+      readOnly: true,
+      selectionFocusVisibleArea: { bottomInset: 440 },
+    }))
+
+    for (const markup of [listMarkup, gridMarkup, boardMarkup]) {
+      expect(markup).toContain("scroll-margin-block-end:440px")
+    }
   })
 })
 
 describe("Map and Calendar lenses", () => {
-  it("1/2: MapLens only derives markers from non-relation GeoJSON Points", () => {
+  it("1/2: MapLens only derives schema-valid non-relation GeoJSON Points", () => {
     const markers = mapLensMarkers([
       item("place-1", "place", { title: "P2P Portal", position: { type: "Point", coordinates: [12.406579, 52.117986] } }),
+      item("place-elevation", "place", { title: "Turm", position: { type: "Point", coordinates: [12.4, 52.1, 38] } }),
       item("event-1", "event", { title: "Ohne Position", start: "2026-07-08T19:15:00+02:00" }),
       item("line-1", "place", { title: "Linie", position: { type: "LineString", coordinates: [[12.4, 52.1], [12.5, 52.2]] } }),
       item("invalid-1", "place", { title: "Ungültig", position: { type: "Point", coordinates: ["12.4", 52.1] } }),
+      item("nan-1", "place", { title: "NaN", position: { type: "Point", coordinates: [Number.NaN, 52.1] } }),
+      item("infinity-1", "place", { title: "Unendlich", position: { type: "Point", coordinates: [12.4, Number.POSITIVE_INFINITY] } }),
+      item("latitude-1", "place", { title: "Zu weit nördlich", position: { type: "Point", coordinates: [12.4, 91] } }),
+      item("longitude-1", "place", { title: "Zu weit östlich", position: { type: "Point", coordinates: [181, 52.1] } }),
       item("relation-1", "relation", { title: "Unsichtbare Kante", position: { type: "Point", coordinates: [12.4, 52.1] } }),
     ], "place-1")
 
-    expect(markers).toHaveLength(1)
+    expect(markers).toHaveLength(2)
     expect(markers[0]).toMatchObject({
       id: "place-1",
       position: [12.406579, 52.117986],
       selected: true,
     })
+    expect(markers[1]).toMatchObject({ id: "place-elevation", position: [12.4, 52.1] })
   })
 
   it("7: MapLens auto-fit honours 0/1/N markers and only reports a successful viewport action", () => {
@@ -243,25 +296,58 @@ describe("Map and Calendar lenses", () => {
     expect(adapter.fitBounds).toHaveBeenLastCalledWith({ west: 12.4, south: 52.1, east: 12.6, north: 52.3 })
   })
 
-  it("7/8: a selected marker focuses once and takes precedence over aggregate auto-fit", () => {
+  it("7/8: a selected marker focuses once in its unobscured visible area and takes precedence over aggregate auto-fit", () => {
     const adapter = mapAdapter()
     const markers: MapMarkerSpec[] = [
       { id: "place-1", position: [12.4, 52.1] },
       { id: "place-2", position: [12.6, 52.3] },
     ]
 
-    let state = updateMapLensViewport(adapter, null, false, "place-1", markers)
-    expect(adapter.focusOn).toHaveBeenCalledWith([12.4, 52.1], { animate: false })
+    let state = updateMapLensViewport(adapter, null, false, "place-1", markers, { bottomInset: 440 })
+    expect(adapter.focusOn).toHaveBeenCalledWith([12.4, 52.1], { animate: false, bottomInset: 440 })
     expect(adapter.fitBounds).not.toHaveBeenCalled()
     expect(state).toEqual({ lastFocusedItemId: "place-1", autoFitted: false })
 
-    state = updateMapLensViewport(adapter, state.lastFocusedItemId, state.autoFitted, "place-1", markers)
+    state = updateMapLensViewport(adapter, state.lastFocusedItemId, state.autoFitted, "place-1", markers, { bottomInset: 440 })
     expect(adapter.focusOn).toHaveBeenCalledTimes(1)
     expect(adapter.fitBounds).not.toHaveBeenCalled()
 
-    state = updateMapLensViewport(adapter, state.lastFocusedItemId, state.autoFitted, undefined, markers)
+    state = updateMapLensViewport(adapter, state.lastFocusedItemId, state.autoFitted, undefined, markers, { bottomInset: 440 })
     expect(state.autoFitted).toBe(true)
     expect(adapter.fitBounds).toHaveBeenCalledTimes(1)
+  })
+
+  it("7: adapter replacement and a new space context re-arm map focus and auto-fit gates", () => {
+    const markers: MapMarkerSpec[] = [
+      { id: "place-1", position: [12.4, 52.1] },
+      { id: "place-2", position: [12.6, 52.3] },
+    ]
+    const firstAdapter = mapAdapter()
+    const secondAdapter = mapAdapter()
+
+    const focused = updateMapLensViewport(firstAdapter, null, false, "place-1", markers)
+    expect(focused).toEqual({ lastFocusedItemId: "place-1", autoFitted: false })
+    const replacementState = mapLensViewportStateForAdapter(firstAdapter, secondAdapter, focused)
+    expect(replacementState).toEqual(initialMapLensViewportState())
+    updateMapLensViewport(
+      secondAdapter,
+      replacementState.lastFocusedItemId,
+      replacementState.autoFitted,
+      "place-1",
+      markers,
+    )
+    expect(secondAdapter.focusOn).toHaveBeenCalledTimes(1)
+
+    const thirdAdapter = mapAdapter()
+    const newSpaceState = initialMapLensViewportState()
+    updateMapLensViewport(
+      thirdAdapter,
+      newSpaceState.lastFocusedItemId,
+      newSpaceState.autoFitted,
+      undefined,
+      markers,
+    )
+    expect(thirdAdapter.fitBounds).toHaveBeenCalledTimes(1)
   })
 
   it("7: StrictMode cleanup leaves exactly one mounted map adapter", async () => {
@@ -346,6 +432,7 @@ describe("Map and Calendar lenses", () => {
     expect(markup).toContain("Eröffnung")
     expect(markup).not.toContain("Unsichtbare Kante")
     expect(markup).not.toContain("Unparsebar")
+    expect(calendarFilterItems([calendarItem, relationItem, invalidItem]).map(({ id }) => id)).toEqual(["event-1"])
 
     const target: CalendarFocusTarget = { item: calendarItem, start: new Date("2026-07-08T19:15:00+02:00") }
     const focus = vi.fn()

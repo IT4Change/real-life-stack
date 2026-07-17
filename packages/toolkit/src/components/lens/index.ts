@@ -5,9 +5,12 @@ export {
   SINGLE_MARKER_ZOOM,
   fitMapLensViewport,
   focusMapLensMarkerOnce,
+  initialMapLensViewportState,
+  mapLensViewportStateForAdapter,
   mapLensBounds,
   mapLensMarkers,
   mountMapLensAdapter,
   updateMapLensViewport,
   type MapLensProps,
+  type MapLensViewportState,
 } from "./map-lens"

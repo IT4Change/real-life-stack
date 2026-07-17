@@ -1,22 +1,29 @@
 import { useEffect, useRef } from "react"
 import type { Item } from "@real-life-stack/data-interface"
 
-import { focusActiveItemOnce } from "../../lib/selection-focus"
+import {
+  focusActiveItemOnce,
+  selectionFocusScrollMarginBlockEnd,
+  type SelectionFocusVisibleArea,
+} from "../../lib/selection-focus"
 import { getItemPreviewAdornments, ItemPreview } from "../preview"
 import { lensItems } from "./list-view"
 
 export interface GridViewProps {
   items: readonly Item[]
   activeItemId?: string
+  /** Shell-owned obstruction below the scrollable lens, e.g. a mobile drawer. */
+  selectionFocusVisibleArea?: SelectionFocusVisibleArea
   onItemClick?: (item: Item) => void
 }
 
 /** A read-only grid composed from comfortable ItemPreview cards. */
-export function GridView({ items, activeItemId, onItemClick }: GridViewProps) {
+export function GridView({ items, activeItemId, selectionFocusVisibleArea, onItemClick }: GridViewProps) {
   const visibleItems = lensItems(items)
   const activeItem = visibleItems.find(({ id }) => id === activeItemId)
   const activeElementRef = useRef<HTMLDivElement>(null)
   const lastFocusedItemIdRef = useRef<string | null>(null)
+  const scrollMarginBlockEnd = selectionFocusScrollMarginBlockEnd(selectionFocusVisibleArea)
 
   useEffect(() => {
     lastFocusedItemIdRef.current = focusActiveItemOnce(
@@ -36,7 +43,11 @@ export function GridView({ items, activeItemId, onItemClick }: GridViewProps) {
       {visibleItems.map((item) => {
         const adornments = getItemPreviewAdornments(item)
         return (
-          <div key={item.id} ref={item.id === activeItemId ? activeElementRef : undefined}>
+          <div
+            key={item.id}
+            ref={item.id === activeItemId ? activeElementRef : undefined}
+            style={item.id === activeItemId ? { scrollMarginBlockEnd } : undefined}
+          >
             <ItemPreview
               item={item}
               author={null}

@@ -12,7 +12,7 @@ import {
 } from "react"
 
 import { cn } from "../../lib/utils"
-import { focusActiveItemOnce } from "../../lib/selection-focus"
+import { focusActiveItemInVisibleAreaOnce } from "../../lib/selection-focus"
 import {
   approachOpacity,
   createLayoutNodes,
@@ -163,10 +163,6 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     scheduleDraw()
   }, [scheduleDraw])
 
-  const focusNodeInVisibleArea = useCallback((nodeId: string) => {
-    focusNode(nodeId, { bottomInset: selectionFocusBottomInset })
-  }, [focusNode, selectionFocusBottomInset])
-
   useImperativeHandle(ref, () => ({ fitView, focusNode }), [fitView, focusNode])
 
   useEffect(() => {
@@ -203,13 +199,14 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     const selectedNode = selectedNodeId
       ? layoutRef.current.find((node) => node.id === selectedNodeId) ?? null
       : null
-    lastFocusedSelectionIdRef.current = focusActiveItemOnce(
+    lastFocusedSelectionIdRef.current = focusActiveItemInVisibleAreaOnce(
       lastFocusedSelectionIdRef.current,
       selectedNodeId,
       selectedNode,
-      () => focusNodeInVisibleArea(selectedNodeId!),
+      { bottomInset: selectionFocusBottomInset },
+      (node, visibleArea) => focusNode(node.id, { bottomInset: visibleArea.bottomInset }),
     )
-  }, [nodes, selectedNodeId, focusNodeInVisibleArea])
+  }, [nodes, selectedNodeId, focusNode, selectionFocusBottomInset])
 
   useEffect(() => {
     if (fitViewKey === undefined) return

@@ -192,6 +192,11 @@ function toCalendarEvent(item: Item): CalendarEvent | null {
   }
 }
 
+/** Calendar filters only expose items that can become an event in this view. */
+export function calendarFilterItems(events: readonly Item[]): Item[] {
+  return events.filter((item) => item.type !== "relation" && toCalendarEvent(item) !== null)
+}
+
 function compareEvents(a: CalendarEvent, b: CalendarEvent): number {
   return a.start.getTime() - b.start.getTime() || a.title.localeCompare(b.title)
 }
@@ -370,11 +375,11 @@ export function CalendarView({
     setSelectedDate(focusDate)
   }, [focusDate])
 
-  const eventsAfterBar = useFilterableItems(events, filterBarValue)
+  const calendarItems = useMemo(() => calendarFilterItems(events), [events])
+  const eventsAfterBar = useFilterableItems(calendarItems, filterBarValue)
 
   const calendarEvents = useMemo(
     () => eventsAfterBar
-      .filter(({ type }) => type !== "relation")
       .map(toCalendarEvent)
       .filter((event): event is CalendarEvent => event !== null)
       .sort(compareEvents),
@@ -383,15 +388,15 @@ export function CalendarView({
 
   const availableTags = useMemo(() => {
     const seen = new Set<string>()
-    for (const event of events) for (const tag of event.tags ?? []) seen.add(tag)
+    for (const event of calendarItems) for (const tag of event.tags ?? []) seen.add(tag)
     return Array.from(seen).sort()
-  }, [events])
+  }, [calendarItems])
 
   const availableTypes = useMemo<FilterTypeOption[]>(() => {
     const seen = new Set<string>()
-    for (const event of events) seen.add(event.type)
+    for (const event of calendarItems) seen.add(event.type)
     return Array.from(seen).sort().map((id) => ({ id, label: getTypeLabel(id) }))
-  }, [events])
+  }, [calendarItems])
 
   const filteredEvents = useMemo(() => {
     const needle = searchText.trim().toLowerCase()

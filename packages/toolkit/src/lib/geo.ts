@@ -23,7 +23,14 @@ export function latLngFromPoint(point: unknown): { lat: number; lng: number } | 
   const p = point as Record<string, unknown>
   if (p.type !== "Point" || !Array.isArray(p.coordinates) || p.coordinates.length < 2) return null
   const [lng, lat] = p.coordinates as number[]
-  if (typeof lat !== "number" || typeof lng !== "number") return null
+  if (
+    typeof lat !== "number" ||
+    typeof lng !== "number" ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lng < -180 || lng > 180 ||
+    lat < -90 || lat > 90
+  ) return null
   return { lat, lng }
 }
 

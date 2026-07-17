@@ -1,6 +1,11 @@
 // Utilities
 export { cn, getTagColor, getTagAccentColor, getSpacePrimaryColor, getReadableTextColor, getItemColor, getActivePanelGlow, resolveAssetUrl } from "./lib/utils"
-export { focusActiveItemOnce } from "./lib/selection-focus"
+export {
+  focusActiveItemOnce,
+  focusActiveItemInVisibleAreaOnce,
+  selectionFocusScrollMarginBlockEnd,
+  type SelectionFocusVisibleArea,
+} from "./lib/selection-focus"
 export { applyItemListFilter, type ItemListFilter } from "./lib/item-filter"
 export {
   resolveIcon,

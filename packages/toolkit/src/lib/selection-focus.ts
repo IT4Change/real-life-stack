@@ -1,9 +1,16 @@
+/** Portion of a view that a shell panel covers during selection focus. */
+export interface SelectionFocusVisibleArea {
+  /** CSS pixels covered by a bottom drawer. */
+  bottomInset?: number
+}
+
 /**
- * Focus an active item at most once for each contiguous active-item value.
+ * Focus an active item at most once for each contiguous rendered selection.
  *
  * The caller supplies the rendered target and focus action, keeping this logic
- * testable without a DOM. A missing target deliberately does not consume the
- * gate: when it appears in a later render, it receives its first focus.
+ * testable without a DOM. A missing target resets the gate: it might be a
+ * non-renderable selection between two appearances of the same item, so that
+ * item's next contiguous selection must receive focus again.
  */
 export function focusActiveItemOnce<T>(
   lastFocusedItemId: string | null,
@@ -11,9 +18,42 @@ export function focusActiveItemOnce<T>(
   target: T | null,
   focus: (target: T) => void,
 ): string | null {
-  if (!activeItemId) return null
-  if (!target || lastFocusedItemId === activeItemId) return lastFocusedItemId
+  if (!activeItemId || !target) return null
+  if (lastFocusedItemId === activeItemId) return lastFocusedItemId
 
   focus(target)
   return activeItemId
+}
+
+/**
+ * Apply the common one-shot gate while forwarding a shell-owned visible area
+ * to the concrete surface. Graph and map use the same bottom-drawer semantic.
+ */
+export function focusActiveItemInVisibleAreaOnce<T>(
+  lastFocusedItemId: string | null,
+  activeItemId: string | null | undefined,
+  target: T | null,
+  visibleArea: SelectionFocusVisibleArea | undefined,
+  focus: (target: T, visibleArea: SelectionFocusVisibleArea) => void,
+): string | null {
+  return focusActiveItemOnce(
+    lastFocusedItemId,
+    activeItemId,
+    target,
+    (resolvedTarget) => focus(resolvedTarget, visibleArea ?? {}),
+  )
+}
+
+/**
+ * `scrollIntoView({ block: "center" })` centres the target's scroll-margin
+ * box. Extending its lower edge by the obscured drawer height therefore keeps
+ * the target centred in the remaining visible area.
+ */
+export function selectionFocusScrollMarginBlockEnd(
+  visibleArea: SelectionFocusVisibleArea | undefined,
+): string | undefined {
+  const bottomInset = visibleArea?.bottomInset
+  return typeof bottomInset === "number" && Number.isFinite(bottomInset) && bottomInset > 0
+    ? `${bottomInset}px`
+    : undefined
 }
