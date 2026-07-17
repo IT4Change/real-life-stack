@@ -3,6 +3,7 @@ import {
   relationRecordFromItem,
   VOCAB_BASE,
   VOCAB_RESOURCE,
+  VOCAB_TASK,
   type Item,
   type RelationRecord,
 } from "@real-life-stack/data-interface"
@@ -30,9 +31,9 @@ beforeAll(async () => {
 })
 
 describe("P3-Vertrag A — Ressourcen-Seed", () => {
-  it("4a: 705 eindeutige Items; Projekte unangetastet", () => {
-    expect(seedItems).toHaveLength(705)
-    expect(new Set(seedItems.map(({ id }) => id)).size).toBe(705)
+  it("4a: 712 eindeutige Items; Projekte unangetastet", () => {
+    expect(seedItems).toHaveLength(712)
+    expect(new Set(seedItems.map(({ id }) => id)).size).toBe(712)
     const projects = seedItems.filter(({ type }) => type === "project")
     expect(projects).toHaveLength(65)
     for (const project of projects) {
@@ -62,6 +63,29 @@ describe("P3-Vertrag A — Ressourcen-Seed", () => {
       expect(record.from).not.toMatch(/^item:resource-/)
       expect(record.to).not.toMatch(/^item:resource-/)
     }
+  })
+
+  it("4a: exakt 7 Camp-Aufgaben, byte-genau aus camp-schedule.json", () => {
+    const tasks = seedItems.filter(({ type }) => type === "task")
+    expect(campSchedule.tasks).toHaveLength(7)
+    expect(tasks).toHaveLength(7)
+    const statusCounts = new Map<string, number>()
+    const byTitle = new Map(tasks.map((t) => [t.data.title, t]))
+    for (const src of campSchedule.tasks) {
+      const item = byTitle.get(src.title)
+      expect(item, `Aufgabe fehlt: ${src.title}`).toBeDefined()
+      expect(item!.id).toBe(dwebCampItemId("task", src.title))
+      expect(item!.createdAt).toBe(DWEB_CAMP_SEED_CREATED_AT)
+      expect(item!.createdBy).toBe(DWEB_CAMP_SEED_CREATOR)
+      expect(item!.data).toEqual({ title: src.title, status: src.status })
+      expect(item!.tags).toBeUndefined()
+      expect(item!.relations ?? []).toHaveLength(0)
+      expect(item!["@context"]).toEqual([VOCAB_BASE, VOCAB_TASK])
+      statusCounts.set(src.status, (statusCounts.get(src.status) ?? 0) + 1)
+    }
+    expect(statusCounts.get("open")).toBe(3)
+    expect(statusCounts.get("in-progress")).toBe(2)
+    expect(statusCounts.get("done")).toBe(2)
   })
 
   it("5: kind-Werte aktivieren task/v1 nie — auch Task-Enum-Werte nicht", () => {

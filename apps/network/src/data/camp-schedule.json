@@ -865,5 +865,35 @@
   },
   "rotationDeg": -2.4,
   "note": "Kalibrierung Anton 17.07.2026 via kalibrierung.html; P3.1-Vorrat, in P3 unbenutzt. Achsen explizit benannt — Venue-Points sind GeoJSON [lng, lat]."
- }
+ },
+ "tasks": [
+  {
+   "title": "Bühne aufbauen",
+   "status": "done"
+  },
+  {
+   "title": "Menschen abholen",
+   "status": "in-progress"
+  },
+  {
+   "title": "Geschirr spülen",
+   "status": "in-progress"
+  },
+  {
+   "title": "Mülleimer leeren",
+   "status": "open"
+  },
+  {
+   "title": "Toiletten putzen",
+   "status": "open"
+  },
+  {
+   "title": "Duschen sauber machen",
+   "status": "open"
+  },
+  {
+   "title": "Tische abwischen",
+   "status": "done"
+  }
+ ]
 }

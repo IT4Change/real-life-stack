@@ -40,8 +40,8 @@ describe("DWebCamp seed importer", () => {
     expect(dwebCampDomainItems).toHaveLength(312)
     expect(relationItems).toHaveLength(388)
     expect(relationRecords).toHaveLength(388)
-    expect(seedItems).toHaveLength(705)
-    expect(new Set(seedItems.map(({ id }) => id)).size).toBe(705)
+    expect(seedItems).toHaveLength(712)
+    expect(new Set(seedItems.map(({ id }) => id)).size).toBe(712)
 
     expect(dwebCampItemId("event", "SJXE8X")).toBe("event-sjxe8x")
     expect(dwebCampItemId("person", "Václav Pavlín")).toBe("person-vaclav-pavlin")
@@ -74,9 +74,9 @@ describe("DWebCamp seed importer", () => {
 
     connector.setCurrentGroup("dwebcamp")
     const importedItems = await connector.getItems()
-    expect(importedItems).toHaveLength(705)
-    expect(new Set(importedItems.map(({ id }) => id)).size).toBe(705)
-    expect(importedItems.filter(({ type }) => type !== "relation")).toHaveLength(317)
+    expect(importedItems).toHaveLength(712)
+    expect(new Set(importedItems.map(({ id }) => id)).size).toBe(712)
+    expect(importedItems.filter(({ type }) => type !== "relation")).toHaveLength(324)
     expect(importedItems.filter(({ type }) => type === "relation")).toHaveLength(388)
 
     connector.setCurrentGroup("my-network")
