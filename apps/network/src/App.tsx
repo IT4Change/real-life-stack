@@ -667,6 +667,7 @@ function NetworkShell() {
                 selectionFocusVisibleArea={selectionFocusVisibleArea}
                 onItemClick={(item) => selectItem(item.id)}
                 clustering={{}}
+                resolveGroupColor={() => "#64748b"}
               />
             )}
             {deferredLens === "calendar" && (

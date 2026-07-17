@@ -33,6 +33,10 @@ export interface MapLensProps {
   clustering?: false | { radius?: number }
   /** Allows a host to retain its origin-space marker and selection colours. */
   resolveGroupColor?: (item: Item) => string | undefined
+  /** Display-only markers (for example a composer draft) stay highlighted. */
+  highlightedItemIds?: readonly string[]
+  /** Display-only markers must not enter the shell's item-detail path. */
+  nonClickableItemIds?: readonly string[]
   /** MapView owns the reference module viewport; the lens keeps its P3 auto-fit contract. */
   viewportMode?: "lens-auto-fit" | "bbox-module"
   /** Keep-alive maps need a resize after they become visible again. */
@@ -40,6 +44,8 @@ export interface MapLensProps {
   onAdapterChange?: (adapter: MapAdapter | null) => void
   mountKey?: string | number
   onMountError?: () => void
+  /** Background class for transparent adapter canvases, e.g. the globe sky. */
+  containerClassName?: string
 }
 
 /** Map markers are field-composed and never expose relation records as map items. */
@@ -47,6 +53,7 @@ export function mapLensMarkers(
   items: readonly Item[],
   activeItemId?: string,
   resolveGroupColor?: (item: Item) => string | undefined,
+  highlightedItemIds: readonly string[] = [],
 ): MapMarkerSpec[] {
   const markers: MapMarkerSpec[] = []
 
@@ -62,12 +69,19 @@ export function mapLensMarkers(
       label: typeof item.data.title === "string" ? item.data.title : item.id,
       color: getItemColor(item, { groupColor: resolveGroupColor?.(item) ?? getSpacePrimaryColor("map") }),
       icon: typeof item.data.icon === "string" ? item.data.icon : item.tags?.[0],
-      selected: item.id === activeItemId,
+      selected: item.id === activeItemId || highlightedItemIds.includes(item.id),
       glowColor: resolveGroupColor?.(item),
     })
   }
 
   return markers
+}
+
+/** Marker-click lookup deliberately excludes relation records and display-only overlays. */
+export function mapLensClickableItemsById(items: readonly Item[], nonClickableItemIds: readonly string[] = []): Map<string, Item> {
+  return new Map(items
+    .filter(({ id, type }) => type !== "relation" && !nonClickableItemIds.includes(id))
+    .map((item) => [item.id, item]))
 }
 
 export function mapLensBounds(markers: readonly MapMarkerSpec[]): MapBounds | null {
@@ -306,11 +320,14 @@ export function MapLens({
   onItemClick,
   clustering = false,
   resolveGroupColor,
+  highlightedItemIds,
+  nonClickableItemIds,
   viewportMode = "lens-auto-fit",
   active = true,
   onAdapterChange,
   mountKey,
   onMountError,
+  containerClassName,
 }: MapLensProps) {
   const outerRef = useRef<HTMLDivElement>(null)
   const initialViewRef = useRef(initialView)
@@ -318,12 +335,12 @@ export function MapLens({
   const adapterOwnerRef = useRef<MapAdapter | null>(null)
   const viewportContextRef = useRef<MapLensViewportContext>(initialMapLensViewportContext())
   const markers = useMemo(
-    () => mapLensMarkers(items, activeItemId, resolveGroupColor),
-    [activeItemId, items, resolveGroupColor],
+    () => mapLensMarkers(items, activeItemId, resolveGroupColor, highlightedItemIds),
+    [activeItemId, highlightedItemIds, items, resolveGroupColor],
   )
   const itemsByMarkerId = useMemo(
-    () => new Map(items.filter(({ type }) => type !== "relation").map((item) => [item.id, item])),
-    [items],
+    () => mapLensClickableItemsById(items, nonClickableItemIds),
+    [items, nonClickableItemIds],
   )
 
   useEffect(() => {
@@ -408,7 +425,7 @@ export function MapLens({
 
   return (
     <section aria-label="Kartenansicht" className="relative h-full min-h-80">
-      <div ref={outerRef} className="absolute inset-0" />
+      <div ref={outerRef} className={`absolute inset-0 isolate ${containerClassName ?? ""}`} />
     </section>
   )
 }

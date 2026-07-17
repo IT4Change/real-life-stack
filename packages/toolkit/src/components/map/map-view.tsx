@@ -8,7 +8,7 @@ import { CreateFab } from "../create-fab"
 import { Button, Input } from "../primitives"
 import { MapLens } from "../lens/map-lens"
 import type { SelectionFocusVisibleArea } from "../../lib/selection-focus"
-import { getItemColor, getSpacePrimaryColor } from "../../lib/utils"
+import { getSpacePrimaryColor } from "../../lib/utils"
 import { hasGlobe, type MapAdapter, type MapMountOptions, type MapProjection } from "./adapter"
 import { useLocationPick } from "./location-pick"
 
@@ -19,6 +19,10 @@ const MAP_TYPES: FilterTypeOption[] = [
 const PICK_MARKER_ID = "__rls_pick__"
 const PICK_MARKER_COLOR = "#ef4444"
 const MAP_SHEET_FRACTION = .55
+const MIN_REVEAL_ZOOM = 10
+const REVEAL_SEPARATION_PX = 64
+const MERCATOR_TILE_SIZE = 512
+const EARTH_CIRCUMFERENCE_M = 40075016.686
 
 export type MapViewportMode = "lens-auto-fit" | "bbox-module"
 export interface MapViewProps {
@@ -39,6 +43,9 @@ export interface MapViewProps {
   onCreate?: () => void
   clustering?: false | { radius?: number }
   resolveGroupColor?: (item: Item) => string | undefined
+  /** Controlled projection configuration; omitted keeps the established Mercator default. */
+  projection?: MapProjection
+  onProjectionChange?: (projection: MapProjection) => void
   /** A shell-owned composer draft is shown as a non-clickable marker when positioned. */
   draftItem?: Item | null
   isCompact?: boolean
@@ -102,6 +109,33 @@ export function toggleMapViewProjection(adapter: MapAdapter | null, projection: 
   return next
 }
 
+function metersBetween(aLng: number, aLat: number, bLng: number, bLat: number): number {
+  const dLat = ((bLat - aLat) * Math.PI) / 180
+  const dLng = ((bLng - aLng) * Math.PI) / 180
+  const lat1 = (aLat * Math.PI) / 180
+  const lat2 = (bLat * Math.PI) / 180
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 2 * 6371008.8 * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/** The zoom required to separate an external target from its nearest fresh bbox neighbour. */
+export function mapViewSeparationZoom(item: Item, others: readonly Item[]): number {
+  const point = latLngFromPoint(item.data.position)
+  if (!point) return MIN_REVEAL_ZOOM
+  let nearest = Infinity
+  for (const other of others) {
+    if (other.id === item.id) continue
+    const candidate = latLngFromPoint(other.data.position)
+    if (!candidate) continue
+    nearest = Math.min(nearest, metersBetween(point.lng, point.lat, candidate.lng, candidate.lat))
+  }
+  if (!Number.isFinite(nearest)) return MIN_REVEAL_ZOOM
+  return Math.max(MIN_REVEAL_ZOOM, Math.log2(
+    (REVEAL_SEPARATION_PX * EARTH_CIRCUMFERENCE_M * Math.cos((point.lat * Math.PI) / 180)) /
+      (Math.max(nearest, .1) * MERCATOR_TILE_SIZE),
+  ))
+}
+
 /** One pick transition is shared by bare-map and existing-marker clicks. */
 export function applyMapViewPick(
   position: { lat: number; lng: number },
@@ -135,20 +169,24 @@ export function mapViewRevealOptions(fromMarkerClick: boolean, isCompact: boolea
 export function MapView({
   items, itemsLoading, inventoryKey, focusedItem, createAdapter, initialView, viewportMode,
   onViewportBoundsChange, active = true, activeItemId, selectionFocusVisibleArea, onItemClick,
-  allowCreate, onCreate, clustering = false, resolveGroupColor, draftItem, isCompact = false,
+  allowCreate, onCreate, clustering = false, resolveGroupColor, projection: projectionProp,
+  onProjectionChange, draftItem, isCompact = false,
 }: MapViewProps) {
   const [adapter, setAdapter] = useState<MapAdapter | null>(null)
   const [mountError, setMountError] = useState(false)
   const [mountAttempt, setMountAttempt] = useState(0)
   const [filter, setFilter] = useState<FilterBarValue>(emptyFilterBarValue)
   const [search, setSearch] = useState("")
-  const [projection, setProjection] = useState<MapProjection>("mercator")
+  const [uncontrolledProjection, setUncontrolledProjection] = useState<MapProjection>("mercator")
+  const projection = projectionProp ?? uncontrolledProjection
   const [pickPosition, setPickPosition] = useState<{ lat: number; lng: number } | null>(null)
   const { isPicking, updatePick, confirmPick, cancelPick } = useLocationPick()
   const accumulated = useRef(new Map<string, Item>())
   const [inventory, setInventory] = useState<Item[]>([])
   const bounds = useRef<[number, number, number, number] | null>(null)
   const markerClick = useRef<string | null>(null)
+  const settledReveal = useRef<string | null>(null)
+  const approachedReveal = useRef<string | null>(null)
 
   useEffect(() => { accumulated.current = new Map(); setInventory([]); bounds.current = null }, [inventoryKey])
   useEffect(() => {
@@ -167,13 +205,32 @@ export function MapView({
   }, [adapter, onViewportBoundsChange, viewportMode])
   useEffect(() => { if (adapter && hasGlobe(adapter)) adapter.setProjection(projection) }, [adapter, projection])
   useEffect(() => {
-    if (!adapter || viewportMode !== "bbox-module" || !active || !focusedItem) return
+    if (!active) { settledReveal.current = null; approachedReveal.current = null; return }
+    if (!focusedItem) { settledReveal.current = null; approachedReveal.current = null; return }
+    if (!adapter || viewportMode !== "bbox-module") return
     const point = latLngFromPoint(focusedItem.data.position)
     if (!point) return
-    const click = markerClick.current === focusedItem.id
+    const bottomInset = isCompact ? window.innerHeight * MAP_SHEET_FRACTION : 0
+    const fromClick = markerClick.current === focusedItem.id
     markerClick.current = null
-    adapter.focusOn([point.lng, point.lat], mapViewRevealOptions(click, isCompact))
-  }, [active, adapter, focusedItem, isCompact, viewportMode])
+    if (fromClick) {
+      settledReveal.current = focusedItem.id
+      approachedReveal.current = focusedItem.id
+      if (bottomInset) adapter.focusOn([point.lng, point.lat], { bottomInset, animate: true })
+      return
+    }
+    if (settledReveal.current === focusedItem.id) return
+    if (items.some((item) => item.id === focusedItem.id)) {
+      settledReveal.current = focusedItem.id
+      adapter.focusOn([point.lng, point.lat], { zoom: Math.max(adapter.getView().zoom, mapViewSeparationZoom(focusedItem, items)), bottomInset, animate: true })
+      return
+    }
+    if (bounds.current && inBounds(focusedItem, bounds.current)) return
+    if (approachedReveal.current !== focusedItem.id && bounds.current && !itemsLoading) {
+      approachedReveal.current = focusedItem.id
+      adapter.focusOn([point.lng, point.lat], { zoom: Math.max(adapter.getView().zoom, MIN_REVEAL_ZOOM), bottomInset, animate: true })
+    }
+  }, [active, adapter, focusedItem, isCompact, items, itemsLoading, viewportMode])
   useEffect(() => {
     if (!adapter || !isPicking) return
     return adapter.observeClicks(({ position: [lng, lat] }) => {
@@ -202,14 +259,21 @@ export function MapView({
     onItemClick?.(item)
   }, [confirmPick, isCompact, isPicking, onItemClick, updatePick, viewportMode])
   const toggleProjection = useCallback(() => {
-    setProjection(toggleMapViewProjection(adapter, projection))
-  }, [adapter, projection])
-  const color = useCallback((item: Item) => item.id === PICK_MARKER_ID ? PICK_MARKER_COLOR : getItemColor(item, { groupColor: resolveGroupColor?.(item) ?? getSpacePrimaryColor("map") }), [resolveGroupColor])
+    const next = toggleMapViewProjection(adapter, projection)
+    if (projectionProp === undefined) setUncontrolledProjection(next)
+    onProjectionChange?.(next)
+  }, [adapter, onProjectionChange, projection, projectionProp])
+  const markerGroupColor = useCallback((item: Item) => item.id === PICK_MARKER_ID
+    ? PICK_MARKER_COLOR
+    : resolveGroupColor?.(item) ?? getSpacePrimaryColor("map"), [resolveGroupColor])
 
   return <div className="relative h-full w-full">
     <MapLens items={lensItems} createAdapter={createAdapter} initialView={initialView} activeItemId={activeItemId}
       selectionFocusVisibleArea={selectionFocusVisibleArea} viewportResetKey={inventoryKey} onItemClick={handleClick}
-      clustering={clustering} resolveGroupColor={color} viewportMode={viewportMode} active={active} onAdapterChange={onAdapterChange}
+      clustering={clustering} resolveGroupColor={markerGroupColor} viewportMode={viewportMode} active={active} onAdapterChange={onAdapterChange}
+      highlightedItemIds={draftItem && !isPicking ? [draftItem.id] : []}
+      nonClickableItemIds={draftItem && !isPicking ? [draftItem.id] : []}
+      containerClassName={projection === "globe" ? "rls-globe-sky" : undefined}
       mountKey={mountAttempt} onMountError={() => setMountError(true)} />
     {!adapter && <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 text-muted-foreground">{mountError ? <div className="flex flex-col items-center gap-3"><span>Karte konnte nicht geladen werden.</span><Button variant="outline" size="sm" onClick={() => { setMountError(false); setMountAttempt((value) => value + 1) }}>Erneut versuchen</Button></div> : <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Karte wird geladen…</>}</div>}
     {isPicking && <div className="absolute inset-x-0 top-0 z-30 flex justify-center p-3"><div className="flex items-center gap-2 rounded-full border bg-background/95 px-3 py-2 text-sm shadow-md"><MapPin className="h-4 w-4" /><span>{pickPosition ? "Position gewählt." : "Tippe auf die Karte, um die Position zu setzen."}</span>{isCompact && pickPosition && <Button size="sm" onClick={confirmPick}>Übernehmen</Button>}<Button size="sm" variant="ghost" onClick={cancelPick}>Abbrechen</Button></div></div>}

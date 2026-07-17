@@ -10,11 +10,13 @@ import {
   mapViewCanCreate,
   mapViewMarkerItems,
   mapViewRevealOptions,
+  mapViewSeparationZoom,
   observeMapViewBounds,
   reconcileMapInventory,
   toggleMapViewProjection,
 } from "../src/components/map/map-view"
 import { mountMapLensAdapter } from "../src/components/lens/map-lens"
+import { mapLensClickableItemsById, mapLensMarkers } from "../src/components/lens/map-lens"
 import type { MapAdapter } from "../src/components/map/adapter"
 
 const point = (id: string, type = "place", coordinates: [number, number] = [13.4, 52.5]): Item => ({
@@ -95,12 +97,30 @@ describe("MAP-ABSINK parity matrix — MapView module with fake-adapter probes",
     adapter.focusOn([8.6, 50.1], mapViewRevealOptions(false, false))
     adapter.focusOn([8.6, 50.1], mapViewRevealOptions(true, false))
     expect(adapter.focusOn.mock.calls.map(([, options]) => options.animate)).toEqual([true, false])
+    expect(mapViewSeparationZoom(focused, [focused, point("neighbour", "place", [8.6001, 50.1001])])).toBeGreaterThan(10)
   })
 
-  it("6: overlays draft markers, hides them while picking, and auto-confirms desktop but not compact picks", () => {
+  it("6: overlays a selected, non-clickable draft marker, hides it while picking, and auto-confirms desktop but not compact picks", () => {
     const draft = point("draft")
     expect(mapViewMarkerItems([point("saved")], draft, false).map(({ id }) => id)).toEqual(["saved", "draft"])
     expect(mapViewMarkerItems([point("saved")], draft, true).map(({ id }) => id)).toEqual(["saved"])
+    expect(mapLensMarkers([draft], undefined, () => "#64748b", [draft.id])).toMatchInlineSnapshot(`
+      [
+        {
+          "color": "#64748b",
+          "glowColor": "#64748b",
+          "icon": undefined,
+          "id": "draft",
+          "label": "draft",
+          "position": [
+            13.4,
+            52.5,
+          ],
+          "selected": true,
+        },
+      ]
+    `)
+    expect([...mapLensClickableItemsById([point("saved"), draft], [draft.id]).keys()]).toEqual(["saved"])
     const update = vi.fn(); const setPosition = vi.fn(); const confirm = vi.fn()
     applyMapViewPick({ lat: 52.5, lng: 13.4 }, false, update, setPosition, confirm)
     expect(confirm).toHaveBeenCalledTimes(1)
@@ -124,6 +144,28 @@ describe("MAP-ABSINK parity matrix — MapView module with fake-adapter probes",
     const adapter = fakeAdapter({ globe: true })
     expect(toggleMapViewProjection(adapter, "mercator")).toBe("globe")
     expect(adapter.setView).toHaveBeenCalledWith({ zoom: 1 })
+  })
+
+  it("8b: preserves the network's slate marker style while item colour precedence and group glow stay separate", () => {
+    const networkMarker = mapLensMarkers([point("network")], undefined, () => "#64748b")
+    expect(networkMarker).toMatchInlineSnapshot(`
+      [
+        {
+          "color": "#64748b",
+          "glowColor": "#64748b",
+          "icon": undefined,
+          "id": "network",
+          "label": "network",
+          "position": [
+            13.4,
+            52.5,
+          ],
+          "selected": false,
+        },
+      ]
+    `)
+    const tagged = mapLensMarkers([{ ...point("tagged"), tags: ["cafe"] }], "tagged", () => "#64748b")[0]!
+    expect(tagged).toMatchObject({ color: "#e11d48", glowColor: "#64748b", selected: true })
   })
 
   it("9: keeps MapView mounted across hide/show and relays resize through its MapLens", () => {
