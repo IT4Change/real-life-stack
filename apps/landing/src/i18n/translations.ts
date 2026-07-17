@@ -55,7 +55,7 @@ export const translations: Record<string, Translation> = {
       title: 'Modularer Baukasten für',
       titleHighlight: 'lokale Vernetzung',
       subtitle:
-        'Selbstorganisation leicht gemacht – Werkzeuge für echte Zusammenarbeit, die Gruppen dabei helfen, gemeinsam vor Ort etwas zu bewegen.',
+        'Werkzeuge, die es Communities ermöglichen, sich dezentral zu organisieren – selbstbestimmt und verwurzelt in echten Begegnungen.',
       demo: 'Demo ansehen',
       storybook: 'Storybook',
     },
@@ -109,7 +109,7 @@ export const translations: Record<string, Translation> = {
       title: 'A modular toolkit for',
       titleHighlight: 'local connection',
       subtitle:
-        'Self-organization made easy – tools for real collaboration that help groups make things happen together, locally.',
+        'Tools that enable communities to organize in a decentralized way – self-determined and rooted in real-world encounters.',
       demo: 'View demo',
       storybook: 'Storybook',
     },
@@ -163,7 +163,7 @@ export const translations: Record<string, Translation> = {
       title: 'Une boîte à outils modulaire pour',
       titleHighlight: 'la connexion locale',
       subtitle:
-        "L'auto-organisation en toute simplicité – des outils de collaboration réelle qui aident les groupes à agir ensemble, sur place.",
+        'Des outils qui permettent aux communautés de s’organiser de manière décentralisée – autodéterminées et ancrées dans de vraies rencontres.',
       demo: 'Voir la démo',
       storybook: 'Storybook',
     },
@@ -217,7 +217,7 @@ export const translations: Record<string, Translation> = {
       title: 'Un kit modular para',
       titleHighlight: 'la conexión local',
       subtitle:
-        'Autoorganización fácil: herramientas de colaboración real que ayudan a los grupos a lograr cosas juntos, en su entorno.',
+        'Herramientas que permiten a las comunidades organizarse de forma descentralizada: autodeterminadas y arraigadas en encuentros reales.',
       demo: 'Ver demo',
       storybook: 'Storybook',
     },
@@ -271,7 +271,7 @@ export const translations: Record<string, Translation> = {
       title: 'Um kit modular para',
       titleHighlight: 'conexão local',
       subtitle:
-        'Auto-organização facilitada – ferramentas de colaboração real que ajudam grupos a fazer acontecer juntos, localmente.',
+        'Ferramentas que permitem às comunidades se organizarem de forma descentralizada – autodeterminadas e enraizadas em encontros reais.',
       demo: 'Ver demo',
       storybook: 'Storybook',
     },
@@ -325,7 +325,7 @@ export const translations: Record<string, Translation> = {
       title: 'Un kit modulare per',
       titleHighlight: 'la connessione locale',
       subtitle:
-        "Auto-organizzazione resa semplice – strumenti di vera collaborazione che aiutano i gruppi a realizzare qualcosa insieme, sul posto.",
+        'Strumenti che permettono alle comunità di organizzarsi in modo decentralizzato – autodeterminate e radicate in incontri reali.',
       demo: 'Guarda la demo',
       storybook: 'Storybook',
     },
@@ -379,7 +379,7 @@ export const translations: Record<string, Translation> = {
       title: 'Yerel bağlantı için',
       titleHighlight: 'modüler bir araç seti',
       subtitle:
-        'Öz örgütlenme kolaylaştı – grupların yerelde birlikte bir şeyler başarmasına yardımcı olan gerçek iş birliği araçları.',
+        'Toplulukların merkeziyetsiz şekilde örgütlenmesini sağlayan araçlar – kendi kararlarıyla ve gerçek buluşmalara dayanarak.',
       demo: 'Demoyu gör',
       storybook: 'Storybook',
     },
@@ -433,7 +433,7 @@ export const translations: Record<string, Translation> = {
       title: 'مجموعة أدوات معيارية من أجل',
       titleHighlight: 'الترابط المحلي',
       subtitle:
-        'التنظيم الذاتي بسهولة – أدوات للتعاون الحقيقي تساعد المجموعات على إنجاز الأشياء معًا محليًا.',
+        'أدوات تمكّن المجتمعات من التنظيم بشكل لامركزي – بإرادتها الذاتية ومتجذرة في لقاءات حقيقية.',
       demo: 'شاهد العرض التجريبي',
       storybook: 'Storybook',
     },
@@ -486,7 +486,7 @@ export const translations: Record<string, Translation> = {
     hero: {
       title: '一个模块化工具箱，助力',
       titleHighlight: '本地连接',
-      subtitle: '让自组织变得简单——真正的协作工具，帮助团体在本地共同行动。',
+      subtitle: '让社区能够去中心化地自我组织的工具——自主自决，植根于真实的相遇。',
       demo: '查看演示',
       storybook: 'Storybook',
     },
@@ -540,7 +540,7 @@ export const translations: Record<string, Translation> = {
       title: 'Модульный конструктор для',
       titleHighlight: 'локальных связей',
       subtitle:
-        'Самоорганизация без сложностей – инструменты настоящего сотрудничества, которые помогают группам вместе менять что-то на местах.',
+        'Инструменты, позволяющие сообществам организовываться децентрализованно – самостоятельно и на основе реальных встреч.',
       demo: 'Смотреть демо',
       storybook: 'Storybook',
     },
@@ -594,7 +594,7 @@ export const translations: Record<string, Translation> = {
       title: 'Модульний конструктор для',
       titleHighlight: 'локальних зв’язків',
       subtitle:
-        'Самоорганізація без зайвих зусиль – інструменти справжньої співпраці, що допомагають групам разом діяти на місцях.',
+        'Інструменти, що дають спільнотам змогу організовуватися децентралізовано – самостійно і на основі справжніх зустрічей.',
       demo: 'Переглянути демо',
       storybook: 'Storybook',
     },
@@ -648,7 +648,7 @@ export const translations: Record<string, Translation> = {
       title: 'ערכת כלים מודולרית עבור',
       titleHighlight: 'חיבור מקומי',
       subtitle:
-        'התארגנות עצמית בקלות – כלים לשיתוף פעולה אמיתי שעוזרים לקבוצות לפעול יחד, מקומית.',
+        'כלים שמאפשרים לקהילות להתארגן באופן מבוזר – בהגדרה עצמית ומושרשים במפגשים אמיתיים.',
       demo: 'לצפייה בהדגמה',
       storybook: 'Storybook',
     },

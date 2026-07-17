@@ -1,10 +1,10 @@
 # Real Life Stack
 
-**A modular toolkit for local connection and decentralized collaboration**
+**A modular toolkit for local connection**
 
 Local communities need digital tools that foster real-world encounters instead of replacing them. Real Life Stack is a modular toolkit that lets communities deploy their own apps for local networking and adapt them to their needs.
 
-> **Self-organization made easy** – tools for real collaboration that help groups make things happen together, locally.
+> Tools that enable communities to organize in a decentralized way – self-determined and rooted in real-world encounters.
 
 ---
 
