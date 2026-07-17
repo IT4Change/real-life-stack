@@ -11,6 +11,7 @@ import {
   Search,
   Sun,
   CalendarDays,
+  Share2,
   X,
 } from "lucide-react"
 import type { DataInterface, Item, User } from "@real-life-stack/data-interface"
@@ -19,6 +20,7 @@ import {
   AdaptivePanel,
   AppShell,
   AppShellMain,
+  BottomNav,
   Button,
   CalendarView,
   ConnectorProvider,
@@ -52,6 +54,7 @@ import {
   type PanelMode,
   type UserData,
   type Workspace,
+  type NavItem,
 } from "@real-life-stack/toolkit"
 import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 
@@ -138,6 +141,16 @@ function NetworkLensIcon({ lens }: { lens: NetworkLens }) {
   if (lens === "calendar") return <CalendarDays className="size-4" />
   return null
 }
+
+const NETWORK_LENS_NAV_ITEMS: NavItem[] = [
+  { id: "graph", label: "Graph", icon: Share2 },
+  { id: "list", label: "Liste", icon: List },
+  { id: "grid", label: "Raster", icon: Grid2X2 },
+  { id: "kanban", label: "Board", icon: KanbanSquare },
+  { id: "map", label: "Karte", icon: MapIcon },
+  { id: "calendar", label: "Kalender", icon: CalendarDays },
+  { id: "marketplace", label: "Marktplatz", icon: List },
+]
 
 function predicateLabel(predicate: string): string {
   if (predicate === "attends") return "Spricht bei"
@@ -599,7 +612,13 @@ function NetworkShell() {
             </NavbarEnd>
           </Navbar>
 
-          <AppShellMain className="relative min-h-0 overflow-hidden">
+          <BottomNav
+            items={NETWORK_LENS_NAV_ITEMS}
+            activeItem={activeLens}
+            onItemChange={(lens) => setActiveLens(lens as NetworkLens)}
+          />
+
+          <AppShellMain withBottomNav className="relative min-h-0 overflow-hidden">
             {activeLens === "graph" && (
               <GraphView
                 ref={graphRef}

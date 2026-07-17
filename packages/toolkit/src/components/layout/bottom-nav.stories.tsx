@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { BottomNav, type NavItem } from './bottom-nav'
-import { Home, Map, Calendar, User } from 'lucide-react'
+import { Home, Map, Calendar, User, List, Grid2X2, KanbanSquare } from 'lucide-react'
 
 const meta: Meta<typeof BottomNav> = {
   title: 'RLS/App Shell/Layout/BottomNav',
@@ -42,6 +42,18 @@ export const FourItems: Story = {
   args: {
     items: extendedItems,
     activeItem: 'home',
+  },
+}
+
+export const Overflow: Story = {
+  args: {
+    items: [
+      ...extendedItems,
+      { id: 'list', label: 'Liste', icon: List },
+      { id: 'grid', label: 'Raster', icon: Grid2X2 },
+      { id: 'board', label: 'Board', icon: KanbanSquare },
+    ],
+    activeItem: 'calendar',
   },
 }
 

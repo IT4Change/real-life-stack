@@ -9,6 +9,7 @@ import {
   CalendarView,
   calendarFilterItems,
   focusCalendarItemOnce,
+  prioritizeActiveEvent,
   type CalendarFocusTarget,
 } from "../src/components/calendar/calendar-view"
 import { LeafletMapAdapter } from "../src/components/map/adapters/leaflet"
@@ -24,7 +25,10 @@ import {
   mountMapLensAdapter,
   updateMapLensViewport,
   updateMapLensViewportForResetKey,
+  observeMapLensContainerResize,
 } from "../src/components/lens/map-lens"
+import { bottomNavItems } from "../src/components/layout/bottom-nav"
+import { Calendar, Grid2X2, List, Map, User } from "lucide-react"
 import { drawerHeightFromY } from "../src/components/layout/adaptive-panel"
 import {
   focusActiveItemInVisibleAreaOnce,
@@ -357,7 +361,7 @@ describe("Map and Calendar lenses", () => {
     expect(thirdAdapter.fitBounds).toHaveBeenCalledTimes(1)
   })
 
-  it("7: a real viewportResetKey change re-arms the MapLens viewport effect and fits again", () => {
+  it("7: a reset key fits immediately when its render already contains a fresh marker inventory", () => {
     const adapter = mapAdapter()
     const markers: MapMarkerSpec[] = [
       { id: "place-1", position: [12.4, 52.1] },
@@ -371,8 +375,52 @@ describe("Map and Calendar lenses", () => {
     context = updateMapLensViewportForResetKey(adapter, context, "space-a", undefined, markers)
     expect(adapter.fitBounds).toHaveBeenCalledTimes(1)
 
-    context = updateMapLensViewportForResetKey(adapter, context, "space-b", undefined, markers)
+    const nextMarkers: MapMarkerSpec[] = [
+      { id: "place-3", position: [13.4, 53.1] },
+      { id: "place-4", position: [13.6, 53.3] },
+    ]
+    context = updateMapLensViewportForResetKey(adapter, context, "space-b", undefined, nextMarkers)
     expect(adapter.fitBounds).toHaveBeenCalledTimes(2)
+  })
+
+  it("7: a reset key waits for a fresh non-empty marker inventory before fitting", () => {
+    const adapter = mapAdapter()
+    const markersA: MapMarkerSpec[] = [
+      { id: "place-a1", position: [12.4, 52.1] },
+      { id: "place-a2", position: [12.6, 52.3] },
+    ]
+    const markersB: MapMarkerSpec[] = [
+      { id: "place-b1", position: [13.4, 53.1] },
+      { id: "place-b2", position: [13.6, 53.3] },
+    ]
+    let context = initialMapLensViewportContext()
+
+    context = updateMapLensViewportForResetKey(adapter, context, "space-a", undefined, markersA)
+    context = updateMapLensViewportForResetKey(adapter, context, "space-b", undefined, markersA)
+    expect(adapter.fitBounds).toHaveBeenCalledTimes(1)
+    expect(context.awaitingFreshMarkers).toBe(true)
+
+    context = updateMapLensViewportForResetKey(adapter, context, "space-b", undefined, markersB)
+    expect(adapter.fitBounds).toHaveBeenCalledTimes(2)
+    expect(adapter.fitBounds).toHaveBeenLastCalledWith({ west: 13.4, south: 53.1, east: 13.6, north: 53.3 })
+    expect(context.awaitingFreshMarkers).toBe(false)
+  })
+
+  it("7: MapLens forwards container resizes to the adapter resize contract", () => {
+    const adapter = { ...mapAdapter(), resize: vi.fn() }
+    let callback: ResizeObserverCallback | undefined
+    const observer = { observe: vi.fn(), disconnect: vi.fn() }
+    class TestResizeObserver {
+      constructor(nextCallback: ResizeObserverCallback) { callback = nextCallback }
+      observe = observer.observe
+      disconnect = observer.disconnect
+    }
+    const cleanup = observeMapLensContainerResize({} as Element, adapter, TestResizeObserver)
+    callback?.([], {} as ResizeObserver)
+    expect(observer.observe).toHaveBeenCalledTimes(1)
+    expect(adapter.resize).toHaveBeenCalledTimes(1)
+    cleanup()
+    expect(observer.disconnect).toHaveBeenCalledTimes(1)
   })
 
   it("7: StrictMode cleanup leaves exactly one mounted map adapter", async () => {
@@ -468,6 +516,38 @@ describe("Map and Calendar lenses", () => {
     expect(focus).toHaveBeenCalledTimes(1)
     gate = focusCalendarItemOnce(gate, "event-1", [target], focus)
     expect(focus).toHaveBeenCalledTimes(1)
+  })
+
+  it("8: an active month event behind +N is rendered and highlighted before its focus gate can settle", () => {
+    const events = ["event-1", "event-2", "event-3", "event-4"].map((id, index) => item(id, "event", {
+      title: `Termin ${index + 1}`,
+      start: `2026-07-08T${String(10 + index).padStart(2, "0")}:00:00+02:00`,
+    }))
+    const markup = renderToStaticMarkup(createElement(CalendarView, {
+      events,
+      initialDate: "2026-07-08T12:00:00+02:00",
+      initialVisibleDate: "2026-07-08T12:00:00+02:00",
+      activeItemId: "event-4",
+    }))
+
+    expect(prioritizeActiveEvent([], "event-4", 2)).toEqual([])
+    expect(markup).toContain("Termin 4")
+    expect(markup).toContain('aria-current="true"')
+  })
+
+  it("compact BottomNav keeps every destination reachable through its existing overflow menu", () => {
+    const items = [
+      { id: "graph", label: "Graph", icon: List },
+      { id: "list", label: "Liste", icon: List },
+      { id: "grid", label: "Raster", icon: Grid2X2 },
+      { id: "board", label: "Board", icon: User },
+      { id: "map", label: "Karte", icon: Map },
+      { id: "calendar", label: "Kalender", icon: Calendar },
+    ]
+    const navigation = bottomNavItems(items, "graph")
+    expect([...navigation.visibleItems, ...navigation.overflowItems].map(({ id }) => id).sort())
+      .toEqual(items.map(({ id }) => id).sort())
+    expect(navigation.overflowItems.map(({ id }) => id)).toEqual(["map", "calendar"])
   })
 
   it("Calendar initialVisibleDate opens the requested period without replacing initialDate's today value", () => {

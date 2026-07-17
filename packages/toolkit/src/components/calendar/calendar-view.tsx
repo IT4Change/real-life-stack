@@ -828,6 +828,7 @@ function MonthCalendar({
   onEventClick,
   onCreateEvent,
 }: MonthCalendarProps) {
+  const activeItemId = useContext(CalendarActiveItemContext)
   const days = useMemo(
     () => buildCalendarDays(
       visibleDate.getFullYear(),
@@ -877,7 +878,7 @@ function MonthCalendar({
             </div>
 
             <div className="hidden space-y-1 md:block">
-              {day.events.slice(0, 3).map((event) => (
+              {prioritizeActiveEvent(day.events, activeItemId, 3).map((event) => (
                 <EventPill
                   key={event.item.id}
                   event={event}
@@ -900,7 +901,7 @@ function MonthCalendar({
             </div>
 
             <div className="mt-1 space-y-0.5 md:hidden">
-              {day.events.slice(0, 2).map((event) => (
+              {prioritizeActiveEvent(day.events, activeItemId, 2).map((event) => (
                 <EventPill
                   key={event.item.id}
                   event={event}
@@ -935,6 +936,17 @@ function MonthCalendar({
       </div>
     </div>
   )
+}
+
+/** An active event must be both focused and visibly highlighted, never hidden behind +N. */
+export function prioritizeActiveEvent(
+  events: readonly CalendarEvent[],
+  activeItemId: string | null | undefined,
+  limit: number,
+): readonly CalendarEvent[] {
+  const active = events.find(({ item }) => item.id === activeItemId)
+  if (!active || events.indexOf(active) < limit) return events.slice(0, limit)
+  return [active, ...events.filter((event) => event !== active).slice(0, limit - 1)]
 }
 
 interface WeekCalendarProps {

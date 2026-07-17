@@ -109,11 +109,23 @@ export function initialMapLensViewportState(): MapLensViewportState {
 export interface MapLensViewportContext {
   initialized: boolean
   resetKey: string | number | undefined
+  markerInventory: string
+  awaitingFreshMarkers: boolean
   state: MapLensViewportState
 }
 
 export function initialMapLensViewportContext(): MapLensViewportContext {
-  return { initialized: false, resetKey: undefined, state: initialMapLensViewportState() }
+  return {
+    initialized: false,
+    resetKey: undefined,
+    markerInventory: "",
+    awaitingFreshMarkers: false,
+    state: initialMapLensViewportState(),
+  }
+}
+
+function markerInventory(markers: readonly MapMarkerSpec[]): string {
+  return markers.map(({ id, position }) => `${id}:${position[0]},${position[1]}`).join("|")
 }
 
 /** A replacement adapter owns a fresh map and must not inherit prior viewport gates. */
@@ -155,7 +167,8 @@ export function updateMapLensViewport(
 
 /**
  * The MapLens viewport-effect transition. A new reset key invalidates both
- * selection and auto-fit gates before the same render's viewport action runs.
+ * selection and auto-fit gates. A changed key must not consume its reset fit
+ * with the previous space's markers while its new inventory is still loading.
  */
 export function updateMapLensViewportForResetKey(
   adapter: MapAdapter,
@@ -165,14 +178,48 @@ export function updateMapLensViewportForResetKey(
   markers: readonly MapMarkerSpec[],
   visibleArea?: SelectionFocusVisibleArea,
 ): MapLensViewportContext {
-  const state = !context.initialized || context.resetKey !== viewportResetKey
+  const inventory = markerInventory(markers)
+  const changedKey = context.initialized && context.resetKey !== viewportResetKey
+  const awaitingFreshMarkers = changedKey
+    ? markers.length === 0 || inventory === context.markerInventory
+    : context.awaitingFreshMarkers && (markers.length === 0 || inventory === context.markerInventory)
+  const state = !context.initialized || changedKey
     ? initialMapLensViewportState()
     : context.state
+
+  if (awaitingFreshMarkers) {
+    return {
+      initialized: true,
+      resetKey: viewportResetKey,
+      markerInventory: context.markerInventory,
+      awaitingFreshMarkers: true,
+      state,
+    }
+  }
   return {
     initialized: true,
     resetKey: viewportResetKey,
+    markerInventory: inventory,
+    awaitingFreshMarkers: false,
     state: updateMapLensViewport(adapter, state, activeItemId, markers, visibleArea),
   }
+}
+
+type ResizeObserverLike = Pick<ResizeObserver, "observe" | "disconnect">
+type ResizeObserverConstructor = new (callback: ResizeObserverCallback) => ResizeObserverLike
+
+/** Relays container-size changes to any adapter that implements the optional resize contract. */
+export function observeMapLensContainerResize(
+  container: Element,
+  adapter: MapAdapter,
+  Observer: ResizeObserverConstructor | undefined = typeof ResizeObserver === "undefined"
+    ? undefined
+    : ResizeObserver,
+): () => void {
+  if (!Observer) return () => undefined
+  const observer = new Observer(() => adapter.resize?.())
+  observer.observe(container)
+  return () => observer.disconnect()
 }
 
 interface MountMapLensAdapterOptions {
@@ -283,6 +330,12 @@ export function MapLens({
       },
     })
   }, [createAdapter])
+
+  useEffect(() => {
+    const outer = outerRef.current
+    if (!adapter || !outer) return
+    return observeMapLensContainerResize(outer, adapter)
+  }, [adapter])
 
   useEffect(() => {
     if (!adapter) return
