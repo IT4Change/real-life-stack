@@ -34,8 +34,12 @@ function detectInitialLanguage(): LanguageCode {
   const urlLang = new URLSearchParams(window.location.search).get('lang')
   if (urlLang && validLangs.includes(urlLang)) return urlLang as LanguageCode
 
-  const stored = localStorage.getItem(STORAGE_KEY)
-  if (stored && validLangs.includes(stored)) return stored as LanguageCode
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored && validLangs.includes(stored)) return stored as LanguageCode
+  } catch {
+    // storage blocked (e.g. strict privacy mode) — fall through to browser language
+  }
 
   const browserLang = navigator.language.split('-')[0]
   if (validLangs.includes(browserLang)) return browserLang as LanguageCode
@@ -47,9 +51,15 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguage] = useState<LanguageCode>(detectInitialLanguage)
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, language)
+    try {
+      localStorage.setItem(STORAGE_KEY, language)
+    } catch {
+      // storage blocked — language just won't persist
+    }
     document.documentElement.lang = language
-    const rtl = SUPPORTED_LANGUAGES.find((l) => l.code === language && 'rtl' in l)
+    const rtl = SUPPORTED_LANGUAGES.some(
+      (l) => l.code === language && 'rtl' in l && l.rtl === true,
+    )
     document.documentElement.dir = rtl ? 'rtl' : 'ltr'
   }, [language])
 

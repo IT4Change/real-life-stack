@@ -59,8 +59,15 @@ function LanguageSwitcher() {
         setOpen(false)
       }
     }
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
   }, [])
 
   return (
@@ -69,13 +76,15 @@ function LanguageSwitcher() {
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
         aria-label="Select language"
+        aria-haspopup="listbox"
+        aria-expanded={open}
       >
         <span>{currentLang?.flag}</span>
         <span className="uppercase">{language}</span>
         <ChevronDown className="size-3.5" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-44 py-1 bg-background border border-border rounded-lg shadow-lg max-h-80 overflow-y-auto">
+        <div className="absolute end-0 mt-2 w-44 py-1 bg-background border border-border rounded-lg shadow-lg max-h-80 overflow-y-auto">
           {SUPPORTED_LANGUAGES.map((lang) => (
             <button
               key={lang.code}
@@ -360,7 +369,7 @@ function PrivacyPage() {
     <div className="min-h-screen bg-background">
       <Header />
       <main className="pt-24 pb-16 px-4">
-        <article className="max-w-3xl mx-auto prose prose-stone dark:prose-invert">
+        <article className="max-w-3xl mx-auto prose prose-stone dark:prose-invert" dir="ltr">
           {language === 'de' ? <PrivacyContentDe /> : <PrivacyContentEn />}
         </article>
       </main>
@@ -440,7 +449,7 @@ function App() {
         <div className="max-w-5xl mx-auto">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div className="order-2 md:order-1">
-              <Card className="border-l-4 border-l-blue-500">
+              <Card className="border-s-4 border-s-blue-500">
                 <CardContent className="pt-6">
                   <div className="space-y-4">
                     <div className="flex items-start gap-3">

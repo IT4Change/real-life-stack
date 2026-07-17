@@ -27,7 +27,7 @@ Real Life Stack provides a shared technical foundation:
 
 ### The Activation Cycle
 
-```
+```text
 Propose → Plan → Act → Build trust → Share successes → ↩
 ```
 

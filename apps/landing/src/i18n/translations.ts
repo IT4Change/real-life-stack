@@ -48,7 +48,10 @@ export interface Translation {
   footer: { tagline: string; privacy: string; backHome: string }
 }
 
-export const translations: Record<string, Translation> = {
+export type TranslatedLanguage =
+  | 'de' | 'en' | 'fr' | 'es' | 'pt' | 'it' | 'tr' | 'ar' | 'zh' | 'ru' | 'uk' | 'he'
+
+export const translations: Record<TranslatedLanguage, Translation> = {
   de: {
     nav: { modules: 'Module', dataInterface: 'Schnittstelle', connectors: 'Connectoren' },
     hero: {
