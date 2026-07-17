@@ -54,22 +54,36 @@ export function GridView({ items, activeItemId, selectionFocusVisibleArea, selec
     })
   }, [])
 
+  const storeMeasuredSize = useCallback((target: HTMLElement) => {
+    // Detachte Elemente (StrictMode-Wegwerf-Mounts, Virtualizer-Unmounts)
+    // melden Höhe 0 und dürfen echte Messwerte nie überschreiben.
+    if (!target.isConnected) return false
+    const index = Number(target.dataset.index)
+    if (!Number.isInteger(index)) return false
+    const size = target.getBoundingClientRect().height
+    if (size <= 0) return false
+    const stored = measuredHeightsRef.current.get(index)
+    if (stored !== undefined && Math.abs(stored - size) < 0.5) return false
+    measuredHeightsRef.current.set(index, size)
+    return true
+  }, [])
+
   const measureElement = useCallback((element: HTMLDivElement | null) => {
     if (!element) return
-    const index = Number(element.dataset.index)
-    if (!Number.isInteger(index)) return
-    const updateSize = () => {
-      const size = element.getBoundingClientRect().height
-      if (Math.abs((measuredHeightsRef.current.get(index) ?? GRID_CARD_ESTIMATE) - size) < 0.5) return
-      measuredHeightsRef.current.set(index, size)
-      setGeometryVersion((version) => version + 1)
-    }
-    updateSize()
-    if (typeof ResizeObserver !== "undefined") {
-      resizeObserverRef.current ??= new ResizeObserver(updateSize)
-      resizeObserverRef.current.observe(element)
-    }
-  }, [])
+    if (storeMeasuredSize(element)) setGeometryVersion((version) => version + 1)
+    if (typeof ResizeObserver === "undefined") return
+    // EIN Observer mit entry-basiertem Callback — nie die Closure eines
+    // einzelnen Elements wiederverwenden; unobserve via Ref-Cleanup.
+    const observer = (resizeObserverRef.current ??= new ResizeObserver((entries) => {
+      let changed = false
+      for (const entry of entries) {
+        if (storeMeasuredSize(entry.target as HTMLElement)) changed = true
+      }
+      if (changed) setGeometryVersion((version) => version + 1)
+    }))
+    observer.observe(element)
+    return () => observer.unobserve(element)
+  }, [storeMeasuredSize])
 
   const selectionVirtualizer = useMemo(() => ({
     scrollToIndex: (index: number) => {
