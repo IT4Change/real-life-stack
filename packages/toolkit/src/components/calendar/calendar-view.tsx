@@ -421,9 +421,21 @@ export function CalendarView({
       (date) => {
         setVisibleDate(date)
         setSelectedDate(date)
+        // Linsen-Vertrag: Ist der Tag so voll, dass die Monatszelle das
+        // aktive Event nicht zeigt (Limit 3 Desktop / 2 Mobil), öffnet
+        // die Tagesansicht — statt die Zell-Reihenfolge zu verbiegen.
+        if (viewMode !== "month") return
+        const dayKey = toDateKey(date)
+        const dayEvents = filteredEvents
+          .filter((event) => toDateKey(event.start) === dayKey)
+          .sort(compareEvents)
+        const cellLimit = typeof matchMedia !== "undefined" && matchMedia("(min-width: 768px)").matches ? 3 : 2
+        if (!monthCellShowsActiveEvent(dayEvents, activeItemId, cellLimit)) {
+          setViewMode("day")
+        }
       },
     )
-  }, [activeItemId, filteredEvents])
+  }, [activeItemId, filteredEvents, viewMode])
 
   const eventsByDay = useMemo(
     () => {
@@ -878,7 +890,7 @@ function MonthCalendar({
             </div>
 
             <div className="hidden space-y-1 md:block">
-              {prioritizeActiveEvent(day.events, activeItemId, 3).map((event) => (
+              {day.events.slice(0, 3).map((event) => (
                 <EventPill
                   key={event.item.id}
                   event={event}
@@ -901,7 +913,7 @@ function MonthCalendar({
             </div>
 
             <div className="mt-1 space-y-0.5 md:hidden">
-              {prioritizeActiveEvent(day.events, activeItemId, 2).map((event) => (
+              {day.events.slice(0, 2).map((event) => (
                 <EventPill
                   key={event.item.id}
                   event={event}
@@ -938,15 +950,16 @@ function MonthCalendar({
   )
 }
 
-/** An active event must be both focused and visibly highlighted, never hidden behind +N. */
-export function prioritizeActiveEvent(
-  events: readonly CalendarEvent[],
+/** Month cells keep natural order; an active event beyond the cell limit
+ *  cannot be shown there — the focus path opens the day view instead. */
+export function monthCellShowsActiveEvent(
+  dayEvents: readonly CalendarEvent[],
   activeItemId: string | null | undefined,
   limit: number,
-): readonly CalendarEvent[] {
-  const active = events.find(({ item }) => item.id === activeItemId)
-  if (!active || events.indexOf(active) < limit) return events.slice(0, limit)
-  return [active, ...events.filter((event) => event !== active).slice(0, limit - 1)]
+): boolean {
+  if (!activeItemId) return true
+  const index = dayEvents.findIndex(({ item }) => item.id === activeItemId)
+  return index === -1 || index < limit
 }
 
 interface WeekCalendarProps {

@@ -9,7 +9,7 @@ import {
   CalendarView,
   calendarFilterItems,
   focusCalendarItemOnce,
-  prioritizeActiveEvent,
+  monthCellShowsActiveEvent,
   type CalendarFocusTarget,
 } from "../src/components/calendar/calendar-view"
 import { LeafletMapAdapter } from "../src/components/map/adapters/leaflet"
@@ -563,21 +563,35 @@ describe("Map and Calendar lenses", () => {
     expect(focus).toHaveBeenCalledTimes(1)
   })
 
-  it("8: an active month event behind +N is rendered and highlighted before its focus gate can settle", () => {
+  it("8: month cells keep natural order — a hidden active event opens the day view instead", () => {
     const events = ["event-1", "event-2", "event-3", "event-4"].map((id, index) => item(id, "event", {
       title: `Termin ${index + 1}`,
       start: `2026-07-08T${String(10 + index).padStart(2, "0")}:00:00+02:00`,
     }))
-    const markup = renderToStaticMarkup(createElement(CalendarView, {
+    const hiddenActiveMarkup = renderToStaticMarkup(createElement(CalendarView, {
       events,
       initialDate: "2026-07-08T12:00:00+02:00",
       initialVisibleDate: "2026-07-08T12:00:00+02:00",
       activeItemId: "event-4",
     }))
+    // Die Zelle drängt das verdeckte aktive Event NICHT mehr hinein
+    // (natürliche Ordnung); der Client-Fokus-Pfad öffnet stattdessen die
+    // Tagesansicht — die Entscheidung dazu ist pur getestet:
+    expect(hiddenActiveMarkup).not.toContain("Termin 4")
+    const dayEvents = events.map((event) => ({ item: event })) as never[]
+    expect(monthCellShowsActiveEvent(dayEvents, "event-4", 3)).toBe(false)
+    expect(monthCellShowsActiveEvent(dayEvents, "event-2", 3)).toBe(true)
+    expect(monthCellShowsActiveEvent(dayEvents, "event-4", 2)).toBe(false)
+    expect(monthCellShowsActiveEvent([], "event-4", 2)).toBe(true)
+    expect(monthCellShowsActiveEvent(dayEvents, null, 2)).toBe(true)
 
-    expect(prioritizeActiveEvent([], "event-4", 2)).toEqual([])
-    expect(markup).toContain("Termin 4")
-    expect(markup).toContain('aria-current="true"')
+    const visibleActiveMarkup = renderToStaticMarkup(createElement(CalendarView, {
+      events,
+      initialDate: "2026-07-08T12:00:00+02:00",
+      initialVisibleDate: "2026-07-08T12:00:00+02:00",
+      activeItemId: "event-1",
+    }))
+    expect(visibleActiveMarkup).toContain('aria-current="true"')
   })
 
   it("compact BottomNav keeps every destination reachable through its existing overflow menu", () => {
