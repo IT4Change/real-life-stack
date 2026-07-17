@@ -107,12 +107,15 @@ Mutations-Callbacks ein.
 | Generische Listen-Linse | `components/lens/list-view.tsx` | `RLS/Module Components/Lenses/ListView` | alle Nicht-Relation-Items; kein lokaler Filter; `activeItemId?` aus der Shell |
 | Generische Linsen-Karte | `components/preview/item-preview.tsx` + `preview/item-type-meta.tsx` | Linsen-Stories | ItemPreview: List kompakt, Grid komfortabel; `active` nutzt den geteilten Glow; Typ-Meta für Person, Projekt, Ressource und Event sowie Typ-Badge-Fallback |
 | Typspezifische Raster-Linse | `components/lens/grid-view.tsx` | `RLS/Module Components/Lenses/GridView` | alle Nicht-Relation-Items; komponiert die geteilten Preview-Adornments; `activeItemId?` aus der Shell |
+| Read-only Karten-Linse | `components/lens/map-lens.tsx` | `RLS/Module Components/Lenses/MapLens` | Nicht-Relation-Items mit parsebarem GeoJSON-`Point`; `createAdapter` erzeugt pro Mount eine frische Engine; ein Marker zentriert bei Zoom 16, mehrere nutzen `fitBounds`; kein lokaler Filter |
 
-Beide Linsen sind presentationale, read-only Module Components und
-komponieren keine eigene Card-Fläche. Die App-Shell besitzt Filter- und
+Die Listen-, Grid- und Map-Linsen sind presentationale, read-only Module
+Components. List/Grid komponieren keine eigene Card-Fläche; die Map-Linse
+rendert die geteilten Marker-Primitive. Die App-Shell besitzt Filter- und
 Selektionszustand; `activeItemId` überlebt den Linsenwechsel. Karten-Linsen
-heben den passenden `ItemPreview` hervor und zentrieren ihn einmal pro
-aktiver ID, ohne bei späteren Renders den User-Scroll zu übernehmen.
+heben den passenden `ItemPreview` hervor, die Map ihren Marker; beide
+zentrieren das aktive Ziel einmal pro aktiver ID, ohne bei späteren Renders den
+User-Scroll beziehungsweise -Viewport zu übernehmen.
 
 Die Kanban-Komponenten stellen ihren eigenen Container-Query-Kontext bereit, damit sie auch außerhalb der App Shell, z.B. in Storybook oder eingebetteten Modulflächen, korrekt zwischen mobiler und breiter Darstellung wechseln.
 
@@ -138,7 +141,7 @@ Calendar ist das Referenzmodul für zeitliche Projektionen im Current Space. Es 
 | Spec-Begriff | Code | Storybook | Daten-/Capability-Annahme |
 |---|---|---|---|
 | Calendar Space Module | `packages/toolkit/src/components/calendar/calendar-module.stories.tsx` | `RLS/Space Modules/Calendar/Overview` | Items im Current Space mit `data.start`, optional `data.end` |
-| Header und Ansichtsauswahl | `calendar-view.tsx` | `RLS/Space Modules/Calendar/Overview` | UI-Zustand steuert Zeitraum, Monat/Woche/Tag/Liste und Heute-Sprung |
+| Header und Ansichtsauswahl | `calendar-view.tsx` | `RLS/Space Modules/Calendar/Overview` | UI-Zustand steuert Zeitraum, Monat/Woche/Tag/Liste und Heute-Sprung; `initialVisibleDate` öffnet additiv einen Startzeitraum ohne den Heute-Wert zu überschreiben |
 | Filter | `calendar-view.tsx` | `RLS/Space Modules/Calendar/Overview` | Typ-, Orts- und Current-User-Filter bleiben lokal; Persistenz ist App-/Shell-Verantwortung |
 | Monatsansicht | `calendar-view.tsx` | `RLS/Space Modules/Calendar/Overview` | `Item.data.start` gruppiert Events nach Kalendertag; Event-Pills öffnen das Item |
 | Wochen-/Tagesansicht | `calendar-view.tsx` | `RLS/Space Modules/Calendar/Overview` | Zeitgebundene Items werden auf einfache Zeitslots projiziert |

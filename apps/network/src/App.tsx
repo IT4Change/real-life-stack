@@ -5,10 +5,12 @@ import {
   Grid2X2,
   KanbanSquare,
   List,
+  Map as MapIcon,
   Maximize2,
   Moon,
   Search,
   Sun,
+  CalendarDays,
   X,
 } from "lucide-react"
 import type { DataInterface, Item, User } from "@real-life-stack/data-interface"
@@ -18,12 +20,14 @@ import {
   AppShell,
   AppShellMain,
   Button,
+  CalendarView,
   ConnectorProvider,
   GraphView,
   GridView,
   Input,
   KanbanBoard,
   ListView,
+  MapLens,
   Navbar,
   NavbarCenter,
   NavbarEnd,
@@ -50,6 +54,7 @@ import {
   type UserData,
   type Workspace,
 } from "@real-life-stack/toolkit"
+import { MapLibreMapAdapter } from "@real-life-stack/toolkit/maplibre"
 
 import { dwebCampDetailAvatarUrl } from "./data/avatar-detail-urls"
 import { resolveNetworkAvatarSources } from "./lib/avatar-sources"
@@ -71,13 +76,15 @@ const DETAIL_DRAWER_FRACTION = 0.55
 const DETAIL_PANEL_MODES: PanelMode[] = ["sidebar", "drawer"]
 const PROFILE_PANEL_MODES: PanelMode[] = ["modal"]
 
-type NetworkLens = "graph" | "list" | "grid" | "kanban" | "marketplace"
+type NetworkLens = "graph" | "list" | "grid" | "kanban" | "map" | "calendar" | "marketplace"
 
 const NETWORK_LENSES: ReadonlyArray<{ id: NetworkLens; label: string }> = [
   { id: "graph", label: "Graph" },
   { id: "list", label: "Liste" },
   { id: "grid", label: "Raster" },
   { id: "kanban", label: "Board" },
+  { id: "map", label: "Karte" },
+  { id: "calendar", label: "Kalender" },
   { id: "marketplace", label: "Marktplatz" },
 ]
 
@@ -129,6 +136,8 @@ function NetworkLensIcon({ lens }: { lens: NetworkLens }) {
   if (lens === "list" || lens === "marketplace") return <List className="size-4" />
   if (lens === "grid") return <Grid2X2 className="size-4" />
   if (lens === "kanban") return <KanbanSquare className="size-4" />
+  if (lens === "map") return <MapIcon className="size-4" />
+  if (lens === "calendar") return <CalendarDays className="size-4" />
   return null
 }
 
@@ -460,6 +469,7 @@ function NetworkShell() {
   )
   const selectedItem = selectedNodeId ? itemById.get(selectedNodeId) ?? null : null
   const taskBoardItems = useMemo(() => networkTaskBoardItems(domainItems), [domainItems])
+  const createMapAdapter = useCallback(() => new MapLibreMapAdapter(), [])
   const marketplaceItems = useMemo(
     () => domainItems.filter((item) => item.type === "resource"),
     [domainItems],
@@ -631,6 +641,27 @@ function NetworkShell() {
                     activeItemId={selectedNodeId ?? undefined}
                     onMoveItem={handleMoveTask}
                     onItemClick={(item) => selectItem(item.id)}
+                  />
+                </div>
+              </div>
+            )}
+            {activeLens === "map" && (
+              <MapLens
+                items={domainItems}
+                createAdapter={createMapAdapter}
+                initialView={{ center: [12.4066, 52.1183], zoom: 16 }}
+                activeItemId={selectedNodeId ?? undefined}
+                onItemClick={(item) => selectItem(item.id)}
+              />
+            )}
+            {activeLens === "calendar" && (
+              <div className="h-full overflow-y-auto p-4 sm:p-6">
+                <div className="mx-auto max-w-6xl">
+                  <CalendarView
+                    events={domainItems}
+                    initialVisibleDate="2026-07-08T12:00:00+02:00"
+                    activeItemId={selectedNodeId ?? undefined}
+                    onEventClick={(item) => selectItem(item.id)}
                   />
                 </div>
               </div>

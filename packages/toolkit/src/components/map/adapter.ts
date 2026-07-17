@@ -113,6 +113,9 @@ export interface MapAdapter {
    */
   setView(view: MapViewPatch): void
 
+  /** Fit the viewport to a GeoJSON-order bounding box. */
+  fitBounds(bounds: MapBounds): void
+
   /**
    * Pan so `center` ends up centred in the viewport area NOT covered by a
    * bottom inset (in CSS pixels) — e.g. the strip of map above a bottom sheet.

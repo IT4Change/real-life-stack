@@ -262,6 +262,15 @@ export class LeafletMapAdapter implements MapAdapter {
     map.setView(center, zoom)
   }
 
+  fitBounds(bounds: MapBounds): void {
+    const map = this.mapInstance as L.Map | null
+    if (!map) return
+    map.fitBounds([
+      [bounds.south, bounds.west],
+      [bounds.north, bounds.east],
+    ])
+  }
+
   focusOn(
     center: LngLat,
     options?: { bottomInset?: number; animate?: boolean; zoom?: number; duration?: number },

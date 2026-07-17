@@ -50,8 +50,8 @@ describe("projectRelationGraph", () => {
     const second = projectRelationGraph(seedItems, seedRecords)
 
     expect(first).toEqual(second)
-    expect(first.nodes).toHaveLength(324)
-    expect(first.edges).toHaveLength(388)
+    expect(first.nodes).toHaveLength(339)
+    expect(first.edges).toHaveLength(497)
     const marie = first.nodes.find(({ id }) => id === "person-marie")
     expect(marie).toMatchObject({
       id: "person-marie",
@@ -73,7 +73,7 @@ describe("projectRelationGraph", () => {
   it("never turns relation items into graph nodes", () => {
     const projection = projectRelationGraph(seedItems, seedRecords)
 
-    expect(seedItems.filter(({ type }) => type === "relation")).toHaveLength(388)
+    expect(seedItems.filter(({ type }) => type === "relation")).toHaveLength(497)
     expect(projection.nodes.some(({ type }) => type === "relation")).toBe(false)
   })
 

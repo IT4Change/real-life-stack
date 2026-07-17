@@ -6,6 +6,7 @@ import App from "./App"
 import { buildDwebCampSeedItems } from "./data/network-seed"
 import { NETWORK_RELATION_STORE_OPTIONS } from "./data/network-relation-predicates"
 import "./index.css"
+import "maplibre-gl/dist/maplibre-gl.css"
 
 const DWEB_CAMP_GROUP_ID = "dwebcamp"
 const MY_NETWORK_GROUP_ID = "my-network"

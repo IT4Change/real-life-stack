@@ -5,6 +5,17 @@ import { describe, expect, it, vi } from "vitest"
 
 import { KanbanBoard } from "../src/components/kanban/kanban-board"
 import { kanbanItemsByColumn, defaultColumns } from "../src/components/kanban/kanban-board"
+import { CalendarView, focusCalendarItemOnce, type CalendarFocusTarget } from "../src/components/calendar/calendar-view"
+import { LeafletMapAdapter } from "../src/components/map/adapters/leaflet"
+import { MapLibreMapAdapter } from "../src/components/map/adapters/maplibre"
+import type { MapAdapter, MapMarkerSpec } from "../src/components/map/adapter"
+import {
+  SINGLE_MARKER_ZOOM,
+  fitMapLensViewport,
+  mapLensMarkers,
+  mountMapLensAdapter,
+  updateMapLensViewport,
+} from "../src/components/lens/map-lens"
 import { focusActiveItemOnce } from "../src/lib/selection-focus"
 import { formatEventRange } from "../src/components/preview/item-meta-row"
 import { GridView } from "../src/components/lens/grid-view"
@@ -12,6 +23,29 @@ import { ListView } from "../src/components/lens/list-view"
 
 function item(id: string, type: string, data: Record<string, unknown>, createdAt = "2026-07-08T10:00:00.000Z"): Item {
   return { id, type, createdAt, createdBy: "seed", data }
+}
+
+function mapAdapter(): MapAdapter & {
+  setView: ReturnType<typeof vi.fn>
+  fitBounds: ReturnType<typeof vi.fn>
+  focusOn: ReturnType<typeof vi.fn>
+} {
+  return {
+    mount: async () => undefined,
+    unmount: async () => undefined,
+    setMarkers: vi.fn(),
+    setView: vi.fn(),
+    fitBounds: vi.fn(),
+    focusOn: vi.fn(),
+    getView: () => ({
+      center: [12.4, 52.1],
+      zoom: 10,
+      bounds: { west: 12, south: 52, east: 13, north: 53 },
+    }),
+    observeView: () => () => undefined,
+    observeClicks: () => () => undefined,
+    observeMarkerClicks: () => () => undefined,
+  }
 }
 
 describe("read-only lenses", () => {
@@ -169,5 +203,168 @@ describe("read-only lenses", () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2)
 
     expect(focusActiveItemOnce(gate, null, target, focus)).toBeNull()
+  })
+})
+
+describe("Map and Calendar lenses", () => {
+  it("1/2: MapLens only derives markers from non-relation GeoJSON Points", () => {
+    const markers = mapLensMarkers([
+      item("place-1", "place", { title: "P2P Portal", position: { type: "Point", coordinates: [12.406579, 52.117986] } }),
+      item("event-1", "event", { title: "Ohne Position", start: "2026-07-08T19:15:00+02:00" }),
+      item("line-1", "place", { title: "Linie", position: { type: "LineString", coordinates: [[12.4, 52.1], [12.5, 52.2]] } }),
+      item("invalid-1", "place", { title: "Ungültig", position: { type: "Point", coordinates: ["12.4", 52.1] } }),
+      item("relation-1", "relation", { title: "Unsichtbare Kante", position: { type: "Point", coordinates: [12.4, 52.1] } }),
+    ], "place-1")
+
+    expect(markers).toHaveLength(1)
+    expect(markers[0]).toMatchObject({
+      id: "place-1",
+      position: [12.406579, 52.117986],
+      selected: true,
+    })
+  })
+
+  it("7: MapLens auto-fit honours 0/1/N markers and only reports a successful viewport action", () => {
+    const adapter = mapAdapter()
+    const one: MapMarkerSpec[] = [{ id: "place-1", position: [12.4, 52.1] }]
+    const many: MapMarkerSpec[] = [
+      { id: "place-1", position: [12.4, 52.1] },
+      { id: "place-2", position: [12.6, 52.3] },
+    ]
+
+    expect(fitMapLensViewport(adapter, [])).toBe(false)
+    expect(adapter.setView).not.toHaveBeenCalled()
+    expect(adapter.fitBounds).not.toHaveBeenCalled()
+
+    expect(fitMapLensViewport(adapter, one)).toBe(true)
+    expect(adapter.setView).toHaveBeenLastCalledWith({ center: [12.4, 52.1], zoom: SINGLE_MARKER_ZOOM })
+
+    expect(fitMapLensViewport(adapter, many)).toBe(true)
+    expect(adapter.fitBounds).toHaveBeenLastCalledWith({ west: 12.4, south: 52.1, east: 12.6, north: 52.3 })
+  })
+
+  it("7/8: a selected marker focuses once and takes precedence over aggregate auto-fit", () => {
+    const adapter = mapAdapter()
+    const markers: MapMarkerSpec[] = [
+      { id: "place-1", position: [12.4, 52.1] },
+      { id: "place-2", position: [12.6, 52.3] },
+    ]
+
+    let state = updateMapLensViewport(adapter, null, false, "place-1", markers)
+    expect(adapter.focusOn).toHaveBeenCalledWith([12.4, 52.1], { animate: false })
+    expect(adapter.fitBounds).not.toHaveBeenCalled()
+    expect(state).toEqual({ lastFocusedItemId: "place-1", autoFitted: false })
+
+    state = updateMapLensViewport(adapter, state.lastFocusedItemId, state.autoFitted, "place-1", markers)
+    expect(adapter.focusOn).toHaveBeenCalledTimes(1)
+    expect(adapter.fitBounds).not.toHaveBeenCalled()
+
+    state = updateMapLensViewport(adapter, state.lastFocusedItemId, state.autoFitted, undefined, markers)
+    expect(state.autoFitted).toBe(true)
+    expect(adapter.fitBounds).toHaveBeenCalledTimes(1)
+  })
+
+  it("7: StrictMode cleanup leaves exactly one mounted map adapter", async () => {
+    let resolveFirstMount!: () => void
+    let resolveSecondMount!: () => void
+    const firstMounted = new Promise<void>((resolve) => { resolveFirstMount = resolve })
+    const secondMounted = new Promise<void>((resolve) => { resolveSecondMount = resolve })
+    let created = 0
+    let liveMaps = 0
+    const createAdapter = (): MapAdapter => {
+      const mount = created++ === 0 ? firstMounted : secondMounted
+      return {
+        mount: async () => {
+          await mount
+          liveMaps += 1
+        },
+        unmount: async () => { liveMaps -= 1 },
+        setMarkers: () => undefined,
+        setView: () => undefined,
+        fitBounds: () => undefined,
+        focusOn: () => undefined,
+        getView: () => ({ center: [0, 0], zoom: 0, bounds: { west: 0, south: 0, east: 0, north: 0 } }),
+        observeView: () => () => undefined,
+        observeClicks: () => () => undefined,
+        observeMarkerClicks: () => () => undefined,
+      }
+    }
+    const outer = { appendChild: vi.fn() } as unknown as Pick<HTMLElement, "appendChild">
+    const makeInner = () => ({ style: {}, remove: vi.fn() }) as unknown as HTMLElement
+    const options = {
+      outer,
+      createInnerContainer: makeInner,
+      createAdapter,
+      initialView: { center: [12.4, 52.1] as [number, number], zoom: 12 },
+      onMounted: () => undefined,
+      onUnmounted: () => undefined,
+    }
+
+    const firstCleanup = mountMapLensAdapter(options)
+    firstCleanup()
+    const secondCleanup = mountMapLensAdapter(options)
+    resolveFirstMount()
+    await Promise.resolve()
+    await Promise.resolve()
+    resolveSecondMount()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(created).toBe(2)
+    expect(liveMaps).toBe(1)
+    secondCleanup()
+    await Promise.resolve()
+    expect(liveMaps).toBe(0)
+  })
+
+  it("7: both concrete adapters translate fitBounds to their native coordinate order", () => {
+    const bounds = { west: 12.4, south: 52.1, east: 12.6, north: 52.3 }
+    const leafletMap = { fitBounds: vi.fn() }
+    const mapLibreMap = { fitBounds: vi.fn() }
+    const leaflet = new LeafletMapAdapter()
+    const mapLibre = new MapLibreMapAdapter()
+    ;(leaflet as unknown as { mapInstance: unknown }).mapInstance = leafletMap
+    ;(mapLibre as unknown as { mapInstance: unknown }).mapInstance = mapLibreMap
+
+    leaflet.fitBounds(bounds)
+    mapLibre.fitBounds(bounds)
+
+    expect(leafletMap.fitBounds).toHaveBeenCalledWith([[52.1, 12.4], [52.3, 12.6]])
+    expect(mapLibreMap.fitBounds).toHaveBeenCalledWith([[12.4, 52.1], [12.6, 52.3]])
+  })
+
+  it("1/2/8: Calendar excludes relation records, projects parseable starts, and gates active focus", () => {
+    const calendarItem = item("event-1", "event", { title: "Eröffnung", start: "2026-07-08T19:15:00+02:00" })
+    const relationItem = item("relation-1", "relation", { title: "Unsichtbare Kante", start: "2026-07-08T20:00:00+02:00" })
+    const invalidItem = item("event-invalid", "event", { title: "Unparsebar", start: "kein Datum" })
+    const markup = renderToStaticMarkup(createElement(CalendarView, {
+      events: [calendarItem, relationItem, invalidItem],
+      initialDate: "2026-07-08T12:00:00+02:00",
+      initialVisibleDate: "2026-07-08T12:00:00+02:00",
+    }))
+
+    expect(markup).toContain("Eröffnung")
+    expect(markup).not.toContain("Unsichtbare Kante")
+    expect(markup).not.toContain("Unparsebar")
+
+    const target: CalendarFocusTarget = { item: calendarItem, start: new Date("2026-07-08T19:15:00+02:00") }
+    const focus = vi.fn()
+    let gate = focusCalendarItemOnce(null, "event-missing", [target], focus)
+    expect(gate).toBeNull()
+    gate = focusCalendarItemOnce(gate, "event-1", [target], focus)
+    expect(gate).toBe("event-1")
+    expect(focus).toHaveBeenCalledTimes(1)
+    gate = focusCalendarItemOnce(gate, "event-1", [target], focus)
+    expect(focus).toHaveBeenCalledTimes(1)
+  })
+
+  it("Calendar initialVisibleDate opens the requested period without replacing initialDate's today value", () => {
+    const markup = renderToStaticMarkup(createElement(CalendarView, {
+      events: [],
+      initialDate: "2025-01-15T12:00:00+01:00",
+      initialVisibleDate: "2026-07-08T12:00:00+02:00",
+    }))
+
+    expect(markup).toContain("Juli 2026")
   })
 })

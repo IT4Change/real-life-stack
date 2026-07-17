@@ -77,7 +77,7 @@ interface DwebCampSchedule {
   tasks: DwebCampTask[]
 }
 
-const dwebCampSchedule = campSchedule as DwebCampSchedule
+const dwebCampSchedule = campSchedule as unknown as DwebCampSchedule
 
 export function slugSeedValue(value: string): string {
   const slug = value

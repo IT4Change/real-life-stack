@@ -1,1 +1,6 @@
-export { CalendarView, type CalendarViewProps } from "./calendar-view"
+export {
+  CalendarView,
+  focusCalendarItemOnce,
+  type CalendarFocusTarget,
+  type CalendarViewProps,
+} from "./calendar-view"
