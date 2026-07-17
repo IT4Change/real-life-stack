@@ -1,11 +1,13 @@
 {
   "name": "real-life-stack",
+  "license": "MIT",
   "private": true,
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
     "dev:reference": "pnpm --filter reference dev",
+    "dev:landing": "pnpm --filter landing dev",
     "dev:network": "pnpm --filter network dev",
     "dev:graphql": "pnpm --filter @real-life-stack/graphql-server dev",
     "dev:app": "pnpm --filter @real-life-stack/app dev",
