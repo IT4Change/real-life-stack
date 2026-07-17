@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ExternalLink,
   Filter,
-  Grid2X2,
   KanbanSquare,
   List,
   Map as MapIcon,
@@ -11,7 +10,7 @@ import {
   Search,
   Sun,
   CalendarDays,
-  Share2,
+  Waypoints,
   X,
 } from "lucide-react"
 import type { DataInterface, Item, User } from "@real-life-stack/data-interface"
@@ -25,10 +24,9 @@ import {
   CalendarView,
   ConnectorProvider,
   GraphView,
-  GridView,
+  CollectionView,
   Input,
   KanbanBoard,
-  ListView,
   MapLens,
   Navbar,
   NavbarCenter,
@@ -77,15 +75,14 @@ const THEME_KEY = "rls-network-theme"
 const DETAIL_PANEL_MODES: PanelMode[] = ["sidebar", "drawer"]
 const PROFILE_PANEL_MODES: PanelMode[] = ["modal"]
 
-type NetworkLens = "graph" | "list" | "grid" | "kanban" | "map" | "calendar" | "marketplace"
+type NetworkLens = "graph" | "list" | "kanban" | "map" | "calendar" | "marketplace"
 
 const NETWORK_LENSES: ReadonlyArray<{ id: NetworkLens; label: string }> = [
   { id: "graph", label: "Graph" },
   { id: "list", label: "Liste" },
-  { id: "grid", label: "Raster" },
-  { id: "kanban", label: "Board" },
-  { id: "map", label: "Karte" },
+  { id: "kanban", label: "Kanban" },
   { id: "calendar", label: "Kalender" },
+  { id: "map", label: "Karte" },
   { id: "marketplace", label: "Marktplatz" },
 ]
 
@@ -135,20 +132,18 @@ function graphTypeLabel(type: string): string {
 
 function NetworkLensIcon({ lens }: { lens: NetworkLens }) {
   if (lens === "list" || lens === "marketplace") return <List className="size-4" />
-  if (lens === "grid") return <Grid2X2 className="size-4" />
   if (lens === "kanban") return <KanbanSquare className="size-4" />
   if (lens === "map") return <MapIcon className="size-4" />
   if (lens === "calendar") return <CalendarDays className="size-4" />
-  return null
+  return <Waypoints className="size-4" />
 }
 
 const NETWORK_LENS_NAV_ITEMS: NavItem[] = [
-  { id: "graph", label: "Graph", icon: Share2 },
+  { id: "graph", label: "Graph", icon: Waypoints },
   { id: "list", label: "Liste", icon: List },
-  { id: "grid", label: "Raster", icon: Grid2X2 },
-  { id: "kanban", label: "Board", icon: KanbanSquare },
-  { id: "map", label: "Karte", icon: MapIcon },
+  { id: "kanban", label: "Kanban", icon: KanbanSquare },
   { id: "calendar", label: "Kalender", icon: CalendarDays },
+  { id: "map", label: "Karte", icon: MapIcon },
   { id: "marketplace", label: "Marktplatz", icon: List },
 ]
 
@@ -635,19 +630,7 @@ function NetworkShell() {
             {activeLens === "list" && (
               <div className="h-full overflow-y-auto p-4 sm:p-6">
                 <div className="mx-auto max-w-6xl">
-                  <ListView
-                    items={domainItems}
-                    activeItemId={selectedNodeId ?? undefined}
-                    selectionFocusVisibleArea={selectionFocusVisibleArea}
-                    onItemClick={(item) => selectItem(item.id)}
-                  />
-                </div>
-              </div>
-            )}
-            {activeLens === "grid" && (
-              <div className="h-full overflow-y-auto p-4 sm:p-6">
-                <div className="mx-auto max-w-6xl">
-                  <GridView
+                  <CollectionView
                     items={domainItems}
                     activeItemId={selectedNodeId ?? undefined}
                     selectionFocusVisibleArea={selectionFocusVisibleArea}
@@ -700,7 +683,7 @@ function NetworkShell() {
                     <h1 className="text-xl font-semibold">Marktplatz</h1>
                     <p className="text-sm text-muted-foreground">Ressourcen aus dem aktuellen Space</p>
                   </header>
-                  <ListView
+                  <CollectionView
                     items={marketplaceItems}
                     activeItemId={selectedNodeId ?? undefined}
                     selectionFocusVisibleArea={selectionFocusVisibleArea}
