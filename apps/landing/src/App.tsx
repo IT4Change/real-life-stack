@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Button,
   Card,
@@ -21,7 +21,9 @@ import {
   Lock,
   Fingerprint,
   Waypoints,
+  ChevronDown,
 } from 'lucide-react'
+import { useLanguage, SUPPORTED_LANGUAGES } from './i18n/LanguageContext'
 
 function WotIcon({ className = "w-5 h-5" }: { className?: string }) {
   return (
@@ -44,14 +46,66 @@ function GitHubIcon({ className = "w-5 h-5" }: { className?: string }) {
   )
 }
 
-const navItems = [
-  { label: 'Module', href: '#module' },
-  { label: 'Schnittstelle', href: '#schnittstelle' },
-  { label: 'Connectoren', href: '#connectoren' },
-]
+function LanguageSwitcher() {
+  const { language, setLanguage } = useLanguage()
+  const [open, setOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const currentLang = SUPPORTED_LANGUAGES.find((l) => l.code === language)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+        aria-label="Select language"
+      >
+        <span>{currentLang?.flag}</span>
+        <span className="uppercase">{language}</span>
+        <ChevronDown className="size-3.5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-2 w-44 py-1 bg-background border border-border rounded-lg shadow-lg max-h-80 overflow-y-auto">
+          {SUPPORTED_LANGUAGES.map((lang) => (
+            <button
+              key={lang.code}
+              onClick={() => {
+                setLanguage(lang.code)
+                setOpen(false)
+              }}
+              className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 hover:bg-muted transition-colors ${
+                language === lang.code ? 'text-primary font-medium' : 'text-muted-foreground'
+              }`}
+            >
+              <span>{lang.flag}</span>
+              <span>{lang.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { t } = useLanguage()
+
+  const navItems = [
+    { label: t.nav.modules, href: '#module' },
+    { label: t.nav.dataInterface, href: '#schnittstelle' },
+    { label: t.nav.connectors, href: '#connectoren' },
+  ]
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
@@ -76,6 +130,7 @@ function Header() {
                 {item.label}
               </a>
             ))}
+            <LanguageSwitcher />
             <Button asChild>
               <a
                 href="https://github.com/real-life-org/real-life-stack"
@@ -89,12 +144,15 @@ function Header() {
           </div>
 
           {/* Mobile Menu Button */}
-          <button
-            className="md:hidden p-2 text-muted-foreground"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          >
-            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+          <div className="md:hidden flex items-center gap-1">
+            <LanguageSwitcher />
+            <button
+              className="p-2 text-muted-foreground"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Navigation */}
@@ -129,95 +187,187 @@ function Header() {
   )
 }
 
+function PrivacyContentDe() {
+  return (
+    <>
+      <h1 className="text-3xl font-bold mb-1">Datenschutzerklärung</h1>
+      <p className="text-muted-foreground text-sm mb-8">Zuletzt aktualisiert: April 2026</p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">1. Verantwortlicher</h2>
+      <p>Anton Tranelis · E-Mail: <a href="mailto:info@real-life.org" className="text-primary hover:underline">info@real-life.org</a></p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">2. Grundprinzip</h2>
+      <p>
+        Real Life Stack ist ein modularer Baukasten für Community-Apps.
+        <strong> Deine Daten gehören dir.</strong> Je nach gewähltem Connector werden
+        Daten ausschließlich lokal, auf deinem eigenen Server oder Ende-zu-Ende-verschlüsselt
+        gespeichert.
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">3. Welche Daten werden verarbeitet?</h2>
+
+      <h3 className="text-lg font-medium mt-6 mb-2">Lokales Backend</h3>
+      <p>
+        Alle Daten werden ausschließlich lokal auf deinem Gerät gespeichert (IndexedDB).
+        Es findet keine Übertragung an externe Server statt.
+      </p>
+
+      <h3 className="text-lg font-medium mt-6 mb-2">GraphQL-Backend (optional)</h3>
+      <p>
+        Wenn du dich mit einem eigenen Server verbindest, gelten die Datenschutzbestimmungen
+        des jeweiligen Betreibers.
+      </p>
+
+      <h3 className="text-lg font-medium mt-6 mb-2">Web-of-Trust-Backend (optional)</h3>
+      <ul className="list-disc pl-6 space-y-1">
+        <li>Daten werden dezentral und Ende-zu-Ende-verschlüsselt synchronisiert</li>
+        <li>Öffentliche Profile (Name, Bio, Avatar) werden bewusst vom Nutzer veröffentlicht</li>
+        <li>Bestätigungen die du an andere sendest, liegen auf deren Geräten und können nicht einseitig zurückgezogen werden</li>
+      </ul>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">4. Berechtigungen</h2>
+      <p>
+        Die App fragt nur die Berechtigungen an, die für die genutzten Funktionen notwendig sind
+        (z.B. Standort für die Kartenansicht, Kamera für QR-Code-Scan, Biometrie zum Entsperren).
+        Es werden keine Daten ohne Einwilligung erhoben.
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">5. Tracking & Analytics</h2>
+      <p>
+        <strong>Es gibt kein Tracking.</strong> Keine Analytics, keine Cookies, keine Werbe-IDs.
+        Die App enthält keine Drittanbieter-SDKs die Nutzerdaten sammeln.
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">6. Datenlöschung</h2>
+      <p>
+        <strong>Lokale Daten</strong> kannst du jederzeit über die App löschen.
+      </p>
+      <p>
+        <strong>Server-Daten</strong> (Profile, Backups) können über die App zurückgezogen werden.
+      </p>
+      <p>
+        <strong>Einschränkung:</strong> Daten die du mit anderen geteilt hast (z.B. Bestätigungen),
+        liegen auf deren Geräten und können von dir nicht gelöscht werden.
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">7. Deine Rechte</h2>
+      <p>
+        Du hast das Recht auf Auskunft, Berichtigung, Löschung und Einschränkung der Verarbeitung
+        deiner Daten sowie das Recht auf Datenübertragbarkeit. Du hast außerdem das Recht, dich bei
+        einer Datenschutz-Aufsichtsbehörde zu beschweren.
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">8. Open Source</h2>
+      <p>
+        Der vollständige Quellcode ist unter der MIT-Lizenz verfügbar:{' '}
+        <a href="https://github.com/real-life-org/real-life-stack" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+          github.com/real-life-org/real-life-stack
+        </a>
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">9. Kontakt</h2>
+      <p>Bei Fragen zum Datenschutz: <a href="mailto:info@real-life.org" className="text-primary hover:underline">info@real-life.org</a></p>
+    </>
+  )
+}
+
+function PrivacyContentEn() {
+  return (
+    <>
+      <h1 className="text-3xl font-bold mb-1">Privacy Policy</h1>
+      <p className="text-muted-foreground text-sm mb-8">Last updated: April 2026</p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">1. Controller</h2>
+      <p>Anton Tranelis · Email: <a href="mailto:info@real-life.org" className="text-primary hover:underline">info@real-life.org</a></p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">2. Core Principle</h2>
+      <p>
+        Real Life Stack is a modular toolkit for community apps.
+        <strong> Your data belongs to you.</strong> Depending on the chosen connector, data is
+        stored exclusively locally, on your own server, or end-to-end encrypted.
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">3. What Data Is Processed?</h2>
+
+      <h3 className="text-lg font-medium mt-6 mb-2">Local backend</h3>
+      <p>
+        All data is stored exclusively locally on your device (IndexedDB).
+        No data is transferred to external servers.
+      </p>
+
+      <h3 className="text-lg font-medium mt-6 mb-2">GraphQL backend (optional)</h3>
+      <p>
+        If you connect to your own server, the privacy policy of the respective operator applies.
+      </p>
+
+      <h3 className="text-lg font-medium mt-6 mb-2">Web of Trust backend (optional)</h3>
+      <ul className="list-disc pl-6 space-y-1">
+        <li>Data is synchronized in a decentralized, end-to-end encrypted way</li>
+        <li>Public profiles (name, bio, avatar) are deliberately published by the user</li>
+        <li>Confirmations you send to others are stored on their devices and cannot be unilaterally withdrawn</li>
+      </ul>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">4. Permissions</h2>
+      <p>
+        The app only requests the permissions required for the features you use
+        (e.g. location for the map view, camera for QR-code scanning, biometrics for unlocking).
+        No data is collected without consent.
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">5. Tracking & Analytics</h2>
+      <p>
+        <strong>There is no tracking.</strong> No analytics, no cookies, no advertising IDs.
+        The app contains no third-party SDKs that collect user data.
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">6. Data Deletion</h2>
+      <p>
+        <strong>Local data</strong> can be deleted at any time via the app.
+      </p>
+      <p>
+        <strong>Server data</strong> (profiles, backups) can be withdrawn via the app.
+      </p>
+      <p>
+        <strong>Limitation:</strong> Data you have shared with others (e.g. confirmations)
+        is stored on their devices and cannot be deleted by you.
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">7. Your Rights</h2>
+      <p>
+        You have the right to access, rectify, delete, and restrict the processing of your data,
+        as well as the right to data portability. You also have the right to lodge a complaint
+        with a data protection supervisory authority.
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">8. Open Source</h2>
+      <p>
+        The complete source code is available under the MIT license:{' '}
+        <a href="https://github.com/real-life-org/real-life-stack" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+          github.com/real-life-org/real-life-stack
+        </a>
+      </p>
+
+      <h2 className="text-xl font-semibold mt-8 mb-3">9. Contact</h2>
+      <p>For questions about privacy: <a href="mailto:info@real-life.org" className="text-primary hover:underline">info@real-life.org</a></p>
+    </>
+  )
+}
+
 function PrivacyPage() {
+  const { language, t } = useLanguage()
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="pt-24 pb-16 px-4">
         <article className="max-w-3xl mx-auto prose prose-stone dark:prose-invert">
-          <h1 className="text-3xl font-bold mb-1">Datenschutzerklärung</h1>
-          <p className="text-muted-foreground text-sm mb-8">Zuletzt aktualisiert: April 2026</p>
-
-          <h2 className="text-xl font-semibold mt-8 mb-3">1. Verantwortlicher</h2>
-          <p>Anton Tranelis · E-Mail: <a href="mailto:info@real-life.org" className="text-primary hover:underline">info@real-life.org</a></p>
-
-          <h2 className="text-xl font-semibold mt-8 mb-3">2. Grundprinzip</h2>
-          <p>
-            Real Life Stack ist ein modularer Baukasten für Community-Apps.
-            <strong> Deine Daten gehören dir.</strong> Je nach gewähltem Connector werden
-            Daten ausschließlich lokal, auf deinem eigenen Server oder Ende-zu-Ende-verschlüsselt
-            gespeichert.
-          </p>
-
-          <h2 className="text-xl font-semibold mt-8 mb-3">3. Welche Daten werden verarbeitet?</h2>
-
-          <h3 className="text-lg font-medium mt-6 mb-2">Lokales Backend</h3>
-          <p>
-            Alle Daten werden ausschließlich lokal auf deinem Gerät gespeichert (IndexedDB).
-            Es findet keine Übertragung an externe Server statt.
-          </p>
-
-          <h3 className="text-lg font-medium mt-6 mb-2">GraphQL-Backend (optional)</h3>
-          <p>
-            Wenn du dich mit einem eigenen Server verbindest, gelten die Datenschutzbestimmungen
-            des jeweiligen Betreibers.
-          </p>
-
-          <h3 className="text-lg font-medium mt-6 mb-2">Web-of-Trust-Backend (optional)</h3>
-          <ul className="list-disc pl-6 space-y-1">
-            <li>Daten werden dezentral und Ende-zu-Ende-verschlüsselt synchronisiert</li>
-            <li>Öffentliche Profile (Name, Bio, Avatar) werden bewusst vom Nutzer veröffentlicht</li>
-            <li>Bestätigungen die du an andere sendest, liegen auf deren Geräten und können nicht einseitig zurückgezogen werden</li>
-          </ul>
-
-          <h2 className="text-xl font-semibold mt-8 mb-3">4. Berechtigungen</h2>
-          <p>
-            Die App fragt nur die Berechtigungen an, die für die genutzten Funktionen notwendig sind
-            (z.B. Standort für die Kartenansicht, Kamera für QR-Code-Scan, Biometrie zum Entsperren).
-            Es werden keine Daten ohne Einwilligung erhoben.
-          </p>
-
-          <h2 className="text-xl font-semibold mt-8 mb-3">5. Tracking & Analytics</h2>
-          <p>
-            <strong>Es gibt kein Tracking.</strong> Keine Analytics, keine Cookies, keine Werbe-IDs.
-            Die App enthält keine Drittanbieter-SDKs die Nutzerdaten sammeln.
-          </p>
-
-          <h2 className="text-xl font-semibold mt-8 mb-3">6. Datenlöschung</h2>
-          <p>
-            <strong>Lokale Daten</strong> kannst du jederzeit über die App löschen.
-          </p>
-          <p>
-            <strong>Server-Daten</strong> (Profile, Backups) können über die App zurückgezogen werden.
-          </p>
-          <p>
-            <strong>Einschränkung:</strong> Daten die du mit anderen geteilt hast (z.B. Bestätigungen),
-            liegen auf deren Geräten und können von dir nicht gelöscht werden.
-          </p>
-
-          <h2 className="text-xl font-semibold mt-8 mb-3">7. Deine Rechte</h2>
-          <p>
-            Du hast das Recht auf Auskunft, Berichtigung, Löschung und Einschränkung der Verarbeitung
-            deiner Daten sowie das Recht auf Datenübertragbarkeit. Du hast außerdem das Recht, dich bei
-            einer Datenschutz-Aufsichtsbehörde zu beschweren.
-          </p>
-
-          <h2 className="text-xl font-semibold mt-8 mb-3">8. Open Source</h2>
-          <p>
-            Der vollständige Quellcode ist unter der MIT-Lizenz verfügbar:{' '}
-            <a href="https://github.com/real-life-org/real-life-stack" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-              github.com/real-life-org/real-life-stack
-            </a>
-          </p>
-
-          <h2 className="text-xl font-semibold mt-8 mb-3">9. Kontakt</h2>
-          <p>Bei Fragen zum Datenschutz: <a href="mailto:info@real-life.org" className="text-primary hover:underline">info@real-life.org</a></p>
+          {language === 'de' ? <PrivacyContentDe /> : <PrivacyContentEn />}
         </article>
       </main>
 
       <footer className="py-12 px-4 border-t">
         <div className="max-w-4xl mx-auto text-center text-muted-foreground">
-          <a href="/" className="text-sm hover:text-foreground transition-colors">← Zurück zur Startseite</a>
+          <a href="/" className="text-sm hover:text-foreground transition-colors">{t.footer.backHome}</a>
         </div>
       </footer>
     </div>
@@ -225,6 +375,8 @@ function PrivacyPage() {
 }
 
 function App() {
+  const { t } = useLanguage()
+
   if (window.location.pathname === '/privacy' || window.location.pathname === '/privacy.html') {
     return <PrivacyPage />
   }
@@ -237,23 +389,22 @@ function App() {
       <section className="pt-40 pb-24 px-4">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-6">
-            Modularer Baukasten für{' '}
-            <span className="text-primary">lokale Vernetzung</span>
+            {t.hero.title}{' '}
+            <span className="text-primary">{t.hero.titleHighlight}</span>
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Selbstorganisation leicht gemacht – Werkzeuge für echte Zusammenarbeit,
-            die Gruppen dabei helfen, gemeinsam vor Ort etwas zu bewegen.
+            {t.hero.subtitle}
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <Button size="lg" asChild>
               <a href="/app/">
-                Demo ansehen
+                {t.hero.demo}
                 <ArrowRight className="size-4" />
               </a>
             </Button>
             <Button variant="outline" size="lg" asChild>
               <a href="/storybook/">
-                Storybook
+                {t.hero.storybook}
                 <ExternalLink className="size-4" />
               </a>
             </Button>
@@ -261,38 +412,30 @@ function App() {
         </div>
       </section>
 
-      {/* Section 1: App-Shell & Module */}
+      {/* Section 1: App Shell & Modules */}
       <section id="module" className="py-16 px-4 bg-muted/30 scroll-mt-20">
         <div className="max-w-5xl mx-auto">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
               <div className="inline-flex items-center gap-2 text-primary text-sm font-medium mb-4">
                 <div className="size-2 rounded-full bg-primary" />
-                App-Shell & Module
+                {t.modules.badge}
               </div>
-              <h2 className="text-3xl font-bold mb-4">Modularer Frontend-Baukasten</h2>
-              <p className="text-muted-foreground mb-6">
-                Real Life Stack wird als modularer Frontend-Baukasten in TypeScript mit React entwickelt.
-                Er umfasst eigenständige Komponenten, die sowohl in der Referenzanwendung als auch als
-                wiederverwendbare Library in eigenen Projekten eingesetzt werden können.
-              </p>
-              <p className="text-muted-foreground">
-                Zusätzlich entsteht eine selbsthostbare White-Label-App mit einer intuitiven
-                Admin-Konfigurationsoberfläche, über die Gruppen ohne technisches Know-how Module
-                aktivieren, Farben und Inhalte anpassen können.
-              </p>
+              <h2 className="text-3xl font-bold mb-4">{t.modules.title}</h2>
+              <p className="text-muted-foreground mb-6">{t.modules.p1}</p>
+              <p className="text-muted-foreground">{t.modules.p2}</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <ModuleCard icon={Map} title="Karte" description="OpenStreetMap via MapLibre" color="green" />
-              <ModuleCard icon={Calendar} title="Kalender" description="iCal / CalDAV" color="blue" />
-              <ModuleCard icon={Store} title="Marktplatz" description="Teilen & Tauschen" color="purple" />
-              <ModuleCard icon={MessageSquare} title="Feed" description="Aktivitäten-Stream" color="orange" />
+              <ModuleCard icon={Map} title={t.modules.map} description={t.modules.mapDesc} color="green" />
+              <ModuleCard icon={Calendar} title={t.modules.calendar} description={t.modules.calendarDesc} color="blue" />
+              <ModuleCard icon={Store} title={t.modules.marketplace} description={t.modules.marketplaceDesc} color="purple" />
+              <ModuleCard icon={MessageSquare} title={t.modules.feed} description={t.modules.feedDesc} color="orange" />
             </div>
           </div>
         </div>
       </section>
 
-      {/* Section 2: Daten- & Identitätsschnittstelle */}
+      {/* Section 2: Data & Identity Interface */}
       <section id="schnittstelle" className="py-16 px-4 scroll-mt-20">
         <div className="max-w-5xl mx-auto">
           <div className="grid md:grid-cols-2 gap-12 items-center">
@@ -305,8 +448,8 @@ function App() {
                         <Users className="size-4" />
                       </div>
                       <div>
-                        <div className="font-medium">Gruppen & Profile</div>
-                        <div className="text-sm text-muted-foreground">Laden und Speichern von Mitgliedschaften</div>
+                        <div className="font-medium">{t.dataInterface.groups}</div>
+                        <div className="text-sm text-muted-foreground">{t.dataInterface.groupsDesc}</div>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
@@ -314,8 +457,8 @@ function App() {
                         <Calendar className="size-4" />
                       </div>
                       <div>
-                        <div className="font-medium">Termine & Events</div>
-                        <div className="text-sm text-muted-foreground">Einheitliche Funktionen für Kalendereinträge</div>
+                        <div className="font-medium">{t.dataInterface.events}</div>
+                        <div className="text-sm text-muted-foreground">{t.dataInterface.eventsDesc}</div>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
@@ -323,8 +466,8 @@ function App() {
                         <Shield className="size-4" />
                       </div>
                       <div>
-                        <div className="font-medium">Vertrauensbeziehungen</div>
-                        <div className="text-sm text-muted-foreground">Web of Trust & Identitätsverwaltung</div>
+                        <div className="font-medium">{t.dataInterface.trust}</div>
+                        <div className="text-sm text-muted-foreground">{t.dataInterface.trustDesc}</div>
                       </div>
                     </div>
                   </div>
@@ -334,53 +477,37 @@ function App() {
             <div className="order-1 md:order-2">
               <div className="inline-flex items-center gap-2 text-blue-600 text-sm font-medium mb-4">
                 <div className="size-2 rounded-full bg-blue-500" />
-                Daten- & Identitätsschnittstelle
+                {t.dataInterface.badge}
               </div>
-              <h2 className="text-3xl font-bold mb-4">Einheitliche Schnittstelle</h2>
-              <p className="text-muted-foreground mb-6">
-                Alle Module greifen auf eine gemeinsame Daten- und Identitätsschnittstelle im Frontend zu.
-                Diese definiert einheitliche Funktionen zum Laden und Speichern von Gruppen, Terminen,
-                Profilen und Vertrauensbeziehungen.
-              </p>
-              <p className="text-muted-foreground">
-                Die Module kennen nur diese Schnittstelle – unabhängig davon, welches Backend
-                genutzt wird oder wie Identitäten verwaltet sind. Die offene Identitätsschnittstelle
-                soll perspektivisch auch schlüsselbasierte Accounts und DIDs unterstützen.
-              </p>
+              <h2 className="text-3xl font-bold mb-4">{t.dataInterface.title}</h2>
+              <p className="text-muted-foreground mb-6">{t.dataInterface.p1}</p>
+              <p className="text-muted-foreground">{t.dataInterface.p2}</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Section 3: Connector-Schicht */}
+      {/* Section 3: Connector Layer */}
       <section id="connectoren" className="py-16 px-4 bg-muted/30 scroll-mt-20">
         <div className="max-w-5xl mx-auto">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
               <div className="inline-flex items-center gap-2 text-green-600 text-sm font-medium mb-4">
                 <div className="size-2 rounded-full bg-green-500" />
-                Connector-Schicht
+                {t.connectors.badge}
               </div>
-              <h2 className="text-3xl font-bold mb-4">Flexibel wählbare Backends</h2>
-              <p className="text-muted-foreground mb-6">
-                Unterhalb der Datenschnittstelle liegt eine schlanke Connector-Struktur.
-                Sie legt fest, wie Backends angebunden werden, und wir liefern eine erste
-                Implementierung mit.
-              </p>
-              <p className="text-muted-foreground">
-                Weitere Connectoren können von Communities selbst entwickelt werden –
-                von klassischen REST-APIs bis hin zu vollständig dezentralen,
-                Ende-zu-Ende-verschlüsselten Systemen.
-              </p>
+              <h2 className="text-3xl font-bold mb-4">{t.connectors.title}</h2>
+              <p className="text-muted-foreground mb-6">{t.connectors.p1}</p>
+              <p className="text-muted-foreground">{t.connectors.p2}</p>
             </div>
             <div className="grid grid-cols-3 gap-4">
               {[
-                { name: 'REST', desc: 'Klassischer Server', icon: Globe, color: 'text-blue-600' },
-                { name: 'GraphQL', desc: 'Flexible Queries', icon: Waypoints, color: 'text-purple-600' },
-                { name: 'Local-first', desc: 'Offline-fähig', icon: HardDrive, color: 'text-green-600' },
-                { name: 'P2P', desc: 'Dezentral', icon: WotIcon, color: 'text-orange-600' },
-                { name: 'E2EE', desc: 'Verschlüsselt', icon: Lock, color: 'text-red-600' },
-                { name: 'DIDs', desc: 'Dezentrale IDs', icon: Fingerprint, color: 'text-teal-600' },
+                { name: 'REST', desc: t.connectors.restDesc, icon: Globe, color: 'text-blue-600' },
+                { name: 'GraphQL', desc: t.connectors.graphqlDesc, icon: Waypoints, color: 'text-purple-600' },
+                { name: 'Local-first', desc: t.connectors.localDesc, icon: HardDrive, color: 'text-green-600' },
+                { name: 'P2P', desc: t.connectors.p2pDesc, icon: WotIcon, color: 'text-orange-600' },
+                { name: 'E2EE', desc: t.connectors.e2eeDesc, icon: Lock, color: 'text-red-600' },
+                { name: 'DIDs', desc: t.connectors.didsDesc, icon: Fingerprint, color: 'text-teal-600' },
               ].map((backend) => (
                 <Card key={backend.name} className="py-0">
                   <CardContent className="px-3 py-2.5 flex items-center gap-2">
@@ -401,7 +528,7 @@ function App() {
       <footer className="py-12 px-4 border-t">
         <div className="max-w-4xl mx-auto text-center text-muted-foreground">
           <p className="mb-4">
-            <strong>Gemeinsam gestalten wir die Zukunft – lokal vernetzt, global gedacht.</strong>
+            <strong>{t.footer.tagline}</strong>
           </p>
           <div className="flex gap-4 justify-center">
             <a
@@ -430,7 +557,7 @@ function App() {
               href="/privacy"
               className="hover:text-foreground transition-colors"
             >
-              Datenschutz
+              {t.footer.privacy}
             </a>
           </div>
         </div>
