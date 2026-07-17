@@ -203,13 +203,13 @@ export function ItemPreview({
             (author === null ? (
               // No author row → the scope badge shares the title's row, to its right.
               <div className="flex items-start justify-between gap-2">
-                <h3 className={cn("min-w-0 text-foreground", isCompact ? "font-medium text-sm leading-snug" : "font-semibold text-base mb-1")}>
+                <h3 className={cn("min-w-0 text-foreground font-semibold text-base", isCompact ? "leading-snug" : "mb-1")}>
                   {title}
                 </h3>
                 {headerAdornment && <div className="shrink-0">{headerAdornment}</div>}
               </div>
             ) : (
-              <h3 className={cn("text-foreground", isCompact ? "font-medium text-sm leading-snug" : "font-semibold text-base mb-1")}>
+              <h3 className={cn("text-foreground font-semibold text-base", isCompact ? "leading-snug" : "mb-1")}>
                 {title}
               </h3>
             ))}
