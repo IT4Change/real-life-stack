@@ -31,6 +31,8 @@ export type {
 // Capability type-guards are runtime values (not types), so they ship as a
 // regular export.
 export { hasGlobe, hasCluster } from "./adapter"
+export { LocationPickProvider, useLocationPick, type LatLng, type PickHandlers, type LocationPickValue } from "./location-pick"
+export { MapView, type MapViewProps, type MapViewportMode } from "./map-view"
 
 // Marker rendering is library-agnostic (pure SVG), so it lives in the barrel
 // alongside the contract — both adapters render markers through it.
