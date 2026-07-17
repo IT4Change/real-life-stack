@@ -268,6 +268,10 @@ interface ItemPreviewProps {
   footerAdornment?: ReactNode
   /** Layout-Density (siehe unten). Default `comfortable`. */
   density?: ItemPreviewDensity
+  /** Hebt eine Karten-Linse als aktuell selektiert hervor. */
+  active?: boolean
+  /** Optionaler `#rrggbb`-Override für den Active-Glow; Default ist neutral. */
+  activeGlowColor?: string
   className?: string
 }
 ```
@@ -282,6 +286,13 @@ interface ItemPreviewProps {
 **Slot-Konvention:** Module liefern modul-spezifische Cues über die drei Slots. Jeder Slot rendert **unabhängig vom Content** der Card — eine Card ohne Author kann trotzdem ein `headerAdornment` haben, eine Card ohne Title kann trotzdem ein `metaAdornment` zeigen. Slots und Datenfelder sind orthogonal. Adornments, die eigene Buttons enthalten, müssen `event.stopPropagation()` aufrufen, damit ein Button-Click nicht den Card-Click mit auslöst.
 
 **Keyboard-Aktivierung:** Wenn `onClick` gesetzt ist, exponiert die Card `role="button"`, `tabIndex={0}` und reagiert auf Enter und Space wie ein Button — Card-Click ist damit auch ohne Maus erreichbar.
+
+**Kartenflächen-MUSS:** Jede Kartenfläche in List, Grid, Board, Feed, Detail
+oder einer künftigen Linse MUSS `ItemPreview` plus dessen Adornments
+komponieren; eigene parallele Card-Markups sind nicht zulässig. Bei
+Shell-Selektion setzt eine Karten-Linse `active` auf dem korrespondierenden
+Preview. `active` nutzt `getActivePanelGlow` mit neutraler Default-Farbe;
+ein Caller darf per `activeGlowColor` z. B. seine Gruppenfarbe weiterreichen.
 
 **Daten-Pfad:** `useItemTags(item)` intern. Author-Resolution liegt beim Caller (`useItemAuthor` empfohlen).
 

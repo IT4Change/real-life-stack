@@ -50,7 +50,7 @@ describe("projectRelationGraph", () => {
     const second = projectRelationGraph(seedItems, seedRecords)
 
     expect(first).toEqual(second)
-    expect(first.nodes).toHaveLength(317)
+    expect(first.nodes).toHaveLength(324)
     expect(first.edges).toHaveLength(388)
     const marie = first.nodes.find(({ id }) => id === "person-marie")
     expect(marie).toMatchObject({

@@ -41,7 +41,7 @@ export interface DwebCampGraphData {
 
 export const dwebCampGraph = rawGraph as unknown as DwebCampGraphData
 
-type SeedItemType = "event" | "person" | "project" | "resource"
+type SeedItemType = "event" | "person" | "project" | "resource" | "task"
 
 interface DwebCampResource {
   title: string
@@ -50,8 +50,14 @@ interface DwebCampResource {
   venue: string | null
 }
 
+interface DwebCampTask {
+  title: string
+  status: string
+}
+
 interface DwebCampSchedule {
   resources: DwebCampResource[]
+  tasks: DwebCampTask[]
 }
 
 const dwebCampSchedule = campSchedule as DwebCampSchedule
@@ -190,6 +196,16 @@ export function buildDwebCampResourceItems(
   ))
 }
 
+export function buildDwebCampTaskItems(
+  schedule: DwebCampSchedule = dwebCampSchedule,
+): Item[] {
+  const taskIds = indexIds("task", schedule.tasks.map(({ title }) => title))
+
+  return schedule.tasks.map(({ title, status }) => (
+    baseItem(requireId(taskIds, title, "task"), "task", { title, status })
+  ))
+}
+
 interface SeedRelation {
   predicate: NetworkRelationPredicate
   from: string
@@ -279,8 +295,9 @@ export async function buildDwebCampSeedItems(
 ): Promise<Item[]> {
   const domainItems = buildDwebCampDomainItems(graph)
   const resourceItems = buildDwebCampResourceItems()
+  const taskItems = buildDwebCampTaskItems()
   const relationItems = await Promise.all(buildDwebCampSeedRelations(graph).map(buildRelationItem))
-  return [...domainItems, ...resourceItems, ...relationItems]
+  return [...domainItems, ...resourceItems, ...taskItems, ...relationItems]
 }
 
 export const dwebCampDomainItems = buildDwebCampDomainItems()

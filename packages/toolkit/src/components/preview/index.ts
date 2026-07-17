@@ -1,4 +1,8 @@
-export { ItemPreview, type ItemPreviewProps } from "./item-preview"
+export {
+  ItemPreview,
+  DEFAULT_ACTIVE_ITEM_GLOW_COLOR,
+  type ItemPreviewProps,
+} from "./item-preview"
 export { ItemPreviewSkeleton } from "./item-preview-skeleton"
 export {
   ItemTypeBadge,

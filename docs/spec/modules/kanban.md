@@ -14,9 +14,10 @@ Das Standard-Tasks-Board beantwortet im Current Space die Frage:
 > sich als Nächstes?
 
 Dieselbe Komponente darf außerdem eine fachliche, read-only Gruppierung
-zeigen. Beispiel: Das Netzwerk-Board gruppiert Ressourcen nach `kind`
+zeigen. Beispiel: Eine Ressourcen-Linse gruppiert Ressourcen nach `kind`
 (`tool`, `space`, `skill`). Das macht aus `kind` weder einen Task-Status
-noch eine mutierbare Workflow-Semantik.
+noch eine mutierbare Workflow-Semantik. Das Netzwerk-Board selbst zeigt die
+echten Camp-Aufgaben als schreibbaren Standard-Workflow.
 
 ## Einordnung
 
@@ -32,10 +33,10 @@ noch eine mutierbare Workflow-Semantik.
 
 `KanbanBoard.statusField` bestimmt das Spaltenfeld und defaultet auf
 `"status"`. Ein Item ist nur dann in einer Board-Spalte verwertbar, wenn
-es kein `type: "relation"` ist und sein konfiguriertes Feld einen nicht
-leeren String trägt. Beim Default bleibt das bestehende Tasks-Verhalten
-erhalten: ein Item ohne `data.status` fällt in die erste konfigurierte
-Spalte, Legacy-Werte `todo` und `doing` werden lesend normalisiert.
+es kein `type: "relation"` ist, sein konfiguriertes Feld einen nicht-leeren
+String trägt **und der Wert einer konfigurierten Spalte entspricht**. Items
+ohne verwertbares Feld oder mit nicht konfiguriertem Wert erscheinen nicht.
+Legacy-Werte `todo` und `doing` werden lesend normalisiert.
 
 | Feld | Bedeutung im Kanban |
 |---|---|
@@ -51,7 +52,8 @@ Spalte, Legacy-Werte `todo` und `doing` werden lesend normalisiert.
 Für `statusField="status"` folgen die Default-Spalten dem `status`-Enum
 aus [task/v1](../schemas/vocab/task/v1/schema.json): `open`,
 `in-progress`, `done` (`archived` ist gültig, erscheint aber nicht in der
-Default-UI). Apps oder Spaces dürfen Spalten explizit konfigurieren.
+Default-UI und wird nicht implizit in eine andere Spalte einsortiert). Apps
+oder Spaces dürfen Spalten explizit konfigurieren.
 
 Für ein anderes `statusField` konfigurieren Apps die Spalten oder leiten
 sie aus den vorkommenden verwertbaren Werten ab. Diese Feld-Konfiguration

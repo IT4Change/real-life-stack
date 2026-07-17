@@ -23,6 +23,7 @@ Datenraum eines Space sind.
 | Person | avatarUrl (kanonisch per `person/v1`-Schema), offers/needs, DID (optional, verknüpft WoT) |
 | Event | start/end, Ort-Relation |
 | Projekt | website, repo |
+| Aufgabe | title, status, order |
 | Place | geo (lat/lng) ODER Bild-Koordinaten, Adresse |
 | Ressource | Art, Verfügbarkeit |
 
@@ -97,7 +98,7 @@ Phase (P2), nicht Gratis-Beigabe**.
 | Graph | NEU (Port des Prototyp-Renderers als Toolkit-Komponente + Storybook) | alle Typen + Relationen |
 | List | NEU, generisch (Marketplace = List über Ressourcen) | alle |
 | Grid | NEU | alle |
-| Kanban | NEU (konfigurierbares `statusField`; Netzwerk: Ressourcen nach `kind`, read-only) | Ressourcen |
+| Kanban | NEU (konfigurierbares `statusField`; Netzwerk: interaktives Aufgaben-Board über `status`/`order`) | Camp-Aufgaben |
 | Map | EXISTIERT → in P3 verdrahten; **Bild-Karten-Modus erst P3.1** (Camp-JPG, Pixel-Koordinaten, Karten-Kontext pro Space) | Place-gebunden |
 | Kalender | EXISTIERT → verdrahten | Events |
 
@@ -148,8 +149,8 @@ divergieren Item und Log bei Offline-Merges.
   Module, [00-architecture.md](00-architecture.md)/[01](01-app-composition.md));
   welche Linse ein Item zeigt, entscheidet die Feld-Komposition
   ([06](06-schema-composition.md)): Kalender bei `start`, Map bei
-  `position`, Kanban beim konfigurierten Spaltenfeld (im Netzwerk `kind`),
-  Graph über RelationRecords, List/Grid generisch. Marketplace = List über
+  `position`, Kanban beim konfigurierten Spaltenfeld (im Netzwerk die sieben
+  Aufgaben über `status`), Graph über RelationRecords, List/Grid generisch. Marketplace = List über
   Ressourcen.
 - **P3.1 — Bild-Karten-Modus:** eigener Schnitt für Camp-JPG,
   Pixel-Koordinaten und Karten-Kontext pro Space; kein Bestandteil von P3.

@@ -12,6 +12,7 @@ import {
 } from "react"
 
 import { cn } from "../../lib/utils"
+import { focusActiveItemOnce } from "../../lib/selection-focus"
 import {
   approachOpacity,
   createLayoutNodes,
@@ -85,6 +86,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     nodeTypes = DEFAULT_NODE_TYPES,
     selectedNodeId,
     onSelectedNodeChange,
+    selectionFocusBottomInset = 0,
     fitViewKey,
     className,
     ariaLabel = "Interaktiver Netzwerkgraph",
@@ -114,6 +116,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   const pointersRef = useRef(new Map<number, { x: number; y: number }>())
   const gestureRef = useRef<PointerGesture>(initialGesture())
   const focusTargetRef = useRef<FocusTarget | null>(null)
+  const lastFocusedSelectionIdRef = useRef<string | null>(null)
   const prefersReducedMotionRef = useRef(
     typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
@@ -160,6 +163,10 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     scheduleDraw()
   }, [scheduleDraw])
 
+  const focusNodeInVisibleArea = useCallback((nodeId: string) => {
+    focusNode(nodeId, { bottomInset: selectionFocusBottomInset })
+  }, [focusNode, selectionFocusBottomInset])
+
   useImperativeHandle(ref, () => ({ fitView, focusNode }), [fitView, focusNode])
 
   useEffect(() => {
@@ -191,6 +198,18 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     }
     scheduleDraw()
   }, [nodes, validEdges, scheduleDraw])
+
+  useEffect(() => {
+    const selectedNode = selectedNodeId
+      ? layoutRef.current.find((node) => node.id === selectedNodeId) ?? null
+      : null
+    lastFocusedSelectionIdRef.current = focusActiveItemOnce(
+      lastFocusedSelectionIdRef.current,
+      selectedNodeId,
+      selectedNode,
+      () => focusNodeInVisibleArea(selectedNodeId!),
+    )
+  }, [nodes, selectedNodeId, focusNodeInVisibleArea])
 
   useEffect(() => {
     if (fitViewKey === undefined) return

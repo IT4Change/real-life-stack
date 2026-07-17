@@ -1,9 +1,12 @@
+import { useEffect, useRef } from "react"
 import type { Item } from "@real-life-stack/data-interface"
 
+import { focusActiveItemOnce } from "../../lib/selection-focus"
 import { getItemPreviewAdornments, ItemPreview } from "../preview"
 
 export interface ListViewProps {
   items: readonly Item[]
+  activeItemId?: string
   onItemClick?: (item: Item) => void
 }
 
@@ -17,8 +20,20 @@ export function lensItems(items: readonly Item[]): Item[] {
  * Filtering belongs to the calling shell; this component deliberately has no
  * filter controls of its own.
  */
-export function ListView({ items, onItemClick }: ListViewProps) {
+export function ListView({ items, activeItemId, onItemClick }: ListViewProps) {
   const visibleItems = lensItems(items)
+  const activeItem = visibleItems.find(({ id }) => id === activeItemId)
+  const activeElementRef = useRef<HTMLDivElement>(null)
+  const lastFocusedItemIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    lastFocusedItemIdRef.current = focusActiveItemOnce(
+      lastFocusedItemIdRef.current,
+      activeItemId,
+      activeItem ? activeElementRef.current : null,
+      (element) => element.scrollIntoView({ block: "center" }),
+    )
+  }, [activeItem, activeItemId])
 
   if (visibleItems.length === 0) {
     return <p className="text-sm text-muted-foreground">Keine Einträge vorhanden.</p>
@@ -29,14 +44,16 @@ export function ListView({ items, onItemClick }: ListViewProps) {
       {visibleItems.map((item) => {
         const adornments = getItemPreviewAdornments(item)
         return (
-          <ItemPreview
-            key={item.id}
-            item={item}
-            author={null}
-            density="compact"
-            {...adornments}
-            onClick={onItemClick ? () => onItemClick(item) : undefined}
-          />
+          <div key={item.id} ref={item.id === activeItemId ? activeElementRef : undefined}>
+            <ItemPreview
+              item={item}
+              author={null}
+              density="compact"
+              active={item.id === activeItemId}
+              {...adornments}
+              onClick={onItemClick ? () => onItemClick(item) : undefined}
+            />
+          </div>
         )
       })}
     </section>

@@ -4,6 +4,8 @@ import type { Item } from "@real-life-stack/data-interface"
 import { describe, expect, it, vi } from "vitest"
 
 import { KanbanBoard } from "../src/components/kanban/kanban-board"
+import { kanbanItemsByColumn, defaultColumns } from "../src/components/kanban/kanban-board"
+import { focusActiveItemOnce } from "../src/lib/selection-focus"
 import { formatEventRange } from "../src/components/preview/item-meta-row"
 import { GridView } from "../src/components/lens/grid-view"
 import { ListView } from "../src/components/lens/list-view"
@@ -113,5 +115,59 @@ describe("read-only lenses", () => {
     expect(markup.indexOf('data-item-id="resource-b"')).toBeLessThan(
       markup.indexOf('data-item-id="resource-z"'),
     )
+  })
+
+  it("2: Board membership is field-based, excludes archived defaults and never includes relations", () => {
+    const grouped = kanbanItemsByColumn([
+      item("task-open", "task", { title: "Offen", status: "open" }),
+      item("task-archived", "task", { title: "Archiviert", status: "archived" }),
+      item("task-empty", "task", { title: "Kein Status" }),
+      item("relation-open", "relation", { title: "Kante", status: "open" }),
+    ], defaultColumns, "status", true)
+
+    expect(grouped.get("open")?.map(({ id }) => id)).toEqual(["task-open"])
+    expect(grouped.get("in-progress")).toEqual([])
+    expect(grouped.get("done")).toEqual([])
+  })
+
+  it("8: List, Grid and Board pass the active item to ItemPreview with the default glow", () => {
+    const items = [item("task-1", "task", { title: "Aktive Aufgabe", status: "open" })]
+    const listMarkup = renderToStaticMarkup(createElement(ListView, { items, activeItemId: "task-1" }))
+    const gridMarkup = renderToStaticMarkup(createElement(GridView, { items, activeItemId: "task-1" }))
+    const boardMarkup = renderToStaticMarkup(createElement(KanbanBoard, {
+      items,
+      activeItemId: "task-1",
+      readOnly: true,
+    }))
+
+    for (const markup of [listMarkup, gridMarkup, boardMarkup]) {
+      expect(markup).toContain('data-active-preview="true"')
+      expect(markup).toContain("box-shadow:")
+      expect(markup).toContain("#64748b")
+    }
+  })
+
+  it("8: selection focus gates by active id and does not consume a missing target", () => {
+    const scrollIntoView = vi.fn()
+    const target = { scrollIntoView }
+    const focus = (element: typeof target) => element.scrollIntoView({ block: "center" })
+
+    let gate = focusActiveItemOnce(null, "task-1", null, focus)
+    expect(gate).toBeNull()
+    expect(scrollIntoView).not.toHaveBeenCalled()
+
+    gate = focusActiveItemOnce(gate, "task-1", target, focus)
+    expect(gate).toBe("task-1")
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "center" })
+
+    gate = focusActiveItemOnce(gate, "task-1", target, focus)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    gate = focusActiveItemOnce(gate, "task-2", target, focus)
+    expect(gate).toBe("task-2")
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+
+    expect(focusActiveItemOnce(gate, null, target, focus)).toBeNull()
   })
 })

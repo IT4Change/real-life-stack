@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react"
 import type { DataInterface, Item, User } from "@real-life-stack/data-interface"
-import { hasGroups, isAuthenticatable } from "@real-life-stack/data-interface"
+import { hasGroups, isAuthenticatable, isWritable } from "@real-life-stack/data-interface"
 import {
   AdaptivePanel,
   AppShell,
@@ -54,11 +54,15 @@ import {
 import { dwebCampDetailAvatarUrl } from "./data/avatar-detail-urls"
 import { resolveNetworkAvatarSources } from "./lib/avatar-sources"
 import { projectRelationGraph } from "./lib/project-relation-graph"
+import { moveNetworkTask, networkTaskBoardItems } from "./lib/network-task-board"
 
 const GRAPH_TYPES: readonly GraphTypeDescriptor[] = [
   { id: "person", label: "Personen", color: "#2a78d6", darkColor: "#3987e5" },
   { id: "project", label: "Projekte", color: "#1baf7a", darkColor: "#199e70" },
   { id: "event", label: "Sessions", color: "#eda100", darkColor: "#c98500" },
+  { id: "task", label: "Aufgaben", color: "#8b5cf6", darkColor: "#9b7bf6" },
+  { id: "resource", label: "Ressourcen", color: "#0f9d8a", darkColor: "#14b8a6" },
+  { id: "place", label: "Orte", color: "#e05d44", darkColor: "#ef7258" },
 ]
 
 const ALL_GRAPH_TYPES = new Set(GRAPH_TYPES.map(({ id }) => id))
@@ -115,11 +119,10 @@ function nodeTitle(item: Item): string {
 }
 
 function graphTypeLabel(type: string): string {
+  if (type === "task") return "Aufgabe"
+  if (type === "resource") return "Ressource"
+  if (type === "place") return "Ort"
   return GRAPH_TYPES.find(({ id }) => id === type)?.label ?? type
-}
-
-function hasUsableKind(item: Item): boolean {
-  return item.type !== "relation" && typeof item.data.kind === "string" && item.data.kind.trim().length > 0
 }
 
 function NetworkLensIcon({ lens }: { lens: NetworkLens }) {
@@ -456,10 +459,7 @@ function NetworkShell() {
     [graph.edges, visibleNodeIds],
   )
   const selectedItem = selectedNodeId ? itemById.get(selectedNodeId) ?? null : null
-  const resourceBoardItems = useMemo(
-    () => domainItems.filter((item) => item.type === "resource" && hasUsableKind(item)),
-    [domainItems],
-  )
+  const taskBoardItems = useMemo(() => networkTaskBoardItems(domainItems), [domainItems])
   const marketplaceItems = useMemo(
     () => domainItems.filter((item) => item.type === "resource"),
     [domainItems],
@@ -487,20 +487,9 @@ function NetworkShell() {
       .slice(0, 8)
   }, [graph.nodes, query])
 
-  const focusNodeInVisibleArea = useCallback((nodeId: string) => {
-    const bottomInset = isCompact ? window.innerHeight * DETAIL_DRAWER_FRACTION : 0
-    graphRef.current?.focusNode(nodeId, { bottomInset })
-  }, [isCompact])
-
   const handleSelectedNodeChange = useCallback((nodeId: string | null) => {
     setSelectedNodeId(nodeId)
   }, [])
-
-  useEffect(() => {
-    if (!selectedNodeId) return
-    const frame = requestAnimationFrame(() => focusNodeInVisibleArea(selectedNodeId))
-    return () => cancelAnimationFrame(frame)
-  }, [focusNodeInVisibleArea, selectedNodeId])
 
   const selectNode = useCallback((nodeId: string) => {
     const node = nodeById.get(nodeId)
@@ -532,6 +521,10 @@ function NetworkShell() {
     })
     if (selectedItem?.type === type && enabledTypes.has(type)) setSelectedNodeId(null)
   }, [enabledTypes, selectedItem?.type])
+
+  const handleMoveTask = useCallback((itemId: string, newStatus: string, position: number) => {
+    void moveNetworkTask(connector, taskBoardItems, itemId, newStatus, position)
+  }, [connector, taskBoardItems])
 
   return (
     <>
@@ -603,27 +596,43 @@ function NetworkShell() {
                 selectedNodeId={selectedNodeId}
                 onSelectedNodeChange={handleSelectedNodeChange}
                 fitViewKey={currentGroup?.id ?? "none"}
+                selectionFocusBottomInset={isCompact ? window.innerHeight * DETAIL_DRAWER_FRACTION : 0}
                 ariaLabel={`Netzwerkgraph ${activeWorkspace?.name ?? ""}`}
               />
             )}
             {activeLens === "list" && (
               <div className="h-full overflow-y-auto p-4 sm:p-6">
-                <ListView items={domainItems} onItemClick={(item) => selectItem(item.id)} />
+                <div className="mx-auto max-w-6xl">
+                  <ListView
+                    items={domainItems}
+                    activeItemId={selectedNodeId ?? undefined}
+                    onItemClick={(item) => selectItem(item.id)}
+                  />
+                </div>
               </div>
             )}
             {activeLens === "grid" && (
               <div className="h-full overflow-y-auto p-4 sm:p-6">
-                <GridView items={domainItems} onItemClick={(item) => selectItem(item.id)} />
+                <div className="mx-auto max-w-6xl">
+                  <GridView
+                    items={domainItems}
+                    activeItemId={selectedNodeId ?? undefined}
+                    onItemClick={(item) => selectItem(item.id)}
+                  />
+                </div>
               </div>
             )}
             {activeLens === "kanban" && (
               <div className="h-full overflow-y-auto p-4 sm:p-6">
-                <KanbanBoard
-                  items={resourceBoardItems}
-                  statusField="kind"
-                  readOnly
-                  onItemClick={(item) => selectItem(item.id)}
-                />
+                <div className="mx-auto max-w-6xl">
+                  <KanbanBoard
+                    items={taskBoardItems}
+                    readOnly={!isWritable(connector)}
+                    activeItemId={selectedNodeId ?? undefined}
+                    onMoveItem={handleMoveTask}
+                    onItemClick={(item) => selectItem(item.id)}
+                  />
+                </div>
               </div>
             )}
             {activeLens === "marketplace" && (
@@ -633,7 +642,11 @@ function NetworkShell() {
                     <h1 className="text-xl font-semibold">Marktplatz</h1>
                     <p className="text-sm text-muted-foreground">Ressourcen aus dem aktuellen Space</p>
                   </header>
-                  <ListView items={marketplaceItems} onItemClick={(item) => selectItem(item.id)} />
+                  <ListView
+                    items={marketplaceItems}
+                    activeItemId={selectedNodeId ?? undefined}
+                    onItemClick={(item) => selectItem(item.id)}
+                  />
                 </div>
               </div>
             )}

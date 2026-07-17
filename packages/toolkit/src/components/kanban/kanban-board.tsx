@@ -1,7 +1,8 @@
-import { useState, useCallback, useMemo, type DragEvent, type ReactNode } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef, type DragEvent, type ReactNode } from "react"
 import type { Item, User, Relation } from "@real-life-stack/data-interface"
 import { Card, CardContent, CardHeader, CardTitle } from "../primitives/card"
-import { cn, getActivePanelGlow } from "../../lib/utils"
+import { cn } from "../../lib/utils"
+import { focusActiveItemOnce } from "../../lib/selection-focus"
 import { ItemPreview } from "../preview/item-preview"
 import { ItemAssignees } from "../preview/item-assignees"
 import { ItemCommentCount } from "../preview/item-comment-count"
@@ -111,7 +112,8 @@ function KanbanCard({ item, users, readOnly, isDragged, active, headerAdornment,
         author={null}
         density="compact"
         headerAdornment={headerAdornment}
-        style={active && glowColor ? getActivePanelGlow(glowColor) : undefined}
+        active={active}
+        activeGlowColor={glowColor}
         onClick={onClick ? () => onClick(item) : undefined}
         footerAdornment={
           showFooter ? (
@@ -141,13 +143,14 @@ function DropIndicator({ visible }: { visible: boolean }) {
   )
 }
 
-function itemColumnValue(item: Item, statusField: string, columns: readonly KanbanColumn[]): string | null {
+function itemColumnValue(item: Item, statusField: string): string | null {
   if (item.type === "relation") return null
 
   const value = item.data[statusField]
   if (statusField === "status") {
-    const rawStatus = typeof value === "string" ? value : columns[0]?.id
-    return rawStatus ? normalizeStatus(rawStatus) : null
+    return typeof value === "string" && value.trim().length > 0
+      ? normalizeStatus(value.trim())
+      : null
   }
 
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null
@@ -164,6 +167,29 @@ export function sortReadOnlyKanbanItems(items: readonly Item[]): Item[] {
     compareTextAsc(typeof a.data.title === "string" ? a.data.title : "", typeof b.data.title === "string" ? b.data.title : "") ||
     compareTextAsc(a.id, b.id)
   ))
+}
+
+/** Field-based membership; values outside the configured columns are omitted. */
+export function kanbanItemsByColumn(
+  items: readonly Item[],
+  columns: readonly KanbanColumn[],
+  statusField: string,
+  readOnly: boolean,
+): Map<string, Item[]> {
+  const map = new Map(columns.map((column) => [column.id, [] as Item[]]))
+  for (const item of items) {
+    const columnId = itemColumnValue(item, statusField)
+    const columnItems = columnId ? map.get(columnId) : undefined
+    if (columnItems) columnItems.push(item)
+  }
+  for (const columnItems of map.values()) {
+    if (readOnly) {
+      columnItems.splice(0, columnItems.length, ...sortReadOnlyKanbanItems(columnItems))
+    } else {
+      columnItems.sort((a, b) => ((a.data.order as number) ?? 0) - ((b.data.order as number) ?? 0))
+    }
+  }
+  return map
 }
 
 export function KanbanBoard({
@@ -186,6 +212,8 @@ export function KanbanBoard({
   const [hiddenColumnIds, setHiddenColumnIds] = useState<Set<string>>(new Set())
   const [collapsedColumnIds, setCollapsedColumnIds] = useState<Set<string>>(new Set())
   const [hiddenChipHoverColumn, setHiddenChipHoverColumn] = useState<string | null>(null)
+  const activeCardRef = useRef<HTMLDivElement>(null)
+  const lastFocusedItemIdRef = useRef<string | null>(null)
 
   const resolvedColumns = useMemo(() => {
     if (columns) return columns
@@ -193,7 +221,7 @@ export function KanbanBoard({
 
     const ids = new Set<string>()
     for (const item of items) {
-      const value = itemColumnValue(item, statusField, [])
+      const value = itemColumnValue(item, statusField)
       if (value) ids.add(value)
     }
     return [...ids].sort(compareTextAsc).map((id) => ({ id, label: id }))
@@ -306,25 +334,24 @@ export function KanbanBoard({
     setHiddenChipHoverColumn(null)
   }, [])
 
-  const itemsByColumn = useMemo(() => {
-    const map = new Map<string, Item[]>()
-    for (const col of resolvedColumns) {
-      map.set(col.id, [])
-    }
-    for (const item of items) {
-      const columnId = itemColumnValue(item, statusField, resolvedColumns)
-      const list = columnId ? map.get(columnId) : undefined
-      if (list) list.push(item)
-    }
-    for (const list of map.values()) {
-      if (readOnly) {
-        list.splice(0, list.length, ...sortReadOnlyKanbanItems(list))
-      } else {
-        list.sort((a, b) => ((a.data.order as number) ?? 0) - ((b.data.order as number) ?? 0))
-      }
-    }
-    return map
-  }, [items, readOnly, resolvedColumns, statusField])
+  const itemsByColumn = useMemo(
+    () => kanbanItemsByColumn(items, resolvedColumns, statusField, readOnly),
+    [items, readOnly, resolvedColumns, statusField],
+  )
+  const activeItemIsRendered = useMemo(
+    () => activeItemId !== undefined && [...itemsByColumn.values()]
+      .some((columnItems) => columnItems.some(({ id }) => id === activeItemId)),
+    [activeItemId, itemsByColumn],
+  )
+
+  useEffect(() => {
+    lastFocusedItemIdRef.current = focusActiveItemOnce(
+      lastFocusedItemIdRef.current,
+      activeItemId,
+      activeItemIsRendered ? activeCardRef.current : null,
+      (element) => element.scrollIntoView({ block: "center", inline: "center" }),
+    )
+  }, [activeItemId, activeItemIsRendered, itemsByColumn])
 
   const handleFloatingDrop = useCallback(
     (e: DragEvent, columnId: string) => {
@@ -489,6 +516,7 @@ export function KanbanBoard({
                 {columnItems.map((item, idx) => (
                   <div
                     key={item.id}
+                    ref={item.id === activeItemId ? activeCardRef : undefined}
                     {...(!readOnly ? {
                       onDragOver: (e: DragEvent<HTMLDivElement>) => handleCardDragOver(e, column.id, idx),
                     } : {})}

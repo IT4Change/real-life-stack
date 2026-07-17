@@ -1,6 +1,7 @@
 export {
   KanbanBoard,
   defaultColumns,
+  kanbanItemsByColumn,
   sortReadOnlyKanbanItems,
   type KanbanBoardProps,
   type KanbanColumn,
