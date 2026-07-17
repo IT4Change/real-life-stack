@@ -5,6 +5,7 @@ import {
   useGroups,
   useIsCompact,
   useItem,
+  useDraftItem,
   useItemGroupColorResolver,
   useItems,
   useMembers,
@@ -36,6 +37,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   const { data: focusedItem } = useItem(active ? (focusedId ?? "") : "")
   const panel = useModulePanel()
   const compact = useIsCompact()
+  const draftItem = useDraftItem()
   const connector = useConnector()
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
@@ -63,6 +65,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   return <ToolkitMapView items={items} itemsLoading={isLoading} inventoryKey={groupId} focusedItem={focusedItem}
     createAdapter={createAdapter} initialView={{ center: [13.4, 52.5], zoom: 6 }} viewportMode="bbox-module"
     onViewportBoundsChange={setBbox} active={active} activeItemId={panel.current?.itemId} isCompact={compact}
+    draftItem={draftItem}
     onItemClick={(item) => focusItem(item.id)} allowCreate={isWritable(connector)} onCreate={isWritable(connector) ? onCreate : undefined}
     clustering={{}} resolveGroupColor={resolveGroupColor} />
 }
