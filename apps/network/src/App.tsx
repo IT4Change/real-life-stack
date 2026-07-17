@@ -633,8 +633,8 @@ function NetworkShell() {
               />
             )}
             {deferredLens === "list" && (
-              <div className="h-full overflow-y-auto p-4 sm:p-6">
-                <div className="mx-auto max-w-6xl">
+              <div className="h-full p-4 sm:p-6">
+                <div className="mx-auto h-full min-h-0 max-w-6xl">
                   <CollectionView
                     items={domainItems}
                     activeItemId={selectedNodeId ?? undefined}
@@ -682,13 +682,14 @@ function NetworkShell() {
               </div>
             )}
             {deferredLens === "marketplace" && (
-              <div className="h-full overflow-y-auto p-4 sm:p-6">
-                <div className="mx-auto max-w-3xl space-y-4">
+              <div className="h-full p-4 sm:p-6">
+                <div className="mx-auto flex h-full min-h-0 max-w-3xl flex-col gap-4">
                   <header>
                     <h1 className="text-xl font-semibold">Marktplatz</h1>
                     <p className="text-sm text-muted-foreground">Ressourcen aus dem aktuellen Space</p>
                   </header>
                   <CollectionView
+                    className="flex-1"
                     items={marketplaceItems}
                     activeItemId={selectedNodeId ?? undefined}
                     selectionFocusVisibleArea={selectionFocusVisibleArea}

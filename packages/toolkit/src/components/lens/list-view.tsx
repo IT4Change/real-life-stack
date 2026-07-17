@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react"
-import { useWindowVirtualizer } from "@tanstack/react-virtual"
+import { useEffect, useMemo, useRef } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import type { Item } from "@real-life-stack/data-interface"
 
 import {
@@ -31,27 +31,20 @@ export function lensItems(items: readonly Item[]): Item[] {
 export function ListView({ items, activeItemId, selectionFocusVisibleArea, selectionFocusGateKey, onItemClick }: ListViewProps) {
   const visibleItems = lensItems(items)
   const lastFocusedItemIdRef = useRef<string | null>(null)
-  const sectionRef = useRef<HTMLElement>(null)
-  const [scrollMargin, setScrollMargin] = useState(0)
-  const virtualizer = useWindowVirtualizer<HTMLDivElement>({
+  const scrollElementRef = useRef<HTMLDivElement>(null)
+  const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: visibleItems.length,
     estimateSize: () => 72,
     initialRect: { width: 1024, height: 720 },
     overscan: 4,
+    getScrollElement: () => scrollElementRef.current,
     measureElement: (element) => element.getBoundingClientRect().height,
     getItemKey: (index) => visibleItems[index]?.id ?? index,
-    scrollMargin,
   })
-
-  useEffect(() => {
-    const updateScrollMargin = () => {
-      const section = sectionRef.current
-      if (section) setScrollMargin(section.getBoundingClientRect().top + window.scrollY)
-    }
-    updateScrollMargin()
-    window.addEventListener("resize", updateScrollMargin)
-    return () => window.removeEventListener("resize", updateScrollMargin)
-  }, [])
+  const selectionVirtualizer = useMemo(() => ({
+    scrollToIndex: virtualizer.scrollToIndex,
+    scrollBy: (delta: number) => virtualizer.scrollToOffset((virtualizer.scrollOffset ?? 0) + delta),
+  }), [virtualizer])
 
   useEffect(() => {
     lastFocusedItemIdRef.current = null
@@ -65,40 +58,42 @@ export function ListView({ items, activeItemId, selectionFocusVisibleArea, selec
         const itemIndex = visibleItems.findIndex(({ id }) => id === activeItemId)
         return itemIndex < 0 ? undefined : itemIndex
       })(),
-      virtualizer,
+      selectionVirtualizer,
       selectionFocusVisibleArea,
     )
-  }, [activeItemId, selectionFocusGateKey, selectionFocusVisibleArea?.bottomInset, virtualizer, visibleItems])
+  }, [activeItemId, selectionFocusGateKey, selectionFocusVisibleArea?.bottomInset, selectionVirtualizer, visibleItems])
 
   if (visibleItems.length === 0) {
     return <p className="text-sm text-muted-foreground">Keine Einträge vorhanden.</p>
   }
 
   return (
-    <section ref={sectionRef} aria-label="Listenansicht" data-virtualizer-item-count={visibleItems.length} className="relative" style={{ height: virtualizer.getTotalSize() }}>
-      {virtualizer.getVirtualItems().map((virtualItem) => {
-        const item = visibleItems[virtualItem.index]
-        if (!item) return null
-        const adornments = getItemPreviewAdornments(item)
-        return (
-          <div
-            key={item.id}
-            data-index={virtualItem.index}
-            ref={virtualizer.measureElement}
-            className="absolute left-0 w-full pb-2"
-            style={{ transform: `translateY(${virtualItem.start - scrollMargin}px)` }}
-          >
-            <ItemPreview
-              item={item}
-              author={null}
-              density="compact"
-              active={item.id === activeItemId}
-              {...adornments}
-              onClick={onItemClick ? () => onItemClick(item) : undefined}
-            />
-          </div>
-        )
-      })}
-    </section>
+    <div ref={scrollElementRef} aria-label="Listenansicht" data-virtualizer-item-count={visibleItems.length} className="h-full overflow-y-auto">
+      <section className="relative" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((virtualItem) => {
+          const item = visibleItems[virtualItem.index]
+          if (!item) return null
+          const adornments = getItemPreviewAdornments(item)
+          return (
+            <div
+              key={item.id}
+              data-index={virtualItem.index}
+              ref={virtualizer.measureElement}
+              className="absolute left-0 w-full pb-2"
+              style={{ transform: `translateY(${virtualItem.start}px)` }}
+            >
+              <ItemPreview
+                item={item}
+                author={null}
+                density="compact"
+                active={item.id === activeItemId}
+                {...adornments}
+                onClick={onItemClick ? () => onItemClick(item) : undefined}
+              />
+            </div>
+          )
+        })}
+      </section>
+    </div>
   )
 }

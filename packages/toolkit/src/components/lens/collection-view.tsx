@@ -3,6 +3,7 @@ import { Grid2X2, List } from "lucide-react"
 import type { Item } from "@real-life-stack/data-interface"
 
 import type { SelectionFocusVisibleArea } from "../../lib/selection-focus"
+import { cn } from "../../lib/utils"
 import { Button } from "../primitives/button"
 import { GridView } from "./grid-view"
 import { ListView } from "./list-view"
@@ -19,6 +20,8 @@ export interface CollectionViewProps {
   activeItemId?: string
   onItemClick?: (item: Item) => void
   defaultLayout?: CollectionLayout
+  /** Lets an app give this self-scrolling lens the remaining available height. */
+  className?: string
   /** Shell-owned obstruction below the scrollable lens, e.g. a mobile drawer. */
   selectionFocusVisibleArea?: SelectionFocusVisibleArea
 }
@@ -34,11 +37,12 @@ export function CollectionView({
   onItemClick,
   defaultLayout = "list",
   selectionFocusVisibleArea,
+  className,
 }: CollectionViewProps) {
   const [layout, setLayout] = useState<CollectionLayout>(defaultLayout)
 
   return (
-    <section aria-label="Sammlungsansicht" className="space-y-4">
+    <section aria-label="Sammlungsansicht" className={cn("flex h-full min-h-0 flex-col gap-4", className)}>
       <div role="group" aria-label="Darstellung" className="flex justify-end gap-1">
         <Button
           type="button"
@@ -61,25 +65,27 @@ export function CollectionView({
           <Grid2X2 className="size-4" />
         </Button>
       </div>
-      {layout === "list" ? (
-        <ListView
-          key={layout}
-          items={items}
-          activeItemId={activeItemId}
-          selectionFocusVisibleArea={selectionFocusVisibleArea}
-          selectionFocusGateKey={layout}
-          onItemClick={onItemClick}
-        />
-      ) : (
-        <GridView
-          key={layout}
-          items={items}
-          activeItemId={activeItemId}
-          selectionFocusVisibleArea={selectionFocusVisibleArea}
-          selectionFocusGateKey={layout}
-          onItemClick={onItemClick}
-        />
-      )}
+      <div className="min-h-0 flex-1">
+        {layout === "list" ? (
+          <ListView
+            key={layout}
+            items={items}
+            activeItemId={activeItemId}
+            selectionFocusVisibleArea={selectionFocusVisibleArea}
+            selectionFocusGateKey={layout}
+            onItemClick={onItemClick}
+          />
+        ) : (
+          <GridView
+            key={layout}
+            items={items}
+            activeItemId={activeItemId}
+            selectionFocusVisibleArea={selectionFocusVisibleArea}
+            selectionFocusGateKey={layout}
+            onItemClick={onItemClick}
+          />
+        )}
+      </div>
     </section>
   )
 }

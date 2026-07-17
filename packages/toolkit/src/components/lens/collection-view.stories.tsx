@@ -37,4 +37,7 @@ const thousandItems: Item[] = Array.from({ length: 1000 }, (_, index) => ({
 }))
 
 /** Deterministic large fixture proving that both collection densities virtualize. */
-export const ThousandItems: Story = { args: { items: thousandItems } }
+export const ThousandItems: Story = {
+  args: { items: thousandItems },
+  decorators: [(Story) => <div className="h-[36rem]"><Story /></div>],
+}
