@@ -133,16 +133,7 @@ Binding Space Module specs live in [docs/spec/modules/](docs/spec/modules/). The
 
 ---
 
-## Team
-
-The project is developed by a team with many years of experience building open-source community tools:
-
-- **Anton Tranelis** – project coordination, system architecture, full stack
-- **Ulf Gebhardt** – full stack, DevOps, infrastructure
-- **Sebastian Stein** – frontend development, UX/UI
-- **Mathias Lenz** – quality assurance, testing, documentation
-
-### Reference Projects
+## Reference Projects
 
 - [Utopia Map](https://github.com/utopia-os/utopia-map/) – map platform for local networking
 - [ocelot.social](https://github.com/Ocelot-Social-Community/ocelot.social) – social network for communities
