@@ -60,6 +60,7 @@ export function ListView({ items, activeItemId, selectionFocusVisibleArea, selec
           <div
             key={item.id}
             ref={item.id === activeItemId ? activeElementRef : undefined}
+            className="[content-visibility:auto] [contain-intrinsic-block-size:auto_72px]"
             style={item.id === activeItemId ? { scrollMarginBlockEnd } : undefined}
           >
             <ItemPreview

@@ -52,6 +52,7 @@ export function GridView({ items, activeItemId, selectionFocusVisibleArea, selec
           <div
             key={item.id}
             ref={item.id === activeItemId ? activeElementRef : undefined}
+            className="[content-visibility:auto] [contain-intrinsic-block-size:auto_140px]"
             style={item.id === activeItemId ? { scrollMarginBlockEnd } : undefined}
           >
             <ItemPreview

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ExternalLink,
   Filter,
@@ -413,7 +413,13 @@ function NetworkShell() {
   } = useRelationRecords()
   const graphRef = useRef<GraphViewHandle>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [activeLens, setActiveLens] = useState<NetworkLens>("graph")
+  const [activeLens, setActiveLensState] = useState<NetworkLens>("graph")
+  // Linsen-Wechsel als Transition: der Klick (Button-Zustand) bleibt
+  // sofort responsiv, der schwere Mount der Ziel-Linse (hunderte Karten,
+  // MapLibre-Boot, Graph-Sim) rendert nachgelagert.
+  const setActiveLens = useCallback((lens: NetworkLens) => {
+    startTransition(() => setActiveLensState(lens))
+  }, [])
   const [query, setQuery] = useState("")
   const [filterOpen, setFilterOpen] = useState(false)
   const [enabledTypes, setEnabledTypes] = useState(() => new Set(ALL_GRAPH_TYPES))
