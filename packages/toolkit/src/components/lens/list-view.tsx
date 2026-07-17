@@ -1,6 +1,6 @@
 import type { Item } from "@real-life-stack/data-interface"
 
-import { ItemPreview } from "../preview/item-preview"
+import { getItemPreviewAdornments, ItemPreview } from "../preview"
 
 export interface ListViewProps {
   items: readonly Item[]
@@ -26,15 +26,19 @@ export function ListView({ items, onItemClick }: ListViewProps) {
 
   return (
     <section aria-label="Listenansicht" className="space-y-2">
-      {visibleItems.map((item) => (
-        <ItemPreview
-          key={item.id}
-          item={item}
-          author={null}
-          density="compact"
-          onClick={onItemClick ? () => onItemClick(item) : undefined}
-        />
-      ))}
+      {visibleItems.map((item) => {
+        const adornments = getItemPreviewAdornments(item)
+        return (
+          <ItemPreview
+            key={item.id}
+            item={item}
+            author={null}
+            density="compact"
+            {...adornments}
+            onClick={onItemClick ? () => onItemClick(item) : undefined}
+          />
+        )
+      })}
     </section>
   )
 }

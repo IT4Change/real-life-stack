@@ -97,7 +97,8 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 
 - [x] **lens-no-local-filter-toolbar**: List-, Grid- und read-only-Kanban-Linsen bringen keine eigene Filter-Toolbar mit
 - [x] **lens-read-only-no-drag**: Read-only-Kanban-Karten bieten keine Drag- oder Drop-Affordance
-- [x] **grid-type-specific-cards**: Rasterkarten zeigen Person, Projekt, Ressource und Event mit ihren jeweils verwertbaren Feldern
+- [x] **lens-item-preview-composition**: List/Grid-Karten verwenden ausschließlich ItemPreview (List compact, Grid comfortable) plus Preview-Adornments
+- [x] **grid-type-specific-cards**: Geteilte Preview-Adornments zeigen Person, Projekt, Ressource und Event mit ihren jeweils verwertbaren Feldern; sonstige Typen behalten einen Typ-Badge
 
 ---
 
@@ -168,3 +169,4 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 | 2026-01-10 | Button-Schatten deaktiviert (shadow-button: none) |
 | 2026-07-16 | Adaptive-Panel-Stacking und weiche Graph-Fokus-/Hover-Übergänge dokumentiert |
 | 2026-07-17 | Read-only-Linsen ohne lokale Filter- oder Drag-Affordances dokumentiert |
+| 2026-07-17 | Linsen-Karten auf ItemPreview plus geteilte Typ-Adornments zurückgeführt |

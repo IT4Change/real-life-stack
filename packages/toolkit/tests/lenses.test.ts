@@ -4,6 +4,7 @@ import type { Item } from "@real-life-stack/data-interface"
 import { describe, expect, it, vi } from "vitest"
 
 import { KanbanBoard } from "../src/components/kanban/kanban-board"
+import { formatEventRange } from "../src/components/preview/item-meta-row"
 import { GridView } from "../src/components/lens/grid-view"
 import { ListView } from "../src/components/lens/list-view"
 
@@ -25,25 +26,32 @@ describe("read-only lenses", () => {
     expect(markup).toContain("Lötstation")
     expect(markup).not.toContain("Unsichtbare Kante")
     expect(markup).not.toContain("<input")
+    expect(markup.match(/data-preview-density="compact"/g)).toHaveLength(2)
   })
 
-  it("1: GridView leaves relation records out while rendering type-specific cards", () => {
+  it("1: GridView leaves relation records out while composing comfortable ItemPreview adornments", () => {
     const items = [
       item("person-ada", "person", { displayName: "Ada Lovelace", avatarUrl: "https://example.test/ada.png" }),
       item("project-rls", "project", { title: "Real Life Stack", website: "https://real-life-stack.org", repo: "https://github.com/real-life-org/real-life-stack" }),
       item("resource-1", "resource", { title: "Lötstation", kind: "tool", availability: "frei nutzbar" }),
       item("event-1", "event", { title: "Eröffnung", start: "2026-07-08T19:00:00+02:00" }),
+      item("initiative-1", "initiative", { title: "Offene Werkstatt" }),
       item("relation-1", "relation", { title: "Unsichtbare Kante" }),
     ]
 
     const markup = renderToStaticMarkup(createElement(GridView, { items }))
 
     expect(markup).toContain("Ada Lovelace")
+    expect(markup).toContain('data-slot="avatar"')
+    expect(markup).toContain(">AL<")
     expect(markup).toContain("Website: https://real-life-stack.org")
     expect(markup).toContain("Repo: https://github.com/real-life-org/real-life-stack")
+    expect(markup).toContain(">tool<")
     expect(markup).toContain("frei nutzbar")
-    expect(markup).toContain("Start: 2026-07-08T19:00:00+02:00")
+    expect(markup).toContain(formatEventRange("2026-07-08T19:00:00+02:00"))
+    expect(markup).toContain(">initiative<")
     expect(markup).not.toContain("Unsichtbare Kante")
+    expect(markup.match(/data-preview-density="comfortable"/g)).toHaveLength(5)
   })
 
   it("1/2/6: read-only resource board groups usable kind values only and exposes no drag action", () => {
@@ -74,6 +82,7 @@ describe("read-only lenses", () => {
     expect(markup).not.toContain("Ohne Art")
     expect(markup).not.toContain("Unsichtbare Kante")
     expect(markup).not.toContain("draggable")
+    expect(markup.match(/data-preview-density="compact"/g)).toHaveLength(3)
     expect(onMoveItem).not.toHaveBeenCalled()
     expect(onExternalDrop).not.toHaveBeenCalled()
   })

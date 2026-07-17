@@ -12,3 +12,11 @@ export { ItemMetaRow, formatEventRange, type ItemMetaRowProps } from "./item-met
 export { ItemCommentCount, type ItemCommentCountProps } from "./item-comment-count"
 export { ItemAssignees, type ItemAssigneesProps } from "./item-assignees"
 export { ItemTimeRange, formatTimeRange, type ItemTimeRangeProps } from "./item-time-range"
+export {
+  ItemProfileMeta,
+  ItemProjectMeta,
+  ItemResourceMeta,
+  getItemPreviewAdornments,
+  type ItemPreviewAdornments,
+  type ItemTypeMetaProps,
+} from "./item-type-meta"

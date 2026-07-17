@@ -1,7 +1,7 @@
 "use client"
 
 import type { ComponentType } from "react"
-import { Calendar, CheckSquare, MapPin, User } from "lucide-react"
+import { Calendar, CheckSquare, MapPin, Shapes, User } from "lucide-react"
 import { cn } from "../../lib/utils"
 
 /**
@@ -23,6 +23,8 @@ export interface ItemTypeBadgeProps {
   type: string
   /** Override or extend the type → presentation registry. */
   config?: Record<string, ItemTypeBadgeConfig>
+  /** Show a neutral badge with the raw type when no registry entry exists. */
+  fallback?: boolean
   className?: string
 }
 
@@ -55,9 +57,15 @@ const DEFAULT_CONFIG: Record<string, ItemTypeBadgeConfig> = {
   },
 }
 
-export function ItemTypeBadge({ type, config, className }: ItemTypeBadgeProps) {
+export function ItemTypeBadge({ type, config, fallback = false, className }: ItemTypeBadgeProps) {
   const merged = config ? { ...DEFAULT_CONFIG, ...config } : DEFAULT_CONFIG
-  const cfg = merged[type]
+  const cfg = merged[type] ?? (fallback
+    ? {
+        icon: Shapes,
+        label: type,
+        className: "bg-muted text-muted-foreground border-border",
+      }
+    : undefined)
   if (!cfg) return null
   const Icon = cfg.icon
   return (

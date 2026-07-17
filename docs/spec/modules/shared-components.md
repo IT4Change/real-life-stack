@@ -302,6 +302,8 @@ interface ItemTypeBadgeProps {
   type: string
   /** Override or extend the type → presentation registry. */
   config?: Record<string, ItemTypeBadgeConfig>
+  /** Show a neutral raw-type badge when no registry entry exists. */
+  fallback?: boolean
   className?: string
 }
 interface ItemTypeBadgeConfig {
@@ -313,6 +315,10 @@ interface ItemTypeBadgeConfig {
 
 Default-Registry: `event`, `task`, `place`, `person`. Unbekannte oder Standard-Typen (`post`, `comment`, `reaction`) rendern `null` — Modul-spezifische Typen können per `config`-Prop ergänzt werden.
 
+Mit `fallback` bleibt ein unbekannter Typ als neutraler Rohwert sichtbar. Das
+ist für generische Linsen gedacht, die keinen Domain-Typ stillschweigend
+ausblenden dürfen.
+
 #### `ItemMetaRow`
 
 **Zweck:** Inline-Zeile mit Date-Hint und Address. Belongs in `metaAdornment`. Rendert `null`, wenn weder `data.start` noch `data.address` vorhanden sind.
@@ -323,6 +329,22 @@ interface ItemMetaRowProps {
   className?: string
 }
 ```
+
+#### Type-spezifische Preview-Metadaten
+
+**Zweck:** Kleine ergänzende Meta-Adornments für Felder, die nicht in den
+generischen ItemPreview-Body gehören. Sie liegen im `preview/`-Ordner, damit
+List-, Grid-, Feed- und Board-Caller keine eigene Kartenfläche bauen.
+
+- `ItemProfileMeta` — Avatar + `displayName` für `person`.
+- `ItemProjectMeta` — `website` und `repo` für `project`.
+- `ItemResourceMeta` — `kind` und `availability` für `resource`.
+- Events verwenden den bestehenden `ItemMetaRow` für `start`/`end`.
+
+`getItemPreviewAdornments(item)` ordnet diese Bausteine den
+`ItemPreview`-Slots zu und verwendet für sonstige Typen `ItemTypeBadge` mit
+`fallback`. Read-only-Linsen komponieren ausschließlich diese Slots und
+`ItemPreview`; sie führen kein eigenes Card-Markup.
 
 Plus eine exportierte Format-Funktion `formatEventRange(start, end?)` für Caller, die den String außerhalb der Inline-Zeile brauchen (z.B. Tooltip, Tabelle).
 

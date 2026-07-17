@@ -142,6 +142,7 @@ export function ItemPreview({
 
   return (
     <article
+      data-preview-density={density}
       className={cn(
         "rounded-lg border bg-card transition-all",
         interactive &&

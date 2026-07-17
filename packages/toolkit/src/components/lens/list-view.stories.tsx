@@ -12,6 +12,13 @@ const meta: Meta<typeof ListView> = {
   title: "RLS/Module Components/Lenses/ListView",
   component: ListView,
   tags: ["autodocs"],
+  parameters: {
+    docs: {
+      description: {
+        component: "Read-only lens composed from compact `ItemPreview` cards and shared type metadata adornments.",
+      },
+    },
+  },
 }
 
 export default meta

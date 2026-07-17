@@ -105,11 +105,12 @@ Mutations-Callbacks ein.
 | Spec-Begriff | Code | Storybook | Daten-/Capability-Annahme |
 |---|---|---|---|
 | Generische Listen-Linse | `components/lens/list-view.tsx` | `RLS/Module Components/Lenses/ListView` | alle Nicht-Relation-Items; kein lokaler Filter |
-| Typspezifische Raster-Linse | `components/lens/grid-view.tsx` | `RLS/Module Components/Lenses/GridView` | alle Nicht-Relation-Items; Guards für Person, Projekt, Ressource und Event |
+| Generische Linsen-Karte | `components/preview/item-preview.tsx` + `preview/item-type-meta.tsx` | Linsen-Stories | ItemPreview: List kompakt, Grid komfortabel; Typ-Meta für Person, Projekt, Ressource und Event sowie Typ-Badge-Fallback |
+| Typspezifische Raster-Linse | `components/lens/grid-view.tsx` | `RLS/Module Components/Lenses/GridView` | alle Nicht-Relation-Items; komponiert die geteilten Preview-Adornments |
 
-Beide Linsen sind presentationale, read-only Module Components. Die
-App-Shell besitzt Filterzustand und die App entscheidet über das
-Item-Click-Ziel.
+Beide Linsen sind presentationale, read-only Module Components und
+komponieren keine eigene Card-Fläche. Die App-Shell besitzt Filterzustand und
+die App entscheidet über das Item-Click-Ziel.
 
 Die Kanban-Komponenten stellen ihren eigenen Container-Query-Kontext bereit, damit sie auch außerhalb der App Shell, z.B. in Storybook oder eingebetteten Modulflächen, korrekt zwischen mobiler und breiter Darstellung wechseln.
 
