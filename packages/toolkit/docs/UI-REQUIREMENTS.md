@@ -93,6 +93,18 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 
 ---
 
+## Linsen
+
+- [x] **lens-no-local-filter-toolbar**: List-, Grid- und read-only-Kanban-Linsen bringen keine eigene Filter-Toolbar mit
+- [x] **lens-read-only-no-drag**: Read-only-Kanban-Karten bieten keine Drag- oder Drop-Affordance
+- [x] **lens-item-preview-composition**: List/Grid-Karten verwenden ausschließlich ItemPreview (List compact, Grid comfortable) plus Preview-Adornments
+- [x] **grid-type-specific-cards**: Geteilte Preview-Adornments zeigen Person, Projekt, Ressource und Event mit ihren jeweils verwertbaren Feldern; sonstige Typen behalten einen Typ-Badge
+- [x] **lens-selection-is-shell-state**: `activeItemId` bleibt Eigentum der App Shell bzw. des ModulePanels; ein Linsenwechsel verliert die Selektion nicht
+- [x] **lens-active-item-highlight**: Jede Linse hebt das aktive Item hervor: Karten-Linsen über `ItemPreview.active` mit neutralem Default-Glow (optional pro Caller überschreibbar), Map/Graph über ihre bestehenden Selected-Stile
+- [x] **lens-active-item-center-once**: Jede Linse zentriert das aktive, gerenderte Item einmal pro `activeItemId`; der Gate-Key wird bei fehlendem Ziel nicht verbraucht und kapert danach keinen User-Scroll
+
+---
+
 ## Dropdown-Menüs
 
 - [x] **dropdown-cursor-pointer**: Alle Items zeigen `cursor: pointer`
@@ -159,3 +171,6 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 | 2026-01-10 | Accent auf Blau-Familie umgestellt (keine Orange-Hover mehr) |
 | 2026-01-10 | Button-Schatten deaktiviert (shadow-button: none) |
 | 2026-07-16 | Adaptive-Panel-Stacking und weiche Graph-Fokus-/Hover-Übergänge dokumentiert |
+| 2026-07-17 | Read-only-Linsen ohne lokale Filter- oder Drag-Affordances dokumentiert |
+| 2026-07-17 | Linsen-Karten auf ItemPreview plus geteilte Typ-Adornments zurückgeführt |
+| 2026-07-17 | Selektionskontinuität für Linsen: Shell-State, gemeinsamer Highlight- und Einmal-Zentrierungs-Vertrag |

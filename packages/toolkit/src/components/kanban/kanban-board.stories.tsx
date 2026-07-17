@@ -295,3 +295,15 @@ export const ManyColumns: Story = {
     )
   },
 }
+
+export const ResourcesByKindReadOnly: Story = {
+  args: {
+    readOnly: true,
+    statusField: "kind",
+    items: [
+      { id: "resource-loetstation", type: "resource", createdAt: "2026-07-08T10:00:00.000Z", createdBy: "seed", data: { title: "Lötstation", kind: "tool", availability: "frei nutzbar" } },
+      { id: "resource-birch-salon", type: "resource", createdAt: "2026-07-08T11:00:00.000Z", createdBy: "seed", data: { title: "Workshop-Raum Birch Salon", kind: "space", availability: "buchbar" } },
+      { id: "resource-facilitation", type: "resource", createdAt: "2026-07-08T12:00:00.000Z", createdBy: "seed", data: { title: "Facilitation-Support", kind: "skill", availability: "auf Anfrage" } },
+    ],
+  },
+}

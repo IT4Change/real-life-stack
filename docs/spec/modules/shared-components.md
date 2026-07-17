@@ -268,6 +268,10 @@ interface ItemPreviewProps {
   footerAdornment?: ReactNode
   /** Layout-Density (siehe unten). Default `comfortable`. */
   density?: ItemPreviewDensity
+  /** Hebt eine Karten-Linse als aktuell selektiert hervor. */
+  active?: boolean
+  /** Optionaler `#rrggbb`-Override für den Active-Glow; Default ist neutral. */
+  activeGlowColor?: string
   className?: string
 }
 ```
@@ -282,6 +286,13 @@ interface ItemPreviewProps {
 **Slot-Konvention:** Module liefern modul-spezifische Cues über die drei Slots. Jeder Slot rendert **unabhängig vom Content** der Card — eine Card ohne Author kann trotzdem ein `headerAdornment` haben, eine Card ohne Title kann trotzdem ein `metaAdornment` zeigen. Slots und Datenfelder sind orthogonal. Adornments, die eigene Buttons enthalten, müssen `event.stopPropagation()` aufrufen, damit ein Button-Click nicht den Card-Click mit auslöst.
 
 **Keyboard-Aktivierung:** Wenn `onClick` gesetzt ist, exponiert die Card `role="button"`, `tabIndex={0}` und reagiert auf Enter und Space wie ein Button — Card-Click ist damit auch ohne Maus erreichbar.
+
+**Kartenflächen-MUSS:** Jede Kartenfläche in List, Grid, Board, Feed, Detail
+oder einer künftigen Linse MUSS `ItemPreview` plus dessen Adornments
+komponieren; eigene parallele Card-Markups sind nicht zulässig. Bei
+Shell-Selektion setzt eine Karten-Linse `active` auf dem korrespondierenden
+Preview. `active` nutzt `getActivePanelGlow` mit neutraler Default-Farbe;
+ein Caller darf per `activeGlowColor` z. B. seine Gruppenfarbe weiterreichen.
 
 **Daten-Pfad:** `useItemTags(item)` intern. Author-Resolution liegt beim Caller (`useItemAuthor` empfohlen).
 
@@ -302,6 +313,8 @@ interface ItemTypeBadgeProps {
   type: string
   /** Override or extend the type → presentation registry. */
   config?: Record<string, ItemTypeBadgeConfig>
+  /** Show a neutral raw-type badge when no registry entry exists. */
+  fallback?: boolean
   className?: string
 }
 interface ItemTypeBadgeConfig {
@@ -313,6 +326,10 @@ interface ItemTypeBadgeConfig {
 
 Default-Registry: `event`, `task`, `place`, `person`. Unbekannte oder Standard-Typen (`post`, `comment`, `reaction`) rendern `null` — Modul-spezifische Typen können per `config`-Prop ergänzt werden.
 
+Mit `fallback` bleibt ein unbekannter Typ als neutraler Rohwert sichtbar. Das
+ist für generische Linsen gedacht, die keinen Domain-Typ stillschweigend
+ausblenden dürfen.
+
 #### `ItemMetaRow`
 
 **Zweck:** Inline-Zeile mit Date-Hint und Address. Belongs in `metaAdornment`. Rendert `null`, wenn weder `data.start` noch `data.address` vorhanden sind.
@@ -323,6 +340,22 @@ interface ItemMetaRowProps {
   className?: string
 }
 ```
+
+#### Type-spezifische Preview-Metadaten
+
+**Zweck:** Kleine ergänzende Meta-Adornments für Felder, die nicht in den
+generischen ItemPreview-Body gehören. Sie liegen im `preview/`-Ordner, damit
+List-, Grid-, Feed- und Board-Caller keine eigene Kartenfläche bauen.
+
+- `ItemProfileMeta` — Avatar + `displayName` für `person`.
+- `ItemProjectMeta` — `website` und `repo` für `project`.
+- `ItemResourceMeta` — `kind` und `availability` für `resource`.
+- Events verwenden den bestehenden `ItemMetaRow` für `start`/`end`.
+
+`getItemPreviewAdornments(item)` ordnet diese Bausteine den
+`ItemPreview`-Slots zu und verwendet für sonstige Typen `ItemTypeBadge` mit
+`fallback`. Read-only-Linsen komponieren ausschließlich diese Slots und
+`ItemPreview`; sie führen kein eigenes Card-Markup.
 
 Plus eine exportierte Format-Funktion `formatEventRange(start, end?)` für Caller, die den String außerhalb der Inline-Zeile brauchen (z.B. Tooltip, Tabelle).
 

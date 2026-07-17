@@ -23,6 +23,7 @@ Datenraum eines Space sind.
 | Person | avatarUrl (kanonisch per `person/v1`-Schema), offers/needs, DID (optional, verknüpft WoT) |
 | Event | start/end, Ort-Relation |
 | Projekt | website, repo |
+| Aufgabe | title, status, order |
 | Place | geo (lat/lng) ODER Bild-Koordinaten, Adresse |
 | Ressource | Art, Verfügbarkeit |
 
@@ -97,8 +98,8 @@ Phase (P2), nicht Gratis-Beigabe**.
 | Graph | NEU (Port des Prototyp-Renderers als Toolkit-Komponente + Storybook) | alle Typen + Relationen |
 | List | NEU, generisch (Marketplace = List über Ressourcen) | alle |
 | Grid | NEU | alle |
-| Kanban | NEU (Statusfeld) | Projekte/Ressourcen |
-| Map | EXISTIERT → verdrahten; NEU: **Bild-Karten-Modus** (Camp-JPG, Pixel-Koordinaten, Karten-Kontext pro Space) | Place-gebunden |
+| Kanban | NEU (konfigurierbares `statusField`; Netzwerk: interaktives Aufgaben-Board über `status`/`order`) | Camp-Aufgaben |
+| Map | EXISTIERT → in P3 verdrahten; **Bild-Karten-Modus erst P3.1** (Camp-JPG, Pixel-Koordinaten, Karten-Kontext pro Space) | Place-gebunden |
 | Kalender | EXISTIERT → verdrahten | Events |
 
 Prinzip: Views konsumieren Hooks (`useItems`, später `useRelations`),
@@ -142,14 +143,17 @@ divergieren Item und Log bei Offline-Merges.
   Zeitpunkt nicht, weil P1a keine Nutzdaten-Editoren hat.
 - **P2 — Mirror/Bridge:** Multi-Space mit explizitem E2EE-/Konfliktmodell.
 - **P3 — Linsen:** alle sechs Sichtweisen auf denselben Item-Bestand
-  vervollständigen — List, Grid, Kanban neu; Map (inkl. Bild-Modus) und
+  vervollständigen — List, Grid, Kanban neu; Map ohne Bild-Modus und
   Kalender verdrahten; Graph existiert. Eine **Linse** ist eine
   austauschbare Sichtweise auf dieselben Daten (technisch ein Space
   Module, [00-architecture.md](00-architecture.md)/[01](01-app-composition.md));
   welche Linse ein Item zeigt, entscheidet die Feld-Komposition
   ([06](06-schema-composition.md)): Kalender bei `start`, Map bei
-  `position`, Kanban bei `status`, Graph über RelationRecords, List/Grid
-  generisch. Marketplace = List über Ressourcen.
+  `position`, Kanban beim konfigurierten Spaltenfeld (im Netzwerk die sieben
+  Aufgaben über `status`), Graph über RelationRecords, List/Grid generisch. Marketplace = List über
+  Ressourcen.
+- **P3.1 — Bild-Karten-Modus:** eigener Schnitt für Camp-JPG,
+  Pixel-Koordinaten und Karten-Kontext pro Space; kein Bestandteil von P3.
 - **P4 — AppShell:** Suche und Filter als **Shell-Zustand über der
   aktiven Linse** (eine Filtermenge, jede Linse konsumiert sie,
   Linsenwechsel behält den Filter — heutiger `ItemListFilter` ist

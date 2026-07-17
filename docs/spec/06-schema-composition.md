@@ -197,7 +197,11 @@ Module aktivieren ein Item primär **feldbasiert** (das benötigte Feld ist in `
 
 - Map zeigt Items mit `data.position` (= entspricht `hasSchema: ['…/place/v1']` falls Items das Vocab korrekt deklarieren)
 - Calendar zeigt Items mit `data.start` (= entspricht `hasSchema: ['…/event/v1']`)
-- Kanban zeigt Items mit `data.status` (= entspricht `hasSchema: ['…/task/v1']`)
+- Kanban zeigt Nicht-Relation-Items mit einem verwertbaren konfigurierten
+  `data[statusField]`, dessen Wert einer konfigurierten Spalte entspricht;
+  beim Standard `statusField: 'status'` entspricht das `hasSchema:
+  ['…/task/v1']` für Task-Items. `archived` gehört nicht zu den Default-
+  Spalten und erscheint daher ohne explizite Konfiguration nicht.
 
 Da `@context`-Konsistenz aktuell nicht erzwingbar ist, **müssen Module den Feldfilter verwenden** und dürfen `hasSchema` nur als zusätzliche Optimierung anbieten.
 
@@ -209,7 +213,7 @@ Da `@context`-Konsistenz aktuell nicht erzwingbar ist, **müssen Module den Feld
 |---|---|---|---|
 | Map | `hasField: ['position']` | `hasSchema: ['…/place/v1']` | alles räumlich Darstellbare |
 | Calendar | `hasField: ['start']` | `hasSchema: ['…/event/v1']` | alles zeitlich Darstellbares |
-| Kanban | `hasField: ['status']` | `hasSchema: ['…/task/v1']` | alles als Aufgabe Darstellbares |
+| Kanban | konfiguriertes `hasField: [statusField]` (Default: `['status']`) plus Spaltenwert-Prüfung | bei Default `hasSchema: ['…/task/v1']`; bei anderem Feld keine Task-Vokabular-Annahme | Nicht-Relation-Items mit verwertbarem konfiguriertem Spaltenfeld; `archived` nur bei expliziter Spalte |
 | Feed | kein Filter / `hasSchema: ['…/base/v1']` | alles |
 | Contacts | `hasSchema: ['…/person/v1']` | Personen-Profile |
 

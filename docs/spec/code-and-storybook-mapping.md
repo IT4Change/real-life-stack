@@ -21,6 +21,7 @@ Der Toolkit-Code muss die RLS-Taxonomie nicht in jedem Ordnernamen exakt spiegel
 | App Shell | `packages/toolkit/src/components/layout/`, `auth/`, `contacts/`, `debug/` | Navbar, BottomNav, WorkspaceSwitcher, UserMenu, ProfileDialog, ContactsDialog, VerificationDialog, DebugDashboard |
 | Space Modules | `packages/toolkit/src/components/feed/`, `kanban/`, `calendar/`, `map/` | Feed, Kanban / Tasks, Calendar, Map |
 | Module Components | geteilte Top-Level-Ordner (`comments/`, `reactions/`, `composer/`, `detail/`, `preview/`) oder Unterordner innerhalb von Space Modules | ItemPreview + Adornments (ItemTypeBadge, ItemMetaRow, ItemCommentCount), ContentComposer, ReactionBar, CommentSection, ItemDetailPanel, KanbanCard, KanbanToolbar |
+| Read-only Lenses | `packages/toolkit/src/components/lens/` | ListView, GridView; Apps kombinieren sie mit ihren Presets |
 | Primitives | `packages/toolkit/src/components/primitives/` | Button, Card, Dialog, Input, Tabs |
 | Hooks | `packages/toolkit/src/hooks/` | useItems, useComments, useReactions, useConfirmations |
 | Logik-Helfer (modulübergreifend) | `packages/toolkit/src/lib/` | applyItemListFilter (Display-Filter), parseEventDate / isAllDayDate |
@@ -89,10 +90,29 @@ Kanban / Tasks ist das erste abgerundete Referenzmodul für diese Mapping-Regeln
 | Spec-Begriff | Code | Storybook | Daten-/Capability-Annahme |
 |---|---|---|---|
 | Kanban / Tasks Space Module | `packages/toolkit/src/components/kanban/kanban-module.stories.tsx` | `RLS/Space Modules/Kanban/Overview` | Items im Current Space mit Kanban-kompatiblem `data.status` |
-| Board-Layout | `kanban-board.tsx` | `RLS/Space Modules/Kanban/Board` | `Item.data.status`, `Item.data.order`, optional `relations: assignedTo` und `users` |
+| Board-Layout | `kanban-board.tsx` | `RLS/Space Modules/Kanban/Board` | `Item.data[statusField]` (Default `status`), schreibbar zusätzlich `Item.data.order`, optional `relations: assignedTo` und `users` |
 | Filter/Werkzeuge | `kanban-toolbar.tsx` | `RLS/Space Modules/Kanban/Toolbar` | Items, optionale `users`, optionaler `currentUserId`; Mutationen werden über Callbacks/Capabilities angebunden |
 | Task-Erstellung/Bearbeitung | `kanban-task-create.tsx` | Modulkomponente; in späteren Stories direkt prüfbar | `ItemWriter` für persistente Erstellung/Bearbeitung; App entscheidet über erlaubte Felder |
 | Kartendetail | `kanban-card-detail.tsx` | Modulkomponente; in späteren Stories direkt prüfbar | Item-Daten, optional `users`, Tags, Status und Assignee-Relations |
+
+`KanbanBoard` akzeptiert zusätzlich `statusField` (Default `status`) und
+`readOnly`. Eine read-only Ressourcen-Projektion mit `statusField="kind"`
+ist in der Board-Story abgebildet; sie bindet weder Toolbar noch
+Mutations-Callbacks ein.
+
+## Linsen-Referenzmapping
+
+| Spec-Begriff | Code | Storybook | Daten-/Capability-Annahme |
+|---|---|---|---|
+| Generische Listen-Linse | `components/lens/list-view.tsx` | `RLS/Module Components/Lenses/ListView` | alle Nicht-Relation-Items; kein lokaler Filter; `activeItemId?` aus der Shell |
+| Generische Linsen-Karte | `components/preview/item-preview.tsx` + `preview/item-type-meta.tsx` | Linsen-Stories | ItemPreview: List kompakt, Grid komfortabel; `active` nutzt den geteilten Glow; Typ-Meta für Person, Projekt, Ressource und Event sowie Typ-Badge-Fallback |
+| Typspezifische Raster-Linse | `components/lens/grid-view.tsx` | `RLS/Module Components/Lenses/GridView` | alle Nicht-Relation-Items; komponiert die geteilten Preview-Adornments; `activeItemId?` aus der Shell |
+
+Beide Linsen sind presentationale, read-only Module Components und
+komponieren keine eigene Card-Fläche. Die App-Shell besitzt Filter- und
+Selektionszustand; `activeItemId` überlebt den Linsenwechsel. Karten-Linsen
+heben den passenden `ItemPreview` hervor und zentrieren ihn einmal pro
+aktiver ID, ohne bei späteren Renders den User-Scroll zu übernehmen.
 
 Die Kanban-Komponenten stellen ihren eigenen Container-Query-Kontext bereit, damit sie auch außerhalb der App Shell, z.B. in Storybook oder eingebetteten Modulflächen, korrekt zwischen mobiler und breiter Darstellung wechseln.
 

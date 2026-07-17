@@ -1,4 +1,11 @@
-export { KanbanBoard, defaultColumns, type KanbanBoardProps, type KanbanColumn } from "./kanban-board"
+export {
+  KanbanBoard,
+  defaultColumns,
+  kanbanItemsByColumn,
+  sortReadOnlyKanbanItems,
+  type KanbanBoardProps,
+  type KanbanColumn,
+} from "./kanban-board"
 export { computeColumnReorder, normalizeStatus, type ColumnReorderUpdate } from "./reorder"
 export { KanbanToolbar, type KanbanToolbarProps } from "./kanban-toolbar"
 export { KanbanCardDetail, type KanbanCardDetailProps } from "./kanban-card-detail"

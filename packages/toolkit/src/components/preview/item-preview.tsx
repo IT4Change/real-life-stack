@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
 import { RelativeTime } from "../primitives/relative-time"
 import { ProfileLink } from "../profile/profile-link"
 import { TagChip } from "../tag/tag-chip"
-import { cn } from "../../lib/utils"
+import { cn, getActivePanelGlow } from "../../lib/utils"
 import { useItemTags } from "../../hooks/use-item-tags"
 
 /**
@@ -52,6 +52,9 @@ import { useItemTags } from "../../hooks/use-item-tags"
  */
 export type ItemPreviewDensity = "comfortable" | "compact"
 
+/** Neutral toolkit default; apps may supply an origin-group colour instead. */
+export const DEFAULT_ACTIVE_ITEM_GLOW_COLOR = "#64748b"
+
 export interface ItemPreviewProps {
   item: Item
   /**
@@ -81,6 +84,10 @@ export interface ItemPreviewProps {
    * block — fits kanban / dense list contexts.
    */
   density?: ItemPreviewDensity
+  /** Highlights the selected item using the shared panel-glow treatment. */
+  active?: boolean
+  /** Optional `#rrggbb` override for the active-item glow. */
+  activeGlowColor?: string
   className?: string
   /** Inline style on the card root — e.g. the active-item glow (box-shadow). */
   style?: CSSProperties
@@ -106,6 +113,8 @@ export function ItemPreview({
   metaAdornment,
   footerAdornment,
   density = "comfortable",
+  active = false,
+  activeGlowColor = DEFAULT_ACTIVE_ITEM_GLOW_COLOR,
   className,
   style,
 }: ItemPreviewProps) {
@@ -142,13 +151,15 @@ export function ItemPreview({
 
   return (
     <article
+      data-preview-density={density}
+      data-active-preview={active ? "true" : undefined}
       className={cn(
         "rounded-lg border bg-card transition-all",
         interactive &&
           "cursor-pointer hover:border-primary/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         className,
       )}
-      style={style}
+      style={{ ...(active ? getActivePanelGlow(activeGlowColor) : {}), ...style }}
       onClick={onClick}
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}

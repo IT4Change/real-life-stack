@@ -30,6 +30,8 @@ export interface GraphViewProps {
   nodeTypes?: readonly GraphTypeDescriptor[]
   selectedNodeId: string | null
   onSelectedNodeChange: (nodeId: string | null) => void
+  /** Centers a selected node above an app-provided vertical obstruction. */
+  selectionFocusBottomInset?: number
   fitViewKey?: string | number
   className?: string
   ariaLabel?: string

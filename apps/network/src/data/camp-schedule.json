@@ -1,0 +1,899 @@
+{
+ "source": "https://talx.dod.ngo/dwebcamp-2026/schedule/export/schedule.json (Version _39, geholt 17.07.2026)",
+ "venues": [
+  {
+   "name": "P2P Portal",
+   "sessions": 15,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.406579,
+     52.117986
+    ]
+   }
+  },
+  {
+   "name": "Idea Stage",
+   "sessions": 13,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.406772,
+     52.118675
+    ]
+   }
+  },
+  {
+   "name": "Solidarity Station",
+   "sessions": 13,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.406188,
+     52.118269
+    ]
+   }
+  },
+  {
+   "name": "Birch Salon",
+   "sessions": 11,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.407019,
+     52.118375
+    ]
+   }
+  },
+  {
+   "name": "The Seedbed",
+   "sessions": 10,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.406794,
+     52.117924
+    ]
+   }
+  },
+  {
+   "name": "Decentralized Hardware @ Hackers Lab",
+   "sessions": 9,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.40696,
+     52.118681
+    ]
+   }
+  },
+  {
+   "name": "AI Barn",
+   "sessions": 8,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.406536,
+     52.118507
+    ]
+   }
+  },
+  {
+   "name": "Open Social Space",
+   "sessions": 7,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.405614,
+     52.118339
+    ]
+   }
+  },
+  {
+   "name": "Linden Theater",
+   "sessions": 6,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.40813,
+     52.118559
+    ]
+   }
+  },
+  {
+   "name": "Resilience Base",
+   "sessions": 4,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.406601,
+     52.118144
+    ]
+   }
+  },
+  {
+   "name": "Teen Base Camp",
+   "sessions": 4,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.406794,
+     52.117792
+    ]
+   }
+  },
+  {
+   "name": "Forest Pavillion",
+   "sessions": 4,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.407094,
+     52.117268
+    ]
+   }
+  },
+  {
+   "name": "Hackers Lab",
+   "sessions": 3,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.40696,
+     52.118681
+    ]
+   }
+  },
+  {
+   "name": "Food Court",
+   "sessions": 1,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.407239,
+     52.118217
+    ]
+   }
+  },
+  {
+   "name": "Creativity Dome",
+   "sessions": 1,
+   "position": {
+    "type": "Point",
+    "coordinates": [
+     12.405764,
+     52.118184
+    ]
+   }
+  }
+ ],
+ "sessions": [
+  {
+   "code": "SJXE8X",
+   "start": "2026-07-08T19:15:00+02:00",
+   "end": "2026-07-08T20:45:00+02:00",
+   "venue": "Linden Theater"
+  },
+  {
+   "code": "XG9TX9",
+   "start": "2026-07-09T07:00:00+02:00",
+   "end": "2026-07-09T07:45:00+02:00",
+   "venue": "Food Court"
+  },
+  {
+   "code": "MPL8TF",
+   "start": "2026-07-09T09:30:00+02:00",
+   "end": "2026-07-09T10:00:00+02:00",
+   "venue": "AI Barn"
+  },
+  {
+   "code": "M337PX",
+   "start": "2026-07-09T09:30:00+02:00",
+   "end": "2026-07-09T10:30:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "ZHGJNM",
+   "start": "2026-07-09T09:30:00+02:00",
+   "end": "2026-07-09T09:40:00+02:00",
+   "venue": "Decentralized Hardware @ Hackers Lab"
+  },
+  {
+   "code": "XT97FY",
+   "start": "2026-07-09T09:30:00+02:00",
+   "end": "2026-07-09T10:30:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "ZCKHRQ",
+   "start": "2026-07-09T10:10:00+02:00",
+   "end": "2026-07-09T11:00:00+02:00",
+   "venue": "Birch Salon"
+  },
+  {
+   "code": "GHTLRT",
+   "start": "2026-07-09T10:30:00+02:00",
+   "end": "2026-07-09T11:00:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "X9ENCG",
+   "start": "2026-07-09T10:30:00+02:00",
+   "end": "2026-07-09T11:30:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "XBZFVE",
+   "start": "2026-07-09T10:40:00+02:00",
+   "end": "2026-07-09T11:40:00+02:00",
+   "venue": "Decentralized Hardware @ Hackers Lab"
+  },
+  {
+   "code": "VU73KQ",
+   "start": "2026-07-09T11:00:00+02:00",
+   "end": "2026-07-09T12:30:00+02:00",
+   "venue": "The Seedbed"
+  },
+  {
+   "code": "7CNXZG",
+   "start": "2026-07-09T11:00:00+02:00",
+   "end": "2026-07-09T12:00:00+02:00",
+   "venue": "Open Social Space"
+  },
+  {
+   "code": "JYFKLK",
+   "start": "2026-07-09T11:00:00+02:00",
+   "end": "2026-07-09T12:00:00+02:00",
+   "venue": "AI Barn"
+  },
+  {
+   "code": "F7XGYE",
+   "start": "2026-07-09T11:00:00+02:00",
+   "end": "2026-07-09T12:30:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "NPFDBD",
+   "start": "2026-07-09T11:30:00+02:00",
+   "end": "2026-07-09T12:30:00+02:00",
+   "venue": "Linden Theater"
+  },
+  {
+   "code": "ZHEPFC",
+   "start": "2026-07-09T11:30:00+02:00",
+   "end": "2026-07-09T12:30:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "FLLS3A",
+   "start": "2026-07-09T12:15:00+02:00",
+   "end": "2026-07-09T12:25:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "JYYCHC",
+   "start": "2026-07-09T15:00:00+02:00",
+   "end": "2026-07-09T16:00:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "SFHERD",
+   "start": "2026-07-09T15:00:00+02:00",
+   "end": "2026-07-09T15:30:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "V9L89B",
+   "start": "2026-07-09T15:00:00+02:00",
+   "end": "2026-07-09T16:00:00+02:00",
+   "venue": "Resilience Base"
+  },
+  {
+   "code": "LSVEE3",
+   "start": "2026-07-09T15:00:00+02:00",
+   "end": "2026-07-09T15:30:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "LD7UAE",
+   "start": "2026-07-09T15:00:00+02:00",
+   "end": "2026-07-09T15:10:00+02:00",
+   "venue": "Birch Salon"
+  },
+  {
+   "code": "CNRNLU",
+   "start": "2026-07-09T15:15:00+02:00",
+   "end": "2026-07-09T15:25:00+02:00",
+   "venue": "Birch Salon"
+  },
+  {
+   "code": "F9Y7PQ",
+   "start": "2026-07-09T15:30:00+02:00",
+   "end": "2026-07-09T16:30:00+02:00",
+   "venue": "Open Social Space"
+  },
+  {
+   "code": "JUPVWB",
+   "start": "2026-07-09T15:30:00+02:00",
+   "end": "2026-07-09T16:30:00+02:00",
+   "venue": "Teen Base Camp"
+  },
+  {
+   "code": "NYHXHW",
+   "start": "2026-07-09T15:30:00+02:00",
+   "end": "2026-07-09T16:30:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "RXRVLL",
+   "start": "2026-07-09T15:30:00+02:00",
+   "end": "2026-07-09T16:30:00+02:00",
+   "venue": "Decentralized Hardware @ Hackers Lab"
+  },
+  {
+   "code": "QADFXX",
+   "start": "2026-07-09T16:00:00+02:00",
+   "end": "2026-07-09T17:00:00+02:00",
+   "venue": "Linden Theater"
+  },
+  {
+   "code": "FQDZEK",
+   "start": "2026-07-09T16:00:00+02:00",
+   "end": "2026-07-09T17:30:00+02:00",
+   "venue": "Hackers Lab"
+  },
+  {
+   "code": "KUEP3J",
+   "start": "2026-07-09T16:00:00+02:00",
+   "end": "2026-07-09T17:00:00+02:00",
+   "venue": "Resilience Base"
+  },
+  {
+   "code": "7HM8TX",
+   "start": "2026-07-09T16:00:00+02:00",
+   "end": "2026-07-09T17:00:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "DJZ3X3",
+   "start": "2026-07-09T16:00:00+02:00",
+   "end": "2026-07-09T16:30:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "EXLJYK",
+   "start": "2026-07-09T16:00:00+02:00",
+   "end": "2026-07-09T17:00:00+02:00",
+   "venue": "The Seedbed"
+  },
+  {
+   "code": "D3ATVK",
+   "start": "2026-07-09T16:00:00+02:00",
+   "end": "2026-07-09T16:30:00+02:00",
+   "venue": "Birch Salon"
+  },
+  {
+   "code": "PNDFJD",
+   "start": "2026-07-09T16:30:00+02:00",
+   "end": "2026-07-09T17:00:00+02:00",
+   "venue": "Forest Pavillion"
+  },
+  {
+   "code": "NPGLHM",
+   "start": "2026-07-09T16:45:00+02:00",
+   "end": "2026-07-09T17:15:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "B37VPB",
+   "start": "2026-07-09T17:00:00+02:00",
+   "end": "2026-07-09T18:00:00+02:00",
+   "venue": "The Seedbed"
+  },
+  {
+   "code": "LCXYTM",
+   "start": "2026-07-09T17:00:00+02:00",
+   "end": "2026-07-09T18:00:00+02:00",
+   "venue": "Linden Theater"
+  },
+  {
+   "code": "NNTVFV",
+   "start": "2026-07-09T17:00:00+02:00",
+   "end": "2026-07-09T18:00:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "MEBSMB",
+   "start": "2026-07-09T17:30:00+02:00",
+   "end": "2026-07-09T18:00:00+02:00",
+   "venue": "AI Barn"
+  },
+  {
+   "code": "VMMJPG",
+   "start": "2026-07-10T09:30:00+02:00",
+   "end": "2026-07-10T10:00:00+02:00",
+   "venue": "Birch Salon"
+  },
+  {
+   "code": "UDVGAJ",
+   "start": "2026-07-10T09:30:00+02:00",
+   "end": "2026-07-10T10:00:00+02:00",
+   "venue": "Teen Base Camp"
+  },
+  {
+   "code": "CNRTZ7",
+   "start": "2026-07-10T09:30:00+02:00",
+   "end": "2026-07-10T10:00:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "RHB8WL",
+   "start": "2026-07-10T09:30:00+02:00",
+   "end": "2026-07-10T10:30:00+02:00",
+   "venue": "Forest Pavillion"
+  },
+  {
+   "code": "KAJ3MX",
+   "start": "2026-07-10T09:30:00+02:00",
+   "end": "2026-07-10T10:30:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "YXYHEK",
+   "start": "2026-07-10T09:45:00+02:00",
+   "end": "2026-07-10T11:00:00+02:00",
+   "venue": "The Seedbed"
+  },
+  {
+   "code": "EG3FTA",
+   "start": "2026-07-10T10:00:00+02:00",
+   "end": "2026-07-10T10:10:00+02:00",
+   "venue": "AI Barn"
+  },
+  {
+   "code": "UBMF3U",
+   "start": "2026-07-10T10:00:00+02:00",
+   "end": "2026-07-10T11:30:00+02:00",
+   "venue": "Hackers Lab"
+  },
+  {
+   "code": "BE7GHD",
+   "start": "2026-07-10T10:00:00+02:00",
+   "end": "2026-07-10T11:00:00+02:00",
+   "venue": "Decentralized Hardware @ Hackers Lab"
+  },
+  {
+   "code": "JFNK39",
+   "start": "2026-07-10T10:00:00+02:00",
+   "end": "2026-07-10T10:30:00+02:00",
+   "venue": "Resilience Base"
+  },
+  {
+   "code": "ZLF38Z",
+   "start": "2026-07-10T10:30:00+02:00",
+   "end": "2026-07-10T11:00:00+02:00",
+   "venue": "AI Barn"
+  },
+  {
+   "code": "YBNSXL",
+   "start": "2026-07-10T10:30:00+02:00",
+   "end": "2026-07-10T11:30:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "TA3NY7",
+   "start": "2026-07-10T10:45:00+02:00",
+   "end": "2026-07-10T10:55:00+02:00",
+   "venue": "Open Social Space"
+  },
+  {
+   "code": "3KGBEF",
+   "start": "2026-07-10T11:00:00+02:00",
+   "end": "2026-07-10T11:30:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "G9E3WD",
+   "start": "2026-07-10T11:00:00+02:00",
+   "end": "2026-07-10T12:30:00+02:00",
+   "venue": "Forest Pavillion"
+  },
+  {
+   "code": "CHYFMY",
+   "start": "2026-07-10T11:00:00+02:00",
+   "end": "2026-07-10T11:30:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "FDVJJR",
+   "start": "2026-07-10T11:00:00+02:00",
+   "end": "2026-07-10T12:30:00+02:00",
+   "venue": "AI Barn"
+  },
+  {
+   "code": "G8TBUH",
+   "start": "2026-07-10T11:30:00+02:00",
+   "end": "2026-07-10T12:30:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "FMKD8P",
+   "start": "2026-07-10T11:45:00+02:00",
+   "end": "2026-07-10T12:15:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "AEWNJA",
+   "start": "2026-07-10T12:00:00+02:00",
+   "end": "2026-07-10T12:30:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "QJBRME",
+   "start": "2026-07-10T13:30:00+02:00",
+   "end": "2026-07-10T15:00:00+02:00",
+   "venue": "Forest Pavillion"
+  },
+  {
+   "code": "QSAZ8F",
+   "start": "2026-07-10T15:00:00+02:00",
+   "end": "2026-07-10T16:00:00+02:00",
+   "venue": "Creativity Dome"
+  },
+  {
+   "code": "Z8FRLZ",
+   "start": "2026-07-10T15:00:00+02:00",
+   "end": "2026-07-10T15:10:00+02:00",
+   "venue": "Birch Salon"
+  },
+  {
+   "code": "AZ3PQC",
+   "start": "2026-07-10T15:00:00+02:00",
+   "end": "2026-07-10T15:30:00+02:00",
+   "venue": "The Seedbed"
+  },
+  {
+   "code": "LF8TVG",
+   "start": "2026-07-10T15:00:00+02:00",
+   "end": "2026-07-10T15:30:00+02:00",
+   "venue": "Teen Base Camp"
+  },
+  {
+   "code": "8NC7JG",
+   "start": "2026-07-10T15:00:00+02:00",
+   "end": "2026-07-10T15:30:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "PHHFNF",
+   "start": "2026-07-10T15:00:00+02:00",
+   "end": "2026-07-10T16:00:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "FYZ9NG",
+   "start": "2026-07-10T15:15:00+02:00",
+   "end": "2026-07-10T16:15:00+02:00",
+   "venue": "Birch Salon"
+  },
+  {
+   "code": "HDG88R",
+   "start": "2026-07-10T15:30:00+02:00",
+   "end": "2026-07-10T16:00:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "ZX9PNQ",
+   "start": "2026-07-10T15:30:00+02:00",
+   "end": "2026-07-10T15:40:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "Q7NHNU",
+   "start": "2026-07-10T15:30:00+02:00",
+   "end": "2026-07-10T16:00:00+02:00",
+   "venue": "Decentralized Hardware @ Hackers Lab"
+  },
+  {
+   "code": "XMJMBK",
+   "start": "2026-07-10T15:45:00+02:00",
+   "end": "2026-07-10T15:55:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "CBXTSZ",
+   "start": "2026-07-10T16:00:00+02:00",
+   "end": "2026-07-10T17:00:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "Q8YSHN",
+   "start": "2026-07-10T16:00:00+02:00",
+   "end": "2026-07-10T16:30:00+02:00",
+   "venue": "Decentralized Hardware @ Hackers Lab"
+  },
+  {
+   "code": "8R9EZV",
+   "start": "2026-07-10T16:30:00+02:00",
+   "end": "2026-07-10T18:00:00+02:00",
+   "venue": "Birch Salon"
+  },
+  {
+   "code": "VTJEEW",
+   "start": "2026-07-10T16:30:00+02:00",
+   "end": "2026-07-10T18:00:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "AAPV9L",
+   "start": "2026-07-10T16:30:00+02:00",
+   "end": "2026-07-10T18:00:00+02:00",
+   "venue": "The Seedbed"
+  },
+  {
+   "code": "X3S8ZN",
+   "start": "2026-07-10T17:00:00+02:00",
+   "end": "2026-07-10T18:00:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "L8HXM3",
+   "start": "2026-07-11T09:30:00+02:00",
+   "end": "2026-07-11T10:30:00+02:00",
+   "venue": "The Seedbed"
+  },
+  {
+   "code": "QHUS7S",
+   "start": "2026-07-11T09:30:00+02:00",
+   "end": "2026-07-11T10:00:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "SK3GNH",
+   "start": "2026-07-11T09:30:00+02:00",
+   "end": "2026-07-11T10:00:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "NTYGHS",
+   "start": "2026-07-11T09:30:00+02:00",
+   "end": "2026-07-11T10:00:00+02:00",
+   "venue": "Decentralized Hardware @ Hackers Lab"
+  },
+  {
+   "code": "YJHTTK",
+   "start": "2026-07-11T09:30:00+02:00",
+   "end": "2026-07-11T10:30:00+02:00",
+   "venue": "Birch Salon"
+  },
+  {
+   "code": "RSCUR8",
+   "start": "2026-07-11T10:00:00+02:00",
+   "end": "2026-07-11T11:00:00+02:00",
+   "venue": "Linden Theater"
+  },
+  {
+   "code": "SUWJJN",
+   "start": "2026-07-11T10:00:00+02:00",
+   "end": "2026-07-11T10:30:00+02:00",
+   "venue": "Open Social Space"
+  },
+  {
+   "code": "KUGD8V",
+   "start": "2026-07-11T10:00:00+02:00",
+   "end": "2026-07-11T11:00:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "ZQ7A3T",
+   "start": "2026-07-11T10:30:00+02:00",
+   "end": "2026-07-11T12:30:00+02:00",
+   "venue": "Birch Salon"
+  },
+  {
+   "code": "C9YZLT",
+   "start": "2026-07-11T10:45:00+02:00",
+   "end": "2026-07-11T11:15:00+02:00",
+   "venue": "Open Social Space"
+  },
+  {
+   "code": "T9JL87",
+   "start": "2026-07-11T11:00:00+02:00",
+   "end": "2026-07-11T12:00:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "ET9PZP",
+   "start": "2026-07-11T11:00:00+02:00",
+   "end": "2026-07-11T11:30:00+02:00",
+   "venue": "Resilience Base"
+  },
+  {
+   "code": "QLETHK",
+   "start": "2026-07-11T11:30:00+02:00",
+   "end": "2026-07-11T12:30:00+02:00",
+   "venue": "Open Social Space"
+  },
+  {
+   "code": "MLFH9Z",
+   "start": "2026-07-11T11:30:00+02:00",
+   "end": "2026-07-11T12:30:00+02:00",
+   "venue": "Decentralized Hardware @ Hackers Lab"
+  },
+  {
+   "code": "DFYFRG",
+   "start": "2026-07-11T11:30:00+02:00",
+   "end": "2026-07-11T12:30:00+02:00",
+   "venue": "The Seedbed"
+  },
+  {
+   "code": "YNFNBM",
+   "start": "2026-07-11T12:10:00+02:00",
+   "end": "2026-07-11T12:30:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "Z7QNKE",
+   "start": "2026-07-11T12:10:00+02:00",
+   "end": "2026-07-11T12:20:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "JHBJ3J",
+   "start": "2026-07-11T14:30:00+02:00",
+   "end": "2026-07-11T16:00:00+02:00",
+   "venue": "AI Barn"
+  },
+  {
+   "code": "VCVGP8",
+   "start": "2026-07-11T15:00:00+02:00",
+   "end": "2026-07-11T16:00:00+02:00",
+   "venue": "Decentralized Hardware @ Hackers Lab"
+  },
+  {
+   "code": "MRYKHP",
+   "start": "2026-07-11T15:00:00+02:00",
+   "end": "2026-07-11T16:00:00+02:00",
+   "venue": "Open Social Space"
+  },
+  {
+   "code": "SNZGZD",
+   "start": "2026-07-11T15:00:00+02:00",
+   "end": "2026-07-11T16:00:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "NNU9QM",
+   "start": "2026-07-11T15:00:00+02:00",
+   "end": "2026-07-11T16:00:00+02:00",
+   "venue": "The Seedbed"
+  },
+  {
+   "code": "WL3CJJ",
+   "start": "2026-07-11T15:00:00+02:00",
+   "end": "2026-07-11T15:30:00+02:00",
+   "venue": "Teen Base Camp"
+  },
+  {
+   "code": "VC9LBJ",
+   "start": "2026-07-11T15:30:00+02:00",
+   "end": "2026-07-11T16:00:00+02:00",
+   "venue": "Birch Salon"
+  },
+  {
+   "code": "EUNLTT",
+   "start": "2026-07-11T16:00:00+02:00",
+   "end": "2026-07-11T17:00:00+02:00",
+   "venue": "Hackers Lab"
+  },
+  {
+   "code": "LXD98Q",
+   "start": "2026-07-11T16:00:00+02:00",
+   "end": "2026-07-11T17:00:00+02:00",
+   "venue": "AI Barn"
+  },
+  {
+   "code": "PGZTXE",
+   "start": "2026-07-11T16:00:00+02:00",
+   "end": "2026-07-11T18:00:00+02:00",
+   "venue": "The Seedbed"
+  },
+  {
+   "code": "CQXGRY",
+   "start": "2026-07-11T16:00:00+02:00",
+   "end": "2026-07-11T17:00:00+02:00",
+   "venue": "Solidarity Station"
+  },
+  {
+   "code": "VDWYAU",
+   "start": "2026-07-11T16:00:00+02:00",
+   "end": "2026-07-11T16:30:00+02:00",
+   "venue": "P2P Portal"
+  },
+  {
+   "code": "PEWZVE",
+   "start": "2026-07-11T16:45:00+02:00",
+   "end": "2026-07-11T17:15:00+02:00",
+   "venue": "Idea Stage"
+  },
+  {
+   "code": "HG88NG",
+   "start": "2026-07-11T20:00:00+02:00",
+   "end": "2026-07-11T21:00:00+02:00",
+   "venue": "Linden Theater"
+  }
+ ],
+ "resources": [
+  {
+   "title": "Lötstation",
+   "kind": "tool",
+   "availability": "Hackers Lab, frei nutzbar",
+   "venue": "Hackers Lab"
+  },
+  {
+   "title": "LoRa-Dev-Kits",
+   "kind": "tool",
+   "availability": "gegen Pfand am Hardware-Tisch",
+   "venue": "Decentralized Hardware @ Hackers Lab"
+  },
+  {
+   "title": "Workshop-Raum Birch Salon",
+   "kind": "space",
+   "availability": "buchbar über Info Desk",
+   "venue": "Birch Salon"
+  },
+  {
+   "title": "Button-Maschine",
+   "kind": "tool",
+   "availability": "Button Making Station, betreut",
+   "venue": null
+  },
+  {
+   "title": "Facilitation-Support",
+   "kind": "skill",
+   "availability": "auf Anfrage, Solidarity Station",
+   "venue": "Solidarity Station"
+  }
+ ],
+ "mapOverlay": {
+  "image": "DWeb-Camp-2026-map.png (1600x1056, dwebcamp-2026/)",
+  "boundsDeg": {
+   "south": 52.116481,
+   "west": 12.402256,
+   "north": 52.11904,
+   "east": 12.408591
+  },
+  "rotationDeg": -2.4,
+  "note": "Kalibrierung Anton 17.07.2026 via kalibrierung.html; P3.1-Vorrat, in P3 unbenutzt. Achsen explizit benannt — Venue-Points sind GeoJSON [lng, lat]."
+ },
+ "tasks": [
+  {
+   "title": "Bühne aufbauen",
+   "status": "done"
+  },
+  {
+   "title": "Menschen abholen",
+   "status": "in-progress"
+  },
+  {
+   "title": "Geschirr spülen",
+   "status": "in-progress"
+  },
+  {
+   "title": "Mülleimer leeren",
+   "status": "open"
+  },
+  {
+   "title": "Toiletten putzen",
+   "status": "open"
+  },
+  {
+   "title": "Duschen sauber machen",
+   "status": "open"
+  },
+  {
+   "title": "Tische abwischen",
+   "status": "done"
+  }
+ ]
+}
