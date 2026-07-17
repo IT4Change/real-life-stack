@@ -1,6 +1,7 @@
 import {
   relationRecordFromItem,
   VOCAB_BASE,
+  VOCAB_EVENT,
   VOCAB_PERSON,
   VOCAB_PROJECT,
   VOCAB_RELATION,
@@ -38,10 +39,10 @@ describe("DWebCamp seed importer", () => {
     expect(dwebCampDomainItems.filter(({ type }) => type === "person")).toHaveLength(138)
     expect(dwebCampDomainItems.filter(({ type }) => type === "project")).toHaveLength(65)
     expect(dwebCampDomainItems).toHaveLength(312)
-    expect(relationItems).toHaveLength(388)
-    expect(relationRecords).toHaveLength(388)
-    expect(seedItems).toHaveLength(712)
-    expect(new Set(seedItems.map(({ id }) => id)).size).toBe(712)
+    expect(relationItems).toHaveLength(497)
+    expect(relationRecords).toHaveLength(497)
+    expect(seedItems).toHaveLength(836)
+    expect(new Set(seedItems.map(({ id }) => id)).size).toBe(836)
 
     expect(dwebCampItemId("event", "SJXE8X")).toBe("event-sjxe8x")
     expect(dwebCampItemId("person", "Václav Pavlín")).toBe("person-vaclav-pavlin")
@@ -74,10 +75,10 @@ describe("DWebCamp seed importer", () => {
 
     connector.setCurrentGroup("dwebcamp")
     const importedItems = await connector.getItems()
-    expect(importedItems).toHaveLength(712)
-    expect(new Set(importedItems.map(({ id }) => id)).size).toBe(712)
-    expect(importedItems.filter(({ type }) => type !== "relation")).toHaveLength(324)
-    expect(importedItems.filter(({ type }) => type === "relation")).toHaveLength(388)
+    expect(importedItems).toHaveLength(836)
+    expect(new Set(importedItems.map(({ id }) => id)).size).toBe(836)
+    expect(importedItems.filter(({ type }) => type !== "relation")).toHaveLength(339)
+    expect(importedItems.filter(({ type }) => type === "relation")).toHaveLength(497)
 
     connector.setCurrentGroup("my-network")
     expect(await connector.getItems()).toEqual([])
@@ -131,7 +132,7 @@ describe("DWebCamp seed importer", () => {
   })
 
   it("emits valid local endpoints and fixture metadata for every relation item", () => {
-    const domainIds = new Set(dwebCampDomainItems.map(({ id }) => id))
+    const domainIds = new Set(seedItems.filter(({ type }) => type !== "relation").map(({ id }) => id))
 
     for (const record of relationRecords) {
       expect(record.from.startsWith("item:")).toBe(true)
@@ -177,7 +178,7 @@ describe("DWebCamp seed importer", () => {
     const person = dwebCampDomainItems.find(({ type }) => type === "person")
     const project = dwebCampDomainItems.find(({ type }) => type === "project")
 
-    expect(event?.["@context"]).toEqual([VOCAB_BASE])
+    expect(event?.["@context"]).toEqual([VOCAB_BASE, VOCAB_EVENT])
     expect(person?.["@context"]).toEqual([VOCAB_BASE, VOCAB_PERSON])
     expect(project?.["@context"]).toEqual([VOCAB_BASE, VOCAB_PROJECT])
   })
