@@ -1,57 +1,57 @@
 # Real Life Stack
 
-**Modularer Baukasten für lokale Vernetzung und dezentrale Zusammenarbeit**
+**A modular toolkit for local connection**
 
-Lokale Gemeinschaften brauchen digitale Werkzeuge, die echte Begegnungen fördern statt ersetzen. Real Life Stack ist ein modularer Baukasten, mit dem Communities eigene Apps für lokale Vernetzung bereitstellen und an ihre Bedürfnisse anpassen können.
+Local communities need digital tools that foster real-world encounters instead of replacing them. Real Life Stack is a modular toolkit that lets communities deploy their own apps for local networking and adapt them to their needs.
 
-> **Selbstorganisation leicht gemacht** – Werkzeuge für echte Zusammenarbeit, die Gruppen dabei helfen, gemeinsam vor Ort etwas zu bewegen.
-
----
-
-## Das Problem
-
-Lokale Initiativen werden zu zentralen Akteuren bei der Bewältigung sozialer und ökologischer Herausforderungen. Doch:
-
-- **Etablierte Plattformen** sind auf Aufmerksamkeit und Reichweite optimiert, nicht auf lokale Zusammenarbeit
-- **Kleine Initiativen** besitzen nicht die Ressourcen, eigene Systeme zu bauen
-- **Fehlende Infrastruktur** zwingt Communities auf Plattformen, die ihre Daten kontrollieren
-
-## Die Lösung
-
-Real Life Stack bietet eine gemeinsame technische Grundlage:
-
-- **Modularer UI-Baukasten** – Karte, Kalender, Gruppen, Profile, Feed als wiederverwendbare Komponenten
-- **White-Label-App** – Sofort einsetzbar, ohne Programmierkenntnisse anpassbar
-- **Backend-agnostisch** – Connector-Architektur für REST, Local-first, P2P oder E2EE
-- **Vertrauensbasierte Identität** – Web of Trust durch reale Begegnungen
-
-### Der Aktivierungskreislauf
-
-```
-Vorschlagen → Planen → Umsetzen → Vertrauen aufbauen → Erfolge teilen → ↩
-```
-
-Real Life Stack unterstützt den gesamten Kreislauf: von der Idee über die Verabredung bis zur gemeinsamen Umsetzung vor Ort. Durch echte Zusammenarbeit entsteht ein Vertrauensnetzwerk ([Web of Trust](https://web-of-trust.de)), das die Gemeinschaft nachhaltig stärkt.
+> Tools that enable communities to organize in a decentralized way – self-determined and rooted in real-world encounters.
 
 ---
 
-## Architektur
+## The Problem
+
+Local initiatives are becoming key actors in tackling social and ecological challenges. Yet:
+
+- **Established platforms** are optimized for attention and reach, not for local collaboration
+- **Small initiatives** lack the resources to build their own systems
+- **Missing infrastructure** forces communities onto platforms that control their data
+
+## The Solution
+
+Real Life Stack provides a shared technical foundation:
+
+- **Modular UI toolkit** – map, calendar, groups, profiles, feed as reusable components
+- **White-label app** – ready to use, customizable without programming skills
+- **Backend-agnostic** – connector architecture for REST, local-first, P2P, or E2EE
+- **Trust-based identity** – a Web of Trust built through real-world encounters
+
+### The Activation Cycle
+
+```text
+Propose → Plan → Act → Build trust → Share successes → ↩
+```
+
+Real Life Stack supports the whole cycle: from the idea, to making arrangements, to acting together locally. Real collaboration grows a trust network ([Web of Trust](https://web-of-trust.de)) that strengthens the community over time.
+
+---
+
+## Architecture
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
 │                           UI                             │
 │   ┌──────────────────────────────────────────────────┐   │
-│   │                   App-Shell                      │   │
+│   │                   App Shell                      │   │
 │   └──────────────────────────────────────────────────┘   │
 │   ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌──────┐   │
-│   │ Kanban │ │Kalender│ │ Karte  │ │  Feed  │ │ ...  │   │
+│   │ Kanban │ │Calendar│ │  Map   │ │  Feed  │ │ ...  │   │
 │   └────────┘ └────────┘ └────────┘ └────────┘ └──────┘   │
 ├──────────────────────────────────────────────────────────┤
-│                      Hooks (dünn)                        │
+│                      Hooks (thin)                        │
 ├──────────────────────────────────────────────────────────┤
 │                     DataInterface                        │
 ├──────────────────────────────────────────────────────────┤
-│                    Connectoren                           │
+│                      Connectors                          │
 │    ┌────────┐ ┌───────────┐ ┌────────────────────────┐   │
 │    │  Mock  │ │ GraphQL   │ │   WoT (CRDT+E2EE)      │   │
 │    └────────┘ └───────────┘ └────────────────────────┘   │
@@ -60,140 +60,136 @@ Real Life Stack unterstützt den gesamten Kreislauf: von der Idee über die Vera
 
 ### App Shell + Space Modules
 
-Die **App Shell** ist der globale Rahmen. **Space Modules** (Kanban, Kalender, Karte, Feed, ...) sind pro Space aktivierbare Oberflächen. Jede Gruppe wählt, welche Space Modules sie nutzt. Space Modules prüfen nicht nur den Item-Typ, sondern auch welche Daten-Felder vorhanden sind (`status` → Kanban, `start`/`end` → Kalender, `location` → Karte).
+The **App Shell** is the global frame. **Space Modules** (Kanban, Calendar, Map, Feed, ...) are surfaces that can be enabled per space. Each group chooses which Space Modules it uses. Space Modules do not only check the item type but also which data fields are present (`status` → Kanban, `start`/`end` → Calendar, `location` → Map).
 
 ### Hooks + DataInterface
 
-Die Hooks sind eine dünne Schicht zwischen UI und Connector — sie übersetzen Observables in React State und Mutations in Promises. Das **DataInterface** definiert den read-only Kernvertrag: Items lesen und reaktiv beobachten. Zusätzliche Fähigkeiten wie Schreiben, Gruppen, Identität oder Relations werden über Capability-Interfaces (`ItemWriter`, `GroupManager`, `Authenticatable`, ...) erkannt. UI-Flächen kennen nur diese Interfaces, nicht das Backend.
+The hooks are a thin layer between UI and connector — they translate observables into React state and mutations into promises. The **DataInterface** defines the read-only core contract: reading items and observing them reactively. Additional abilities such as writing, groups, identity, or relations are detected via capability interfaces (`ItemWriter`, `GroupManager`, `Authenticatable`, ...). UI surfaces only know these interfaces, never the backend.
 
-### Connectoren
+### Connectors
 
-Jeder Connector implementiert das DataInterface und nur die Capabilities, die seine Datenquelle unterstützt. Der **MockConnector** (in-memory) dient zur Entwicklung, der **LocalConnector** für lokale IndexedDB-Persistenz, ein **GraphQL-Connector** für klassische Server, der **WoT-Connector** (Yjs/CRDT + E2EE) für dezentrale, verschlüsselte Zusammenarbeit.
+Each connector implements the DataInterface and only the capabilities its data source supports. The **MockConnector** (in-memory) is used for development, the **LocalConnector** for local IndexedDB persistence with cross-tab sync, the **GraphQL connector** for classic servers, and the **WoT connector** (Yjs/CRDT + E2EE) for decentralized, encrypted collaboration.
 
-### RLNP und Real Life Game
+### RLNP and Real Life Game
 
-Real Life Stack besitzt nicht die soziale oder spielerische Semantik. Er macht sie als backend-agnostische UI- und Connector-Schicht darstellbar und bedienbar. Die soziale Bedeutung kommt aus dem [Real Life Network Protocol](https://github.com/real-life-org/real-life-network-protocol), die optionale Spielsemantik aus dem [Real Life Game](https://github.com/real-life-org/real-life-game). Details: [docs/concepts/rlnp-game-integration.md](docs/concepts/rlnp-game-integration.md).
+Real Life Stack does not own the social or game semantics. It makes them displayable and usable as a backend-agnostic UI and connector layer. The social meaning comes from the [Real Life Network Protocol](https://github.com/real-life-org/real-life-network-protocol), the optional game semantics from the [Real Life Game](https://github.com/real-life-org/real-life-game). Details: [docs/concepts/rlnp-game-integration.md](docs/concepts/rlnp-game-integration.md).
 
 ---
 
-## Module
+## Specification
 
-RLS-Space-Modules werden künftig frisch und spec-driven definiert. Der bestehende Ordner [docs/modules/](docs/modules/) enthält frühes Brainstorming aus der Zeit vor der heutigen RLS/RLNP/Game-Abgrenzung und gilt vorerst nur als Inspirationsmaterial.
+The normative core of the repository lives in [docs/spec/](docs/spec/) — it is the single source of truth. When spec and implementation conflict, the spec wins. The core documents 00–10 cover architecture, app composition, the DataInterface, capabilities, items/relations/groups/spaces, confirmations and trust, schema composition, tags, relation records, the mirror bridge, and the activity log.
 
-Neue verbindliche Space-Module-Specs entstehen unter [docs/spec/modules/](docs/spec/modules/). Feed, Kanban, Calendar und Map liegen als normative Entwürfe vor; ihre geteilten Bausteine (ItemPreview, FilterBar, CreateFab, ModulePanel, …) sind in [shared-components.md](docs/spec/modules/shared-components.md) definiert und in der Reference App umgesetzt (siehe [Unified Module UX](docs/concepts/unified-module-ux-2026-06.md)).
+Machine-readable vocabularies (JSON-LD contexts + JSON Schemas) live in [docs/spec/schemas/](docs/spec/schemas/): `base`, `place`, `event`, `task`, `person`, `relation`, `project`, and `resource`.
 
-| Space Module | Status | Beschreibung |
+## Space Modules
+
+Binding Space Module specs live in [docs/spec/modules/](docs/spec/modules/). Their shared building blocks (ItemPreview, FilterBar, CreateFab, ModulePanel, …) are defined in [shared-components.md](docs/spec/modules/shared-components.md) and implemented in the reference app. The older folder [docs/modules/](docs/modules/) contains early brainstorming and serves as inspiration only.
+
+| Space Module | Status | Description |
 |-------|--------|--------------|
-| [**Feed**](docs/spec/modules/feed.md) | Entwurf v0.1 + implementiert | Aktivitäten-Stream aus allen Space Modules: Was passiert in der Community? |
-| [**Kanban / Tasks**](docs/spec/modules/kanban.md) | Entwurf v0.1 + implementiert | Aufgaben und Workflows innerhalb eines Space organisieren |
-| [**Calendar**](docs/spec/modules/calendar.md) | Entwurf v0.1 + implementiert | Events planen, Termine koordinieren, Einladungen verwalten |
-| [**Map**](docs/spec/modules/map.md) | Entwurf v0.1 + implementiert | Lokale Orte, Ressourcen und Aktivitäten auf einer Karte visualisieren |
-| **Marketplace** | geplant | Angebote, Bedürfnisse, Ressourcen und mögliche Matches sichtbar machen |
-| **Quests** | geplant | Quest-Übersicht, Questlog, QuestRuns, Evidence und Completion-Status anzeigen |
-| **Campaign View** | geplant | Adventures, Campaigns und World State als Spielansicht darstellen |
+| [**Feed**](docs/spec/modules/feed.md) | Draft v0.1 + implemented | Activity stream across all Space Modules: what is happening in the community? |
+| [**Kanban / Tasks**](docs/spec/modules/kanban.md) | Draft v0.1 + implemented | Organize tasks and workflows within a space |
+| [**Calendar**](docs/spec/modules/calendar.md) | Draft v0.1 + implemented | Plan events, coordinate dates, manage invitations |
+| [**Map**](docs/spec/modules/map.md) | Draft v0.1 + implemented | Visualize local places, resources, and activities on a map |
+| **Marketplace** | planned | Make offers, needs, resources, and possible matches visible |
+| **Quests** | planned | Show quest overview, quest log, quest runs, evidence, and completion status |
+| **Campaign View** | planned | Display adventures, campaigns, and world state as a game view |
 
 ---
 
-## Zielgruppe
+## Who Is It For?
 
-- Nachbarschaftsnetzwerke und Urban-Gardening-Gruppen
-- Repair-Cafés, Foodsharing-Initiativen, Solawis
-- Jugendgruppen und freie Lernorte
-- Sharing- und Tausch-Communities
-- Organisationen, die lokale Gruppen stärken
+- Neighborhood networks and urban gardening groups
+- Repair cafés, food-sharing initiatives, community-supported agriculture
+- Youth groups and free learning spaces
+- Sharing and swapping communities
+- Organizations that support local groups
 
 ---
 
 ## Demos
 
-| Demo | Beschreibung |
+| Demo | Description |
 |------|--------------|
-| **[Landing Page](https://real-life-stack.de/)** | Projektübersicht und Einstieg |
-| **[Reference App](https://real-life-stack.de/app/)** | Implementierung mit allen Modulen |
-| **[UI-Prototyp](https://real-life-stack.de/edge/)** | Experimentelle UI-Konzepte und Komponenten |
-| **[Storybook](https://real-life-stack.de/storybook/)** | Komponenten-Dokumentation |
-| **[Web-of-Trust](https://web-of-trust.de/demo)** | Demo für dezentrale Identität, Verifikation, Attestations und Sync |
+| **[Landing Page](https://real-life-stack.de/)** | Project overview and entry point |
+| **[Reference App](https://real-life-stack.de/app/)** | Implementation with all modules |
+| **[UI Prototype](https://real-life-stack.de/edge/)** | Experimental UI concepts and components |
+| **[Storybook](https://real-life-stack.de/storybook/)** | Component documentation |
+| **[Web of Trust](https://web-of-trust.de/demo)** | Demo for decentralized identity, verification, attestations, and sync |
 
 ---
 
-## Web-of-Trust
+## Web of Trust
 
-[Web-of-Trust](https://web-of-trust.de) ist die Protokoll- und Referenzschicht für dezentrale Identität, Kontakte, Verifikationen, Attestations und verschlüsselten Sync. Real Life Stack kann diese Fähigkeiten über den WoT-Connector nutzen, bleibt aber backend-agnostisch.
+[Web of Trust](https://web-of-trust.de) is the protocol and reference layer for decentralized identity, contacts, verifications, attestations, and encrypted sync. Real Life Stack can use these abilities via the WoT connector while staying backend-agnostic.
 
-- **Dezentrale Identitäten** – Experimente mit did:key und Ed25519
-- **Web of Trust** – QR-Code-basierte Verifizierung, JWS-Signaturen
-- **Local-first** – Yjs als Standard-CRDT, Automerge als alternative CRDT-Option
-- **Modulare Architektur** – AppShell-Pattern für verschiedene Apps
+- **Decentralized identities** – experiments with did:key and Ed25519
+- **Web of Trust** – QR-code-based verification, JWS signatures
+- **Local-first** – Yjs as the default CRDT, Automerge as an alternative CRDT option
+- **Modular architecture** – AppShell pattern for different apps
 
-**[Zur Landing Page →](https://web-of-trust.de)** | **[Zur Demo →](https://web-of-trust.de/demo)** | **[GitHub →](https://github.com/real-life-org/web-of-trust)**
-
----
-
-## Team
-
-Das Projekt wird von einem Team mit langjähriger Erfahrung in Open-Source-Community-Tools entwickelt:
-
-- **Anton Tranelis** – Projektkoordination, System-Architektur, Full Stack
-- **Ulf Gebhardt** – Full Stack, DevOps, Infrastruktur
-- **Sebastian Stein** – Frontend-Entwicklung, UX/UI
-- **Mathias Lenz** – Qualitätssicherung, Testing, Dokumentation
-
-### Referenzprojekte
-
-- [Utopia Map](https://github.com/utopia-os/utopia-map/) – Kartenplattform für lokale Vernetzung
-- [ocelot.social](https://github.com/Ocelot-Social-Community/ocelot.social) – Soziales Netzwerk für Communities
+**[Landing page →](https://web-of-trust.de)** | **[Demo →](https://web-of-trust.de/demo)** | **[GitHub →](https://github.com/real-life-org/web-of-trust)**
 
 ---
 
-# Entwickler-Dokumentation
+## Reference Projects
 
-## Monorepo-Struktur
+- [Utopia Map](https://github.com/utopia-os/utopia-map/) – map platform for local networking
+- [ocelot.social](https://github.com/Ocelot-Social-Community/ocelot.social) – social network for communities
+
+---
+
+# Developer Documentation
+
+## Monorepo Structure
 
 ```text
 real-life-stack/
 ├── packages/
-│   ├── data-interface/    # @real-life-stack/data-interface - TypeScript-Typen + Capabilities
-│   ├── mock-connector/    # @real-life-stack/mock-connector - In-Memory-Implementierung
-│   ├── local-connector/   # @real-life-stack/local-connector - IndexedDB + Cross-Tab-Sync
-│   ├── graphql-connector/ # @real-life-stack/graphql-connector - GraphQL-Client
-│   ├── graphql-server/    # @real-life-stack/graphql-server - Fastify/Mercurius Server
+│   ├── data-interface/    # @real-life-stack/data-interface - TypeScript types + capabilities
+│   ├── mock-connector/    # @real-life-stack/mock-connector - in-memory implementation
+│   ├── local-connector/   # @real-life-stack/local-connector - IndexedDB + cross-tab sync
+│   ├── graphql-connector/ # @real-life-stack/graphql-connector - GraphQL client
+│   ├── graphql-server/    # @real-life-stack/graphql-server - Fastify/Mercurius server
 │   ├── wot-connector/     # @real-life-stack/wot-connector - WoT/Yjs/E2EE
-│   └── toolkit/           # @real-life-stack/toolkit - UI-Komponenten + Hooks
+│   └── toolkit/           # @real-life-stack/toolkit - UI components + hooks
 ├── apps/
-│   ├── landing/           # Landing Page
-│   ├── reference/         # Reference App (React 19)
-│   └── prototype/         # UI-Prototyp (experimentell)
-└── docs/                  # Dokumentation
-    ├── spec/              # Architektur-Spezifikation
-    ├── modules/           # Frühes Modul-Brainstorming, Inspirationsmaterial
-    ├── concepts/          # Konzept-Dokumente
-    ├── archive/           # Historische, nicht mehr normative Dokumente
-    └── funding/           # Förderantrag
+│   ├── landing/           # landing page
+│   ├── reference/         # reference app (React 19)
+│   ├── network/           # network app (relation records, network graph)
+│   └── prototype/         # UI prototype (experimental)
+└── docs/                  # documentation
+    ├── spec/              # normative spec (00–10, modules, schemas)
+    ├── modules/           # early module brainstorming, inspiration only
+    ├── concepts/          # concept documents
+    ├── archive/           # historical, no longer normative documents
+    └── funding/           # funding application
 ```
 
-## Schnellstart
+## Quick Start
 
 ```bash
-# Dependencies installieren
+# Install dependencies
 pnpm install
 
-# Reference App starten
+# Start the reference app
 pnpm dev:reference
 
-# Landing Page starten
+# Start the landing page
 pnpm dev:landing
 
-# Toolkit bauen
+# Build the toolkit
 pnpm build:toolkit
 ```
 
-## DataInterface & Connectoren
+## DataInterface & Connectors
 
-UI-Flächen arbeiten gegen das **DataInterface** und optionale Capability-Interfaces — TypeScript-Verträge, die Daten, Reaktivität, Schreibzugriff, Gruppen und Identität abstrahieren. Connectoren implementieren diese Interfaces für verschiedene Backends.
+UI surfaces work against the **DataInterface** and optional capability interfaces — TypeScript contracts that abstract data, reactivity, write access, groups, and identity. Connectors implement these interfaces for different backends.
 
 ### @real-life-stack/data-interface
 
-Reine TypeScript-Typen und Shared Helper (keine externen Runtime-Abhängigkeiten):
+Pure TypeScript types and shared helpers (no external runtime dependencies):
 
 ```typescript
 import type { DataInterface, Item, Group, User, Observable } from "@real-life-stack/data-interface"
@@ -201,7 +197,7 @@ import type { DataInterface, Item, Group, User, Observable } from "@real-life-st
 
 ### @real-life-stack/mock-connector
 
-In-Memory-Implementierung mit Demo-Daten für Entwicklung ohne Backend:
+In-memory implementation with demo data for development without a backend:
 
 ```typescript
 import { MockConnector } from "@real-life-stack/mock-connector"
@@ -209,31 +205,31 @@ import { MockConnector } from "@real-life-stack/mock-connector"
 const connector = new MockConnector()
 await connector.init()
 
-const tasks = await connector.getItems({ type: "task" })  // 5 Demo-Tasks
-const groups = await connector.getGroups()                  // 3 Demo-Gruppen
+const tasks = await connector.getItems({ type: "task" })  // 5 demo tasks
+const groups = await connector.getGroups()                  // 3 demo groups
 
-// Reaktiv beobachten
+// Observe reactively
 const obs = connector.observe({ type: "task" })
-obs.subscribe((tasks) => { /* Live-Updates */ })
+obs.subscribe((tasks) => { /* live updates */ })
 ```
 
-Spec-Einstieg: [docs/spec/README.md](docs/spec/README.md). Architektur-Details: [docs/spec/00-architecture.md](docs/spec/00-architecture.md)
+Spec entry point: [docs/spec/README.md](docs/spec/README.md). Architecture details: [docs/spec/00-architecture.md](docs/spec/00-architecture.md)
 
 ## @real-life-stack/toolkit
 
-Das Toolkit-Package exportiert wiederverwendbare UI-Komponenten:
+The toolkit package exports reusable UI components:
 
 ```typescript
 import { Button, Card, Avatar, Tabs } from '@real-life-stack/toolkit'
 ```
 
-**[Storybook ansehen →](https://real-life-stack.de/storybook/)**
+**[View Storybook →](https://real-life-stack.de/storybook/)**
 
 ```bash
-# Storybook lokal starten
+# Start Storybook locally
 pnpm storybook
 
-# Storybook bauen
+# Build Storybook
 pnpm build:storybook
 ```
 
@@ -247,4 +243,4 @@ pnpm build:storybook
 
 ---
 
-**Gemeinsam gestalten wir die Zukunft – lokal vernetzt, global gedacht.**
+**Together we shape the future – locally connected, globally minded.**
