@@ -341,8 +341,8 @@ Implementierung kanonisch.
   nicht spec-konform. **Beide übernommen** (Folgecommit in #142).
 - Phasen-Neuschnitt (17.07., Anton): Die sechs Views (Graph, List, Grid,
   Kanban, Map, Kalender) sind **Linsen** — unterschiedliche Sichtweisen
-  auf denselben Item-Bestand (Begriff „Linse" bleibt vorerst neben
-  „Space Module"; Terminologie-Entscheidung offen). Suche, Filter und
+  auf denselben Item-Bestand (Begriff „Linse“ bleibt vorerst neben
+  „Space Module“; Terminologie-Entscheidung offen). Suche, Filter und
   Verification-Flow gehören zur **AppShell**, nicht zu den Linsen.
   Konsequenz: P3 = alle Linsen (inkl. Map/Kalender-Verdrahtung, vorher
   P4), P4 = AppShell (Suche/Filter als Shell-Zustand, Verification),
