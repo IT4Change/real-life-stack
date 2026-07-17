@@ -1086,6 +1086,20 @@ interface DayCalendarProps {
 
 function DayCalendar({ visibleDate, eventsByDay, onEventClick, onCreateEvent }: DayCalendarProps) {
   const dayEvents = getEventsForDay(eventsByDay, visibleDate)
+  const activeItemId = useContext(CalendarActiveItemContext)
+  const activeCardRef = useRef<HTMLDivElement>(null)
+  const lastScrolledItemIdRef = useRef<string | null>(null)
+
+  // Linsen-Vertrag: nach dem Sprung in die Tagesansicht das aktive Event
+  // einmalig zentrieren (Gate pro activeItemId; kein Verbrauch, solange
+  // das Event nicht auf diesem Tag gerendert ist; User-Scroll bleibt frei).
+  useEffect(() => {
+    if (!activeItemId || lastScrolledItemIdRef.current === activeItemId) return
+    const element = activeCardRef.current
+    if (!element) return
+    lastScrolledItemIdRef.current = activeItemId
+    element.scrollIntoView({ block: "center" })
+  }, [activeItemId, dayEvents])
 
   return (
     <div>
@@ -1114,11 +1128,12 @@ function DayCalendar({ visibleDate, eventsByDay, onEventClick, onCreateEvent }: 
               </div>
               <div className="space-y-2 p-2">
                 {slotEvents.map((event) => (
-                  <EventCard
+                  <div
                     key={event.item.id}
-                    event={event}
-                    onClick={onEventClick}
-                  />
+                    ref={event.item.id === activeItemId ? activeCardRef : undefined}
+                  >
+                    <EventCard event={event} onClick={onEventClick} />
+                  </div>
                 ))}
               </div>
             </SlotElement>
