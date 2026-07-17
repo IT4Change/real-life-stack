@@ -1,1 +1,1 @@
-export { CalendarView, type CalendarViewProps } from "./calendar-view"
+export { CalendarView, type CalendarViewProps, type CalendarViewMode } from "./calendar-view"

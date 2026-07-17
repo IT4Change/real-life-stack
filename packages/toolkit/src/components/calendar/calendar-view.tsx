@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent, type TransitionEvent } from "react"
 import {
   Calendar as CalendarIcon,
   CalendarDays,
@@ -18,6 +18,8 @@ import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 import { ItemPreview } from "../preview/item-preview"
 import { ItemTypeBadge } from "../preview/item-type-badge"
 import { ItemTimeRange } from "../preview/item-time-range"
+import { ItemScopeBadge } from "../preview/item-scope-badge"
+import { Popover, PopoverContent, PopoverTrigger } from "../primitives/popover"
 import { FilterBar } from "../filter/filter-bar"
 import { FilterSection, FilterToggle, FilterMultiSelect } from "../filter/filter-building-blocks"
 import { emptyFilterBarValue, type FilterBarValue, type FilterTypeOption } from "../filter/types"
@@ -44,6 +46,11 @@ const CalendarGroupColorContext = createContext<GroupColorResolver>(() => "#2563
 /** Id of the item currently open in the shared panel, so its pill/card is
  *  highlighted across the calendar (and stays in sync with map/feed/kanban). */
 const CalendarActiveItemContext = createContext<string | undefined>(undefined)
+
+/** Whether list/day cards show the sharing-scope tag (Privat/group). On only in
+ *  the aggregate "Mein Netzwerk" view — in a concrete space the scope is implied,
+ *  so the tag would be redundant. Matches the kanban/feed cards. */
+const CalendarScopeBadgeContext = createContext<boolean>(false)
 
 /** Min horizontal travel (px) to commit a period swipe — PR spec contract. */
 const SWIPE_COMMIT_PX = 60
@@ -184,8 +191,9 @@ function buildCalendarDays(
   const startOffset = firstDay === 0 ? 6 : firstDay - 1
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const daysInPrev = new Date(year, month, 0).getDate()
+  const visibleDayCount = Math.max(35, Math.ceil((startOffset + daysInMonth) / 7) * 7)
 
-  return Array.from({ length: 42 }, (_, index) => {
+  return Array.from({ length: visibleDayCount }, (_, index) => {
     const dayNum = index - startOffset + 1
     const inMonth = dayNum >= 1 && dayNum <= daysInMonth
     const number = dayNum < 1 ? daysInPrev + dayNum : dayNum > daysInMonth ? dayNum - daysInMonth : dayNum
@@ -206,6 +214,16 @@ function buildCalendarDays(
     }
   })
 }
+
+/** Max event pills shown in a month cell; a day with more shows this many pills
+ *  plus a "+N weitere" trigger. A *fixed* cap (never measured from height) is what
+ *  keeps the row sizing stable — nothing feeds back, so no zoom ratchet. */
+const MAX_MONTH_PILLS = 3
+
+/** Approx. line height (px) used to derive a week-row's minimum height from its
+ *  line count (date + pills + optional overflow trigger). Only a floor: the rows
+ *  then flex to fill the available area, so a few px off is harmless. */
+const MONTH_ROW_LINE_PX = 26
 
 function groupEventsByDay(events: CalendarEvent[]): CalendarEventGroup[] {
   const grouped = new Map<string, CalendarEventGroup>()
@@ -284,6 +302,10 @@ export interface CalendarViewProps {
   events: Item[]
   initialDate?: Date | string
   initialViewMode?: CalendarViewMode
+  /** Controlled view mode. With `onViewModeChange`, the host owns it (e.g. from
+   *  the URL); without these the component keeps it in internal state. */
+  viewMode?: CalendarViewMode
+  onViewModeChange?: (mode: CalendarViewMode) => void
   currentUserId?: string
   /** Active group/space colour — the group fallback when no per-item resolver is given. */
   groupColor?: string
@@ -292,6 +314,9 @@ export interface CalendarViewProps {
   resolveItemGroupColor?: (item: Item) => string
   /** Id of the item currently open in the shared panel — its pill/card is highlighted. */
   activeItemId?: string
+  /** Show the sharing-scope tag (Privat/group) on list/day cards — set true only
+   *  in the aggregate view, where items come from different spaces. */
+  showScopeBadge?: boolean
   /** One-way: jump the visible period to this date when it changes (e.g. to reveal
    *  a URL-focused event's month). Doesn't fight the user's manual navigation. */
   focusDate?: Date
@@ -304,10 +329,13 @@ export function CalendarView({
   events,
   initialDate,
   initialViewMode = "month",
+  viewMode: controlledViewMode,
+  onViewModeChange,
   currentUserId,
   groupColor = "#2563eb",
   resolveItemGroupColor,
   activeItemId,
+  showScopeBadge = false,
   focusDate,
   onEventClick,
   onCreateEvent,
@@ -316,7 +344,17 @@ export function CalendarView({
   const today = useMemo(() => getInitialDate(initialDate), [initialDate])
   const [visibleDate, setVisibleDate] = useState(today)
   const [selectedDate, setSelectedDate] = useState(today)
-  const [viewMode, setViewMode] = useState<CalendarViewMode>(initialViewMode)
+  // View mode is controllable: the host can own it (e.g. from the URL) via
+  // `viewMode` + `onViewModeChange`; otherwise it lives in internal state.
+  const [internalViewMode, setInternalViewMode] = useState<CalendarViewMode>(initialViewMode)
+  const viewMode = controlledViewMode ?? internalViewMode
+  const setViewMode = useCallback(
+    (next: CalendarViewMode) => {
+      if (onViewModeChange) onViewModeChange(next)
+      else setInternalViewMode(next)
+    },
+    [onViewModeChange],
+  )
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [locationFilter, setLocationFilter] = useState<LocationFilter>("all")
   const [myEventsOnly, setMyEventsOnly] = useState(false)
@@ -581,6 +619,7 @@ export function CalendarView({
   return (
     <CalendarGroupColorContext.Provider value={resolveGroupColor}>
     <CalendarActiveItemContext.Provider value={activeItemId}>
+    <CalendarScopeBadgeContext.Provider value={showScopeBadge}>
     <div className={cn("w-full space-y-3", className)}>
       <FilterBar
         value={filterBarValue}
@@ -750,8 +789,61 @@ export function CalendarView({
       </div>
       </div>
     </div>
+    </CalendarScopeBadgeContext.Provider>
     </CalendarActiveItemContext.Provider>
     </CalendarGroupColorContext.Provider>
+  )
+}
+
+/**
+ * The "+N weitere" overflow popover for a month-grid day: lists ALL of that day's
+ * events in a portalled popover (the shared z-70 overlay layer, see spec 01
+ * „Overlay-Flächen"), so a day can hold arbitrarily many events without cramming
+ * or shrinking the cell. The trigger is passed as `children`.
+ */
+function DayEventsMenu({
+  date,
+  events,
+  onEventClick,
+  children,
+}: {
+  date: Date
+  events: CalendarEvent[]
+  onEventClick?: (event: Item) => void
+  children: ReactNode
+}) {
+  const resolveGroupColor = useContext(CalendarGroupColorContext)
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverContent align="start" className="max-h-80 w-64 overflow-y-auto p-1">
+        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+          {formatDayLabel(date)}
+        </div>
+        {events.map((event) => (
+          <button
+            key={event.item.id}
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              onEventClick?.(event.item)
+            }}
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: getItemColor(event.item, { groupColor: resolveGroupColor(event.item) }) }}
+              aria-hidden
+            />
+            <span className="min-w-0 flex-1 truncate">{event.title}</span>
+            {!event.allDay && (
+              <span className="shrink-0 text-xs text-muted-foreground">{formatTime(event.start)}</span>
+            )}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -787,6 +879,23 @@ function MonthCalendar({
     [eventsByDay, selectedDate, today, visibleDate],
   )
 
+  // Each week-row sizes to its busiest day. `weight` (≈ line count) makes a busy
+  // week take more of the filled area than a quiet one — quiet rows give their
+  // space to busy ones (their fr-share is smaller). The minmax floor guarantees
+  // the content always fits, so when the month is taller than the viewport the
+  // rows stop shrinking and the whole module scrolls. All from counting events —
+  // nothing is measured, so there is no feedback loop / zoom ratchet.
+  const rowTemplate = useMemo(() => {
+    const rows: string[] = []
+    for (let i = 0; i < days.length; i += 7) {
+      const maxEvents = days.slice(i, i + 7).reduce((m, d) => Math.max(m, d.events.length), 0)
+      const pills = Math.min(maxEvents, MAX_MONTH_PILLS)
+      const lines = 1 /* date */ + pills + (maxEvents > MAX_MONTH_PILLS ? 1 /* "+N weitere" */ : 0)
+      rows.push(`minmax(${lines * MONTH_ROW_LINE_PX}px, ${lines}fr)`)
+    }
+    return rows.join(" ")
+  }, [days])
+
   return (
     <div>
       <div className="grid grid-cols-7 border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
@@ -796,90 +905,78 @@ function MonthCalendar({
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7">
-        {days.map((day) => (
-          <div
-            key={day.key}
-            className={cn(
-              "group flex min-h-20 flex-col border-b border-r p-1.5 text-left align-top transition-colors sm:min-h-28 lg:min-h-32",
-              !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
-              day.isCurrentMonth && "hover:bg-muted/50",
-              day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
-            )}
-          >
-            <div className="mb-1 flex items-center justify-between gap-1">
-              <button
-                type="button"
-                onClick={() => onSelectDate(day.date)}
-                onDoubleClick={() => onOpenDay(day.date)}
-                className={cn(
-                  "flex h-6 min-w-6 items-center justify-center rounded-full text-sm font-semibold",
-                  day.isToday && "bg-primary text-primary-foreground",
+      {/* The grid fills the viewport area (100dvh minus the chrome above it) and
+          shares it across the week-rows via rowTemplate (busy rows bigger, quiet
+          rows smaller, sum = area). dvh is zoom-stable; the swipe wrapper stays
+          natural-height (clips only horizontally), so a 6-week month that exceeds
+          the area scrolls with the whole module instead of being squeezed. */}
+      <div
+        className="grid grid-cols-7 min-h-[calc(100dvh-15rem)]"
+        style={{ gridTemplateRows: rowTemplate }}
+      >
+        {days.map((day) => {
+          // Fixed cap (never measured): show up to MAX_MONTH_PILLS pills; a day
+          // with more shows that many pills plus a "+N weitere" trigger.
+          const visibleCount = Math.min(day.events.length, MAX_MONTH_PILLS)
+          const visible = day.events.slice(0, visibleCount)
+          const hiddenCount = day.events.length - visibleCount
+          const overflowing = hiddenCount > 0
+          return (
+            <div
+              key={day.key}
+              // The cell stretches to its grid-row height (set by rowTemplate from
+              // the week's busiest day); min-h-0 lets it shrink within the flex
+              // context, and the pills area below the date fills the rest.
+              className={cn(
+                "group flex min-h-0 flex-col overflow-hidden border-b border-r p-1.5 text-left align-top transition-colors",
+                !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
+                day.isCurrentMonth && "hover:bg-muted/50",
+                day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
+              )}
+            >
+              <div className="mb-1 flex shrink-0 items-center justify-between gap-1">
+                <button
+                  type="button"
+                  onClick={() => onSelectDate(day.date)}
+                  onDoubleClick={() => onOpenDay(day.date)}
+                  className={cn(
+                    "flex h-6 min-w-6 items-center justify-center rounded-full text-sm font-semibold",
+                    day.isToday && "bg-primary text-primary-foreground",
+                  )}
+                >
+                  {day.number}
+                </button>
+                {day.events.length > 0 && (
+                  <span className="text-xs font-medium text-primary">{day.events.length}</span>
                 )}
+              </div>
+
+              {/* Pills fill the space and clip cleanly; clicking the empty area
+                  below them creates an event on this day (pills stop propagation).
+                  The "+N weitere" link sits OUTSIDE this clipped area as a pinned
+                  bottom row, so it stays visible no matter how many pills fit. */}
+              <div
+                className="min-h-0 flex-1 space-y-1 overflow-hidden rounded transition-colors hover:bg-primary/5"
+                onClick={onCreateEvent && day.isCurrentMonth ? () => onCreateEvent(day.date) : undefined}
               >
-                {day.number}
-              </button>
-              {day.events.length > 0 && (
-                <span className="text-xs font-medium text-primary">{day.events.length}</span>
+                {visible.map((event) => (
+                  <EventPill key={event.item.id} event={event} compact onClick={onEventClick} />
+                ))}
+              </div>
+              {overflowing && (
+                <DayEventsMenu date={day.date} events={day.events} onEventClick={onEventClick}>
+                  <button
+                    type="button"
+                    onClick={(event) => event.stopPropagation()}
+                    className="mt-0.5 w-full shrink-0 rounded px-1 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    +{hiddenCount} weitere
+                  </button>
+                </DayEventsMenu>
               )}
             </div>
-
-            <div className="hidden space-y-1 md:block">
-              {day.events.slice(0, 3).map((event) => (
-                <EventPill
-                  key={event.item.id}
-                  event={event}
-                  compact
-                  onClick={onEventClick}
-                />
-              ))}
-              {day.events.length > 3 && (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onOpenDay(day.date)
-                  }}
-                  className="text-xs font-medium text-muted-foreground hover:text-foreground"
-                >
-                  +{day.events.length - 3} weitere
-                </button>
-              )}
-            </div>
-
-            <div className="mt-1 space-y-0.5 md:hidden">
-              {day.events.slice(0, 2).map((event) => (
-                <EventPill
-                  key={event.item.id}
-                  event={event}
-                  onClick={onEventClick}
-                />
-              ))}
-              {day.events.length > 2 && (
-                <button
-                  type="button"
-                  onClick={(clickEvent) => {
-                    clickEvent.stopPropagation()
-                    onOpenDay(day.date)
-                  }}
-                  className="w-full rounded px-1 py-0.5 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
-                >
-                  +{day.events.length - 2} weitere
-                </button>
-              )}
-            </div>
-
-            {onCreateEvent && day.isCurrentMonth && (
-              <button
-                type="button"
-                aria-label="Event an diesem Tag erstellen"
-                onClick={() => onCreateEvent(day.date)}
-                tabIndex={-1}
-                className="mt-2 min-h-4 flex-1 rounded transition-colors hover:bg-primary/5"
-              />
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -912,14 +1009,31 @@ function WeekCalendar({
   // midnight, below the 06:00 first slot), so this row is where they appear.
   const dayIndex = (d: Date) =>
     Math.max(0, Math.min(6, Math.round((atStartOfDay(d).getTime() - weekStart.getTime()) / 86_400_000)))
-  const allDayBars = events
+  const spanningBars = events
     .filter((e) => e.allDay && atStartOfDay(e.start) <= weekEnd && atStartOfDay(e.end ?? e.start) >= weekStart)
     .sort(compareEvents)
     .map((e) => {
       const startCol = dayIndex(e.start)
       const endCol = dayIndex(e.end ?? e.start)
-      return { event: e, startCol, span: endCol - startCol + 1 }
+      return { event: e, startCol, endCol, span: endCol - startCol + 1 }
     })
+  // Pack bars into lanes (rows): bars that don't overlap by column (different
+  // days) share a lane instead of each claiming its own row — otherwise they
+  // cascade into a diagonal staircase. Greedy first-fit over the start-sorted
+  // bars yields the minimal number of lanes; only same-day/overlapping bars
+  // stack onto extra rows.
+  const laneEnds: number[] = []
+  const allDayBars = spanningBars.map((bar) => {
+    let lane = laneEnds.findIndex((end) => bar.startCol > end)
+    if (lane === -1) {
+      lane = laneEnds.length
+      laneEnds.push(bar.endCol)
+    } else {
+      laneEnds[lane] = bar.endCol
+    }
+    return { ...bar, lane }
+  })
+  const allDayLaneCount = laneEnds.length
 
   return (
     <div>
@@ -941,19 +1055,19 @@ function WeekCalendar({
       {allDayBars.length > 0 && (
         <div
           className={cn("grid gap-y-0.5 border-b bg-background py-0.5", WEEK_COLS)}
-          style={{ gridTemplateRows: `repeat(${allDayBars.length}, minmax(22px, auto))` }}
+          style={{ gridTemplateRows: `repeat(${allDayLaneCount}, minmax(22px, auto))` }}
         >
           <div
             className="flex items-center justify-center border-r bg-muted/20 px-0.5 text-center text-[9px] leading-tight text-muted-foreground"
-            style={{ gridColumn: 1, gridRow: `1 / ${allDayBars.length + 1}` }}
+            style={{ gridColumn: 1, gridRow: `1 / ${allDayLaneCount + 1}` }}
           >
             Ganztägig
           </div>
-          {allDayBars.map(({ event, startCol, span }, index) => (
+          {allDayBars.map(({ event, startCol, span, lane }) => (
             <div
               key={event.item.id}
               className="px-0.5"
-              style={{ gridColumn: `${startCol + 2} / span ${span}`, gridRow: index + 1 }}
+              style={{ gridColumn: `${startCol + 2} / span ${span}`, gridRow: lane + 1 }}
             >
               <EventPill event={event} onClick={onEventClick} />
             </div>
@@ -1008,46 +1122,47 @@ interface DayCalendarProps {
 }
 
 function DayCalendar({ visibleDate, eventsByDay, onEventClick, onCreateEvent }: DayCalendarProps) {
-  const dayEvents = getEventsForDay(eventsByDay, visibleDate)
+  // The day view is a simple chronological list — no hour grid. Sorting by start
+  // puts all-day events (local midnight) first, then timed events; each card
+  // already labels its own time ("Ganztägig" / "14:00"). The day/date is already
+  // in the calendar header above, so this view carries no header of its own.
+  const dayEvents = useMemo(
+    () => getEventsForDay(eventsByDay, visibleDate).slice().sort(compareEvents),
+    [eventsByDay, visibleDate],
+  )
+
+  if (dayEvents.length === 0) {
+    return (
+      <div className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
+        <CalendarDays className="h-8 w-8" />
+        Keine Events an diesem Tag
+        {onCreateEvent && (
+          <button
+            type="button"
+            onClick={() => onCreateEvent(visibleDate)}
+            className="rounded-md border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+          >
+            Event erstellen
+          </button>
+        )}
+      </div>
+    )
+  }
 
   return (
-    <div>
-      <div className="border-b bg-muted/20 px-4 py-3">
-        <h3 className="font-semibold">{formatDayLabel(visibleDate)}</h3>
-        <p className="text-sm text-muted-foreground">
-          {dayEvents.length === 1 ? "1 Event" : `${dayEvents.length} Events`}
-        </p>
-      </div>
-
-      <div>
-        {TIME_SLOTS.map((hour) => {
-          const slotEvents = dayEvents.filter((event) => event.start.getHours() === hour)
-          const canCreateInSlot = slotEvents.length === 0 && onCreateEvent
-          const SlotElement = canCreateInSlot ? "button" : "div"
-          return (
-            <SlotElement
-              key={hour}
-              {...(canCreateInSlot
-                ? { type: "button" as const, onClick: () => onCreateEvent(withTime(visibleDate, hour)) }
-                : {})}
-              className="grid min-h-20 w-full grid-cols-[72px_1fr] border-b text-left transition-colors hover:bg-muted/40"
-            >
-              <div className="border-r bg-muted/20 px-2 py-3 text-right text-xs text-muted-foreground">
-                {String(hour).padStart(2, "0")}:00
-              </div>
-              <div className="space-y-2 p-2">
-                {slotEvents.map((event) => (
-                  <EventCard
-                    key={event.item.id}
-                    event={event}
-                    onClick={onEventClick}
-                  />
-                ))}
-              </div>
-            </SlotElement>
-          )
-        })}
-      </div>
+    <div className="space-y-3 p-4">
+      {dayEvents.map((event) => (
+        <EventCard key={event.item.id} event={event} onClick={onEventClick} />
+      ))}
+      {onCreateEvent && (
+        <button
+          type="button"
+          onClick={() => onCreateEvent(visibleDate)}
+          className="w-full rounded-lg border border-dashed py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        >
+          + Event an diesem Tag
+        </button>
+      )}
     </div>
   )
 }
@@ -1070,7 +1185,7 @@ function EventList({ events, onEventClick }: EventListProps) {
   }
 
   return (
-    <div className="max-h-[720px] overflow-y-auto">
+    <div>
       {groups.map((group) => (
         <div key={group.key} className="border-b">
           <div className="sticky top-0 z-10 border-b bg-card/95 px-4 py-3 backdrop-blur">
@@ -1140,6 +1255,7 @@ interface EventCardProps {
 function EventCard({ event, onClick }: EventCardProps) {
   const activeItemId = useContext(CalendarActiveItemContext)
   const resolveGroupColor = useContext(CalendarGroupColorContext)
+  const showScopeBadge = useContext(CalendarScopeBadgeContext)
   const isActive = activeItemId === event.item.id
   // The calendar list-view card uses ItemPreview with `author={null}`
   // (the date group header above already carries the temporal context),
@@ -1159,7 +1275,10 @@ function EventCard({ event, onClick }: EventCardProps) {
       style={isActive ? getActivePanelGlow(resolveGroupColor(event.item)) : undefined}
       onClick={onClick ? () => onClick(event.item) : undefined}
       headerAdornment={
-        <ItemTypeBadge type={event.item.type} />
+        <>
+          <ItemTypeBadge type={event.item.type} />
+          {showScopeBadge && <ItemScopeBadge item={event.item} />}
+        </>
       }
       metaAdornment={<ItemTimeRange item={event.item} locationLabel={event.location} />}
     />
