@@ -114,9 +114,13 @@ describe("read-only lenses", () => {
     const listMarkup = renderToStaticMarkup(createElement(CollectionView, { items, activeItemId: "task-1" }))
     const gridMarkup = renderToStaticMarkup(createElement(CollectionView, { items, activeItemId: "task-1", defaultLayout: "grid" }))
 
-    expect(listMarkup).toContain('aria-label="Rasteransicht wählen"')
+    // Zugänglicher Zustands-Toggle: stabile Namen + aria-pressed je Button
+    // (nie Aktions-Label mit Zustands-Attribut mischen).
+    expect(listMarkup).toContain('aria-label="Listenansicht" aria-pressed="true"')
+    expect(listMarkup).toContain('aria-label="Rasteransicht" aria-pressed="false"')
     expect(listMarkup).toContain('data-preview-density="compact"')
-    expect(gridMarkup).toContain('aria-label="Listenansicht wählen"')
+    expect(gridMarkup).toContain('aria-label="Rasteransicht" aria-pressed="true"')
+    expect(gridMarkup).toContain('aria-label="Listenansicht" aria-pressed="false"')
     expect(gridMarkup).toContain('data-preview-density="comfortable"')
     expect(collectionFocusGateKey("list", "task-1")).toBe("list:task-1")
     expect(collectionFocusGateKey("grid", "task-1")).toBe("grid:task-1")

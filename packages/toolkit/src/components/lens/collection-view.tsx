@@ -36,22 +36,29 @@ export function CollectionView({
   selectionFocusVisibleArea,
 }: CollectionViewProps) {
   const [layout, setLayout] = useState<CollectionLayout>(defaultLayout)
-  const nextLayout = layout === "list" ? "grid" : "list"
-  const LayoutIcon = nextLayout === "grid" ? Grid2X2 : List
 
   return (
     <section aria-label="Sammlungsansicht" className="space-y-4">
-      <div className="flex justify-end">
+      <div role="group" aria-label="Darstellung" className="flex justify-end gap-1">
         <Button
           type="button"
-          variant="ghost"
+          variant={layout === "list" ? "secondary" : "ghost"}
           size="icon"
-          aria-label={`${nextLayout === "grid" ? "Raster" : "Listen"}ansicht wählen`}
-          aria-pressed={layout === "grid"}
-          onClick={() => setLayout(nextLayout)}
+          aria-label="Listenansicht"
+          aria-pressed={layout === "list"}
+          onClick={() => setLayout("list")}
         >
-          <LayoutIcon className="size-4" />
-          <span className="sr-only">{nextLayout === "grid" ? "Rasteransicht" : "Listenansicht"}</span>
+          <List className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          variant={layout === "grid" ? "secondary" : "ghost"}
+          size="icon"
+          aria-label="Rasteransicht"
+          aria-pressed={layout === "grid"}
+          onClick={() => setLayout("grid")}
+        >
+          <Grid2X2 className="size-4" />
         </Button>
       </div>
       {layout === "list" ? (
