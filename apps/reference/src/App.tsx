@@ -98,6 +98,9 @@ function ModulePanelHost({ children, onDrawerHeightChange }: { children: ReactNo
   )
 }
 
+/** Meta-item types the shell has no detail projection for (log stays visible, not clickable). */
+const UNPROJECTABLE_TARGET_TYPES = new Set(["relation", "reaction", "comment"])
+
 /** Activity deliberately shares the module panel instead of adding a second shell overlay. */
 function ActivityPanelController({ open, onClose }: { open: boolean; onClose: () => void }) {
   const panel = useModulePanel()
@@ -150,7 +153,7 @@ function ReferenceActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry:
   const { data: members } = useMembers(currentGroup?.id ?? null)
   const { data: currentUser } = useCurrentUser()
   const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items])
-  const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => entry.targetType !== "relation" && entry.action !== "delete" && itemIds.has(entry.targetId), [itemIds])
+  const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => !UNPROJECTABLE_TARGET_TYPES.has(entry.targetType) && entry.action !== "delete" && itemIds.has(entry.targetId), [itemIds])
   const resolveActor = useCallback(
     (actorId: string) => members.find((member) => member.id === actorId) ?? (currentUser?.id === actorId ? currentUser : undefined),
     [members, currentUser],

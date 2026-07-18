@@ -444,6 +444,9 @@ function NetworkActivityPanelController({ open, onClose, selectItem }: { open: b
   return null
 }
 
+/** Meta-item types the shell has no detail projection for (log stays visible, not clickable). */
+const UNPROJECTABLE_TARGET_TYPES = new Set(["relation", "reaction", "comment"])
+
 function NetworkActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {
   const connector = useConnector()
   const { data: entries } = useActivity()
@@ -452,7 +455,7 @@ function NetworkActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: i
   const { data: members } = useMembers(currentGroup?.id ?? null)
   const currentUser = useOptionalCurrentUser(connector)
   const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items])
-  const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => entry.targetType !== "relation" && entry.action !== "delete" && itemIds.has(entry.targetId), [itemIds])
+  const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => !UNPROJECTABLE_TARGET_TYPES.has(entry.targetType) && entry.action !== "delete" && itemIds.has(entry.targetId), [itemIds])
   const resolveActor = useCallback(
     (actorId: string) => members.find((member) => member.id === actorId) ?? (currentUser?.id === actorId ? currentUser : undefined),
     [members, currentUser],
