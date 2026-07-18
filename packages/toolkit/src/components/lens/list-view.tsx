@@ -6,6 +6,8 @@ import {
   focusVirtualItemOnce,
   type SelectionFocusVisibleArea,
 } from "../../lib/selection-focus"
+import { Inbox } from "lucide-react"
+import { EmptyState } from "../primitives/empty-state"
 import { getItemPreviewAdornments, ItemPreview } from "../preview"
 
 export interface ListViewProps {
@@ -64,7 +66,13 @@ export function ListView({ items, activeItemId, selectionFocusVisibleArea, selec
   }, [activeItemId, selectionFocusGateKey, selectionFocusVisibleArea?.bottomInset, selectionVirtualizer, visibleItems])
 
   if (visibleItems.length === 0) {
-    return <p className="text-sm text-muted-foreground">Keine Einträge vorhanden.</p>
+    return (
+      <EmptyState
+        icon={Inbox}
+        title="Noch keine Einträge"
+        description="Erstelle den ersten Eintrag in diesem Space."
+      />
+    )
   }
 
   return (
