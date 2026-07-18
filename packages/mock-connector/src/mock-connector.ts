@@ -112,7 +112,11 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
       }
     }
     this.currentGroup = null
-    this.currentUser = this.users[0] ?? null
+    // The in-memory connector always starts with an authenticated demo identity;
+    // callers that need unauthenticated behaviour use logout(). This also keeps
+    // fixture-only seeds (which intentionally omit users) writable through the
+    // same authenticated writer path.
+    this.currentUser = this.users[0] ?? { id: "user-1", displayName: "Demo user" }
     this.currentUserObs = createObservable<User | null>(this.currentUser)
     this.authState = createObservable<AuthState>(
       this.currentUser
