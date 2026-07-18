@@ -354,6 +354,8 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   private scopedActivityRefreshGeneration = new Map<string, number>()
   private notificationStateObs = createObservable<NotificationState>({ readEntryKeys: {}, mutedGroupIds: {} })
   private notificationStateUnsub: (() => void) | null = null
+  /** A hook observed the state at least once — re-login must rebind the doc subscription. */
+  private notificationStateObserved = false
   private activityDirty = false
   /** One active reconciliation plus at most one trailing run per space. */
   private activityReconciliations = new Map<string, { queued: boolean; handle: SpaceHandle<RlsSpaceDoc> }>()
@@ -686,8 +688,10 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // criticalFailures throw below rejects before an async refresh would land.
     this.activityDirty = false
     for (const observable of this.activityObservables.values()) observable.set([])
+    // Stable observable contract (reaktivitaet.md): hooks keep their
+    // references across logout/re-login — EMPTY the instances, never drop
+    // them from the maps (destroying belongs to dispose() only).
     for (const observable of this.scopedActivityObservables?.values() ?? []) observable.set([])
-    this.scopedActivityObservables?.clear()
     this.scopedActivityRefreshGeneration?.clear()
     this.notificationStateUnsub?.()
     this.notificationStateUnsub = null
@@ -1281,6 +1285,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   }
 
   observeNotificationState(): Observable<NotificationState> {
+    this.notificationStateObserved = true
     if (!this.notificationStateUnsub) {
       this.notificationStateUnsub = onYjsPersonalDocChange(() => this.notificationStateObs.set(this.readNotificationState()))
     }
@@ -1471,6 +1476,14 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
   private async bootstrapAdapters(): Promise<void> {
     const did = this.identity.getDid()
+
+    // Re-login on the same connector instance: hooks still hold the stable
+    // notification-state observable — rebind the PersonalDoc subscription
+    // that logout() tore down, so their references stay live.
+    if (this.notificationStateObserved && !this.notificationStateUnsub) {
+      this.notificationStateUnsub = onYjsPersonalDocChange(() => this.notificationStateObs.set(this.readNotificationState()))
+      this.notificationStateObs.set(this.readNotificationState())
+    }
 
     if (this.replication || this.outboxAdapter || this.docLogStore) {
       await this.teardownRuntimeForIdentitySwitch()

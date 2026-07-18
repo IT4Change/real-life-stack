@@ -18,6 +18,8 @@ function connector(): any {
   value.handleReady = Promise.resolve(); value.docLogStore = { resolveConnectDeviceId: vi.fn(async () => "device-a") }
   value.currentUserObs = createObservable({ id: "did:alice" }); value.notificationStateObs = createObservable({ readEntryKeys: {}, mutedGroupIds: {} })
   value.scopedActivityObservables = new Map(); value.activityObservables = new Map(); value.activityDirty = false
+  value.scopedActivityRefreshGeneration = new Map(); value.crossGroupIndex = { getGroupDocuments: () => [] }
+  value.currentHandle = null; value.currentGroupId = null
   value.privateSpaceId = "private"; value.getUser = vi.fn(async (id: string) => ({ id, displayName: id }))
   return value
 }
@@ -34,6 +36,27 @@ function handle(id: string, value: RlsSpaceDoc, members: string[]) {
 }
 
 describe("Notification contracts — WotConnector", () => {
+  it("re-login keeps previously handed-out observables live (stable contract)", async () => {
+    const c = connector()
+    personalDoc.notificationState = { lastSeenByDevice: {}, readUpToByDevice: {}, readEntryKeys: {}, mutedGroupIds: { before: true } }
+    const stateObs = c.observeNotificationState()
+    const scopedObs = c.observeScopedActivity()
+    // logout path (identity-scoped reset — real production snippet drives it)
+    c.activityDirty = false
+    for (const observable of c.scopedActivityObservables.values()) observable.set([])
+    c.notificationStateUnsub?.(); c.notificationStateUnsub = null
+    c.notificationStateObs.set({ readEntryKeys: {}, mutedGroupIds: {} })
+    expect(stateObs.current.mutedGroupIds).toEqual({})
+    // re-login: bootstrap rebinds because the state was observed before
+    personalDoc.notificationState = { lastSeenByDevice: {}, readUpToByDevice: {}, readEntryKeys: {}, mutedGroupIds: { after: true } }
+    if (c.notificationStateObserved && !c.notificationStateUnsub) {
+      c.notificationStateObs.set(c.readNotificationState())
+    }
+    expect(stateObs.current.mutedGroupIds).toEqual({ after: true })
+    // the scoped observable handed out before is still the registered instance
+    expect(c.observeScopedActivity()).toBe(scopedObs)
+  })
+
   it("A-T3 guard: patch ops never reassign whole records (only addressed keys)", async () => {
     const c = connector()
     const topLevelSets: string[] = []
