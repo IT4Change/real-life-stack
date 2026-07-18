@@ -40,10 +40,13 @@ export function ActivityPanel({ entries, onOpenTarget, isTargetOpenable, resolve
           const ActionIcon = action.icon
           const actor = resolveActor?.(entry.actor)
           const actorName = actor?.displayName ?? shortActor(entry.actor)
+          // A reaction row wears its emoji (the summary leads with it) instead
+          // of the generic action glyph — the glance answers "who reacted how".
+          const reactionEmoji = entry.targetType === "reaction" ? entry.summary?.split(" ")[0] : undefined
           const content = (
             <div className="flex items-start gap-3">
-              <span aria-hidden className={cn("mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full", action.className)}>
-                <ActionIcon className="size-3.5" />
+              <span aria-hidden className={cn("mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full", reactionEmoji ? "bg-accent text-base" : action.className)}>
+                {reactionEmoji ?? <ActionIcon className="size-3.5" />}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 text-sm">

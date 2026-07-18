@@ -164,6 +164,39 @@ export interface ItemWriter {
 }
 
 /** A human-readable, best-effort history entry for one space. */
+/** Best display string for an item: title-ish field, else truncated text. */
+export function itemDisplayTitle(item: Item): string | undefined {
+  for (const key of ["title", "name", "label", "displayName"]) {
+    const value = item.data[key]
+    if (typeof value === "string" && value.trim()) return value
+  }
+  const text = item.data.text
+  if (typeof text === "string" && text.trim()) {
+    return text.length > 40 ? `${text.slice(0, 40)}…` : text
+  }
+  return undefined
+}
+
+/**
+ * Activity summary for a logged mutation. Plain items log their display
+ * title; reactions log "<emoji> auf „<Ziel>"" so the history answers who
+ * reacted to what — even after the reaction item itself is gone.
+ */
+export function deriveActivitySummary(
+  item: Item,
+  lookupItem: (id: string) => Item | undefined,
+): string | undefined {
+  if (item.type === "reaction") {
+    const emoji = typeof item.data.emoji === "string" && item.data.emoji ? item.data.emoji : "Reaktion"
+    const target = item.relations?.find((relation) => relation.predicate === "reactsTo")?.target
+    const targetId = target?.startsWith("item:") ? target.slice("item:".length) : undefined
+    const parent = targetId ? lookupItem(targetId) : undefined
+    const title = parent ? itemDisplayTitle(parent) : undefined
+    return title ? `${emoji} auf „${title}"` : emoji
+  }
+  return itemDisplayTitle(item)
+}
+
 export interface ActivityEntry {
   id: string
   ts: string

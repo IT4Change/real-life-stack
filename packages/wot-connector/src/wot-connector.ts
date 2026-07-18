@@ -21,6 +21,7 @@ import type {
   ActivityLogCapable,
 } from "@real-life-stack/data-interface"
 import {
+  deriveActivitySummary,
   BaseConnector,
   createObservable,
   deriveContext,
@@ -1226,7 +1227,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     const entry: ActivityEntry = {
       id: crypto.randomUUID(), ts: new Date().toISOString(), actor: this.requireActivityActor(), action,
       targetId: item.id, targetType: item.type,
-      summary: typeof item.data.title === "string" ? item.data.title : undefined,
+      summary: deriveActivitySummary(item, (id) => (doc.items[id] ? deserializeItem(doc.items[id]) : undefined)),
     }
     entries[entry.id] = entry
     for (const oldest of Object.values(entries).sort(compareActivity).slice(500)) delete entries[oldest.id]

@@ -24,6 +24,7 @@ import {
   applyPagination,
   createDefaultRelationStore,
   createObservable,
+  deriveActivitySummary,
   findRelatedItems,
   matchesFilter,
 } from "@real-life-stack/data-interface"
@@ -477,7 +478,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
     const entry: ActivityEntry = {
       id: crypto.randomUUID(), ts: new Date().toISOString(), actor: this.requireCurrentUser().id,
       action, targetId: item.id, targetType: item.type,
-      summary: typeof item.data.title === "string" ? item.data.title : undefined,
+      summary: deriveActivitySummary(item, (id) => this.findVisibleItemLocation(id)?.item),
     }
     entries.set(entry.id, entry)
     while (entries.size > 500) {

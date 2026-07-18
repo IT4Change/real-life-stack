@@ -13,7 +13,7 @@ import type {
   RelatedItemsOptions,
   Source,
 } from "@real-life-stack/data-interface"
-import { createObservable, matchesFilter, findRelatedItems, applyPagination } from "@real-life-stack/data-interface"
+import { createObservable, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary } from "@real-life-stack/data-interface"
 import { get, set, del, createStore, update as updateStoredValue } from "idb-keyval"
 
 // --- Types ---
@@ -65,13 +65,14 @@ function appendActivity(
   action: ActivityEntry["action"],
   item: Item,
   actor: string,
+  lookupItem: (id: string) => Item | undefined,
 ): Record<string, Record<string, ActivityEntry>> {
   const next = Object.fromEntries(Object.entries(activityByScope).map(([scope, entries]) => [scope, { ...entries }]))
   const entries = next[scopeId] ?? {}
   const entry: ActivityEntry = {
     id: crypto.randomUUID(), ts: new Date().toISOString(), actor, action,
     targetId: item.id, targetType: item.type,
-    summary: typeof item.data.title === "string" ? item.data.title : undefined,
+    summary: deriveActivitySummary(item, lookupItem),
   }
   entries[entry.id] = entry
   const overage = Object.values(entries).sort(compareActivity).slice(500)
@@ -412,7 +413,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
         items: [...current.items, newItem],
         groupItems,
         nextItemId,
-        activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(targetGroupId), "create", newItem, actor),
+        activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(targetGroupId), "create", newItem, actor, (lookupId) => current.items.find((candidate) => candidate.id === lookupId)),
       }
       result = newItem
       created = true
@@ -442,7 +443,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
       const items = [...current.items]
       items[idx] = result
       const ownerScope = Object.entries(current.groupItems).find(([, ids]) => ids.includes(id))?.[0] ?? null
-      committedState = { ...current, items, activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(ownerScope), "update", result, actor) }
+      committedState = { ...current, items, activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(ownerScope), "update", result, actor, (lookupId) => current.items.find((candidate) => candidate.id === lookupId)) }
       return committedState
     }, this.store)
 
@@ -470,7 +471,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
         ...current,
         items: current.items.filter((candidate) => candidate.id !== id),
         groupItems,
-        activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(Object.entries(current.groupItems).find(([, ids]) => ids.includes(id))?.[0] ?? null), "delete", item, actor),
+        activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(Object.entries(current.groupItems).find(([, ids]) => ids.includes(id))?.[0] ?? null), "delete", item, actor, (lookupId) => current.items.find((candidate) => candidate.id === lookupId)),
       }
       return committedState
     }, this.store)
@@ -509,8 +510,9 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
       committedState = {
         ...current, groupItems,
         activityByScope: appendActivity(
-          appendActivity(current.activityByScope ?? {}, this.activityScope(sourceGroupId), "delete", item, actor),
+          appendActivity(current.activityByScope ?? {}, this.activityScope(sourceGroupId), "delete", item, actor, (lookupId) => current.items.find((candidate) => candidate.id === lookupId)),
           this.activityScope(targetGroupId), "create", item, actor,
+          (lookupId) => current.items.find((candidate) => candidate.id === lookupId),
         ),
       }
       return committedState

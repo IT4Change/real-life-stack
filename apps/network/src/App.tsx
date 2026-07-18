@@ -445,7 +445,7 @@ function NetworkActivityPanelController({ open, onClose, selectItem }: { open: b
 }
 
 /** Meta-item types the shell has no detail projection for (log stays visible, not clickable). */
-const UNPROJECTABLE_TARGET_TYPES = new Set(["relation", "reaction", "comment"])
+const UNPROJECTABLE_TARGET_TYPES = new Set(["relation", "comment"])
 
 function NetworkActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {
   const connector = useConnector()
@@ -454,13 +454,29 @@ function NetworkActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: i
   const currentGroup = useCurrentGroup()
   const { data: members } = useMembers(currentGroup?.id ?? null)
   const currentUser = useOptionalCurrentUser(connector)
-  const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items])
-  const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => !UNPROJECTABLE_TARGET_TYPES.has(entry.targetType) && entry.action !== "delete" && itemIds.has(entry.targetId), [itemIds])
+  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
+  // A reaction entry opens its PARENT (the reacted-to item) — the reaction
+  // itself has no detail projection.
+  const resolveOpenId = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
+    if (UNPROJECTABLE_TARGET_TYPES.has(entry.targetType) || entry.action === "delete") return undefined
+    if (entry.targetType === "reaction") {
+      const reaction = itemById.get(entry.targetId)
+      const target = reaction?.relations?.find((relation) => relation.predicate === "reactsTo")?.target
+      const parentId = target?.startsWith("item:") ? target.slice("item:".length) : undefined
+      return parentId && itemById.has(parentId) ? parentId : undefined
+    }
+    return itemById.has(entry.targetId) ? entry.targetId : undefined
+  }, [itemById])
+  const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => resolveOpenId(entry) !== undefined, [resolveOpenId])
   const resolveActor = useCallback(
     (actorId: string) => members.find((member) => member.id === actorId) ?? (currentUser?.id === actorId ? currentUser : undefined),
     [members, currentUser],
   )
-  return <ActivityPanel entries={entries} isTargetOpenable={isTargetOpenable} onOpenTarget={onOpenTarget} resolveActor={resolveActor} />
+  const openResolvedTarget = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
+    const openId = resolveOpenId(entry)
+    if (openId) onOpenTarget({ ...entry, targetId: openId })
+  }, [onOpenTarget, resolveOpenId])
+  return <ActivityPanel entries={entries} isTargetOpenable={isTargetOpenable} onOpenTarget={openResolvedTarget} resolveActor={resolveActor} />
 }
 
 function NetworkShell() {
