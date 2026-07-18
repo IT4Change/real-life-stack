@@ -55,6 +55,24 @@ interface KanbanViewProps {
   groups: Group[]
 }
 
+/**
+ * The mutation half of Kanban's drag handler.  Keeping it at module scope
+ * makes the user-visible drag path directly contract-testable.
+ */
+export function handleKanbanDrag(
+  tasks: Item[],
+  itemId: string,
+  newStatus: string,
+  position: number,
+  updateItem: (id: string, updates: { data: Record<string, unknown> }) => unknown,
+): void {
+  const item = tasks.find((task) => task.id === itemId)
+  if (!item) return
+  for (const update of computeColumnReorder(tasks, item, newStatus, position)) {
+    void updateItem(update.id, { data: update.data })
+  }
+}
+
 export function KanbanView(props: KanbanViewProps) {
   // Renders into the app-level shared panel (one host for all modules);
   // pin + mode config lives on that provider (App.tsx).
@@ -148,11 +166,7 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   }, [tasks])
 
   const handleMoveItem = (itemId: string, newStatus: string, position: number) => {
-    const item = tasks.find((t) => t.id === itemId)
-    if (!item) return
-    for (const update of computeColumnReorder(tasks, item, newStatus, position)) {
-      updateItem(update.id, { data: update.data })
-    }
+    handleKanbanDrag(tasks, itemId, newStatus, position, updateItem)
   }
 
   // A card click points the URL focus at the task; the host opens its detail.

@@ -275,6 +275,8 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
       this.currentGroupObs.set(this.currentGroup)
     }
     this.notifyGroupObservers()
+    // Overview activity is the union of currently accessible spaces.
+    this.notifyActivityObservers()
     await this.persist()
     this.broadcast({ type: "groups-changed" })
   }
@@ -705,6 +707,9 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
       this.users = stored.users
       this.groupMembers = stored.groupMembers
       this.notifyGroupObservers()
+      // A changed space list changes the overview activity union even when
+      // its stored entries themselves did not change.
+      this.notifyActivityObservers()
     }
   }
 
