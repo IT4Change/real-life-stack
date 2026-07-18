@@ -4,6 +4,42 @@ import { WotConnector } from "../src/wot-connector.js"
 import { CrossGroupIndex } from "../src/CrossGroupIndex.js"
 import type { RlsSpaceDoc } from "../src/types.js"
 
+const bootstrapHarness = vi.hoisted(() => {
+  const subscribable = <T>(value: T) => ({ getValue: () => value, subscribe: () => () => {} })
+  return {
+    personalDoc: {} as any,
+    storage: {
+      watchContacts: () => subscribable([]),
+      watchAllAttestations: () => subscribable([]),
+      getContacts: async () => [],
+    },
+    outbox: {
+      onStateChange: vi.fn(), onReceipt: vi.fn(), onMessage: vi.fn(),
+      connect: vi.fn(async () => {}), disconnect: vi.fn(async () => {}),
+      flushOutbox: vi.fn(async () => {}), getOutboxStore: vi.fn(),
+    },
+  }
+})
+
+vi.mock("@real-life/adapter-yjs", () => ({
+  YjsReplicationAdapter: vi.fn(),
+  YjsStorageAdapter: class { constructor() { return bootstrapHarness.storage } },
+  getYjsPersonalDoc: vi.fn(() => bootstrapHarness.personalDoc),
+  resetYjsPersonalDoc: vi.fn(),
+  onYjsPersonalDocChange: vi.fn(() => () => {}),
+  changeYjsPersonalDoc: vi.fn(),
+  flushYjsPersonalDoc: vi.fn(),
+}))
+
+vi.mock("../src/personal-doc-persistence.js", () => ({ initNamespacedYjsPersonalDoc: vi.fn(async () => {}) }))
+vi.mock("../src/messaging-runtime.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../src/messaging-runtime.js")>(),
+  createOutboxMessagingRuntime: vi.fn(() => bootstrapHarness.outbox),
+}))
+vi.mock("../src/inbox-reception-host.js", () => ({
+  InboxReceptionHost: class { start() {} onAttestation() { return () => {} } onAttestationReceipt() { return () => {} } },
+}))
+
 function doc(): RlsSpaceDoc {
   return { _type: "rls", items: {}, metadata: { name: "test", modules: [] } }
 }
@@ -46,6 +82,12 @@ function connector(current: ReturnType<typeof handle>, handles = new Map<string,
   value.notifyAllObservers = vi.fn()
   value.replication = { openSpace: vi.fn(async (id: string) => handles.get(id) ?? current) }
   return value as WotConnector
+}
+
+function invokePrivate<T>(target: object, name: string): T {
+  const value = Reflect.get(target, name)
+  if (typeof value !== "function") throw new Error(`Missing production method ${name}`)
+  return value.bind(target) as T
 }
 
 describe("Activity log — WoT transaction boundaries", () => {
@@ -104,8 +146,15 @@ describe("Activity log — WoT transaction boundaries", () => {
     const bob = handle()
     fillActivity(alice, "alice", 300)
     fillActivity(bob, "bob", 300)
-    const aliceConnector = connector(alice) as any
-    const bobConnector = connector(bob) as any
+    const aliceConnector = connector(alice, new Map([["shared", alice]]))
+    const bobConnector = connector(bob, new Map([["shared", bob]]))
+    Reflect.set(aliceConnector, "currentGroupId", "shared")
+    Reflect.set(bobConnector, "currentGroupId", "shared")
+
+    // This is the same handle-opening path that registers the production
+    // remote-update callback; the fake only supplies the merged CRDT view.
+    await invokePrivate<() => Promise<void>>(aliceConnector, "openCurrentHandle")()
+    await invokePrivate<() => Promise<void>>(bobConnector, "openCurrentHandle")()
 
     // Model a CRDT merge: both replicas now carry the union; no item is touched.
     const merged = { ...alice.value.activity!, ...bob.value.activity! }
@@ -116,9 +165,6 @@ describe("Activity log — WoT transaction boundaries", () => {
 
     for (const callback of alice.remote) callback()
     for (const callback of bob.remote) callback()
-    // The production reconciliation is normally subscribed from the handle.
-    aliceConnector.scheduleActivityReconciliation("shared", alice)
-    bobConnector.scheduleActivityReconciliation("shared", bob)
     await vi.waitFor(() => expect(Object.keys(alice.value.activity ?? {})).toHaveLength(500))
     await vi.waitFor(() => expect(Object.keys(bob.value.activity ?? {})).toHaveLength(500))
     expect(Object.keys(alice.value.items)).toEqual([])
@@ -126,28 +172,35 @@ describe("Activity log — WoT transaction boundaries", () => {
     expect(Object.keys(alice.value.activity ?? {}).sort()).toEqual(Object.keys(bob.value.activity ?? {}).sort())
   })
 
-  it("15. reconciles a non-current overview handle on remote updates and detaches its hook on removal and stop", async () => {
+  it("15. reconciles a non-current overview handle through bootstrap's CrossGroupIndex onHandle wiring", async () => {
     const active = handle()
     const background = handle()
-    let spaces = [{ id: "background", type: "shared" as const }]
-    let onSpaces: ((value: typeof spaces) => void) | null = null
+    let spaces = [
+      { id: "background", type: "shared" as const },
+      { id: "personal", type: "shared" as const, appTag: "rls-private" },
+    ]
+    const spaceSubscribers = new Set<(value: typeof spaces) => void>()
     const replication = {
-      watchSpaces: () => ({ getValue: () => spaces, subscribe: (callback: (value: typeof spaces) => void) => { onSpaces = callback; return () => { onSpaces = null } } }),
+      watchSpaces: () => ({ getValue: () => spaces, subscribe: (callback: (value: typeof spaces) => void) => { spaceSubscribers.add(callback); return () => { spaceSubscribers.delete(callback) } } }),
       openSpace: vi.fn(async (id: string) => id === "background" ? background : active),
+      onSpaceInvite: () => () => {},
+      start: async () => {},
     }
-    const c = connector(active) as any
-    const index = new CrossGroupIndex<RlsSpaceDoc, any>(
-      replication as any,
-      (spaceDoc) => new Map(Object.entries(spaceDoc.items ?? {}).map(([id, item]) => [id, item])),
-      (item) => item.type,
-      { onHandle: (spaceId, spaceHandle) => {
-        c.scheduleActivityReconciliation(spaceId, spaceHandle)
-        const unsubscribe = spaceHandle.onRemoteUpdate(() => c.scheduleActivityReconciliation(spaceId, spaceHandle))
-        return () => { unsubscribe(); c.activityReconciliations.delete(spaceId) }
-      } },
+    const c = new WotConnector(
+      { relayUrl: "ws://relay.test", profilesUrl: "https://profiles.test" },
+      {
+        replication: replication as any,
+        docLogStore: { init: async () => {}, resolveConnectDeviceId: async () => "device", getPending: async () => [] } as any,
+        outboxStore: { count: async () => 0, getPending: async () => [] } as any,
+        keyManagement: {} as any,
+        memberUpdateStore: {} as any,
+        messageIdHistory: {} as any,
+        compactStore: {} as any,
+        workQueue: { claimDue: async () => [], count: async () => 0 } as any,
+      },
     )
-    c.crossGroupIndex = index
-    index.start()
+    Reflect.set(c, "identity", { getDid: () => "did:key:test", signEd25519: async () => new Uint8Array(), sign: async () => "" })
+    await invokePrivate<() => Promise<void>>(c, "bootstrapAdapters")()
     await vi.waitFor(() => expect(replication.openSpace).toHaveBeenCalledWith("background"))
 
     fillActivity(background, "remote", 501)
@@ -156,11 +209,12 @@ describe("Activity log — WoT transaction boundaries", () => {
     expect(active.transact).not.toHaveBeenCalled()
 
     fillActivity(background, "removed", 1)
-    onSpaces?.([])
+    for (const callback of spaceSubscribers) callback([])
     for (const callback of background.remote) callback()
     await new Promise((resolve) => queueMicrotask(resolve))
     expect(background.transact).toHaveBeenCalledTimes(1)
 
+    const index = Reflect.get(c, "crossGroupIndex") as CrossGroupIndex<RlsSpaceDoc, any>
     index.stop()
     fillActivity(background, "stopped", 1)
     for (const callback of background.remote) callback()

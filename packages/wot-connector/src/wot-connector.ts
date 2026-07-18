@@ -1474,7 +1474,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
       await this.spaceCompactStore.open()
     }
 
-    this.replication = new YjsReplicationAdapter({
+    this.replication = this.runtimeOverrides.replication ?? new YjsReplicationAdapter({
       identity: this.identity,
       messaging: this.outboxAdapter,
       keyManagement: this.keyManagement,

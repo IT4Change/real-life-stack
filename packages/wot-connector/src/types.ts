@@ -8,6 +8,7 @@ import type {
   OutboxStore,
 } from "@real-life/wot-core/ports"
 import type { YjsCompactStore } from "@real-life/adapter-yjs"
+import type { YjsReplicationAdapter } from "@real-life/adapter-yjs"
 import type { WorkQueue } from "./work-queue-store.js"
 
 // --- WoT Connector Configuration ---
@@ -31,6 +32,8 @@ export interface WotConnectorRuntimeOverrides {
   memberUpdateStore?: MemberUpdatePendingStore
   messageIdHistory?: MessageIdHistoryPort
   compactStore?: YjsCompactStore
+  /** Test/runtime replacement for space replication (for example an in-memory CRDT peer). */
+  replication?: YjsReplicationAdapter
   /** Tests can disable trace decoration without changing transport semantics. */
   traceMessaging?: boolean
 }
