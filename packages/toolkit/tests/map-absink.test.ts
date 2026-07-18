@@ -9,10 +9,12 @@ import {
   filterMapViewItems,
   mapViewCanCreate,
   mapViewMarkerItems,
+  mapViewProjectionToggleA11y,
   mapViewRevealOptions,
   mapViewSeparationZoom,
   observeMapViewBounds,
   reconcileMapInventory,
+  reconcileMapInventoryForKey,
   toggleMapViewProjection,
 } from "../src/components/map/map-view"
 import { mountMapLensAdapter } from "../src/components/lens/map-lens"
@@ -77,12 +79,19 @@ describe("MAP-ABSINK parity matrix — MapView module with fake-adapter probes",
     stop(); vi.useRealTimers()
   })
 
-  it("3: accumulates old pages, authoritatively removes in-view records, and resets for a new inventory key", () => {
+  it("3: keeps bbox pages incremental but treats lens items as the complete authoritative inventory", () => {
     const a = point("a", "place", [13.2, 52.2]); const b = point("b", "place", [20, 60])
-    let inventory = reconcileMapInventory(new Map(), [a, b], false, [13, 52, 14, 53])
-    inventory = reconcileMapInventory(inventory, [], false, [13, 52, 14, 53])
+    let inventory = reconcileMapInventory(new Map(), [a, b], false, [13, 52, 14, 53], "bbox-module")
+    inventory = reconcileMapInventory(inventory, [], false, [13, 52, 14, 53], "bbox-module")
     expect([...inventory.keys()]).toEqual(["b"])
-    expect(reconcileMapInventory(new Map(), [point("next")], false, null).has("b")).toBe(false)
+    expect([...reconcileMapInventory(new Map([[a.id, a]]), [], false, null, "lens-auto-fit").keys()]).toEqual([])
+
+    // A key-only transition enters the component's same reconcile path with the
+    // unchanged caller array, rather than waiting for a new items reference.
+    const sameItems = [point("next")]
+    inventory = reconcileMapInventoryForKey("space-a", "space-a", new Map([["old", point("old")]]), sameItems, false, null, "bbox-module")
+    inventory = reconcileMapInventoryForKey("space-a", "space-b", inventory, sameItems, false, null, "bbox-module")
+    expect([...inventory.keys()]).toEqual(["next"])
   })
 
   it("4: renders the real module FilterBar/search surface and filters its marker input", () => {
@@ -144,6 +153,8 @@ describe("MAP-ABSINK parity matrix — MapView module with fake-adapter probes",
     const adapter = fakeAdapter({ globe: true })
     expect(toggleMapViewProjection(adapter, "mercator")).toBe("globe")
     expect(adapter.setView).toHaveBeenCalledWith({ zoom: 1 })
+    expect(mapViewProjectionToggleA11y("mercator")).toEqual({ "aria-label": "Globusansicht", "aria-pressed": false })
+    expect(mapViewProjectionToggleA11y("globe")).toEqual({ "aria-label": "Globusansicht", "aria-pressed": true })
   })
 
   it("8b: preserves the network's slate marker style while item colour precedence and group glow stay separate", () => {

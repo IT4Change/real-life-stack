@@ -58,13 +58,19 @@ function inBounds(item: Item, bounds: [number, number, number, number]) {
   return point.lat >= south && point.lat <= north && (west <= east ? point.lng >= west && point.lng <= east : point.lng >= west || point.lng <= east)
 }
 
-/** Reconcile a newly loaded bbox page without losing markers from earlier views. */
+/**
+ * Reconcile map inventory according to the viewport owner's data contract.
+ * Bbox pages are incremental, while a lens receives its complete marker set.
+ */
 export function reconcileMapInventory(
   previous: ReadonlyMap<string, Item>,
   items: readonly Item[],
   itemsLoading: boolean,
   bounds: [number, number, number, number] | null,
+  viewportMode: MapViewportMode,
 ): Map<string, Item> {
+  if (viewportMode === "lens-auto-fit") return new Map(items.map((item) => [item.id, item]))
+
   const next = new Map(previous)
   if (bounds && !itemsLoading) {
     const ids = new Set(items.map(({ id }) => id))
@@ -72,6 +78,19 @@ export function reconcileMapInventory(
   }
   for (const item of items) next.set(item.id, item)
   return next
+}
+
+/** A key change starts a new inventory but immediately reconciles the current props. */
+export function reconcileMapInventoryForKey(
+  previousKey: string | number,
+  inventoryKey: string | number,
+  previous: ReadonlyMap<string, Item>,
+  items: readonly Item[],
+  itemsLoading: boolean,
+  bounds: [number, number, number, number] | null,
+  viewportMode: MapViewportMode,
+): Map<string, Item> {
+  return reconcileMapInventory(previousKey === inventoryKey ? previous : new Map(), items, itemsLoading, bounds, viewportMode)
 }
 
 /** The draft is a display-only overlay and never becomes part of the bbox inventory. */
@@ -107,6 +126,11 @@ export function toggleMapViewProjection(adapter: MapAdapter | null, projection: 
   const next = projection === "globe" ? "mercator" : "globe"
   if (next === "globe" && adapter && adapter.getView().zoom > 2) adapter.setView({ zoom: 1 })
   return next
+}
+
+/** Projection is a state toggle, so its accessible name stays stable. */
+export function mapViewProjectionToggleA11y(projection: MapProjection) {
+  return { "aria-label": "Globusansicht", "aria-pressed": projection === "globe" }
 }
 
 function metersBetween(aLng: number, aLat: number, bLng: number, bLat: number): number {
@@ -182,19 +206,24 @@ export function MapView({
   const [pickPosition, setPickPosition] = useState<{ lat: number; lng: number } | null>(null)
   const { isPicking, updatePick, confirmPick, cancelPick } = useLocationPick()
   const accumulated = useRef(new Map<string, Item>())
+  const accumulatedKey = useRef<string | number>(inventoryKey)
   const [inventory, setInventory] = useState<Item[]>([])
   const bounds = useRef<[number, number, number, number] | null>(null)
   const markerClick = useRef<string | null>(null)
   const settledReveal = useRef<string | null>(null)
   const approachedReveal = useRef<string | null>(null)
 
-  useEffect(() => { accumulated.current = new Map(); setInventory([]); bounds.current = null }, [inventoryKey])
   useEffect(() => {
-    const next = reconcileMapInventory(accumulated.current, items, itemsLoading, bounds.current)
-    const changed = next.size !== accumulated.current.size || [...next].some(([id, item]) => accumulated.current.get(id) !== item)
+    const keyChanged = accumulatedKey.current !== inventoryKey
+    if (keyChanged) {
+      bounds.current = null
+    }
+    const next = reconcileMapInventoryForKey(accumulatedKey.current, inventoryKey, accumulated.current, items, itemsLoading, bounds.current, viewportMode)
+    accumulatedKey.current = inventoryKey
+    const changed = keyChanged || next.size !== accumulated.current.size || [...next].some(([id, item]) => accumulated.current.get(id) !== item)
     accumulated.current = next
     if (changed) setInventory([...next.values()])
-  }, [items, itemsLoading])
+  }, [inventoryKey, items, itemsLoading, viewportMode])
 
   useEffect(() => {
     if (!adapter || viewportMode !== "bbox-module" || !onViewportBoundsChange) return
@@ -277,7 +306,7 @@ export function MapView({
       mountKey={mountAttempt} onMountError={() => setMountError(true)} />
     {!adapter && <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 text-muted-foreground">{mountError ? <div className="flex flex-col items-center gap-3"><span>Karte konnte nicht geladen werden.</span><Button variant="outline" size="sm" onClick={() => { setMountError(false); setMountAttempt((value) => value + 1) }}>Erneut versuchen</Button></div> : <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Karte wird geladen…</>}</div>}
     {isPicking && <div className="absolute inset-x-0 top-0 z-30 flex justify-center p-3"><div className="flex items-center gap-2 rounded-full border bg-background/95 px-3 py-2 text-sm shadow-md"><MapPin className="h-4 w-4" /><span>{pickPosition ? "Position gewählt." : "Tippe auf die Karte, um die Position zu setzen."}</span>{isCompact && pickPosition && <Button size="sm" onClick={confirmPick}>Übernehmen</Button>}<Button size="sm" variant="ghost" onClick={cancelPick}>Abbrechen</Button></div></div>}
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-20 py-4 pl-16 pr-4 **:pointer-events-auto"><FilterBar value={filter} onChange={setFilter} availableTags={availableTags} availableTypes={MAP_TYPES} className="[&_[data-slot=button][data-variant=outline]]:bg-background!" leadingActions={<div className="relative min-w-0 flex-1 sm:flex-none"><Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2" /><Input aria-label="Karte durchsuchen" placeholder="Suche…" value={search} onChange={(event) => setSearch(event.target.value)} className="h-8 w-full pl-7 text-xs bg-background! sm:w-40" /></div>} trailingActions={adapter && hasGlobe(adapter) && !isPicking ? <Button size="icon-sm" variant={projection === "globe" ? "default" : "outline"} aria-label="Globus wechseln" onClick={toggleProjection}><Globe className="h-4 w-4" /></Button> : undefined} /></div>
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-20 py-4 pl-16 pr-4 **:pointer-events-auto"><FilterBar value={filter} onChange={setFilter} availableTags={availableTags} availableTypes={MAP_TYPES} className="[&_[data-slot=button][data-variant=outline]]:bg-background!" leadingActions={<div className="relative min-w-0 flex-1 sm:flex-none"><Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2" /><Input aria-label="Karte durchsuchen" placeholder="Suche…" value={search} onChange={(event) => setSearch(event.target.value)} className="h-8 w-full pl-7 text-xs bg-background! sm:w-40" /></div>} trailingActions={adapter && hasGlobe(adapter) && !isPicking ? <Button size="icon-sm" variant={projection === "globe" ? "default" : "outline"} {...mapViewProjectionToggleA11y(projection)} onClick={toggleProjection}><Globe className="h-4 w-4" /></Button> : undefined} /></div>
     {!isPicking && canCreate && <CreateFab onClick={onCreate!} label="Ort erstellen" />}
   </div>
 }
