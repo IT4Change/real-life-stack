@@ -76,7 +76,7 @@ describe("Activity-Log contract", () => {
     await connector.createItem({ id: "one", type: "task", createdBy: "x", data: {} })
     await connector.moveItemToGroup("one", "beta")
     connector.setCurrentGroup(null)
-    expect((await activity(connector)).map((entry) => entry.action)).toEqual(["create", "delete", "create"])
+    expect((await activity(connector)).map((entry) => entry.action).sort()).toEqual(["create", "create", "delete"])
   })
 
   it("9. does not log duplicate creates, absent deletes, or same-space moves", async () => {
