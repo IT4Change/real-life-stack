@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react"
 import type { Item } from "@real-life-stack/data-interface"
 import { isWritable, hasRelations, isAuthenticatable, deriveContext } from "@real-life-stack/data-interface"
-import type { ReactionSummary } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 
 /** Aggregated reaction for a single emoji. */
@@ -33,37 +32,62 @@ export interface UseReactionsResult {
  */
 export function useReactions(itemId: string): UseReactionsResult {
   const connector = useConnector()
-  const observable = useMemo(() => connector.observeItem(itemId), [connector, itemId])
-  const [item, setItem] = useState<Item | null>(observable.current)
-  const update = useCallback((i: Item | null) => startTransition(() => setItem(i)), [])
-
+  const canRelate = hasRelations(connector)
+  // The truth is the set of reaction ITEMS (reactsTo → this item). No
+  // connector maintains a data.reactions summary on the parent — reading it
+  // there left the pills at the mercy of the next item re-emit, which wiped
+  // the optimistic state right after the write.
+  const relatedObservable = useMemo(
+    () => (canRelate ? connector.observeRelatedItems(itemId, "reactsTo", { direction: "to" }) : null),
+    [canRelate, connector, itemId],
+  )
+  const [reactionItems, setReactionItems] = useState<Item[]>(relatedObservable?.current ?? [])
   useEffect(() => {
-    setItem(observable.current)
-    return observable.subscribe(update)
-  }, [observable, update])
+    if (!relatedObservable) return
+    setReactionItems(relatedObservable.current)
+    return relatedObservable.subscribe((items) => startTransition(() => setReactionItems(items)))
+  }, [relatedObservable])
+
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (!isAuthenticatable(connector)) return
+    const observable = connector.observeCurrentUser()
+    setCurrentUserId(observable.current?.id)
+    return observable.subscribe((user) => setCurrentUserId(user?.id))
+  }, [connector])
 
   const canWrite = isWritable(connector)
-  const canRelate = hasRelations(connector)
-
-  // Determine if user can react
   const canReact = canWrite && canRelate
 
-  // Extract reaction data from item
-  const reactionSummary = (item?.data?.reactions as ReactionSummary | undefined) ?? {}
-  const myReaction = (item?.data?.myReaction as string | undefined) ?? undefined
+  // Optimistic overlay for the current user's own reaction: applied on click,
+  // dropped as soon as the related-items observable reflects the write.
+  const [pending, setPending] = useState<{ emoji: string | null } | null>(null)
 
-  // Build aggregated reactions sorted by count
+  const myReactionItem = useMemo(
+    () => (currentUserId ? reactionItems.find((r) => r.createdBy === currentUserId) : undefined),
+    [reactionItems, currentUserId],
+  )
+  const persistedMyReaction = typeof myReactionItem?.data.emoji === "string" ? myReactionItem.data.emoji : undefined
+  const myReaction = pending ? pending.emoji ?? undefined : persistedMyReaction
+
+  useEffect(() => {
+    if (!pending) return
+    if ((pending.emoji ?? undefined) === persistedMyReaction) setPending(null)
+  }, [pending, persistedMyReaction])
+
   const reactions: AggregatedReaction[] = useMemo(() => {
-    const entries = Object.entries(reactionSummary)
-      .filter(([, count]) => count > 0)
-      .map(([emoji, count]) => ({
-        emoji,
-        count,
-        isMyReaction: emoji === myReaction,
-      }))
+    const counts = new Map<string, number>()
+    for (const reaction of reactionItems) {
+      if (pending && currentUserId && reaction.createdBy === currentUserId) continue
+      const emoji = reaction.data.emoji
+      if (typeof emoji !== "string" || !emoji) continue
+      counts.set(emoji, (counts.get(emoji) ?? 0) + 1)
+    }
+    if (pending?.emoji) counts.set(pending.emoji, (counts.get(pending.emoji) ?? 0) + 1)
+    return [...counts.entries()]
+      .map(([emoji, count]) => ({ emoji, count, isMyReaction: emoji === myReaction }))
       .sort((a, b) => b.count - a.count)
-    return entries
-  }, [reactionSummary, myReaction])
+  }, [reactionItems, pending, currentUserId, myReaction])
 
   // Abort controller for latest-wins pattern
   const latestRef = useRef(0)
@@ -73,49 +97,22 @@ export function useReactions(itemId: string): UseReactionsResult {
 
     const writableConnector = connector
     const requestId = ++latestRef.current
-    const currentMyReaction = (item?.data?.myReaction as string | undefined) ?? undefined
-    const currentSummary = { ...((item?.data?.reactions as ReactionSummary | undefined) ?? {}) }
-    const isSameEmoji = currentMyReaction === emoji
-
-    // Compute new state
-    const newSummary = { ...currentSummary }
-    if (currentMyReaction) {
-      newSummary[currentMyReaction] = Math.max(0, (newSummary[currentMyReaction] ?? 1) - 1)
-      if (newSummary[currentMyReaction] === 0) delete newSummary[currentMyReaction]
-    }
-    if (!isSameEmoji) {
-      newSummary[emoji] = (newSummary[emoji] ?? 0) + 1
-    }
-    const newMyReaction = isSameEmoji ? undefined : emoji
-
-    // Optimistic update
-    startTransition(() => {
-      setItem((prev) =>
-        prev
-          ? { ...prev, data: { ...prev.data, reactions: newSummary, myReaction: newMyReaction } }
-          : prev
-      )
-    })
+    const isSameEmoji = myReaction === emoji
+    setPending({ emoji: isSameEmoji ? null : emoji })
 
     try {
-      // Find existing reaction item by current user
       const existingReactions = await writableConnector.getRelatedItems(itemId, "reactsTo", { direction: "to" })
       if (latestRef.current !== requestId) return
 
-      let currentUserId: string | undefined
-      if (isAuthenticatable(connector)) {
-        const user = await connector.getCurrentUser()
-        currentUserId = user?.id
+      let userId = currentUserId
+      if (userId === undefined && isAuthenticatable(connector)) {
+        userId = (await connector.getCurrentUser())?.id
       }
-
-      const myReactionItem = currentUserId
-        ? existingReactions.find((r) => r.createdBy === currentUserId)
-        : undefined
-
+      const existingMine = userId ? existingReactions.find((r) => r.createdBy === userId) : undefined
       if (latestRef.current !== requestId) return
 
-      if (myReactionItem) {
-        await writableConnector.deleteItem(myReactionItem.id)
+      if (existingMine) {
+        await writableConnector.deleteItem(existingMine.id)
         if (latestRef.current !== requestId) return
       }
 
@@ -123,30 +120,21 @@ export function useReactions(itemId: string): UseReactionsResult {
         const data = { emoji }
         await writableConnector.createItem({
           type: "reaction",
-          createdBy: currentUserId ?? "anonymous",
+          createdBy: userId ?? "anonymous",
           "@context": deriveContext("reaction", data),
           data,
           relations: [{ predicate: "reactsTo", target: `item:${itemId}` }],
         })
       }
     } catch {
-      // Revert optimistic update on failure
-      if (latestRef.current === requestId) {
-        startTransition(() => {
-          setItem((prev) =>
-            prev
-              ? { ...prev, data: { ...prev.data, reactions: currentSummary, myReaction: currentMyReaction } }
-              : prev
-          )
-        })
-      }
+      if (latestRef.current === requestId) setPending(null)
     }
-  }, [connector, itemId, item])
+  }, [connector, itemId, myReaction, currentUserId])
 
   return {
     reactions,
     react,
-    isLoading: item === null,
+    isLoading: relatedObservable === null,
     canReact,
   }
 }
