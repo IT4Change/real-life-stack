@@ -56,6 +56,7 @@ import {
   NotificationBell,
   NotificationCenter,
   useNotifications,
+  useMarkNotificationsSeen,
   useItems,
   type Workspace,
   type UserData,
@@ -151,7 +152,7 @@ function ActivityPanelController({ open, onClose, onOpenNotification, onOpenGrou
 
 function ReferenceNotificationCenterContent({ onOpenTarget, onOpenNotification, onOpenGroup, onOpenActivity }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void; onOpenNotification: (notification: import("@real-life-stack/toolkit").NotificationCandidate) => void; onOpenGroup: (groupId: string) => void; onOpenActivity: () => void }) {
   const notifications = useNotifications()
-  useEffect(() => { if (notifications.stateSupported && notifications.maxTs) void notifications.update?.({ op: "markSeen", ts: notifications.maxTs }) }, [notifications.maxTs, notifications.stateSupported, notifications.update])
+  useMarkNotificationsSeen(notifications)
   if (!notifications.supported) return <ReferenceActivityPanelContent onOpenTarget={onOpenTarget} />
   return <NotificationCenter notifications={notifications.notifications} onOpenSubject={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={onOpenActivity} onMarkRead={notifications.stateSupported ? (keys) => void notifications.update?.({ op: "markRead", keys }) : undefined} onMarkAllRead={notifications.stateSupported ? () => notifications.maxTs && void notifications.update?.({ op: "markAllReadUpTo", ts: notifications.maxTs }) : undefined} onMuteGroup={notifications.stateSupported ? (groupId, muted) => void notifications.update?.(muted ? { op: "mute", groupId } : { op: "unmute", groupId }) : undefined} />
 }

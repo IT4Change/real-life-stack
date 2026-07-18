@@ -1,7 +1,7 @@
 import { useState } from "react"
 import type { Group, NotificationState, ScopedActivityEntry } from "@real-life-stack/data-interface"
 import { Bell, MessageCircle, MoreHorizontal, Pencil, Plus, Smile, Trash2 } from "lucide-react"
-import { Avatar, AvatarFallback, AvatarImage, EmptyState, RelativeTime } from "../primitives"
+import { Avatar, AvatarFallback, AvatarImage, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, EmptyState, RelativeTime, Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives"
 import { cn } from "../../lib/utils"
 
 export type NotificationAction = "created" | "updated" | "deleted" | "reacted" | "commented"
@@ -48,13 +48,21 @@ export function projectNotifications(scoped: readonly ScopedActivityEntry[], ctx
       isRead: isReadKey(readKey, item.entry.ts, state),
     }]
   })
-  const nonLifecycle = normal.filter((candidate) => !lifecycle.has(candidate.semanticAction))
-  const collapsed = [...normal.filter((candidate) => lifecycle.has(candidate.semanticAction))]
-    .sort(compare).filter((candidate, index, all) => index === all.findIndex((other) => other.groupId === candidate.groupId && other.subjectType === candidate.subjectType && other.subjectId === candidate.subjectId))
+  const nonLifecycle: NotificationCandidate[] = []
+  const latestLifecycle = new Map<string, NotificationCandidate>()
+  for (const candidate of normal) {
+    if (!lifecycle.has(candidate.semanticAction)) { nonLifecycle.push(candidate); continue }
+    const key = JSON.stringify([candidate.groupId, candidate.subjectType, candidate.subjectId])
+    const existing = latestLifecycle.get(key)
+    if (!existing || compare(candidate, existing) < 0) latestLifecycle.set(key, candidate)
+  }
+  const collapsed = [...latestLifecycle.values()]
   const bySemantic = new Map<string, NotificationCandidate[]>()
   for (const candidate of [...collapsed, ...nonLifecycle]) {
     const key = JSON.stringify([candidate.groupId, candidate.subjectType, candidate.subjectId, candidate.semanticAction])
-    bySemantic.set(key, [...(bySemantic.get(key) ?? []), candidate])
+    const bucket = bySemantic.get(key)
+    if (bucket) bucket.push(candidate)
+    else bySemantic.set(key, [candidate])
   }
   const bundles: NotificationCandidate[] = []
   for (const candidates of bySemantic.values()) {
@@ -88,18 +96,19 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
   const visible = notifications.filter((notification) => tab === "groups" || (notification.priority === "high" && !notification.muted))
   return <section id="notification-center" aria-label="Benachrichtigungen" className="p-4">
     <header className="mb-3 flex items-center justify-between"><h2 className="font-semibold">Benachrichtigungen</h2>{onMarkAllRead && <button type="button" onClick={onMarkAllRead} className="text-sm text-primary hover:underline">Alle als gelesen</button>}</header>
-    <div role="tablist" aria-label="Benachrichtigungen filtern" className="mb-2 flex gap-1"><button role="tab" aria-selected={tab === "personal"} onClick={() => setTab("personal")} className="rounded px-2 py-1 text-sm">Für dich</button><button role="tab" aria-selected={tab === "groups"} onClick={() => setTab("groups")} className="rounded px-2 py-1 text-sm">Gruppen</button></div>
+    <Tabs value={tab} onValueChange={(value) => setTab(value as "personal" | "groups")} className="mb-2"><TabsList aria-label="Benachrichtigungen filtern"><TabsTrigger value="personal">Für dich</TabsTrigger><TabsTrigger value="groups">Gruppen</TabsTrigger></TabsList><TabsContent value={tab}>
     {visible.length === 0 ? <EmptyState icon={Bell} title="Keine Benachrichtigungen" description="Hier erscheinen neue Aktivitäten für dich." /> : <ol className="space-y-1">{visible.map((notification) => {
       const info = presentation[notification.semanticAction]; const Icon = info.icon; const name = notification.actor?.displayName ?? notification.actorId
       const navigable = notification.semanticAction !== "deleted" && notification.targetExists
       const subjectClause = notification.semanticAction === "reacted" ? "auf deinen Post reagiert" : notification.semanticAction === "commented" ? "deinen Post kommentiert" : info.verb
       const sentence = notification.actorCount > 1 ? `${name} und ${notification.actorCount - 1} weitere haben ${subjectClause}` : `${name} hat ${subjectClause}`
-      return <li key={`${notification.readKey}:${notification.ts}`} className={cn("rounded-md p-2", !notification.isRead && "bg-accent/50")}><div className="flex gap-2"><Avatar className="size-8"><AvatarImage src={notification.actor?.avatarUrl} alt="" /><AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0 flex-1">{navigable ? <button type="button" onClick={() => { onMarkRead?.(notification.readKeys); onOpenSubject?.(notification) }} className="text-left text-sm hover:underline">{sentence}</button> : <p className="text-sm">{sentence}</p>}<p className="truncate text-xs text-muted-foreground">{notification.subjectTitle ?? notification.subjectType}</p><p className="flex gap-1 text-xs text-muted-foreground"><RelativeTime date={notification.ts} /><span>·</span><button type="button" onClick={() => onOpenGroup?.(notification.groupId)} className="hover:underline">{notification.groupName}</button></p></div><span aria-label={info.verb} className="rounded-full bg-accent p-1"><Icon className="size-3" /></span>{tab === "groups" && onMuteGroup && <button aria-label={`${notification.muted ? "Aktivieren" : "Stummschalten"}: ${notification.groupName}`} type="button" onClick={() => onMuteGroup(notification.groupId, !notification.muted)}><MoreHorizontal className="size-4" /></button>}{!notification.isRead && <span aria-label="Ungelesen" className="mt-1 size-2 rounded-full bg-primary" />}</div></li>
+      return <li key={`${notification.readKey}:${notification.ts}`} className={cn("rounded-md p-2", !notification.isRead && "bg-accent/50")}><div className="flex gap-2"><Avatar className="size-8"><AvatarImage src={notification.actor?.avatarUrl} alt="" /><AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0 flex-1">{navigable ? <button type="button" onClick={() => { onMarkRead?.(notification.readKeys); onOpenSubject?.(notification) }} className="cursor-pointer rounded-sm text-left text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{sentence}</button> : <p className="text-sm">{sentence}</p>}<p className="truncate text-xs text-muted-foreground">{notification.subjectTitle ?? notification.subjectType}</p><p className="flex gap-1 text-xs text-muted-foreground"><RelativeTime date={notification.ts} /><span>·</span><button type="button" onClick={() => onOpenGroup?.(notification.groupId)} className="cursor-pointer rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{notification.groupName}</button></p></div><span aria-label={info.verb} className="rounded-full bg-accent p-1"><Icon className="size-3" /></span>{tab === "groups" && onMuteGroup && <DropdownMenu><DropdownMenuTrigger aria-label={`${notification.muted ? "Aktivieren" : "Stummschalten"}: ${notification.groupName}`} className="rounded-sm p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"><MoreHorizontal className="size-4" /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => onMuteGroup(notification.groupId, !notification.muted)}>{notification.muted ? "Gruppe aktivieren" : "Gruppe stummschalten"}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}{!notification.isRead && <span aria-label="Ungelesen" className="mt-1 size-2 rounded-full bg-primary" />}</div></li>
     })}</ol>}
+    </TabsContent></Tabs>
     <footer className="mt-3 border-t pt-3"><button type="button" onClick={onOpenActivity} className="text-sm text-primary hover:underline">Alle Benachrichtigungen ansehen</button></footer>
   </section>
 }
 
 export function NotificationBell({ open, count, onOpenChange }: { open: boolean; count: number; onOpenChange(open: boolean): void }) {
-  return <button type="button" aria-label={count ? `${count} neue Benachrichtigungen` : "Benachrichtigungen"} aria-expanded={open} aria-controls="notification-center" className="relative cursor-pointer rounded-md p-2 hover:bg-accent" onClick={() => onOpenChange(!open)}><Bell className="size-5" aria-hidden />{count > 0 && <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-primary px-1 text-xs text-primary-foreground">{count}</span>}</button>
+  return <button type="button" aria-label={count ? `${count} neue Benachrichtigungen` : "Benachrichtigungen"} aria-expanded={open} aria-controls="notification-center" className="relative cursor-pointer rounded-md p-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50" onClick={() => onOpenChange(!open)}><Bell className="size-5" aria-hidden />{count > 0 && <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-primary px-1 text-xs text-primary-foreground">{count}</span>}</button>
 }

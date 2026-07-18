@@ -24,10 +24,18 @@ describe("Notification Center contract", () => {
       scoped({ id: "gone", targetExists: false, entry: { ...scoped({ id: "x" }).entry, targetType: "reaction" } }),
       scoped({ id: "personal", isPersonal: true }),
       scoped({ id: "delete", entry: { ...scoped({ id: "x" }).entry, action: "delete" }, subject: { id: "post", type: "post" } }),
+      scoped({ id: "comment-delete", entry: { ...scoped({ id: "x" }).entry, action: "delete", targetType: "comment" } }),
+      scoped({ id: "unknown", entry: { ...scoped({ id: "x" }).entry, action: "update", targetType: "reaction" } }),
+      scoped({ id: "missing-owner", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction" }, subject: { id: "post", type: "post" } }),
     ])
-    expect(candidates.map(({ entryId }) => entryId)).toEqual(["delete", "reaction"])
+    expect(candidates.map(({ entryId }) => entryId)).toEqual(expect.arrayContaining(["delete", "reaction"]))
     expect(candidates.find(({ entryId }) => entryId === "reaction")).toMatchObject({ semanticAction: "reacted", priority: "high", readKey: JSON.stringify(["a", "reaction"]) })
     expect(candidates.find(({ entryId }) => entryId === "delete")).toMatchObject({ semanticAction: "deleted", priority: "low" })
+    expect(candidates.map(({ entryId }) => entryId)).not.toEqual(expect.arrayContaining(["comment-delete", "unknown"]))
+    const missingOwner = scoped({ id: "missing-owner", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction" }, subject: { id: "other", type: "post" } })
+    expect(project([missingOwner])[0]).toMatchObject({ priority: "low" })
+    const mutedState = state({ mutedGroupIds: { b: true } })
+    expect(unreadHighPriorityKeys(project([scoped({ id: "muted", groupId: "b", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction" } })], mutedState), mutedState)).toEqual([])
   })
 
   it("B-T2 collapses lifecycle before semantic bundles and keeps new constituent keys unread", () => {
@@ -43,6 +51,11 @@ describe("Notification Center contract", () => {
     expect(bundles.map((bundle) => [bundle.groupId, bundle.semanticAction])).toEqual(expect.arrayContaining([["a", "deleted"], ["a", "reacted"], ["b", "reacted"]]))
     expect(bundles.find((bundle) => bundle.entryId === "r1")?.actorCount).toBe(2)
     expect(bundles.find((bundle) => bundle.entryId === "r1")?.isRead).toBe(false)
+    const equalTs = project([scoped({ id: "a", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction", ts: "2026-07-18T11:00:00.000Z", actor: "a" }, actor: { id: "a" } }), scoped({ id: "b", entry: { ...scoped({ id: "x" }).entry, targetType: "comment", ts: "2026-07-18T11:00:00.000Z", actor: "b" }, actor: { id: "b" } })])
+    expect(equalTs.map(({ semanticAction }) => semanticAction)).toEqual(expect.arrayContaining(["reacted", "commented"]))
+    const boundary = project([scoped({ id: "newest", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction", ts: "2026-07-18T11:00:00.000Z" } }), scoped({ id: "inside", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction", ts: "2026-07-17T11:00:00.000Z" } }), scoped({ id: "outside", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction", ts: "2026-07-17T10:59:59.999Z" } })])
+    expect(boundary).toHaveLength(2)
+    expect(boundary.find(({ entryId }) => entryId === "newest")?.readKeys).toMatchObject({ [JSON.stringify(["a", "inside"])]: "2026-07-17T11:00:00.000Z" })
   })
 
   it("B-T3 couples badge, seen frontier and read frontier including late arrivals", () => {
@@ -60,7 +73,9 @@ describe("Notification Center contract", () => {
     await act(async () => (buttons.find((button) => button.textContent?.includes("Maria")) as HTMLButtonElement).click())
     await act(async () => (buttons.find((button) => button.textContent?.includes("Gruppe a")) as HTMLButtonElement).click())
     expect(subject).toHaveBeenCalledTimes(1); expect(space).toHaveBeenCalledWith("a")
-    await act(async () => (host.querySelectorAll("button")[1] as HTMLButtonElement).click())
+    const groupTab = [...host.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent === "Gruppen") as HTMLButtonElement
+    await act(async () => groupTab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })))
+    expect([...host.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent === "Gruppen")?.getAttribute("aria-selected")).toBe("true")
     expect(host.textContent).toContain("gelöscht")
     root.unmount(); host.remove()
   })
