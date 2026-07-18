@@ -45,6 +45,9 @@ import {
   useItems,
   useModulePanel,
   useRelationRecords,
+  ActivityBell,
+  ActivityPanel,
+  useActivity,
   type GraphEdge,
   type GraphNode,
   type GraphTypeDescriptor,
@@ -424,6 +427,8 @@ function NetworkShell() {
   const [enabledTypes, setEnabledTypes] = useState(() => new Set(ALL_GRAPH_TYPES))
   const [isDark, setIsDark] = useState(initialDarkMode)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [activityOpen, setActivityOpen] = useState(false)
+  const activity = useActivity()
   const [detailDrawerHeight, setDetailDrawerHeight] = useState(0)
   const currentUser = useOptionalCurrentUser(connector)
 
@@ -595,6 +600,7 @@ function NetworkShell() {
               </div>
             </NavbarCenter>
             <NavbarEnd>
+              {activity.supported && <ActivityBell open={activityOpen} onOpenChange={setActivityOpen} />}
               <IconTooltip label={isDark ? "Helles Design" : "Dunkles Design"}>
                 <Button
                   type="button"
@@ -832,6 +838,13 @@ function NetworkShell() {
         </AppShell>
       </ModulePanelProvider>
 
+      <AdaptivePanel
+        open={activityOpen}
+        onClose={() => setActivityOpen(false)}
+        allowedModes={["sidebar", "drawer"]}
+      >
+        <ActivityPanel entries={activity.data} />
+      </AdaptivePanel>
       <AdaptivePanel
         open={profileOpen && currentUser !== null}
         onClose={() => setProfileOpen(false)}

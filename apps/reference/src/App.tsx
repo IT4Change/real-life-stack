@@ -48,6 +48,9 @@ import {
   useContacts,
   useVerification,
   useRelayStatus,
+  ActivityBell,
+  ActivityPanel,
+  useActivity,
   type Workspace,
   type UserData,
   type ConnectorOption,
@@ -411,6 +414,8 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
   const [isDark, setIsDark] = useState(false)
   const [drawerHeight, setDrawerHeight] = useState(0)
+  const [activityOpen, setActivityOpen] = useState(false)
+  const activity = useActivity()
   const supportsMessaging = hasMessaging(connector)
 
   const toggleTheme = () => {
@@ -462,6 +467,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         </NavbarCenter>
         <NavbarEnd>
           {supportsMessaging && <RelayStatusBadgeWrapper />}
+          {activity.supported && <ActivityBell open={activityOpen} onOpenChange={setActivityOpen} />}
           <Button
             variant="ghost"
             size="icon"
@@ -487,6 +493,9 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
           />
         </NavbarEnd>
       </Navbar>
+      <AdaptivePanel open={activityOpen} onClose={() => setActivityOpen(false)} allowedModes={["sidebar", "drawer"]}>
+        <ActivityPanel entries={activity.data} />
+      </AdaptivePanel>
 
       {/* Map is full-bleed: skip the bottom-nav padding so the map fills the
           area behind the translucent BottomNav instead of leaving a gap above
