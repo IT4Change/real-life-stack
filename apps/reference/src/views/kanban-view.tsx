@@ -167,9 +167,8 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
     return Array.from(tagSet)
   }, [tasks])
 
-  const handleMoveItem = (itemId: string, newStatus: string, position: number) => {
+  const handleMoveItem = (itemId: string, newStatus: string, position: number) =>
     handleKanbanDrag(tasks, itemId, newStatus, position, updateItem)
-  }
 
   // A card click points the URL focus at the task; the host opens its detail.
   const handleItemClick = useCallback((item: Item) => {
