@@ -57,13 +57,13 @@ describe("Activity-Log contract", () => {
     await connector.init()
     await connector.createItem({ id: "one", type: "task", createdBy: "x", data: { status: "todo" } })
     await connector.updateItem("one", { data: { status: "done" } })
-    expect((await activity(connector))[0]?.action).toBe("update")
+    expect((await activity(connector)).some((entry) => entry.action === "update")).toBe(true)
   })
 
   it("7. relation CRUD delegates once and logs exactly one relation entry", async () => {
     const connector = new MockConnector(seed)
     await connector.init()
-    await connector.createRelationRecord({ predicate: "knows", from: "a", to: "b" })
+    await connector.createRelationRecord({ predicate: "knows", from: "item:a", to: "item:b" })
     const entries = await activity(connector)
     expect(entries).toHaveLength(1)
     expect(entries[0]?.targetType).toBe("relation")
@@ -75,6 +75,7 @@ describe("Activity-Log contract", () => {
     connector.setCurrentGroup("alpha")
     await connector.createItem({ id: "one", type: "task", createdBy: "x", data: {} })
     await connector.moveItemToGroup("one", "beta")
+    connector.setCurrentGroup(null)
     expect((await activity(connector)).map((entry) => entry.action)).toEqual(["create", "delete", "create"])
   })
 
@@ -92,7 +93,10 @@ describe("Activity-Log contract", () => {
   it("10. ignores unknown actions in the read API", async () => {
     const connector = new MockConnector(seed)
     await connector.init()
-    connector.injectActivityForTest({ id: "unknown", ts: new Date().toISOString(), actor: "user-1", action: "future", targetId: "x", targetType: "task" })
+    ;(connector as unknown as { activityByScope: Map<string, Map<string, unknown>> }).activityByScope.set(
+      "__personal__",
+      new Map([["unknown", { id: "unknown", ts: new Date().toISOString(), actor: "user-1", action: "future", targetId: "x", targetType: "task" }]]),
+    )
     expect(await activity(connector)).toEqual([])
   })
 

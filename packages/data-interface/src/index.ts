@@ -163,6 +163,23 @@ export interface ItemWriter {
   deleteItem(id: string): Promise<void>
 }
 
+/** A human-readable, best-effort history entry for one space. */
+export interface ActivityEntry {
+  id: string
+  ts: string
+  actor: string
+  action: "create" | "update" | "delete"
+  origin?: "mirror"
+  targetId: string
+  targetType: string
+  summary?: string
+}
+
+export interface ActivityLogCapable {
+  getActivity(options?: { limit?: number }): Promise<ActivityEntry[]>
+  observeActivity(options?: { limit?: number }): Observable<ActivityEntry[]>
+}
+
 /**
  * UCAN-style abilities for item authorization. Strings, so they map onto UCAN
  * `can` capabilities directly; extend as new actions appear.
@@ -464,6 +481,11 @@ export type FullConnector = DataInterface & ItemWriter & RelationCapable & Group
 
 export function isWritable(c: DataInterface): c is DataInterface & ItemWriter {
   return "createItem" in c && "updateItem" in c && "deleteItem" in c
+}
+
+export function hasActivityLog(c: DataInterface): c is DataInterface & ActivityLogCapable {
+  const candidate = c as DataInterface & Partial<ActivityLogCapable>
+  return typeof candidate.getActivity === "function" && typeof candidate.observeActivity === "function"
 }
 
 export function hasAuthorization(c: DataInterface): c is DataInterface & AuthorizationCapable {
