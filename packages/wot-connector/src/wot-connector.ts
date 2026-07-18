@@ -657,9 +657,11 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     this.currentUserObs.set(null)
     this.authStateObs.set({ status: "unauthenticated" })
 
-    // Activity is identity-scoped too. Refresh it explicitly so subscribers
-    // cannot retain entries from the just-disposed identity.
-    this.activityDirty = true
+    // Activity is identity-scoped too. Clear it synchronously so subscribers
+    // cannot retain entries from the just-disposed identity — even when the
+    // criticalFailures throw below rejects before an async refresh would land.
+    this.activityDirty = false
+    for (const observable of this.activityObservables.values()) observable.set([])
     this.notifyAllObservers()
 
     if (criticalFailures.length > 0) {

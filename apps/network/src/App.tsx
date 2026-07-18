@@ -361,6 +361,12 @@ function DetailPanelController({
 
   useEffect(() => {
     if (item) {
+      // The activity panel legitimately owns the shared panel while its bell is
+      // open — reclaiming here would bounce it shut right after opening.
+      if (panel.current?.itemId === "__activity__") {
+        panelOwnedRef.current = false
+        return
+      }
       const openedContent = openedContentRef.current
       if (
         openedItemIdRef.current === item.id &&
