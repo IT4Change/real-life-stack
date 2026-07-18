@@ -196,7 +196,13 @@ export function DetailHostController({ activeModule }: { activeModule: string })
       if (!config) return
       // Already showing this item → leave it (config/module changes flow into the
       // outlet via the store without a remount, so the edit composer survives).
-      if (openedIdRef.current === focusedId && panelOwnedRef.current) return
+      if (openedIdRef.current === focusedId && panelOwnedRef.current) {
+        // Content swaps fire no onClose, so ownedRef can be stale: the activity
+        // panel may hold the shared panel. An unchanged focus leaves it alone —
+        // only a FRESH focus below takes the panel over (activity then closes).
+        if (modulePanel.current?.itemId === "__activity__") panelOwnedRef.current = false
+        return
+      }
       openedIdRef.current = focusedId
       panelOwnedRef.current = true
       modulePanel.open({

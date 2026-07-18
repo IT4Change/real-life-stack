@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, lazy, Suspense, type ReactNode } from "react"
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, type ReactNode } from "react"
 import { Routes, Route, useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import {
   Plus,
@@ -43,11 +43,17 @@ import {
   useDeleteGroup,
   useInviteMember,
   useRemoveMember,
+  useCurrentGroup,
   useCurrentUser,
+  useMembers,
   useConnector,
   useContacts,
   useVerification,
   useRelayStatus,
+  ActivityBell,
+  ActivityPanel,
+  useActivity,
+  useItems,
   type Workspace,
   type UserData,
   type ConnectorOption,
@@ -65,6 +71,7 @@ import { LocationPickProvider, useLocationPick } from "./location-pick"
 import { CreateHostProvider, CreateSheetController } from "./create-host"
 import { DetailHostProvider, DetailHostController } from "./detail-host"
 import { UnsavedChangesGuard } from "./unsaved-changes-guard"
+import { useItemFocus } from "./hooks/use-item-focus"
 
 /**
  * Renders the single app-level ModulePanel and suspends it (hidden, kept
@@ -89,6 +96,85 @@ function ModulePanelHost({ children, onDrawerHeightChange }: { children: ReactNo
       {children}
     </ModulePanelProvider>
   )
+}
+
+/** Meta-item types the shell has no detail projection for (log stays visible, not clickable). */
+const UNPROJECTABLE_TARGET_TYPES = new Set(["relation", "comment"])
+
+/** Activity deliberately shares the module panel instead of adding a second shell overlay. */
+function ActivityPanelController({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const panel = useModulePanel()
+  const { focusItem, clearFocus } = useItemFocus()
+  const ownedActivityPanel = useRef(false)
+  const wasOpen = useRef(open)
+  const openTarget = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
+    focusItem(entry.targetId)
+    onClose()
+  }, [focusItem, onClose])
+  useEffect(() => {
+    const openedNow = open && !wasOpen.current
+    wasOpen.current = open
+    if (!open) {
+      ownedActivityPanel.current = false
+      if (panel.current?.itemId === "__activity__") panel.close({ silent: true })
+      return
+    }
+    if (panel.current?.itemId === "__activity__") {
+      ownedActivityPanel.current = true
+      return
+    }
+    // A content swap does not invoke the previous panel's onClose. Yield the
+    // shared shell instead of reclaiming it from the new owner.
+    if (ownedActivityPanel.current && !openedNow) {
+      ownedActivityPanel.current = false
+      onClose()
+      return
+    }
+    ownedActivityPanel.current = true
+    // Like starting a create, opening the history DROPS the item focus: the
+    // shared panel shows exactly one thing, and only a focus CHANGE hands it
+    // back to the detail host. Keeping a stale focus would make clicking the
+    // same item a no-op (no focus change → no detail reopen).
+    clearFocus()
+    panel.open({
+      kind: "custom",
+      itemId: "__activity__",
+      content: <ReferenceActivityPanelContent onOpenTarget={openTarget} />,
+      onClose,
+    })
+  }, [clearFocus, onClose, open, openTarget, panel.close, panel.current?.itemId, panel.open])
+  return null
+}
+
+function ReferenceActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {
+  const { data: entries } = useActivity()
+  const { data: items } = useItems()
+  const currentGroup = useCurrentGroup()
+  const { data: members } = useMembers(currentGroup?.id ?? null)
+  const { data: currentUser } = useCurrentUser()
+  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
+  // A reaction entry opens its PARENT (the reacted-to item) — the reaction
+  // itself has no detail projection.
+  const resolveOpenId = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
+    if (UNPROJECTABLE_TARGET_TYPES.has(entry.targetType) || entry.action === "delete") return undefined
+    if (entry.targetType === "reaction") {
+      const reaction = itemById.get(entry.targetId)
+      const target = reaction?.relations?.find((relation) => relation.predicate === "reactsTo")?.target
+      const parentId = target?.startsWith("item:") ? target.slice("item:".length) : undefined
+      return parentId && itemById.has(parentId) ? parentId : undefined
+    }
+    return itemById.has(entry.targetId) ? entry.targetId : undefined
+  }, [itemById])
+  const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => resolveOpenId(entry) !== undefined, [resolveOpenId])
+  const resolveActor = useCallback(
+    (actorId: string) => members.find((member) => member.id === actorId) ?? (currentUser?.id === actorId ? currentUser : undefined),
+    [members, currentUser],
+  )
+  const openResolvedTarget = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
+    const openId = resolveOpenId(entry)
+    if (openId) onOpenTarget({ ...entry, targetId: openId })
+  }, [onOpenTarget, resolveOpenId])
+  return <ActivityPanel entries={entries} isTargetOpenable={isTargetOpenable} onOpenTarget={openResolvedTarget} resolveActor={resolveActor} />
 }
 
 const CONNECTOR_OPTIONS: ConnectorOption[] = [
@@ -411,6 +497,9 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
 
   const [isDark, setIsDark] = useState(false)
   const [drawerHeight, setDrawerHeight] = useState(0)
+  const [activityOpen, setActivityOpen] = useState(false)
+  const closeActivity = useCallback(() => setActivityOpen(false), [])
+  const activity = useActivity()
   const supportsMessaging = hasMessaging(connector)
 
   const toggleTheme = () => {
@@ -426,6 +515,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
     <CreateHostProvider>
     <ModulePanelHost onDrawerHeightChange={setDrawerHeight}>
+    <ActivityPanelController open={activityOpen} onClose={closeActivity} />
     <CreateSheetController />
     <DetailHostController activeModule={activeModule} />
     <UnsavedChangesGuard />
@@ -462,6 +552,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         </NavbarCenter>
         <NavbarEnd>
           {supportsMessaging && <RelayStatusBadgeWrapper />}
+          {activity.supported && <ActivityBell open={activityOpen} onOpenChange={setActivityOpen} />}
           <Button
             variant="ghost"
             size="icon"

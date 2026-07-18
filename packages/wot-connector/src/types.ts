@@ -1,4 +1,4 @@
-import type { Relation } from "@real-life-stack/data-interface"
+import type { ActivityEntry, Relation } from "@real-life-stack/data-interface"
 import type {
   DocLogStore,
   KeyManagementPort,
@@ -8,6 +8,7 @@ import type {
   OutboxStore,
 } from "@real-life/wot-core/ports"
 import type { YjsCompactStore } from "@real-life/adapter-yjs"
+import type { YjsReplicationAdapter } from "@real-life/adapter-yjs"
 import type { WorkQueue } from "./work-queue-store.js"
 
 // --- WoT Connector Configuration ---
@@ -31,6 +32,8 @@ export interface WotConnectorRuntimeOverrides {
   memberUpdateStore?: MemberUpdatePendingStore
   messageIdHistory?: MessageIdHistoryPort
   compactStore?: YjsCompactStore
+  /** Test/runtime replacement for space replication (for example an in-memory CRDT peer). */
+  replication?: YjsReplicationAdapter
   /** Tests can disable trace decoration without changing transport semantics. */
   traceMessaging?: boolean
 }
@@ -48,6 +51,8 @@ export interface RlsSpaceDoc {
   _type: "rls"
   /** RLS Items keyed by ID */
   items: Record<string, SerializedItem>
+  /** Additive, encrypted space-local best-effort change history. */
+  activity?: Record<string, ActivityEntry>
   /** Space metadata (app-specific, name/description now in _meta) */
   metadata?: {
     /** @deprecated Use _meta.name (set via updateSpace) */

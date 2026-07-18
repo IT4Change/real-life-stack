@@ -9,6 +9,8 @@ import type {
   Observable,
   AuthState,
   AuthMethod,
+  ActivityEntry,
+  ActivityLogCapable,
   RelatedItemsOptions,
   RelationRecord,
   RelationRecordCapable,
@@ -22,6 +24,7 @@ import {
   applyPagination,
   createDefaultRelationStore,
   createObservable,
+  deriveActivitySummary,
   findRelatedItems,
   matchesFilter,
 } from "@real-life-stack/data-interface"
@@ -54,7 +57,11 @@ function copyGroupItems(groupItems: Record<string, string[]> | undefined): Recor
   )
 }
 
-export class MockConnector implements FullConnector, RelationRecordCapable, RelationRecordWriterCapable {
+function compareActivity(a: ActivityEntry, b: ActivityEntry): number {
+  return b.ts.localeCompare(a.ts) || b.actor.localeCompare(a.actor) || b.id.localeCompare(a.id)
+}
+
+export class MockConnector implements FullConnector, ActivityLogCapable, RelationRecordCapable, RelationRecordWriterCapable {
   private itemsByScope = new Map<string | null, Map<string, Item>>()
   private itemOrder: Array<{ scopeId: string | null; id: string }> = []
   private notifyScheduled = false
@@ -74,6 +81,8 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
   private relatedObservableParams = new Map<string, { itemId: string; predicate?: string; options?: RelatedItemsOptions }>()
   private relationStore: RelationRecordCapable & RelationRecordWriterCapable
   private nextItemId = 100
+  private activityByScope = new Map<string, Map<string, ActivityEntry>>()
+  private activityObservables = new Map<string, ReturnType<typeof createObservable<ActivityEntry[]>>>()
 
   constructor(seed?: MockConnectorSeed, options: MockConnectorOptions = {}) {
     const data = seed ?? {
@@ -104,7 +113,11 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
       }
     }
     this.currentGroup = null
-    this.currentUser = this.users[0] ?? null
+    // The in-memory connector always starts with an authenticated demo identity;
+    // callers that need unauthenticated behaviour use logout(). This also keeps
+    // fixture-only seeds (which intentionally omit users) writable through the
+    // same authenticated writer path.
+    this.currentUser = this.users[0] ?? { id: "user-1", displayName: "Demo user" }
     this.currentUserObs = createObservable<User | null>(this.currentUser)
     this.authState = createObservable<AuthState>(
       this.currentUser
@@ -128,6 +141,7 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
   async dispose(): Promise<void> {
     for (const obs of this.itemObservables.values()) obs.destroy()
     for (const obs of this.singleItemObservables.values()) obs.destroy()
+    for (const obs of this.activityObservables.values()) obs.destroy()
     for (const obs of this.relatedObservables.values()) obs.destroy()
     for (const obs of this.memberObservables.values()) obs.destroy()
     this.itemObservables.clear()
@@ -135,6 +149,7 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
     this.relatedObservables.clear()
     this.relatedObservableParams.clear()
     this.memberObservables.clear()
+    this.activityObservables.clear()
     this.authState.destroy()
     this.groupsObs.destroy()
     this.currentGroupObs.destroy()
@@ -164,6 +179,7 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
       this.currentGroup = null
       this.currentGroupObs.set(null)
       this.notifyObservers()
+      this.notifyActivityObservers()
       return
     }
     if (this.currentGroup?.id === id) return
@@ -172,6 +188,7 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
       this.currentGroup = group
       this.currentGroupObs.set(group)
       this.notifyObservers()
+      this.notifyActivityObservers()
     }
   }
 
@@ -199,6 +216,7 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
       this.currentGroupObs.set(this.currentGroup)
     }
     this.notifyGroupObservers()
+    this.notifyActivityObservers()
   }
 
   async getMembers(groupId: string | null): Promise<User[]> {
@@ -294,6 +312,7 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
   }
 
   async createItem(item: CreateItemInput): Promise<Item> {
+    this.requireCurrentUser()
     const scopeId = item.type === "feature" ? null : this.currentGroup?.id ?? null
     const scopeItems = this.getScopeItems(scopeId, true)
     if (item.id !== undefined) {
@@ -309,21 +328,25 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
       createdAt: new Date().toISOString(),
     }
     this.storeItem(scopeId, newItem)
+    this.appendActivity(this.activityScopeFor(scopeId), "create", newItem)
 
     // Register item in current group's scope
     if (scopeId) this.registerItemInGroup(newItem.id, scopeId)
 
     this.notifyObservers()
+    this.notifyActivityObservers()
     return newItem
   }
 
   async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
+    this.requireCurrentUser()
     const location = this.findVisibleItemLocation(id)
     if (!location) throw new Error(`Item not found: ${id}`)
     const updated = { ...location.item, ...updates, id }
     if (location.item.type !== "feature" && updated.type === "feature") {
       this.assertNoItemOutsideScope(location.scopeId, id)
     }
+    this.appendActivity(this.activityScopeFor(location.scopeId), "update", updated)
     if (updated.type === "feature" && location.scopeId !== null) {
       const globalItems = this.getScopeItems(null, true)
       location.items.delete(id)
@@ -338,12 +361,15 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
       location.items.set(id, updated)
     }
     this.notifyObservers()
+    this.notifyActivityObservers()
     return updated
   }
 
   async deleteItem(id: string): Promise<void> {
+    this.requireCurrentUser()
     const location = this.findVisibleItemLocation(id)
     if (!location) return
+    this.appendActivity(this.activityScopeFor(location.scopeId), "delete", location.item)
     location.items.delete(id)
     this.removeItemOrder(location.scopeId, id)
     if (location.scopeId === null) {
@@ -355,6 +381,7 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
         .filter((itemId) => itemId !== id)
     }
     this.notifyObservers()
+    this.notifyActivityObservers()
   }
 
   /**
@@ -398,14 +425,17 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
   }
 
   moveItemToGroup(itemId: string, targetGroupId: string): void {
+    this.requireCurrentUser()
     const location = this.findVisibleItemLocation(itemId)
-    if (!location || (location.scopeId === null && location.item.type === "feature")) return
+    if (!location || (location.scopeId === null && location.item.type === "feature")) throw new Error(`Item not found: ${itemId}`)
     if (location.scopeId === targetGroupId) return
 
     const targetItems = this.getScopeItems(targetGroupId, true)
     if (targetItems.has(itemId)) throw new Error(`Item already exists in target group: ${itemId}`)
 
     targetItems.set(itemId, location.item)
+    this.appendActivity(this.activityScopeFor(location.scopeId), "delete", location.item)
+    this.appendActivity(this.activityScopeFor(targetGroupId), "create", location.item)
     const orderEntry = this.itemOrder.find(
       (entry) => entry.scopeId === location.scopeId && entry.id === itemId
     )
@@ -417,6 +447,61 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
     }
     this.registerItemInGroup(itemId, targetGroupId)
     this.notifyObservers()
+    this.notifyActivityObservers()
+  }
+
+  async getActivity(options?: { limit?: number }): Promise<ActivityEntry[]> {
+    return this.readActivity(options?.limit)
+  }
+
+  observeActivity(options?: { limit?: number }): Observable<ActivityEntry[]> {
+    const key = `${options?.limit ?? ""}`
+    let observable = this.activityObservables.get(key)
+    if (!observable) {
+      observable = createObservable(this.readActivity(options?.limit))
+      this.activityObservables.set(key, observable)
+    }
+    return observable
+  }
+
+  private requireCurrentUser(): User {
+    if (!this.currentUser) throw new Error("Authentication required")
+    return this.currentUser
+  }
+
+  private activityScopeFor(scopeId: string | null): string {
+    return scopeId ?? "__personal__"
+  }
+
+  private appendActivity(scopeId: string, action: ActivityEntry["action"], item: Item): void {
+    const entries = this.activityByScope.get(scopeId) ?? new Map<string, ActivityEntry>()
+    const entry: ActivityEntry = {
+      id: crypto.randomUUID(), ts: new Date().toISOString(), actor: this.requireCurrentUser().id,
+      action, targetId: item.id, targetType: item.type,
+      summary: deriveActivitySummary(item, (id) => this.findVisibleItemLocation(id)?.item),
+    }
+    entries.set(entry.id, entry)
+    while (entries.size > 500) {
+      const oldest = [...entries.values()].sort(compareActivity)[entries.size - 1]
+      if (oldest) entries.delete(oldest.id)
+    }
+    this.activityByScope.set(scopeId, entries)
+  }
+
+  private readActivity(limit?: number): ActivityEntry[] {
+    const scopes = this.currentGroup
+      ? [this.currentGroup.id]
+      : [...this.groups.map((group) => group.id), "__personal__"]
+    const entries = scopes.flatMap((scope) => [...(this.activityByScope.get(scope)?.values() ?? [])])
+      .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
+      .sort(compareActivity)
+    return limit === undefined ? entries : entries.slice(0, Math.max(0, limit))
+  }
+
+  private notifyActivityObservers(): void {
+    for (const [rawLimit, observable] of this.activityObservables) {
+      observable.set(this.readActivity(rawLimit === "" ? undefined : Number(rawLimit)))
+    }
   }
 
   // --- Relation Records ---
@@ -437,15 +522,18 @@ export class MockConnector implements FullConnector, RelationRecordCapable, Rela
     return this.relationStore.observeRelationNeighbors(endpoint, predicate)
   }
 
-  createRelationRecord(input: RelationRecordInput): Promise<RelationRecord> {
+  async createRelationRecord(input: RelationRecordInput): Promise<RelationRecord> {
+    this.requireCurrentUser()
     return this.relationStore.createRelationRecord(input)
   }
 
-  updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord> {
+  async updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord> {
+    this.requireCurrentUser()
     return this.relationStore.updateRelationRecord(id, updates)
   }
 
-  deleteRelationRecord(id: string): Promise<void> {
+  async deleteRelationRecord(id: string): Promise<void> {
+    this.requireCurrentUser()
     return this.relationStore.deleteRelationRecord(id)
   }
 

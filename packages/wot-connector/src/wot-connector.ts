@@ -17,8 +17,11 @@ import type {
   EncounterPeerInfo,
   VerificationChallenge,
   IncomingEvent,
+  ActivityEntry,
+  ActivityLogCapable,
 } from "@real-life-stack/data-interface"
 import {
+  deriveActivitySummary,
   BaseConnector,
   createObservable,
   deriveContext,
@@ -151,6 +154,10 @@ const TERMINAL_DELIVERY_STATUSES = new Set<DeliveryStatus>([
   "failed",
 ])
 
+function compareActivity(a: ActivityEntry, b: ActivityEntry): number {
+  return b.ts.localeCompare(a.ts) || b.actor.localeCompare(a.actor) || b.id.localeCompare(a.id)
+}
+
 function projectPersonItem(
   id: string,
   createdAt: string,
@@ -277,7 +284,7 @@ function isVerificationConfirmation(c: ConfirmationView): boolean {
 
 // --- WotConnector ---
 
-export class WotConnector extends BaseConnector {
+export class WotConnector extends BaseConnector implements ActivityLogCapable {
   private config: WotConnectorConfig
   private runtimeOverrides: WotConnectorRuntimeOverrides
   private identity: WorkflowBackedIdentity
@@ -331,6 +338,13 @@ export class WotConnector extends BaseConnector {
   private profileObs: ReactiveObservable<Item | null>
   private currentUserObs: ReactiveObservable<User | null>
   private syncPendingObs: ReactiveObservable<boolean>
+  /** Activity observables are keyed by their requested limit. */
+  private activityObservables = new Map<string, ReactiveObservable<ActivityEntry[]>>()
+  private activityDirty = false
+  /** One active reconciliation plus at most one trailing run per space. */
+  private activityReconciliations = new Map<string, { queued: boolean; handle: SpaceHandle<RlsSpaceDoc> }>()
+  /** Distinguishes A→B→A switches: only the newest open request may touch state. */
+  private handleOpenGeneration = 0
   private profileUnsub: (() => void) | null = null
   private groupsCache: Group[] = []
   private outboxCountUnsub: (() => void) | null = null
@@ -425,6 +439,7 @@ export class WotConnector extends BaseConnector {
     this.closeCurrentHandle()
     this.crossGroupUnsub?.()
     this.crossGroupIndex?.stop()
+    this.activityReconciliations.clear()
     this.crossGroupIndex = null
     this.privateSpaceId = null
     this.spacesSubscriptionUnsub?.()
@@ -456,6 +471,8 @@ export class WotConnector extends BaseConnector {
     this.itemByIdObservables.clear()
     for (const obs of this.relatedObservables.values()) obs.destroy()
     this.relatedObservables.clear()
+    for (const obs of this.activityObservables.values()) obs.destroy()
+    this.activityObservables.clear()
     this.authStateObs.destroy()
     this.contactsObs.destroy()
     this.confirmationsObs.destroy()
@@ -643,6 +660,11 @@ export class WotConnector extends BaseConnector {
     this.currentUserObs.set(null)
     this.authStateObs.set({ status: "unauthenticated" })
 
+    // Activity is identity-scoped too. Clear it synchronously so subscribers
+    // cannot retain entries from the just-disposed identity — even when the
+    // criticalFailures throw below rejects before an async refresh would land.
+    this.activityDirty = false
+    for (const observable of this.activityObservables.values()) observable.set([])
     this.notifyAllObservers()
 
     if (criticalFailures.length > 0) {
@@ -791,18 +813,19 @@ export class WotConnector extends BaseConnector {
 
   override setCurrentGroup(id: string | null): void {
     if (this.currentGroupId === id) return
+    const previousGroupId = this.currentGroupId
+    // closeCurrentHandle must clean up the old reconciliation state, before the
+    // selected id changes.
+    this.closeCurrentHandle(previousGroupId)
     this.currentGroupId = id
     this.currentGroupObservable.set(this.getCurrentGroup())
-
-    // Close old handle
-    this.closeCurrentHandle()
 
     if (id === null) {
       // Overview mode reads from CrossGroupIndex — no handle needed
       this.handleReady = Promise.resolve()
-      this.notifyAllObservers()
+      this.notifyAllObservers(true)
     } else if (this.replication) {
-      this.handleReady = this.openCurrentHandle().then(() => this.notifyAllObservers())
+      this.handleReady = this.openCurrentHandle().then(() => this.notifyAllObservers(true))
     }
   }
 
@@ -873,7 +896,7 @@ export class WotConnector extends BaseConnector {
       this.closeCurrentHandle()
       this.currentGroupId = null
       this.currentGroupObservable.set(null)
-      this.notifyAllObservers()
+      this.notifyAllObservers(true)
     }
   }
 
@@ -1012,6 +1035,7 @@ export class WotConnector extends BaseConnector {
     item: CreateItemInput,
     spaceId: string,
   ): Item {
+    this.requireActivityActor()
     let result: Item | null = null
     let created = false
 
@@ -1034,6 +1058,7 @@ export class WotConnector extends BaseConnector {
         createdAt: new Date().toISOString(),
       }
       doc.items[id] = serializeItem(newItem)
+      this.appendActivity(doc, "create", newItem)
       result = newItem
       created = true
     })
@@ -1041,7 +1066,7 @@ export class WotConnector extends BaseConnector {
     if (!result) throw new Error("Item transaction did not produce a result")
     if (created) {
       this.crossGroupIndex?.reindexGroup(spaceId)
-      this.notifyAllObservers()
+      this.notifyAllObservers(true)
     }
     return result
   }
@@ -1051,6 +1076,7 @@ export class WotConnector extends BaseConnector {
 
     const handle = await this.resolveHandleForItem(id)
 
+    this.requireActivityActor()
     handle.transact((doc) => {
       const existing = doc.items[id]
       if (!existing) throw new Error(`Item ${id} not found`)
@@ -1078,6 +1104,7 @@ export class WotConnector extends BaseConnector {
       if (updates.schemaVersion !== undefined) existing.schemaVersion = updates.schemaVersion
       if (updates.tags !== undefined) existing.tags = updates.tags
       if (updates["@context"] !== undefined) existing["@context"] = updates["@context"]
+      this.appendActivity(doc, "update", deserializeItem(existing))
     })
 
     // Reindex the affected group so CrossGroupIndex reflects local writes
@@ -1087,7 +1114,7 @@ export class WotConnector extends BaseConnector {
       if (spaceId) this.crossGroupIndex.reindexGroup(spaceId)
     }
 
-    this.notifyAllObservers()
+    this.notifyAllObservers(true)
     const updated = await this.getItem(id)
     if (!updated) throw new Error(`Item ${id} disappeared after update`)
     return updated
@@ -1102,7 +1129,11 @@ export class WotConnector extends BaseConnector {
     const spaceIdForReindex =
       this.currentGroupId ?? this.crossGroupIndex?.getItemGroupId(id) ?? null
 
+    this.requireActivityActor()
     handle.transact((doc) => {
+      const existing = doc.items[id]
+      if (!existing) return
+      this.appendActivity(doc, "delete", deserializeItem(existing))
       delete doc.items[id]
     })
 
@@ -1110,7 +1141,7 @@ export class WotConnector extends BaseConnector {
       this.crossGroupIndex.reindexGroup(spaceIdForReindex)
     }
 
-    this.notifyAllObservers()
+    this.notifyAllObservers(true)
   }
 
   // ==================== Item-Group Assignment (ItemGroupCapable) ====================
@@ -1134,6 +1165,7 @@ export class WotConnector extends BaseConnector {
     await this.handleReady
     if (!this.replication) throw new Error("Not connected")
 
+    this.requireActivityActor()
     const sourceGroupId = this.getItemGroupId(itemId)
     if (!sourceGroupId) throw new Error(`Item ${itemId} not found in any group`)
     if (sourceGroupId === targetGroupId) return
@@ -1148,10 +1180,12 @@ export class WotConnector extends BaseConnector {
     targetHandle.transact((doc) => {
       if (!doc.items) doc.items = {}
       doc.items[itemId] = serialized
+      this.appendActivity(doc, "create", deserializeItem(serialized))
     })
 
     // Delete from source
     sourceHandle.transact((doc) => {
+      this.appendActivity(doc, "delete", deserializeItem(serialized))
       delete doc.items[itemId]
     })
 
@@ -1159,7 +1193,86 @@ export class WotConnector extends BaseConnector {
     this.crossGroupIndex?.reindexGroup(sourceGroupId)
     this.crossGroupIndex?.reindexGroup(targetGroupId)
 
-    this.notifyAllObservers()
+    this.notifyAllObservers(true)
+  }
+
+  async getActivity(options?: { limit?: number }): Promise<ActivityEntry[]> {
+    await this.handleReady
+    const docs = this.currentGroupId === null && this.crossGroupIndex
+      ? this.crossGroupIndex.getDocuments()
+      : this.currentHandle ? [this.currentHandle.getDoc()] : []
+    const entries = docs.flatMap((doc) => Object.values(doc.activity ?? {}))
+      .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
+      .sort(compareActivity)
+    return options?.limit === undefined ? entries : entries.slice(0, Math.max(0, options.limit))
+  }
+
+  observeActivity(options?: { limit?: number }): Observable<ActivityEntry[]> {
+    const key = `${options?.limit ?? ""}`
+    let observable = this.activityObservables.get(key)
+    if (!observable) {
+      observable = createObservable<ActivityEntry[]>([])
+      this.activityObservables.set(key, observable)
+      void this.getActivity(options).then((entries) => observable!.set(entries))
+    }
+    return observable
+  }
+
+  private requireActivityActor(): string {
+    const actor = this.currentUserObs.current?.id
+    if (!actor) throw new Error("Authentication required")
+    return actor
+  }
+
+  private appendActivity(doc: RlsSpaceDoc, action: ActivityEntry["action"], item: Item): void {
+    const entries = doc.activity ?? (doc.activity = {})
+    const entry: ActivityEntry = {
+      id: crypto.randomUUID(), ts: new Date().toISOString(), actor: this.requireActivityActor(), action,
+      targetId: item.id, targetType: item.type,
+      summary: deriveActivitySummary(item, (id) => (doc.items[id] ? deserializeItem(doc.items[id]) : undefined)),
+    }
+    entries[entry.id] = entry
+    for (const oldest of Object.values(entries).sort(compareActivity).slice(500)) delete entries[oldest.id]
+    this.activityDirty = true
+  }
+
+  /** Repairs the eventual soft cap after remote CRDT merges; it is log-free. */
+  private scheduleActivityReconciliation(spaceId: string, handle: SpaceHandle<RlsSpaceDoc>): void {
+    const existing = this.activityReconciliations.get(spaceId)
+    if (existing) {
+      existing.queued = true
+      existing.handle = handle
+      return
+    }
+    const state = { queued: false, handle }
+    this.activityReconciliations.set(spaceId, state)
+    const run = () => {
+      if (this.activityReconciliations.get(spaceId) !== state) return
+      if (Object.keys(state.handle.getDoc().activity ?? {}).length <= 500) {
+        if (state.queued) {
+          state.queued = false
+          queueMicrotask(run)
+        } else {
+          this.activityReconciliations.delete(spaceId)
+        }
+        return
+      }
+      let pruned = false
+      state.handle.transact((doc) => {
+        const entries = doc.activity
+        if (!entries || Object.keys(entries).length <= 500) return
+        for (const oldest of Object.values(entries).sort(compareActivity).slice(500)) delete entries[oldest.id]
+        pruned = true
+      })
+      if (pruned) this.notifyAllObservers(true)
+      if (state.queued) {
+        state.queued = false
+        queueMicrotask(run)
+      } else {
+        this.activityReconciliations.delete(spaceId)
+      }
+    }
+    queueMicrotask(run)
   }
 
   /**
@@ -1371,7 +1484,7 @@ export class WotConnector extends BaseConnector {
       await this.spaceCompactStore.open()
     }
 
-    this.replication = new YjsReplicationAdapter({
+    this.replication = this.runtimeOverrides.replication ?? new YjsReplicationAdapter({
       identity: this.identity,
       messaging: this.outboxAdapter,
       keyManagement: this.keyManagement,
@@ -1505,12 +1618,24 @@ export class WotConnector extends BaseConnector {
         return map
       },
       (item) => item.type,
-      { groupFilter: (info) => info.type === "shared" },
+      {
+        // Overview includes every visible space, including the private/personal
+        // document used for overview-created items.
+        groupFilter: (info) => info.type === "shared" || info.type === "personal",
+        onHandle: (spaceId, handle) => {
+          this.scheduleActivityReconciliation(spaceId, handle)
+          const remoteUnsub = handle.onRemoteUpdate(() => this.scheduleActivityReconciliation(spaceId, handle))
+          return () => {
+            remoteUnsub()
+            this.activityReconciliations.delete(spaceId)
+          }
+        },
+      },
     )
     this.crossGroupIndex.start()
     this.crossGroupUnsub = this.crossGroupIndex.onChange(() => {
       if (this.currentGroupId === null) {
-        this.notifyAllObservers()
+        this.notifyAllObservers(true)
       }
     })
 
@@ -1843,9 +1968,11 @@ export class WotConnector extends BaseConnector {
 
     for (const duplicateId of duplicateIds) {
       const sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(duplicateId)
-      const sourceItems = sourceHandle.getDoc().items ?? {}
+      const sourceDocSnapshot = sourceHandle.getDoc()
+      const sourceItems = sourceDocSnapshot.items ?? {}
       const entries = Object.entries(sourceItems) as Array<[string, SerializedItem]>
-      if (entries.length === 0) continue
+      // A duplicate can be item-empty but still carry history of deleted items.
+      if (entries.length === 0 && Object.keys(sourceDocSnapshot.activity ?? {}).length === 0) continue
 
       const migratedIds = new Set<string>()
       targetHandle.transact((targetDoc: RlsSpaceDoc) => {
@@ -1864,11 +1991,33 @@ export class WotConnector extends BaseConnector {
           targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId, idRemap)
           migratedIds.add(itemId)
         }
+
+        // The ENTIRE activity history migrates (also entries whose items are
+        // already deleted — Regel 7 keeps those readable); only targetIds of
+        // migrated items get remapped. The merged map is pruned to the
+        // normative 500 cap in the SAME transact (Regel 4).
+        const sourceActivity = sourceHandle.getDoc().activity ?? {}
+        for (const [entryId, entry] of Object.entries(sourceActivity)) {
+          if (targetDoc.activity?.[entryId]) continue
+          const activity = targetDoc.activity ?? (targetDoc.activity = {})
+          const remapped = idRemap.get(entry.targetId)
+          activity[entryId] = remapped ? { ...entry, targetId: remapped } : { ...entry }
+        }
+        const merged = targetDoc.activity
+        if (merged) {
+          for (const oldest of Object.values(merged).sort(compareActivity).slice(500)) {
+            delete merged[oldest.id]
+          }
+        }
       })
 
       sourceHandle.transact((sourceDoc: RlsSpaceDoc) => {
         for (const itemId of migratedIds) {
           delete sourceDoc.items[itemId]
+        }
+        // The whole history moved to the canonical space.
+        if (sourceDoc.activity) {
+          for (const entryId of Object.keys(sourceDoc.activity)) delete sourceDoc.activity[entryId]
         }
       })
 
@@ -1881,7 +2030,7 @@ export class WotConnector extends BaseConnector {
     for (const groupId of reindexIds) {
       this.crossGroupIndex?.reindexGroup(groupId)
     }
-    this.notifyAllObservers()
+    this.notifyAllObservers(true)
   }
 
   private cloneSerializedItem(
@@ -1931,24 +2080,42 @@ export class WotConnector extends BaseConnector {
 
   private async openCurrentHandle(): Promise<void> {
     if (!this.replication || !this.currentGroupId) return
+    // A rapid A→B(→A) switch can settle A's openSpace AFTER the scope moved
+    // on — neither success NOR failure of a stale request may touch state.
+    // The generation token (not just the group id) distinguishes A→B→A.
+    const requestedGroupId = this.currentGroupId
+    const generation = ++this.handleOpenGeneration
 
     try {
-      this.currentHandle = await this.replication.openSpace<RlsSpaceDoc>(this.currentGroupId)
+      const handle = await this.replication.openSpace<RlsSpaceDoc>(requestedGroupId)
+      if (generation !== this.handleOpenGeneration || this.currentGroupId !== requestedGroupId) {
+        handle.close()
+        return
+      }
+      this.currentHandle = handle
+      this.scheduleActivityReconciliation(requestedGroupId, handle)
 
       // Listen for remote updates -> refresh observables
-      this.handleRemoteUnsub = this.currentHandle!.onRemoteUpdate(() => {
-        this.notifyAllObservers()
+      this.handleRemoteUnsub = handle.onRemoteUpdate(() => {
+        if (this.currentHandle && this.currentGroupId) this.scheduleActivityReconciliation(this.currentGroupId, this.currentHandle)
+        this.notifyAllObservers(true)
       })
     } catch (err) {
       console.error("[WotConnector] Failed to open space:", err)
-      this.currentHandle = null
+      if (generation === this.handleOpenGeneration && this.currentGroupId === requestedGroupId) {
+        this.currentHandle = null
+      }
     }
   }
 
-  private closeCurrentHandle(): void {
+  private closeCurrentHandle(groupId = this.currentGroupId): void {
+    // Closing is itself a scope decision: any in-flight openSpace() request
+    // predates it and must never re-install a handle (dispose/logout window).
+    this.handleOpenGeneration++
     this.handleRemoteUnsub?.()
     this.handleRemoteUnsub = null
     this.currentHandle?.close()
+    if (groupId) this.activityReconciliations.delete(groupId)
     this.currentHandle = null
     this.invalidateItemCache()
   }
@@ -1964,8 +2131,16 @@ export class WotConnector extends BaseConnector {
 
   // ==================== Internal: Observers ====================
 
-  private notifyAllObservers(): void {
+  private notifyAllObservers(activityMayHaveChanged = false): void {
     this.invalidateItemCache()
+    this.activityDirty ||= activityMayHaveChanged
+    if (this.activityDirty && this.activityObservables.size > 0) {
+      this.activityDirty = false
+      for (const [key, observable] of this.activityObservables) {
+        const limit = key === "" ? undefined : Number(key)
+        void this.getActivity(limit === undefined ? undefined : { limit }).then((entries) => observable.set(entries))
+      }
+    }
     if (this.notifyScheduled) return
     this.notifyScheduled = true
     queueMicrotask(() => {

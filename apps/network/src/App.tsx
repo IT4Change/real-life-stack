@@ -41,10 +41,14 @@ import {
   WorkspaceSwitcher,
   useConnector,
   useCurrentGroup,
+  useMembers,
   useGroups,
   useItems,
   useModulePanel,
   useRelationRecords,
+  ActivityBell,
+  ActivityPanel,
+  useActivity,
   type GraphEdge,
   type GraphNode,
   type GraphTypeDescriptor,
@@ -358,6 +362,14 @@ function DetailPanelController({
 
   useEffect(() => {
     if (item) {
+      // The activity panel legitimately owns the shared panel while its bell is
+      // open — an UNCHANGED selection must not bounce it shut right after
+      // opening. A fresh selection takes the shared panel over (the activity
+      // controller then sees the ownership loss and closes its bell state).
+      if (panel.current?.itemId === "__activity__" && openedItemIdRef.current === item.id) {
+        panelOwnedRef.current = false
+        return
+      }
       const openedContent = openedContentRef.current
       if (
         openedItemIdRef.current === item.id &&
@@ -401,6 +413,72 @@ function DetailPanelController({
   return null
 }
 
+function NetworkActivityPanelController({ open, onClose, selectItem }: { open: boolean; onClose: () => void; selectItem: (id: string) => void }) {
+  const panel = useModulePanel()
+  const ownedActivityPanel = useRef(false)
+  const wasOpen = useRef(open)
+  const openTarget = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
+    selectItem(entry.targetId)
+    onClose()
+  }, [onClose, selectItem])
+  useEffect(() => {
+    const openedNow = open && !wasOpen.current
+    wasOpen.current = open
+    if (!open) {
+      ownedActivityPanel.current = false
+      if (panel.current?.itemId === "__activity__") panel.close({ silent: true })
+      return
+    }
+    if (panel.current?.itemId === "__activity__") {
+      ownedActivityPanel.current = true
+      return
+    }
+    if (ownedActivityPanel.current && !openedNow) {
+      ownedActivityPanel.current = false
+      onClose()
+      return
+    }
+    ownedActivityPanel.current = true
+    panel.open({ kind: "custom", itemId: "__activity__", content: <NetworkActivityPanelContent onOpenTarget={openTarget} />, onClose })
+  }, [onClose, open, openTarget, panel.close, panel.current?.itemId, panel.open])
+  return null
+}
+
+/** Meta-item types the shell has no detail projection for (log stays visible, not clickable). */
+const UNPROJECTABLE_TARGET_TYPES = new Set(["relation", "comment"])
+
+function NetworkActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {
+  const connector = useConnector()
+  const { data: entries } = useActivity()
+  const { data: items } = useItems()
+  const currentGroup = useCurrentGroup()
+  const { data: members } = useMembers(currentGroup?.id ?? null)
+  const currentUser = useOptionalCurrentUser(connector)
+  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
+  // A reaction entry opens its PARENT (the reacted-to item) — the reaction
+  // itself has no detail projection.
+  const resolveOpenId = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
+    if (UNPROJECTABLE_TARGET_TYPES.has(entry.targetType) || entry.action === "delete") return undefined
+    if (entry.targetType === "reaction") {
+      const reaction = itemById.get(entry.targetId)
+      const target = reaction?.relations?.find((relation) => relation.predicate === "reactsTo")?.target
+      const parentId = target?.startsWith("item:") ? target.slice("item:".length) : undefined
+      return parentId && itemById.has(parentId) ? parentId : undefined
+    }
+    return itemById.has(entry.targetId) ? entry.targetId : undefined
+  }, [itemById])
+  const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => resolveOpenId(entry) !== undefined, [resolveOpenId])
+  const resolveActor = useCallback(
+    (actorId: string) => members.find((member) => member.id === actorId) ?? (currentUser?.id === actorId ? currentUser : undefined),
+    [members, currentUser],
+  )
+  const openResolvedTarget = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
+    const openId = resolveOpenId(entry)
+    if (openId) onOpenTarget({ ...entry, targetId: openId })
+  }, [onOpenTarget, resolveOpenId])
+  return <ActivityPanel entries={entries} isTargetOpenable={isTargetOpenable} onOpenTarget={openResolvedTarget} resolveActor={resolveActor} />
+}
+
 function NetworkShell() {
   const connector = useConnector()
   const { data: groups } = useGroups()
@@ -424,6 +502,9 @@ function NetworkShell() {
   const [enabledTypes, setEnabledTypes] = useState(() => new Set(ALL_GRAPH_TYPES))
   const [isDark, setIsDark] = useState(initialDarkMode)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [activityOpen, setActivityOpen] = useState(false)
+  const closeActivity = useCallback(() => setActivityOpen(false), [])
+  const activity = useActivity()
   const [detailDrawerHeight, setDetailDrawerHeight] = useState(0)
   const currentUser = useOptionalCurrentUser(connector)
 
@@ -515,6 +596,13 @@ function NetworkShell() {
   const handleSelectedNodeChange = useCallback((nodeId: string | null) => {
     setSelectedNodeId(nodeId)
   }, [])
+  // Opening the history DROPS the selection (create-host precedent): the shared
+  // panel shows one thing, and only a selection CHANGE hands it back to the
+  // detail — a kept selection would make re-clicking the same item a no-op.
+  const toggleActivity = useCallback((next: boolean) => {
+    if (next) handleSelectedNodeChange(null)
+    setActivityOpen(next)
+  }, [handleSelectedNodeChange])
 
   const selectNode = useCallback((nodeId: string) => {
     const node = nodeById.get(nodeId)
@@ -560,6 +648,7 @@ function NetworkShell() {
         sidebarMaxWidth="70vw"
         onDrawerHeightChange={setDetailDrawerHeight}
       >
+        <NetworkActivityPanelController open={activityOpen} onClose={closeActivity} selectItem={selectNode} />
         <DetailPanelController
           item={selectedItem}
           connections={selectedConnections}
@@ -595,6 +684,7 @@ function NetworkShell() {
               </div>
             </NavbarCenter>
             <NavbarEnd>
+              {activity.supported && <ActivityBell open={activityOpen} onOpenChange={toggleActivity} />}
               <IconTooltip label={isDark ? "Helles Design" : "Dunkles Design"}>
                 <Button
                   type="button"

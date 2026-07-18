@@ -10,6 +10,8 @@ export interface CrossGroupEntry<TItem> {
 
 export interface CrossGroupIndexOptions {
   groupFilter?: (info: SpaceInfo) => boolean
+  /** Receives each held handle; cleanup runs before its handle closes. */
+  onHandle?: (groupId: string, handle: SpaceHandle<any>) => (() => void) | void
 }
 
 export function crossGroupItemKey(groupId: string, itemId: string): string {
@@ -30,11 +32,13 @@ export class CrossGroupIndex<TDoc, TItem> {
   private extractItems: (doc: TDoc) => Map<string, TItem>
   private getItemType: (item: TItem) => string
   private groupFilter: ((info: SpaceInfo) => boolean) | undefined
+  private onHandle: ((groupId: string, handle: SpaceHandle<any>) => (() => void) | void) | undefined
 
   // Per-group state
   private handles = new Map<string, SpaceHandle<TDoc>>()
   private pendingGroups = new Set<string>()
   private remoteUnsubs = new Map<string, () => void>()
+  private handleHookUnsubs = new Map<string, () => void>()
   private groupItemMaps = new Map<string, Map<string, TItem>>()
 
   // Indexes
@@ -57,6 +61,7 @@ export class CrossGroupIndex<TDoc, TItem> {
     this.extractItems = extractItems
     this.getItemType = getItemType
     this.groupFilter = options?.groupFilter
+    this.onHandle = options?.onHandle
   }
 
   // --- Lifecycle ---
@@ -84,6 +89,7 @@ export class CrossGroupIndex<TDoc, TItem> {
     for (const unsub of this.remoteUnsubs.values()) {
       unsub()
     }
+    for (const unsub of this.handleHookUnsubs.values()) unsub()
     for (const handle of this.handles.values()) {
       handle.close()
     }
@@ -91,6 +97,7 @@ export class CrossGroupIndex<TDoc, TItem> {
     this.handles.clear()
     this.pendingGroups.clear()
     this.remoteUnsubs.clear()
+    this.handleHookUnsubs.clear()
     this.groupItemMaps.clear()
     this.flatIndex.clear()
     this.typeIndex.clear()
@@ -121,6 +128,11 @@ export class CrossGroupIndex<TDoc, TItem> {
 
   getByGroup(groupId: string): Map<string, TItem> {
     return this.groupItemMaps.get(groupId) ?? new Map()
+  }
+
+  /** Narrow generic hook for space-level projections such as ActivityLog. */
+  getDocuments(): TDoc[] {
+    return [...this.handles.values()].map((handle) => handle.getDoc())
   }
 
   getUniqueById(itemId: string): CrossGroupEntry<TItem> | null {
@@ -223,14 +235,18 @@ export class CrossGroupIndex<TDoc, TItem> {
     this.pendingGroups.add(groupId)
     try {
       const handle = await this.replication.openSpace<TDoc>(groupId)
-      this.pendingGroups.delete(groupId)
 
-      if (!this.started) {
+      // A watchSpaces update may have removed this group while openSpace was
+      // pending. Never resurrect access or hooks for that stale request.
+      if (!this.started || this.handles.has(groupId) || !this.pendingGroups.has(groupId)) {
         handle.close()
         return
       }
+      this.pendingGroups.delete(groupId)
 
       this.handles.set(groupId, handle)
+      const hookUnsub = this.onHandle?.(groupId, handle)
+      if (hookUnsub) this.handleHookUnsubs.set(groupId, hookUnsub)
 
       // Initial index
       this.indexGroup(groupId, handle)
@@ -250,6 +266,8 @@ export class CrossGroupIndex<TDoc, TItem> {
     // Unsubscribe
     this.remoteUnsubs.get(groupId)?.()
     this.remoteUnsubs.delete(groupId)
+    this.handleHookUnsubs.get(groupId)?.()
+    this.handleHookUnsubs.delete(groupId)
 
     // Close handle
     this.handles.get(groupId)?.close()
