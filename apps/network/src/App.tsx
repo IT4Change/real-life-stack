@@ -41,6 +41,7 @@ import {
   WorkspaceSwitcher,
   useConnector,
   useCurrentGroup,
+  useMembers,
   useGroups,
   useItems,
   useModulePanel,
@@ -362,8 +363,10 @@ function DetailPanelController({
   useEffect(() => {
     if (item) {
       // The activity panel legitimately owns the shared panel while its bell is
-      // open — reclaiming here would bounce it shut right after opening.
-      if (panel.current?.itemId === "__activity__") {
+      // open — an UNCHANGED selection must not bounce it shut right after
+      // opening. A fresh selection takes the shared panel over (the activity
+      // controller then sees the ownership loss and closes its bell state).
+      if (panel.current?.itemId === "__activity__" && openedItemIdRef.current === item.id) {
         panelOwnedRef.current = false
         return
       }
@@ -442,11 +445,19 @@ function NetworkActivityPanelController({ open, onClose, selectItem }: { open: b
 }
 
 function NetworkActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {
+  const connector = useConnector()
   const { data: entries } = useActivity()
   const { data: items } = useItems()
+  const currentGroup = useCurrentGroup()
+  const { data: members } = useMembers(currentGroup?.id ?? null)
+  const currentUser = useOptionalCurrentUser(connector)
   const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items])
   const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => entry.targetType !== "relation" && entry.action !== "delete" && itemIds.has(entry.targetId), [itemIds])
-  return <ActivityPanel entries={entries} isTargetOpenable={isTargetOpenable} onOpenTarget={onOpenTarget} />
+  const resolveActor = useCallback(
+    (actorId: string) => members.find((member) => member.id === actorId) ?? (currentUser?.id === actorId ? currentUser : undefined),
+    [members, currentUser],
+  )
+  return <ActivityPanel entries={entries} isTargetOpenable={isTargetOpenable} onOpenTarget={onOpenTarget} resolveActor={resolveActor} />
 }
 
 function NetworkShell() {
