@@ -153,9 +153,22 @@ aufgelöstes Subject (bei Deletes ein Tombstone aus `targetType`/`summary`), den
 space-lokal aufgelösten Actor und bei privaten Spaces `isPersonal: true`.
 Live-Subjects liefern `createdBy`, Titel und die feldbasierten Module-Hinweise
 `hasPosition`, `hasStart` und `hasStatus`; nicht auflösbare Subjects sind
-`null`. Die stabile Identität eines scoped Eintrags ist `groupId + entry.id`.
+`null`. Die stabile Identität eines scoped Eintrags ist
+`JSON.stringify([groupId, entry.id])`, identisch zum kanonischen Notification-
+Read-Key.
 Der bestehende, scope-abhängige Lesevertrag bleibt unverändert für das
 Verlaufs-Panel.
+
+```ts
+interface ScopedActivityLogCapable {
+  getScopedActivity(options?: { limit?: number }): Promise<ScopedActivityEntry[]>
+  observeScopedActivity(options?: { limit?: number }): Observable<ScopedActivityEntry[]>
+}
+```
+
+`ScopedActivityLogCapable` ist optional und erweitert `ActivityLogCapable`
+nicht. Aufrufer prüfen ihn separat mit `hasScopedActivityLog(c)`; ein
+`hasActivityLog(c)`-Treffer garantiert keinen scoped Read.
 
 ## Nicht-Ziele
 

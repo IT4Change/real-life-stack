@@ -11,6 +11,7 @@ import type {
   AuthMethod,
   ActivityEntry,
   ActivityLogCapable,
+  ScopedActivityLogCapable,
   ScopedActivityEntry,
   NotificationState,
   NotificationStateCapable,
@@ -69,7 +70,7 @@ function compareActivity(a: ActivityEntry, b: ActivityEntry): number {
   return b.ts.localeCompare(a.ts) || b.actor.localeCompare(a.actor) || b.id.localeCompare(a.id)
 }
 
-export class MockConnector implements FullConnector, ActivityLogCapable, NotificationStateCapable, RelationRecordCapable, RelationRecordWriterCapable {
+export class MockConnector implements FullConnector, ActivityLogCapable, ScopedActivityLogCapable, NotificationStateCapable, RelationRecordCapable, RelationRecordWriterCapable {
   private itemsByScope = new Map<string | null, Map<string, Item>>()
   private itemOrder: Array<{ scopeId: string | null; id: string }> = []
   private notifyScheduled = false
@@ -540,8 +541,9 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Notific
   }
 
   private readScopedActivity(limit?: number): ScopedActivityEntry[] {
+    const visibleScopes = new Set([...this.groups.map((group) => group.id), "__personal__"])
     const entries = [...this.activityByScope.entries()].flatMap(([groupId, byId]) =>
-      [...byId.values()]
+      !visibleScopes.has(groupId) ? [] : [...byId.values()]
         .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
         .map((entry) => this.resolveScopedActivity(groupId, entry)),
     ).sort((a, b) => compareActivity(a.entry, b.entry))

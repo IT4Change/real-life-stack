@@ -47,7 +47,39 @@ describe("Notification contracts — LocalConnector", () => {
     expect(state.readEntryKeys[pruned]).toBeUndefined()
     // Normative: frontier = entry.ts of the oldest REMAINING key …
     expect(state.readUpToTs).toBe(keys[oldestRemaining])
-    // … which covers every pruned key: nothing pruned can turn unread again.
-    expect(keys[pruned]! <= state.readUpToTs!).toBe(true)
+    // A delayed replay older than the retained frontier must not move either
+    // the entry timestamp or the effective read frontier backwards.
+    await connector.updateNotificationState({ op: "markRead", keys: { [oldestRemaining]: "2026-07-18T09:00:00.000Z" } })
+    const afterLateReplay = await connector.getNotificationState()
+    expect(afterLateReplay.readUpToTs).toBe(state.readUpToTs)
+    expect(afterLateReplay.readEntryKeys[oldestRemaining]).toBe(keys[oldestRemaining])
+    expect(keys[pruned]! <= afterLateReplay.readUpToTs!).toBe(true)
+  })
+
+  it("A-T1/T6: keeps personal live reaction parents and excludes activity for deleted groups", async () => {
+    const connector = new LocalConnector(seed); await connector.init()
+    connector.setCurrentGroup(null)
+    const parent = await connector.createItem({ id: "personal-parent", type: "task", createdBy: "alice", data: { title: "Private" } })
+    const reaction = await connector.createItem({ id: "personal-reaction", type: "reaction", createdBy: "alice", data: {}, relations: [{ predicate: "reactsTo", target: `item:${parent.id}` }] })
+    expect((await connector.getScopedActivity()).find((entry) => entry.entry.targetId === reaction.id)?.subject).toMatchObject({ id: parent.id })
+    connector.setCurrentGroup("alpha")
+    await connector.createItem({ id: "deleted-group-item", type: "task", createdBy: "alice", data: {} })
+    await connector.deleteGroup("alpha")
+    expect((await connector.getScopedActivity()).some((entry) => entry.groupId === "alpha")).toBe(false)
+  })
+
+  it("A-T3: clear() resets another tab's items, activity, and notification projections", async () => {
+    const first = new LocalConnector(seed); await first.init()
+    const second = new LocalConnector(seed); await second.init()
+    await first.createItem({ id: "before-reset", type: "task", createdBy: "alice", data: {} })
+    await first.updateNotificationState({ op: "mute", groupId: "alpha" })
+    const items = second.observe({}); const activity = second.observeActivity(); const notification = second.observeNotificationState()
+    await (second as any).handleBroadcast({ type: "full-sync", senderId: "first" })
+    expect(activity.current).not.toEqual([])
+    await first.clear()
+    await (second as any).handleBroadcast({ type: "full-sync", senderId: "first" })
+    expect(items.current).toEqual([])
+    expect(activity.current).toEqual([])
+    expect(notification.current).toEqual({ readEntryKeys: {}, mutedGroupIds: {} })
   })
 })

@@ -59,6 +59,7 @@ describe("Notification contracts — WotConnector", () => {
   it("A-T3/T4: writes only addressed shared-map keys and moves the frontier only when pruning", async () => {
     const c = connector(); personalDoc.notificationState = { lastSeenByDevice: {}, readUpToByDevice: {}, readEntryKeys: { keep: "2026-07-18T10:00:00.000Z" }, mutedGroupIds: {} }
     await c.updateNotificationState({ op: "markRead", keys: { added: "2026-07-18T11:00:00.000Z" } })
+    await c.updateNotificationState({ op: "markRead", keys: { added: "2026-07-18T09:00:00.000Z" } })
     expect(personalDoc.notificationState.readEntryKeys).toMatchObject({ keep: "2026-07-18T10:00:00.000Z", added: "2026-07-18T11:00:00.000Z" })
     expect((await c.getNotificationState()).readUpToTs).toBeUndefined()
     const keys = Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`k-${String(i).padStart(3, "0")}`, `2026-07-18T12:00:${String(i % 60).padStart(2, "0")}.000Z`]))
@@ -66,6 +67,22 @@ describe("Notification contracts — WotConnector", () => {
     const state = await c.getNotificationState()
     expect(Object.keys(state.readEntryKeys)).toHaveLength(500)
     expect(state.readUpToTs).toBeDefined()
+  })
+
+  it("A-T6: ignores an older scoped refresh that resolves after a newer one", async () => {
+    const c = connector()
+    const pending: Array<(entries: any[]) => void> = []
+    c.getScopedActivity = vi.fn(() => new Promise<any[]>((resolve) => pending.push(resolve)))
+    const observable = createObservable<any[]>([])
+    c.scopedActivityObservables.set("", observable)
+    c.scopedActivityRefreshGeneration = new Map()
+    c.refreshScopedActivity("", observable, undefined)
+    c.refreshScopedActivity("", observable, undefined)
+    pending[1]!([{ entry: { id: "new" } }])
+    await Promise.resolve()
+    pending[0]!([{ entry: { id: "old" } }])
+    await Promise.resolve()
+    expect(observable.current).toEqual([{ entry: { id: "new" } }])
   })
 
   it("A-T1/T2/T6: drives CrossGroupIndex's real group-doc getter, retaining private docs and distinct same IDs", async () => {

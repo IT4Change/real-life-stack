@@ -19,6 +19,7 @@ import type {
   IncomingEvent,
   ActivityEntry,
   ActivityLogCapable,
+  ScopedActivityLogCapable,
   ScopedActivityEntry,
   NotificationState,
   NotificationStateCapable,
@@ -292,7 +293,7 @@ function isVerificationConfirmation(c: ConfirmationView): boolean {
 
 // --- WotConnector ---
 
-export class WotConnector extends BaseConnector implements ActivityLogCapable, NotificationStateCapable {
+export class WotConnector extends BaseConnector implements ActivityLogCapable, ScopedActivityLogCapable, NotificationStateCapable {
   private config: WotConnectorConfig
   private runtimeOverrides: WotConnectorRuntimeOverrides
   private identity: WorkflowBackedIdentity
@@ -349,6 +350,8 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, N
   /** Activity observables are keyed by their requested limit. */
   private activityObservables = new Map<string, ReactiveObservable<ActivityEntry[]>>()
   private scopedActivityObservables = new Map<string, ReactiveObservable<ScopedActivityEntry[]>>()
+  /** Each keyed refresh may only publish the newest request's resolved view. */
+  private scopedActivityRefreshGeneration = new Map<string, number>()
   private notificationStateObs = createObservable<NotificationState>({ readEntryKeys: {}, mutedGroupIds: {} })
   private notificationStateUnsub: (() => void) | null = null
   private activityDirty = false
@@ -487,6 +490,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, N
     this.activityObservables.clear()
     for (const obs of this.scopedActivityObservables.values()) obs.destroy()
     this.scopedActivityObservables.clear()
+    this.scopedActivityRefreshGeneration.clear()
     this.notificationStateUnsub?.()
     this.notificationStateUnsub = null
     this.notificationStateObs.destroy()
@@ -682,6 +686,12 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, N
     // criticalFailures throw below rejects before an async refresh would land.
     this.activityDirty = false
     for (const observable of this.activityObservables.values()) observable.set([])
+    for (const observable of this.scopedActivityObservables?.values() ?? []) observable.set([])
+    this.scopedActivityObservables?.clear()
+    this.scopedActivityRefreshGeneration?.clear()
+    this.notificationStateUnsub?.()
+    this.notificationStateUnsub = null
+    this.notificationStateObs?.set({ readEntryKeys: {}, mutedGroupIds: {} })
     this.notifyAllObservers()
 
     if (criticalFailures.length > 0) {
@@ -1253,9 +1263,17 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, N
     if (!observable) {
       observable = createObservable<ScopedActivityEntry[]>([])
       this.scopedActivityObservables.set(key, observable)
-      void this.getScopedActivity(options).then((entries) => observable!.set(entries))
+      this.refreshScopedActivity(key, observable, options)
     }
     return observable
+  }
+
+  private refreshScopedActivity(key: string, observable: ReactiveObservable<ScopedActivityEntry[]>, options?: { limit?: number }): void {
+    const generation = (this.scopedActivityRefreshGeneration.get(key) ?? 0) + 1
+    this.scopedActivityRefreshGeneration.set(key, generation)
+    void this.getScopedActivity(options).then((entries) => {
+      if (this.scopedActivityRefreshGeneration.get(key) === generation && this.scopedActivityObservables.get(key) === observable) observable.set(entries)
+    })
   }
 
   async getNotificationState(): Promise<NotificationState> {
@@ -1283,7 +1301,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, N
       if (patch.op === "markAllReadUpTo") raw.readUpToByDevice[deviceId] = maxTs(raw.readUpToByDevice[deviceId], patch.ts)
       // These are shared Yjs maps.  Assigning the record itself turns into a
       // delete-and-rewrite with adapter-yjs, so only ever touch addressed keys.
-      if (patch.op === "markRead") for (const [key, ts] of Object.entries(patch.keys)) raw.readEntryKeys[key] = ts
+      if (patch.op === "markRead") for (const [key, ts] of Object.entries(patch.keys)) raw.readEntryKeys[key] = maxTs(raw.readEntryKeys[key], ts)
       if (patch.op === "mute") raw.mutedGroupIds[patch.groupId] = true
       if (patch.op === "unmute") delete raw.mutedGroupIds[patch.groupId]
       const ownState: NotificationState = { readUpToTs: raw.readUpToByDevice[deviceId], readEntryKeys: { ...raw.readEntryKeys }, mutedGroupIds: { ...raw.mutedGroupIds } }
@@ -1302,7 +1320,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, N
       const parentId = target.type === "reaction" || target.type === "comment"
         ? target.relations?.find((relation) => relation.predicate === "reactsTo" || relation.predicate === "commentOn")?.target.replace(/^item:/, "")
         : undefined
-      const parent = parentId && doc.items?.[parentId] ? deserializeItem(doc.items[parentId]!) : target
+      const parent = parentId ? (doc.items?.[parentId] ? deserializeItem(doc.items[parentId]!) : undefined) : target
       if (parent) subject = { id: parent.id, type: parent.type, createdBy: parent.createdBy, ...(itemDisplayTitle(parent) ? { title: itemDisplayTitle(parent) } : {}), moduleHints: moduleHintsFor(parent) }
     }
     const isPersonal = groupId === this.privateSpaceId
@@ -2253,7 +2271,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, N
         this.scopedRefreshScheduled = false
         for (const [key, observable] of this.scopedActivityObservables) {
           const limit = key === "" ? undefined : Number(key)
-          void this.getScopedActivity(limit === undefined ? undefined : { limit }).then((entries) => observable.set(entries))
+          this.refreshScopedActivity(key, observable, limit === undefined ? undefined : { limit })
         }
       })
     }

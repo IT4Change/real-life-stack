@@ -10,6 +10,7 @@ import type {
   AuthMethod,
   ActivityEntry,
   ActivityLogCapable,
+  ScopedActivityLogCapable,
   ScopedActivityEntry,
   NotificationState,
   NotificationStateCapable,
@@ -89,7 +90,7 @@ function appendActivity(
 
 // --- LocalConnector ---
 
-export class LocalConnector implements FullConnector, ActivityLogCapable, NotificationStateCapable {
+export class LocalConnector implements FullConnector, ActivityLogCapable, ScopedActivityLogCapable, NotificationStateCapable {
   private items: Item[] = []
   private notifyScheduled = false
   private groups: Group[] = []
@@ -678,6 +679,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Notifi
     this.currentUser = null
     this.currentUserObs.set(null)
     this.currentGroup = null
+    this.currentGroupObs.set(null)
     this.nextItemId = 100
     // Deleting the store must also forget activity in-process — otherwise it
     // stays readable and a later persist() would resurrect the wiped entries.
@@ -755,7 +757,30 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Notifi
   private async handleBroadcast(msg: BroadcastMessage): Promise<void> {
     // Reload from IndexedDB when another tab changes data
     const stored = await get<StoredState>("state", this.store)
-    if (!stored) return
+    if (!stored) {
+      // A peer may have deleted IndexedDB in clear(). A full sync is also the
+      // reset signal, so retaining this tab's in-memory projection is unsafe.
+      if (msg.type === "full-sync") {
+        this.items = []
+        this.groups = []
+        this.users = []
+        this.groupMembers = {}
+        this.groupItems = {}
+        this.currentUser = null
+        this.currentGroup = null
+        this.nextItemId = 100
+        this.activityByScope = {}
+        this.notificationState = { readEntryKeys: {}, mutedGroupIds: {} }
+        this.currentUserObs.set(null)
+        this.currentGroupObs.set(null)
+        this.authState.set({ status: "unauthenticated" })
+        this.notifyObservers()
+        this.notifyGroupObservers()
+        this.notifyActivityObservers()
+        this.notificationStateObs.set(cloneNotificationState(this.notificationState))
+      }
+      return
+    }
 
     if (msg.type === "items-changed" || msg.type === "full-sync") {
       this.items = stored.items.map(i => ({ ...i }))
@@ -839,8 +864,9 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Notifi
   }
 
   private readScopedActivity(limit?: number): ScopedActivityEntry[] {
+    const visibleScopes = new Set([...this.groups.map((group) => group.id), "__personal__"])
     const entries = Object.entries(this.activityByScope).flatMap(([groupId, byId]) =>
-      Object.values(byId)
+      !visibleScopes.has(groupId) ? [] : Object.values(byId)
         .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
         .map((entry) => this.resolveScopedActivity(groupId, entry)),
     ).sort((a, b) => compareActivity(a.entry, b.entry))
@@ -855,7 +881,9 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Notifi
       const parentId = target.type === "reaction" || target.type === "comment"
         ? target.relations?.find((relation) => relation.predicate === "reactsTo" || relation.predicate === "commentOn")?.target.replace(/^item:/, "")
         : undefined
-      const resolved = parentId ? this.items.find((item) => item.id === parentId && this.groupItems[groupId]?.includes(item.id)) : target
+      const resolved = parentId ? this.items.find((item) => item.id === parentId && (groupId === "__personal__"
+        ? !Object.values(this.groupItems).some((ids) => ids.includes(item.id))
+        : this.groupItems[groupId]?.includes(item.id))) : target
       if (resolved) subject = { id: resolved.id, type: resolved.type, createdBy: resolved.createdBy, ...(itemDisplayTitle(resolved) ? { title: itemDisplayTitle(resolved) } : {}), moduleHints: moduleHintsFor(resolved) }
     }
     const actor = groupId === "__personal__" || this.groupMembers[groupId]?.includes(entry.actor)

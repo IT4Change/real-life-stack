@@ -16,7 +16,9 @@ export function applyNotificationStatePatch(state: NotificationState, patch: Not
   const next = cloneNotificationState(state)
   if (patch.op === "markSeen") next.lastSeenTs = maxTs(next.lastSeenTs, patch.ts)
   if (patch.op === "markAllReadUpTo") next.readUpToTs = maxTs(next.readUpToTs, patch.ts)
-  if (patch.op === "markRead") Object.assign(next.readEntryKeys, patch.keys)
+  if (patch.op === "markRead") {
+    for (const [key, ts] of Object.entries(patch.keys)) next.readEntryKeys[key] = maxTs(next.readEntryKeys[key], ts)
+  }
   if (patch.op === "mute") next.mutedGroupIds[patch.groupId] = true
   if (patch.op === "unmute") delete next.mutedGroupIds[patch.groupId]
   pruneReadEntryKeys(next)

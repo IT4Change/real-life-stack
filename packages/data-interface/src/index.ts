@@ -212,6 +212,10 @@ export interface ActivityEntry {
 export interface ActivityLogCapable {
   getActivity(options?: { limit?: number }): Promise<ActivityEntry[]>
   observeActivity(options?: { limit?: number }): Observable<ActivityEntry[]>
+}
+
+/** Additive all-visible-spaces activity projection. */
+export interface ScopedActivityLogCapable {
   getScopedActivity(options?: { limit?: number }): Promise<ScopedActivityEntry[]>
   observeScopedActivity(options?: { limit?: number }): Observable<ScopedActivityEntry[]>
 }
@@ -581,6 +585,11 @@ export function isWritable(c: DataInterface): c is DataInterface & ItemWriter {
 export function hasActivityLog(c: DataInterface): c is DataInterface & ActivityLogCapable {
   const candidate = c as DataInterface & Partial<ActivityLogCapable>
   return typeof candidate.getActivity === "function" && typeof candidate.observeActivity === "function"
+}
+
+export function hasScopedActivityLog(c: DataInterface): c is DataInterface & ScopedActivityLogCapable {
+  const candidate = c as DataInterface & Partial<ScopedActivityLogCapable>
+  return typeof candidate.getScopedActivity === "function" && typeof candidate.observeScopedActivity === "function"
 }
 
 export function hasAuthorization(c: DataInterface): c is DataInterface & AuthorizationCapable {
