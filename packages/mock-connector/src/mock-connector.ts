@@ -333,6 +333,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
     if (scopeId) this.registerItemInGroup(newItem.id, scopeId)
 
     this.notifyObservers()
+    this.notifyActivityObservers()
     return newItem
   }
 
@@ -359,6 +360,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
       location.items.set(id, updated)
     }
     this.notifyObservers()
+    this.notifyActivityObservers()
     return updated
   }
 
@@ -378,6 +380,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
         .filter((itemId) => itemId !== id)
     }
     this.notifyObservers()
+    this.notifyActivityObservers()
   }
 
   /**
@@ -443,6 +446,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
     }
     this.registerItemInGroup(itemId, targetGroupId)
     this.notifyObservers()
+    this.notifyActivityObservers()
   }
 
   async getActivity(options?: { limit?: number }): Promise<ActivityEntry[]> {
@@ -481,7 +485,6 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
       if (oldest) entries.delete(oldest.id)
     }
     this.activityByScope.set(scopeId, entries)
-    this.notifyActivityObservers()
   }
 
   private readActivity(limit?: number): ActivityEntry[] {

@@ -172,6 +172,23 @@ describe("Activity-Log contract", () => {
     await expect(connector.createRelationRecord({ predicate: "knows", from: "item:a", to: "item:b" })).rejects.toThrow(/auth/i)
   })
 
+  it("17. keeps item mutation and log entry consistent when an activity subscriber throws", async () => {
+    const connector = new MockConnector(seed)
+    await connector.init()
+    await connector.createItem({ id: "one", type: "task", createdBy: "x", data: { title: "Before" } })
+    const unsubscribe = connector.observeActivity().subscribe(() => { throw new Error("subscriber boom") })
+    try {
+      await connector.updateItem("one", { data: { title: "After" } }).catch(() => undefined)
+    } finally {
+      unsubscribe()
+    }
+    // Atomicity: either both sides of the mutation are visible or neither —
+    // a throwing subscriber must never leave a log entry without the mutation.
+    expect((await connector.getItem("one"))?.data.title).toBe("After")
+    const updates = (await connector.getActivity()).filter((entry) => entry.action === "update" && entry.targetId === "one")
+    expect(updates).toHaveLength(1)
+  })
+
   it("16. gives deletes the target type and summary from the last known item", async () => {
     const connector = new MockConnector(seed)
     await connector.init()
