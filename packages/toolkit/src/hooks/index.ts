@@ -6,6 +6,7 @@ export type { ConnectorProviderProps } from "./connector-context"
 
 // Data Hooks
 export { useItems, useItem, useItemsWithDraft } from "./use-items"
+export { useActivity } from "./use-activity"
 export {
   DraftItemProvider,
   useDraftItem,

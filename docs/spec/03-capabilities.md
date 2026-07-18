@@ -40,6 +40,7 @@ if (isWritable(connector)) {
 | `EventListenerCapable` | `hasEventListener()` | eingehende Connector-Ereignisse abonnieren |
 | `ItemGroupCapable` | `hasItemGroups()` | Item-zu-Group-Zuordnung lesen oder verschieben |
 | `AuthorizationCapable` | `hasAuthorization()` | per-Resource-Autorisierung (UCAN/RLS) für Create/Edit/Delete |
+| `ActivityLogCapable` | `hasActivityLog()` | best-effort Änderungsverlauf eines Space lesen und beobachten |
 
 Neue Capabilities dürfen nur eingeführt werden, wenn ein UI- oder Connector-Vertrag nicht sinnvoll über bestehende Capabilities ausdrückbar ist.
 
@@ -122,4 +123,3 @@ Capabilities ersetzen nicht:
 - Berechtigungs- oder Safety-Policies.
 
 Sie machen nur sichtbar, welche technische Oberfläche ein Connector für RLS-UI und Hooks anbietet.
-

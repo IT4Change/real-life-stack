@@ -33,7 +33,7 @@ interface ActivityEntry {
   /** UTC, exakt Date.toISOString()-Format (YYYY-MM-DDTHH:mm:ss.sssZ) —
       damit ist lexikographisch = chronologisch */
   ts: string
-  /** DID des Handelnden — setzt der Connector, nie die App (Regel 1) */
+  /** ID der authentifizierten Connector-Identität; beim WoT-Connector eine DID — setzt der Connector, nie die App (Regel 1) */
   actor: string
   action: "create" | "update" | "delete"
   /** gesetzt, wenn der Eintrag aus der Anwendung eines Mirror-Snapshots stammt (Regel 10) */

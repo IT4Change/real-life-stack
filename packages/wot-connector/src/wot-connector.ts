@@ -17,6 +17,8 @@ import type {
   EncounterPeerInfo,
   VerificationChallenge,
   IncomingEvent,
+  ActivityEntry,
+  ActivityLogCapable,
 } from "@real-life-stack/data-interface"
 import {
   BaseConnector,
@@ -151,6 +153,10 @@ const TERMINAL_DELIVERY_STATUSES = new Set<DeliveryStatus>([
   "failed",
 ])
 
+function compareActivity(a: ActivityEntry, b: ActivityEntry): number {
+  return b.ts.localeCompare(a.ts) || b.actor.localeCompare(a.actor) || b.id.localeCompare(a.id)
+}
+
 function projectPersonItem(
   id: string,
   createdAt: string,
@@ -277,7 +283,7 @@ function isVerificationConfirmation(c: ConfirmationView): boolean {
 
 // --- WotConnector ---
 
-export class WotConnector extends BaseConnector {
+export class WotConnector extends BaseConnector implements ActivityLogCapable {
   private config: WotConnectorConfig
   private runtimeOverrides: WotConnectorRuntimeOverrides
   private identity: WorkflowBackedIdentity
@@ -331,6 +337,7 @@ export class WotConnector extends BaseConnector {
   private profileObs: ReactiveObservable<Item | null>
   private currentUserObs: ReactiveObservable<User | null>
   private syncPendingObs: ReactiveObservable<boolean>
+  private activityObs: ReactiveObservable<ActivityEntry[]> = createObservable<ActivityEntry[]>([])
   private profileUnsub: (() => void) | null = null
   private groupsCache: Group[] = []
   private outboxCountUnsub: (() => void) | null = null
@@ -1012,6 +1019,7 @@ export class WotConnector extends BaseConnector {
     item: CreateItemInput,
     spaceId: string,
   ): Item {
+    this.requireActivityActor()
     let result: Item | null = null
     let created = false
 
@@ -1034,6 +1042,7 @@ export class WotConnector extends BaseConnector {
         createdAt: new Date().toISOString(),
       }
       doc.items[id] = serializeItem(newItem)
+      this.appendActivity(doc, "create", newItem)
       result = newItem
       created = true
     })
@@ -1051,6 +1060,7 @@ export class WotConnector extends BaseConnector {
 
     const handle = await this.resolveHandleForItem(id)
 
+    this.requireActivityActor()
     handle.transact((doc) => {
       const existing = doc.items[id]
       if (!existing) throw new Error(`Item ${id} not found`)
@@ -1078,6 +1088,7 @@ export class WotConnector extends BaseConnector {
       if (updates.schemaVersion !== undefined) existing.schemaVersion = updates.schemaVersion
       if (updates.tags !== undefined) existing.tags = updates.tags
       if (updates["@context"] !== undefined) existing["@context"] = updates["@context"]
+      this.appendActivity(doc, "update", deserializeItem(existing))
     })
 
     // Reindex the affected group so CrossGroupIndex reflects local writes
@@ -1102,7 +1113,11 @@ export class WotConnector extends BaseConnector {
     const spaceIdForReindex =
       this.currentGroupId ?? this.crossGroupIndex?.getItemGroupId(id) ?? null
 
+    this.requireActivityActor()
     handle.transact((doc) => {
+      const existing = doc.items[id]
+      if (!existing) return
+      this.appendActivity(doc, "delete", deserializeItem(existing))
       delete doc.items[id]
     })
 
@@ -1134,6 +1149,7 @@ export class WotConnector extends BaseConnector {
     await this.handleReady
     if (!this.replication) throw new Error("Not connected")
 
+    this.requireActivityActor()
     const sourceGroupId = this.getItemGroupId(itemId)
     if (!sourceGroupId) throw new Error(`Item ${itemId} not found in any group`)
     if (sourceGroupId === targetGroupId) return
@@ -1148,10 +1164,12 @@ export class WotConnector extends BaseConnector {
     targetHandle.transact((doc) => {
       if (!doc.items) doc.items = {}
       doc.items[itemId] = serialized
+      this.appendActivity(doc, "create", deserializeItem(serialized))
     })
 
     // Delete from source
     sourceHandle.transact((doc) => {
+      this.appendActivity(doc, "delete", deserializeItem(serialized))
       delete doc.items[itemId]
     })
 
@@ -1160,6 +1178,39 @@ export class WotConnector extends BaseConnector {
     this.crossGroupIndex?.reindexGroup(targetGroupId)
 
     this.notifyAllObservers()
+  }
+
+  async getActivity(options?: { limit?: number }): Promise<ActivityEntry[]> {
+    await this.handleReady
+    const docs = this.currentGroupId === null && this.crossGroupIndex
+      ? this.crossGroupIndex.getDocuments()
+      : this.currentHandle ? [this.currentHandle.getDoc()] : []
+    const entries = docs.flatMap((doc) => Object.values(doc.activity ?? {}))
+      .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
+      .sort(compareActivity)
+    return options?.limit === undefined ? entries : entries.slice(0, Math.max(0, options.limit))
+  }
+
+  observeActivity(options?: { limit?: number }): Observable<ActivityEntry[]> {
+    void this.getActivity(options).then((entries) => this.activityObs.set(entries))
+    return this.activityObs
+  }
+
+  private requireActivityActor(): string {
+    const actor = this.currentUserObs.current?.id
+    if (!actor) throw new Error("Authentication required")
+    return actor
+  }
+
+  private appendActivity(doc: RlsSpaceDoc, action: ActivityEntry["action"], item: Item): void {
+    const entries = doc.activity ?? (doc.activity = {})
+    const entry: ActivityEntry = {
+      id: crypto.randomUUID(), ts: new Date().toISOString(), actor: this.requireActivityActor(), action,
+      targetId: item.id, targetType: item.type,
+      summary: typeof item.data.title === "string" ? item.data.title : undefined,
+    }
+    entries[entry.id] = entry
+    for (const oldest of Object.values(entries).sort(compareActivity).slice(500)) delete entries[oldest.id]
   }
 
   /**
@@ -1966,6 +2017,7 @@ export class WotConnector extends BaseConnector {
 
   private notifyAllObservers(): void {
     this.invalidateItemCache()
+    void this.getActivity().then((entries) => this.activityObs.set(entries))
     if (this.notifyScheduled) return
     this.notifyScheduled = true
     queueMicrotask(() => {

@@ -8,6 +8,8 @@ import type {
   Observable,
   AuthState,
   AuthMethod,
+  ActivityEntry,
+  ActivityLogCapable,
   RelatedItemsOptions,
   Source,
 } from "@real-life-stack/data-interface"
@@ -38,6 +40,8 @@ interface StoredState {
   nextItemId: number
   /** Seed version the store was last seeded with (see SEED_VERSION). */
   seedVersion: number
+  /** Additive: legacy states are read as an empty map. */
+  activityByScope?: Record<string, Record<string, ActivityEntry>>
 }
 
 interface BroadcastMessage {
@@ -51,9 +55,34 @@ function cloneGroupItems(groupItems: Record<string, string[]> | undefined): Reco
   )
 }
 
+function compareActivity(a: ActivityEntry, b: ActivityEntry): number {
+  return b.ts.localeCompare(a.ts) || b.actor.localeCompare(a.actor) || b.id.localeCompare(a.id)
+}
+
+function appendActivity(
+  activityByScope: Record<string, Record<string, ActivityEntry>>,
+  scopeId: string,
+  action: ActivityEntry["action"],
+  item: Item,
+  actor: string,
+): Record<string, Record<string, ActivityEntry>> {
+  const next = Object.fromEntries(Object.entries(activityByScope).map(([scope, entries]) => [scope, { ...entries }]))
+  const entries = next[scopeId] ?? {}
+  const entry: ActivityEntry = {
+    id: crypto.randomUUID(), ts: new Date().toISOString(), actor, action,
+    targetId: item.id, targetType: item.type,
+    summary: typeof item.data.title === "string" ? item.data.title : undefined,
+  }
+  entries[entry.id] = entry
+  const overage = Object.values(entries).sort(compareActivity).slice(500)
+  for (const oldest of overage) delete entries[oldest.id]
+  next[scopeId] = entries
+  return next
+}
+
 // --- LocalConnector ---
 
-export class LocalConnector implements FullConnector {
+export class LocalConnector implements FullConnector, ActivityLogCapable {
   private items: Item[] = []
   private notifyScheduled = false
   private groups: Group[] = []
@@ -63,6 +92,8 @@ export class LocalConnector implements FullConnector {
   private currentGroup: Group | null = null
   private currentUser: User | null = null
   private nextItemId = 100
+  private activityByScope: Record<string, Record<string, ActivityEntry>> = {}
+  private activityObservables = new Map<string, ReturnType<typeof createObservable<ActivityEntry[]>>>()
 
   private authState = createObservable<AuthState>({ status: "loading" })
   private currentUserObs = createObservable<User | null>(null)
@@ -137,6 +168,7 @@ export class LocalConnector implements FullConnector {
       this.groupMembers = stored.groupMembers
       this.groupItems = stored.groupItems ?? {}
       this.nextItemId = stored.nextItemId
+      this.activityByScope = stored.activityByScope ?? {}
       this.currentUser = stored.currentUserId
         ? this.users.find((u) => u.id === stored.currentUserId) ?? null
         : null
@@ -169,6 +201,7 @@ export class LocalConnector implements FullConnector {
     for (const obs of this.singleItemObservables.values()) obs.destroy()
     for (const obs of this.relatedObservables.values()) obs.destroy()
     for (const obs of this.memberObservables.values()) obs.destroy()
+    for (const obs of this.activityObservables.values()) obs.destroy()
     this.itemObservables.clear()
     this.singleItemObservables.clear()
     this.relatedObservables.clear()
@@ -332,6 +365,7 @@ export class LocalConnector implements FullConnector {
   }
 
   async createItem(item: CreateItemInput): Promise<Item> {
+    const actor = this.requireCurrentUser().id
     const targetGroupId = this.currentGroup?.id ?? null
     let result: Item | undefined
     let committedState: StoredState | undefined
@@ -373,6 +407,7 @@ export class LocalConnector implements FullConnector {
         items: [...current.items, newItem],
         groupItems,
         nextItemId,
+        activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(targetGroupId), "create", newItem, actor),
       }
       result = newItem
       created = true
@@ -382,35 +417,45 @@ export class LocalConnector implements FullConnector {
     if (!result || !committedState) throw new Error("Item transaction did not produce a result")
     this.applyStoredItemState(committedState)
     this.notifyObservers()
+    this.notifyActivityObservers()
     if (created) this.broadcast({ type: "items-changed" })
     return result
   }
 
   async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
+    const actor = this.requireCurrentUser().id
     let result: Item | undefined
     let committedState: StoredState | undefined
     await updateStoredValue<StoredState>("state", (stored) => {
       const current = stored ?? this.createStoredState()
       const idx = current.items.findIndex((candidate) => candidate.id === id)
       if (idx === -1) throw new Error(`Item not found: ${id}`)
+      if (this.currentGroup && !(current.groupItems[this.currentGroup.id] ?? []).includes(id)) {
+        throw new Error(`Item not found: ${id}`)
+      }
       result = { ...current.items[idx], ...updates, id }
       const items = [...current.items]
       items[idx] = result
-      committedState = { ...current, items }
+      committedState = { ...current, items, activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(this.currentGroup?.id ?? null), "update", result, actor) }
       return committedState
     }, this.store)
 
     if (!result || !committedState) throw new Error("Item transaction did not produce a result")
     this.applyStoredItemState(committedState)
     this.notifyObservers()
+    this.notifyActivityObservers()
     this.broadcast({ type: "items-changed" })
     return result
   }
 
   async deleteItem(id: string): Promise<void> {
+    const actor = this.requireCurrentUser().id
     let committedState: StoredState | undefined
     await updateStoredValue<StoredState>("state", (stored) => {
       const current = stored ?? this.createStoredState()
+      const item = current.items.find((candidate) => candidate.id === id)
+      if (!item) { committedState = current; return current }
+      if (this.currentGroup && !(current.groupItems[this.currentGroup.id] ?? []).includes(id)) throw new Error(`Item not found: ${id}`)
       const groupItems = cloneGroupItems(current.groupItems)
       for (const groupId of Object.keys(groupItems)) {
         groupItems[groupId] = groupItems[groupId].filter((itemId) => itemId !== id)
@@ -419,6 +464,7 @@ export class LocalConnector implements FullConnector {
         ...current,
         items: current.items.filter((candidate) => candidate.id !== id),
         groupItems,
+        activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(this.currentGroup?.id ?? null), "delete", item, actor),
       }
       return committedState
     }, this.store)
@@ -426,6 +472,7 @@ export class LocalConnector implements FullConnector {
     if (!committedState) throw new Error("Item transaction did not produce a result")
     this.applyStoredItemState(committedState)
     this.notifyObservers()
+    this.notifyActivityObservers()
     this.broadcast({ type: "items-changed" })
   }
 
@@ -437,9 +484,15 @@ export class LocalConnector implements FullConnector {
   }
 
   async moveItemToGroup(itemId: string, targetGroupId: string): Promise<void> {
+    const actor = this.requireCurrentUser().id
     let committedState: StoredState | undefined
     await updateStoredValue<StoredState>("state", (stored) => {
       const current = stored ?? this.createStoredState()
+      const item = current.items.find((candidate) => candidate.id === itemId)
+      const sourceGroupId = Object.entries(current.groupItems).find(([, ids]) => ids.includes(itemId))?.[0] ?? null
+      if (!item || !sourceGroupId) throw new Error(`Item not found: ${itemId}`)
+      if (this.currentGroup && sourceGroupId !== this.currentGroup.id) throw new Error(`Item not found: ${itemId}`)
+      if (sourceGroupId === targetGroupId) { committedState = current; return current }
       const groupItems = cloneGroupItems(current.groupItems)
       for (const groupId of Object.keys(groupItems)) {
         groupItems[groupId] = groupItems[groupId].filter((id) => id !== itemId)
@@ -447,14 +500,35 @@ export class LocalConnector implements FullConnector {
       const targetItems = groupItems[targetGroupId] ?? []
       if (!targetItems.includes(itemId)) targetItems.push(itemId)
       groupItems[targetGroupId] = targetItems
-      committedState = { ...current, groupItems }
+      committedState = {
+        ...current, groupItems,
+        activityByScope: appendActivity(
+          appendActivity(current.activityByScope ?? {}, this.activityScope(sourceGroupId), "delete", item, actor),
+          this.activityScope(targetGroupId), "create", item, actor,
+        ),
+      }
       return committedState
     }, this.store)
 
     if (!committedState) throw new Error("Item transaction did not produce a result")
     this.applyStoredItemState(committedState)
     this.notifyObservers()
+    this.notifyActivityObservers()
     this.broadcast({ type: "items-changed" })
+  }
+
+  async getActivity(options?: { limit?: number }): Promise<ActivityEntry[]> {
+    return this.readActivity(options?.limit)
+  }
+
+  observeActivity(options?: { limit?: number }): Observable<ActivityEntry[]> {
+    const key = `${this.currentGroup?.id ?? "__overview__"}:${options?.limit ?? ""}`
+    let observable = this.activityObservables.get(key)
+    if (!observable) {
+      observable = createObservable(this.readActivity(options?.limit))
+      this.activityObservables.set(key, observable)
+    }
+    return observable
   }
 
   // --- Relations ---
@@ -591,6 +665,7 @@ export class LocalConnector implements FullConnector {
       currentGroupId: this.currentGroup?.id ?? null,
       nextItemId: this.nextItemId,
       seedVersion: SEED_VERSION,
+      activityByScope: this.activityByScope,
     }
   }
 
@@ -598,6 +673,7 @@ export class LocalConnector implements FullConnector {
     this.items = state.items.map((item) => ({ ...item }))
     this.groupItems = cloneGroupItems(state.groupItems)
     this.nextItemId = state.nextItemId
+    this.activityByScope = state.activityByScope ?? {}
   }
 
   // --- Internal: Cross-Tab Sync ---
@@ -619,7 +695,9 @@ export class LocalConnector implements FullConnector {
       // item out of the active group (its id isn't in the stale local
       // groupItems[groupId]), so observers see "no change" until reload.
       this.groupItems = stored.groupItems ?? {}
+      this.activityByScope = stored.activityByScope ?? {}
       this.notifyObservers()
+      this.notifyActivityObservers()
     }
 
     if (msg.type === "groups-changed" || msg.type === "full-sync") {
@@ -663,6 +741,33 @@ export class LocalConnector implements FullConnector {
         const related = findRelatedItems(params.itemId, this.items, params.predicate, params.options)
         observable.set(related)
       }
+    }
+  }
+
+  private requireCurrentUser(): User {
+    if (!this.currentUser) throw new Error("Authentication required")
+    return this.currentUser
+  }
+
+  private activityScope(groupId: string | null): string {
+    return groupId ?? "__personal__"
+  }
+
+  private readActivity(limit?: number): ActivityEntry[] {
+    const scopes = this.currentGroup ? [this.activityScope(this.currentGroup.id)] : Object.keys(this.activityByScope)
+    const entries = scopes.flatMap((scope) => Object.values(this.activityByScope[scope] ?? {}))
+      .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
+      .sort(compareActivity)
+    return limit === undefined ? entries : entries.slice(0, Math.max(0, limit))
+  }
+
+  private notifyActivityObservers(): void {
+    for (const [key, observable] of this.activityObservables) {
+      const [scope, rawLimit] = key.split(":")
+      const previous = this.currentGroup
+      this.currentGroup = scope === "__overview__" ? null : this.groups.find((group) => group.id === scope) ?? null
+      observable.set(this.readActivity(rawLimit === "" ? undefined : Number(rawLimit)))
+      this.currentGroup = previous
     }
   }
 }

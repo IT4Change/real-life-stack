@@ -1,4 +1,4 @@
-import type { Relation } from "@real-life-stack/data-interface"
+import type { ActivityEntry, Relation } from "@real-life-stack/data-interface"
 import type {
   DocLogStore,
   KeyManagementPort,
@@ -48,6 +48,8 @@ export interface RlsSpaceDoc {
   _type: "rls"
   /** RLS Items keyed by ID */
   items: Record<string, SerializedItem>
+  /** Additive, encrypted space-local best-effort change history. */
+  activity?: Record<string, ActivityEntry>
   /** Space metadata (app-specific, name/description now in _meta) */
   metadata?: {
     /** @deprecated Use _meta.name (set via updateSpace) */

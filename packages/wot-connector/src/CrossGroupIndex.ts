@@ -123,6 +123,11 @@ export class CrossGroupIndex<TDoc, TItem> {
     return this.groupItemMaps.get(groupId) ?? new Map()
   }
 
+  /** Narrow generic hook for space-level projections such as ActivityLog. */
+  getDocuments(): TDoc[] {
+    return [...this.handles.values()].map((handle) => handle.getDoc())
+  }
+
   getUniqueById(itemId: string): CrossGroupEntry<TItem> | null {
     let result: CrossGroupEntry<TItem> | null = null
     for (const [groupId, items] of this.groupItemMaps) {
