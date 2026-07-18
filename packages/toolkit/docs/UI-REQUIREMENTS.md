@@ -108,6 +108,7 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 - [x] **lens-selection-visible-area**: Map, Graph und scrollbare Linsen berücksichtigen einen Shell-Bottom-Inset, damit eine Mobile-Drawer-Auswahl im nicht verdeckten Sichtbereich landet
 - [x] **lens-focus-requires-visible-highlight**: Ein Fokus-Gate wird nur verbraucht, wenn das Ziel im selben Schritt tatsächlich sichtbar und hervorgehoben ist; bei Monats-Overflow erfüllt der Wechsel in die Tagesansicht diese Pflicht (siehe lens-active-item-escalates-view — die Zell-Ordnung wird nicht verbogen)
 - [x] **lens-content-frame**: List und Grid scrollen über die volle verfügbare Breite; ihr gemeinsamer `max-w-6xl`-Inhaltsrahmen (einschließlich Toggle) ist innen zentriert. Grid-Zeilen messen ihren vertikalen Abstand mit.
+- [x] **lens-empty-state-component**: Der Leer-Zustand jeder Linse ist die geteilte `EmptyState`-Primitive (zentriert, Icon + Titel + optionaler Hinweis) — nie nackter Text; „lädt noch" bleibt davon getrennt (Skeleton)
 - [x] **map-reset-awaits-fresh-inventory**: Ein Space-/Inventar-Reset fittet erst einen nicht-leeren, gegenüber dem vorherigen Render neuen Markerbestand und nie noch sichtbare Marker des alten Space
 
 ---
