@@ -245,3 +245,24 @@ describe("Activity log — WoT transaction boundaries", () => {
     expect(background.transact).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("Activity log — stale handle race", () => {
+  it("discards a space handle that resolves after the scope moved on", async () => {
+    const stale = handle()
+    const c = connector(stale) as any
+    c.currentHandle = null
+    c.currentGroupId = "a"
+    let resolveOpen: (value: unknown) => void = () => {}
+    c.replication = { openSpace: vi.fn(() => new Promise((resolve) => { resolveOpen = resolve })) }
+
+    const opening = invokePrivate<() => Promise<void>>(c, "openCurrentHandle")()
+    // Rapid switch: the scope moves on while A's openSpace is still pending.
+    c.currentGroupId = "b"
+    resolveOpen(stale)
+    await opening
+
+    expect(stale.close).toHaveBeenCalled()
+    expect(c.currentHandle).toBeNull()
+    expect(c.activityReconciliations.size).toBe(0)
+  })
+})

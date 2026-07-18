@@ -57,7 +57,9 @@ export function useReactions(itemId: string): UseReactionsResult {
   }, [connector])
 
   const canWrite = isWritable(connector)
-  const canReact = canWrite && canRelate
+  // Authenticatable connectors additionally need a logged-in user — reactions
+  // must never be written as "anonymous".
+  const canReact = canWrite && canRelate && (!isAuthenticatable(connector) || currentUserId !== undefined)
 
   // Optimistic overlay for the current user's own reaction: applied on click,
   // dropped as soon as the related-items observable reflects the write.
@@ -91,8 +93,11 @@ export function useReactions(itemId: string): UseReactionsResult {
 
   // Abort controller for latest-wins pattern
   const latestRef = useRef(0)
+  // Serializes writes: a rapid second click waits for the first delete/create
+  // pair instead of interleaving with it.
+  const chainRef = useRef<Promise<void>>(Promise.resolve())
 
-  const react = useCallback(async (emoji: string) => {
+  const performReact = useCallback(async (emoji: string) => {
     if (!isWritable(connector) || !hasRelations(connector)) return
 
     const writableConnector = connector
@@ -107,6 +112,10 @@ export function useReactions(itemId: string): UseReactionsResult {
       let userId = currentUserId
       if (userId === undefined && isAuthenticatable(connector)) {
         userId = (await connector.getCurrentUser())?.id
+        if (userId === undefined) {
+          if (latestRef.current === requestId) setPending(null)
+          return
+        }
       }
       const existingMine = userId ? existingReactions.find((r) => r.createdBy === userId) : undefined
       if (latestRef.current !== requestId) return
@@ -130,6 +139,12 @@ export function useReactions(itemId: string): UseReactionsResult {
       if (latestRef.current === requestId) setPending(null)
     }
   }, [connector, itemId, myReaction, currentUserId])
+
+  const react = useCallback((emoji: string) => {
+    const next = chainRef.current.then(() => performReact(emoji))
+    chainRef.current = next.catch(() => undefined)
+    return next
+  }, [performReact])
 
   return {
     reactions,

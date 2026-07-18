@@ -59,17 +59,19 @@ interface KanbanViewProps {
  * The mutation half of Kanban's drag handler.  Keeping it at module scope
  * makes the user-visible drag path directly contract-testable.
  */
-export function handleKanbanDrag(
+export async function handleKanbanDrag(
   tasks: Item[],
   itemId: string,
   newStatus: string,
   position: number,
   updateItem: (id: string, updates: { data: Record<string, unknown> }) => unknown,
-): void {
+): Promise<void> {
   const item = tasks.find((task) => task.id === itemId)
   if (!item) return
+  // Sequential and awaited: callers (and tests) observe completion/failure
+  // instead of racing fire-and-forget writes.
   for (const update of computeColumnReorder(tasks, item, newStatus, position)) {
-    void updateItem(update.id, { data: update.data })
+    await updateItem(update.id, { data: update.data })
   }
 }
 

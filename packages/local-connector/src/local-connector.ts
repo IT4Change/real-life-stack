@@ -630,8 +630,12 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
     this.currentUserObs.set(null)
     this.currentGroup = null
     this.nextItemId = 100
+    // Deleting the store must also forget activity in-process — otherwise it
+    // stays readable and a later persist() would resurrect the wiped entries.
+    this.activityByScope = {}
     this.notifyObservers()
     this.notifyGroupObservers()
+    this.notifyActivityObservers()
     this.broadcast({ type: "full-sync" })
   }
 
@@ -652,6 +656,10 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
             items: stored.items,
             groupItems: cloneGroupItems(stored.groupItems),
             nextItemId: stored.nextItemId,
+            // Activity is item-state too: another tab may have committed
+            // entries atomically — never write our stale in-memory copy over
+            // the store's truth.
+            activityByScope: stored.activityByScope ?? {},
           }
         : localState
       return committedState

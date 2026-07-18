@@ -1987,11 +1987,26 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
           targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId, idRemap)
           migratedIds.add(itemId)
         }
+
+        // The items' activity history migrates with them (re-keyed like the
+        // items; retention on the target applies as usual).
+        const sourceActivity = sourceHandle.getDoc().activity ?? {}
+        for (const [entryId, entry] of Object.entries(sourceActivity)) {
+          if (!idRemap.has(entry.targetId) || targetDoc.activity?.[entryId]) continue
+          const activity = targetDoc.activity ?? (targetDoc.activity = {})
+          activity[entryId] = { ...entry, targetId: idRemap.get(entry.targetId)! }
+        }
       })
 
       sourceHandle.transact((sourceDoc: RlsSpaceDoc) => {
         for (const itemId of migratedIds) {
           delete sourceDoc.items[itemId]
+        }
+        const activity = sourceDoc.activity
+        if (activity) {
+          for (const [entryId, entry] of Object.entries(activity)) {
+            if (migratedIds.has(entry.targetId)) delete activity[entryId]
+          }
         }
       })
 
@@ -2054,13 +2069,21 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
 
   private async openCurrentHandle(): Promise<void> {
     if (!this.replication || !this.currentGroupId) return
+    // A rapid A→B/Overview switch can resolve A's openSpace AFTER the scope
+    // already moved on — installing that handle would expose the wrong space.
+    const requestedGroupId = this.currentGroupId
 
     try {
-      this.currentHandle = await this.replication.openSpace<RlsSpaceDoc>(this.currentGroupId)
-      this.scheduleActivityReconciliation(this.currentGroupId, this.currentHandle)
+      const handle = await this.replication.openSpace<RlsSpaceDoc>(requestedGroupId)
+      if (this.currentGroupId !== requestedGroupId) {
+        handle.close()
+        return
+      }
+      this.currentHandle = handle
+      this.scheduleActivityReconciliation(requestedGroupId, handle)
 
       // Listen for remote updates -> refresh observables
-      this.handleRemoteUnsub = this.currentHandle!.onRemoteUpdate(() => {
+      this.handleRemoteUnsub = handle.onRemoteUpdate(() => {
         if (this.currentHandle && this.currentGroupId) this.scheduleActivityReconciliation(this.currentGroupId, this.currentHandle)
         this.notifyAllObservers(true)
       })

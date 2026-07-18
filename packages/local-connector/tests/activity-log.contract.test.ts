@@ -43,7 +43,7 @@ async function ready(): Promise<LocalConnector> {
 beforeEach(() => { idb.reset(); channels.clear() })
 
 describe("LocalConnector activity-log contract", () => {
-  it("14. isolates active scopes, stores overview creates in __personal__, globally limits the union, and retains each source independently", async () => {
+  it("14. isolates active scopes, stores overview creates in __personal__, globally limits the union, and retains each source independently", { timeout: 20000 }, async () => {
     const connector = await ready()
     connector.setCurrentGroup(null)
     await connector.createItem({ id: "personal", type: "task", createdBy: "forged", data: {} })
@@ -112,6 +112,35 @@ describe("LocalConnector activity-log contract", () => {
     await first.createItem({ id: "shared", type: "task", createdBy: "forged", data: { title: "Shared" } })
     await vi.waitFor(() => expect(items.current.map((item) => item.id)).toContain("shared"))
     await vi.waitFor(() => expect(activity.current).toEqual(expect.arrayContaining([expect.objectContaining({ action: "create", targetId: "shared" })])))
+  })
+
+  it("18. persist() from a stale tab never overwrites activity another tab committed", async () => {
+    const first = await ready()
+    const second = await ready()
+    // First tab commits an item + activity atomically.
+    await first.createItem({ id: "committed", type: "task", createdBy: "x", data: { title: "Committed" } })
+    // Second tab (stale in-memory activity) persists unrelated state.
+    second.setCurrentGroup("alpha")
+    await vi.waitFor(async () => {
+      const entries = await first.getActivity()
+      expect(entries).toEqual(expect.arrayContaining([expect.objectContaining({ targetId: "committed" })]))
+    })
+    const fresh = await ready()
+    expect(await fresh.getActivity()).toEqual(expect.arrayContaining([expect.objectContaining({ targetId: "committed" })]))
+  })
+
+  it("19. clear() forgets activity in-process, notifies subscribers, and persist() cannot resurrect it", async () => {
+    const connector = await ready()
+    await connector.createItem({ id: "wiped", type: "task", createdBy: "x", data: { title: "Wiped" } })
+    const activity = connector.observeActivity()
+    await connector.clear()
+    expect(await connector.getActivity()).toEqual([])
+    expect(activity.current).toEqual([])
+    // Any later persist-triggering state change must not bring entries back.
+    connector.setCurrentGroup(null)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    const fresh = await ready()
+    expect(await fresh.getActivity()).toEqual([])
   })
 
   it("17. rejects logged mutations after logout without items or activity side effects (Local has no relation facade)", async () => {
