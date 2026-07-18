@@ -2109,6 +2109,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
   }
 
   private closeCurrentHandle(groupId = this.currentGroupId): void {
+    // Closing is itself a scope decision: any in-flight openSpace() request
+    // predates it and must never re-install a handle (dispose/logout window).
+    this.handleOpenGeneration++
     this.handleRemoteUnsub?.()
     this.handleRemoteUnsub = null
     this.currentHandle?.close()

@@ -312,4 +312,24 @@ describe("Activity log — migration cap and failed stale open", () => {
     await openA
     expect(c.currentHandle).toBe(b)
   })
+
+  it("a close during an in-flight open invalidates that request even without an id change", async () => {
+    const stale = handle()
+    const c = connector(stale) as any
+    c.currentHandle = null
+    c.currentGroupId = "a"
+    let resolveOpen: (value: unknown) => void = () => {}
+    c.replication = { openSpace: vi.fn(() => new Promise((resolve) => { resolveOpen = resolve })) }
+    c.handleRemoteUnsub = null
+    c.invalidateItemCache = vi.fn()
+
+    const opening = invokePrivate<() => Promise<void>>(c, "openCurrentHandle")()
+    // Teardown (dispose/logout) closes WITHOUT changing currentGroupId first.
+    invokePrivate<() => void>(c, "closeCurrentHandle")()
+    resolveOpen(stale)
+    await opening
+
+    expect(stale.close).toHaveBeenCalled()
+    expect(c.currentHandle).toBeNull()
+  })
 })
