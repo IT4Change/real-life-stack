@@ -19,6 +19,10 @@ import type {
   IncomingEvent,
   ActivityEntry,
   ActivityLogCapable,
+  ScopedActivityEntry,
+  NotificationState,
+  NotificationStateCapable,
+  NotificationStatePatch,
 } from "@real-life-stack/data-interface"
 import {
   deriveActivitySummary,
@@ -28,6 +32,10 @@ import {
   matchesFilter,
   findRelatedItems,
   applyPagination,
+  itemDisplayTitle,
+  moduleHintsFor,
+  maxTs,
+  pruneReadEntryKeys,
   type ReactiveObservable,
 } from "@real-life-stack/data-interface"
 
@@ -284,7 +292,7 @@ function isVerificationConfirmation(c: ConfirmationView): boolean {
 
 // --- WotConnector ---
 
-export class WotConnector extends BaseConnector implements ActivityLogCapable {
+export class WotConnector extends BaseConnector implements ActivityLogCapable, NotificationStateCapable {
   private config: WotConnectorConfig
   private runtimeOverrides: WotConnectorRuntimeOverrides
   private identity: WorkflowBackedIdentity
@@ -340,6 +348,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
   private syncPendingObs: ReactiveObservable<boolean>
   /** Activity observables are keyed by their requested limit. */
   private activityObservables = new Map<string, ReactiveObservable<ActivityEntry[]>>()
+  private scopedActivityObservables = new Map<string, ReactiveObservable<ScopedActivityEntry[]>>()
+  private notificationStateObs = createObservable<NotificationState>({ readEntryKeys: {}, mutedGroupIds: {} })
+  private notificationStateUnsub: (() => void) | null = null
   private activityDirty = false
   /** One active reconciliation plus at most one trailing run per space. */
   private activityReconciliations = new Map<string, { queued: boolean; handle: SpaceHandle<RlsSpaceDoc> }>()
@@ -473,6 +484,11 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     this.relatedObservables.clear()
     for (const obs of this.activityObservables.values()) obs.destroy()
     this.activityObservables.clear()
+    for (const obs of this.scopedActivityObservables.values()) obs.destroy()
+    this.scopedActivityObservables.clear()
+    this.notificationStateUnsub?.()
+    this.notificationStateUnsub = null
+    this.notificationStateObs.destroy()
     this.authStateObs.destroy()
     this.contactsObs.destroy()
     this.confirmationsObs.destroy()
@@ -1216,6 +1232,91 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
       void this.getActivity(options).then((entries) => observable!.set(entries))
     }
     return observable
+  }
+
+  async getScopedActivity(options?: { limit?: number }): Promise<ScopedActivityEntry[]> {
+    await this.handleReady
+    const documents = this.crossGroupIndex?.getGroupDocuments() ?? (this.currentHandle ? [{ groupId: this.currentGroupId ?? "__personal__", doc: this.currentHandle.getDoc(), members: this.currentHandle.info().members }] : [])
+    const resolved = await Promise.all(documents.flatMap(({ groupId, doc, members }) =>
+      Object.values(doc.activity ?? {})
+        .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
+        .map((entry) => this.resolveScopedActivity(groupId, doc, members, entry)),
+    ))
+    resolved.sort((a, b) => compareActivity(a.entry, b.entry))
+    return options?.limit === undefined ? resolved : resolved.slice(0, Math.max(0, options.limit))
+  }
+
+  observeScopedActivity(options?: { limit?: number }): Observable<ScopedActivityEntry[]> {
+    const key = `${options?.limit ?? ""}`
+    let observable = this.scopedActivityObservables.get(key)
+    if (!observable) {
+      observable = createObservable<ScopedActivityEntry[]>([])
+      this.scopedActivityObservables.set(key, observable)
+      void this.getScopedActivity(options).then((entries) => observable!.set(entries))
+    }
+    return observable
+  }
+
+  async getNotificationState(): Promise<NotificationState> {
+    return this.readNotificationState()
+  }
+
+  observeNotificationState(): Observable<NotificationState> {
+    if (!this.notificationStateUnsub) {
+      this.notificationStateUnsub = onYjsPersonalDocChange(() => this.notificationStateObs.set(this.readNotificationState()))
+    }
+    this.notificationStateObs.set(this.readNotificationState())
+    return this.notificationStateObs
+  }
+
+  async updateNotificationState(patch: NotificationStatePatch): Promise<void> {
+    await this.handleReady
+    const deviceId = await this.getOrCreateNotificationDeviceId()
+    changeYjsPersonalDoc((doc: any) => {
+      const raw = doc.notificationState ?? (doc.notificationState = {})
+      raw.lastSeenByDevice ??= {}
+      raw.readUpToByDevice ??= {}
+      raw.readEntryKeys ??= {}
+      raw.mutedGroupIds ??= {}
+      if (patch.op === "markSeen") raw.lastSeenByDevice[deviceId] = maxTs(raw.lastSeenByDevice[deviceId], patch.ts)
+      if (patch.op === "markAllReadUpTo") raw.readUpToByDevice[deviceId] = maxTs(raw.readUpToByDevice[deviceId], patch.ts)
+      if (patch.op === "markRead") Object.assign(raw.readEntryKeys, patch.keys)
+      if (patch.op === "mute") raw.mutedGroupIds[patch.groupId] = true
+      if (patch.op === "unmute") delete raw.mutedGroupIds[patch.groupId]
+      const ownState: NotificationState = { readUpToTs: raw.readUpToByDevice[deviceId], readEntryKeys: raw.readEntryKeys, mutedGroupIds: raw.mutedGroupIds }
+      pruneReadEntryKeys(ownState)
+      raw.readEntryKeys = ownState.readEntryKeys
+      if (ownState.readUpToTs) raw.readUpToByDevice[deviceId] = ownState.readUpToTs
+    })
+    this.notificationStateObs.set(this.readNotificationState())
+  }
+
+  private async resolveScopedActivity(groupId: string, doc: RlsSpaceDoc, members: string[], entry: ActivityEntry): Promise<ScopedActivityEntry> {
+    const target = doc.items?.[entry.targetId] ? deserializeItem(doc.items[entry.targetId]!) : undefined
+    let subject: ScopedActivityEntry["subject"] = null
+    if (entry.action === "delete") subject = { id: entry.targetId, type: entry.targetType, ...(entry.summary ? { title: entry.summary } : {}) }
+    else if (target) {
+      const parentId = target.type === "reaction" || target.type === "comment"
+        ? target.relations?.find((relation) => relation.predicate === "reactsTo" || relation.predicate === "commentOn")?.target.replace(/^item:/, "")
+        : undefined
+      const parent = parentId && doc.items?.[parentId] ? deserializeItem(doc.items[parentId]!) : target
+      if (parent) subject = { id: parent.id, type: parent.type, createdBy: parent.createdBy, ...(itemDisplayTitle(parent) ? { title: itemDisplayTitle(parent) } : {}), moduleHints: moduleHintsFor(parent) }
+    }
+    const isPersonal = groupId === this.privateSpaceId
+    const actor = (isPersonal || members.includes(entry.actor)) ? await this.getUser(entry.actor) ?? { id: entry.actor } : null
+    return { groupId, entry, targetExists: Boolean(target), subject, ...(isPersonal ? { isPersonal: true } : {}), actor }
+  }
+
+  private readNotificationState(): NotificationState {
+    const raw = (getYjsPersonalDoc() as any)?.notificationState
+    const max = (values: Record<string, string> | undefined): string | undefined => Object.values(values ?? {}).reduce<string | undefined>((result, value) => !result || value > result ? value : result, undefined)
+    return { ...(max(raw?.lastSeenByDevice) ? { lastSeenTs: max(raw.lastSeenByDevice) } : {}), ...(max(raw?.readUpToByDevice) ? { readUpToTs: max(raw.readUpToByDevice) } : {}), readEntryKeys: { ...(raw?.readEntryKeys ?? {}) }, mutedGroupIds: { ...(raw?.mutedGroupIds ?? {}) } }
+  }
+
+  /** Deliberately resolves on every mutation: a restored clone receives a new slot. */
+  private async getOrCreateNotificationDeviceId(): Promise<string> {
+    if (!this.docLogStore) throw new Error("Notification state requires an initialized DocLogStore")
+    return this.docLogStore.resolveConnectDeviceId()
   }
 
   private requireActivityActor(): string {
@@ -2139,6 +2240,12 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
       for (const [key, observable] of this.activityObservables) {
         const limit = key === "" ? undefined : Number(key)
         void this.getActivity(limit === undefined ? undefined : { limit }).then((entries) => observable.set(entries))
+      }
+    }
+    if (activityMayHaveChanged && this.scopedActivityObservables.size > 0) {
+      for (const [key, observable] of this.scopedActivityObservables) {
+        const limit = key === "" ? undefined : Number(key)
+        void this.getScopedActivity(limit === undefined ? undefined : { limit }).then((entries) => observable.set(entries))
       }
     }
     if (this.notifyScheduled) return

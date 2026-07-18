@@ -8,6 +8,12 @@ export interface CrossGroupEntry<TItem> {
   groupId: string
 }
 
+export interface CrossGroupDocument<TDoc> {
+  groupId: string
+  doc: TDoc
+  members: string[]
+}
+
 export interface CrossGroupIndexOptions {
   groupFilter?: (info: SpaceInfo) => boolean
   /** Receives each held handle; cleanup runs before its handle closes. */
@@ -133,6 +139,15 @@ export class CrossGroupIndex<TDoc, TItem> {
   /** Narrow generic hook for space-level projections such as ActivityLog. */
   getDocuments(): TDoc[] {
     return [...this.handles.values()].map((handle) => handle.getDoc())
+  }
+
+  /** Narrow space projection for contracts that must retain group ownership. */
+  getGroupDocuments(): CrossGroupDocument<TDoc>[] {
+    return [...this.handles.entries()].map(([groupId, handle]) => ({
+      groupId,
+      doc: handle.getDoc(),
+      members: handle.info().members,
+    }))
   }
 
   getUniqueById(itemId: string): CrossGroupEntry<TItem> | null {

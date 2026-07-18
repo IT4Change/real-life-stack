@@ -31,9 +31,10 @@ describe("Notification contracts — MockConnector", () => {
     connector.setCurrentGroup("alpha")
     const parent = await connector.createItem({ id: "parent", type: "task", createdBy: "ignored", data: { title: "Task", start: "2026-07-18", position: { coordinates: [] } } })
     const reaction = await connector.createItem({ id: "reaction", type: "reaction", createdBy: "ignored", data: {}, relations: [{ predicate: "reactsTo", target: `item:${parent.id}` }] })
+    expect((await connector.getScopedActivity()).find((value) => value.entry.targetId === reaction.id)!.subject).toMatchObject({ id: parent.id, createdBy: "ignored", moduleHints: { hasPosition: true, hasStart: true, hasStatus: true } })
     await connector.deleteItem(reaction.id)
     const deletedReaction = (await connector.getScopedActivity()).find((value) => value.entry.targetId === reaction.id && value.entry.action === "create")!
-    expect(deletedReaction).toMatchObject({ targetExists: false, subject: { id: parent.id, createdBy: "alice", moduleHints: { hasPosition: true, hasStart: true, hasStatus: true } }, actor: { id: "alice" } })
+    expect(deletedReaction).toMatchObject({ targetExists: false, actor: { id: "alice" } })
     await connector.deleteItem(parent.id)
     expect((await connector.getScopedActivity()).find((value) => value.entry.targetId === reaction.id && value.entry.action === "create")!.subject).toBeNull()
   })

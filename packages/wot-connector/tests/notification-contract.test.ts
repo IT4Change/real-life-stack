@@ -15,6 +15,7 @@ function connector(): any {
   value.docLogStore = { resolveConnectDeviceId: vi.fn(async () => "device-a") }
   value.currentUserObs = createObservable({ id: "did:alice" })
   value.notificationStateObservables = new Map()
+  value.notificationStateObs = createObservable({ readEntryKeys: {}, mutedGroupIds: {} })
   return value
 }
 

@@ -1,16 +1,28 @@
-import { beforeEach, describe, expect, it } from "vitest"
-import { get, createStore } from "idb-keyval"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+const idb = vi.hoisted(() => {
+  let state: unknown
+  const clone = <T>(value: T): T => value === undefined ? value : structuredClone(value)
+  return {
+    reset: () => { state = undefined },
+    get: vi.fn(async () => clone(state)), set: vi.fn(async (_key: string, value: unknown) => { state = clone(value) }),
+    update: vi.fn(async (_key: string, updater: (value: unknown) => unknown) => { state = clone(updater(clone(state))) }), del: vi.fn(async () => { state = undefined }),
+  }
+})
+vi.mock("idb-keyval", () => ({ get: idb.get, set: idb.set, update: idb.update, del: idb.del, createStore: vi.fn().mockReturnValue({}) }))
+vi.stubGlobal("BroadcastChannel", class { onmessage: ((event: MessageEvent) => void) | null = null; postMessage() {} close() {} })
+
 import { LocalConnector } from "../src/local-connector.js"
 
 const seed = { items: [], groups: [{ id: "alpha", name: "Alpha" }, { id: "beta", name: "Beta" }], users: [{ id: "alice" }], groupMembers: { alpha: ["alice"], beta: ["alice"] }, groupItems: { alpha: [], beta: [] } }
 
 describe("Notification contracts — LocalConnector", () => {
-  beforeEach(async () => { await (globalThis as any).indexedDB?.deleteDatabase?.("keyval-store") })
+  beforeEach(() => { idb.reset() })
 
   it("A-T1/T2: scoped activity is an all-space union despite an active workspace", async () => {
     const connector = new LocalConnector(seed); await connector.init()
     connector.setCurrentGroup("alpha"); await connector.createItem({ id: "same", type: "task", createdBy: "x", data: {} })
-    connector.setCurrentGroup("beta"); await connector.createItem({ id: "same", type: "task", createdBy: "x", data: {} })
+    connector.setCurrentGroup("beta"); await connector.createItem({ id: "other", type: "task", createdBy: "x", data: {} })
     expect((await connector.getScopedActivity()).map((value) => value.groupId).sort()).toEqual(["alpha", "beta"])
   })
 

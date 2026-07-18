@@ -10,10 +10,14 @@ import type {
   AuthMethod,
   ActivityEntry,
   ActivityLogCapable,
+  ScopedActivityEntry,
+  NotificationState,
+  NotificationStateCapable,
+  NotificationStatePatch,
   RelatedItemsOptions,
   Source,
 } from "@real-life-stack/data-interface"
-import { createObservable, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary } from "@real-life-stack/data-interface"
+import { createObservable, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
 import { get, set, del, createStore, update as updateStoredValue } from "idb-keyval"
 
 // --- Types ---
@@ -42,6 +46,8 @@ interface StoredState {
   seedVersion: number
   /** Additive: legacy states are read as an empty map. */
   activityByScope?: Record<string, Record<string, ActivityEntry>>
+  /** Additive: old local stores start with an empty notification state. */
+  notificationState?: NotificationState
 }
 
 interface BroadcastMessage {
@@ -83,7 +89,7 @@ function appendActivity(
 
 // --- LocalConnector ---
 
-export class LocalConnector implements FullConnector, ActivityLogCapable {
+export class LocalConnector implements FullConnector, ActivityLogCapable, NotificationStateCapable {
   private items: Item[] = []
   private notifyScheduled = false
   private groups: Group[] = []
@@ -95,6 +101,9 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
   private nextItemId = 100
   private activityByScope: Record<string, Record<string, ActivityEntry>> = {}
   private activityObservables = new Map<string, ReturnType<typeof createObservable<ActivityEntry[]>>>()
+  private scopedActivityObservables = new Map<string, ReturnType<typeof createObservable<ScopedActivityEntry[]>>>()
+  private notificationState: NotificationState = { readEntryKeys: {}, mutedGroupIds: {} }
+  private notificationStateObs = createObservable<NotificationState>(this.notificationState)
 
   private authState = createObservable<AuthState>({ status: "loading" })
   private currentUserObs = createObservable<User | null>(null)
@@ -170,6 +179,8 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
       this.groupItems = stored.groupItems ?? {}
       this.nextItemId = stored.nextItemId
       this.activityByScope = stored.activityByScope ?? {}
+      this.notificationState = cloneNotificationState(stored.notificationState ?? {})
+      this.notificationStateObs.set(cloneNotificationState(this.notificationState))
       this.currentUser = stored.currentUserId
         ? this.users.find((u) => u.id === stored.currentUserId) ?? null
         : null
@@ -203,12 +214,15 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
     for (const obs of this.relatedObservables.values()) obs.destroy()
     for (const obs of this.memberObservables.values()) obs.destroy()
     for (const obs of this.activityObservables.values()) obs.destroy()
+    for (const obs of this.scopedActivityObservables.values()) obs.destroy()
     this.itemObservables.clear()
     this.singleItemObservables.clear()
     this.relatedObservables.clear()
     this.relatedObservableParams.clear()
     this.memberObservables.clear()
     this.activityObservables.clear()
+    this.scopedActivityObservables.clear()
+    this.notificationStateObs.destroy()
     this.authState.destroy()
     this.groupsObs.destroy()
     this.currentGroupObs.destroy()
@@ -539,6 +553,41 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
     return observable
   }
 
+  async getScopedActivity(options?: { limit?: number }): Promise<ScopedActivityEntry[]> {
+    return this.readScopedActivity(options?.limit)
+  }
+
+  observeScopedActivity(options?: { limit?: number }): Observable<ScopedActivityEntry[]> {
+    const key = `${options?.limit ?? ""}`
+    let observable = this.scopedActivityObservables.get(key)
+    if (!observable) {
+      observable = createObservable(this.readScopedActivity(options?.limit))
+      this.scopedActivityObservables.set(key, observable)
+    }
+    return observable
+  }
+
+  async getNotificationState(): Promise<NotificationState> {
+    return cloneNotificationState(this.notificationState)
+  }
+
+  observeNotificationState(): Observable<NotificationState> {
+    return this.notificationStateObs
+  }
+
+  async updateNotificationState(patch: NotificationStatePatch): Promise<void> {
+    let committed: StoredState | undefined
+    await updateStoredValue<StoredState>("state", (stored) => {
+      const base = stored ?? this.createStoredState()
+      const notificationState = applyNotificationStatePatch(cloneNotificationState(base.notificationState ?? {}), patch)
+      committed = { ...base, notificationState }
+      return committed
+    }, this.store)
+    this.notificationState = cloneNotificationState(committed?.notificationState ?? {})
+    this.notificationStateObs.set(cloneNotificationState(this.notificationState))
+    this.broadcast({ type: "full-sync" })
+  }
+
   // --- Relations ---
 
   async getRelatedItems(
@@ -633,9 +682,11 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
     // Deleting the store must also forget activity in-process — otherwise it
     // stays readable and a later persist() would resurrect the wiped entries.
     this.activityByScope = {}
+    this.notificationState = { readEntryKeys: {}, mutedGroupIds: {} }
     this.notifyObservers()
     this.notifyGroupObservers()
     this.notifyActivityObservers()
+    this.notificationStateObs.set(cloneNotificationState(this.notificationState))
     this.broadcast({ type: "full-sync" })
   }
 
@@ -660,6 +711,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
             // entries atomically — never write our stale in-memory copy over
             // the store's truth.
             activityByScope: stored.activityByScope ?? {},
+            notificationState: cloneNotificationState(stored.notificationState),
           }
         : localState
       return committedState
@@ -682,6 +734,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
       nextItemId: this.nextItemId,
       seedVersion: SEED_VERSION,
       activityByScope: this.activityByScope,
+      notificationState: this.notificationState,
     }
   }
 
@@ -690,6 +743,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
     this.groupItems = cloneGroupItems(state.groupItems)
     this.nextItemId = state.nextItemId
     this.activityByScope = state.activityByScope ?? {}
+    this.notificationState = cloneNotificationState(state.notificationState ?? {})
   }
 
   // --- Internal: Cross-Tab Sync ---
@@ -712,6 +766,8 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
       // groupItems[groupId]), so observers see "no change" until reload.
       this.groupItems = stored.groupItems ?? {}
       this.activityByScope = stored.activityByScope ?? {}
+      this.notificationState = cloneNotificationState(stored.notificationState ?? {})
+      this.notificationStateObs.set(cloneNotificationState(this.notificationState))
       this.notifyObservers()
       this.notifyActivityObservers()
     }
@@ -782,9 +838,37 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
     return limit === undefined ? entries : entries.slice(0, Math.max(0, limit))
   }
 
+  private readScopedActivity(limit?: number): ScopedActivityEntry[] {
+    const entries = Object.entries(this.activityByScope).flatMap(([groupId, byId]) =>
+      Object.values(byId)
+        .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
+        .map((entry) => this.resolveScopedActivity(groupId, entry)),
+    ).sort((a, b) => compareActivity(a.entry, b.entry))
+    return limit === undefined ? entries : entries.slice(0, Math.max(0, limit))
+  }
+
+  private resolveScopedActivity(groupId: string, entry: ActivityEntry): ScopedActivityEntry {
+    const target = this.items.find((item) => item.id === entry.targetId && (groupId === "__personal__" ? !Object.values(this.groupItems).some((ids) => ids.includes(item.id)) : this.groupItems[groupId]?.includes(item.id)))
+    let subject: ScopedActivityEntry["subject"] = null
+    if (entry.action === "delete") subject = { id: entry.targetId, type: entry.targetType, ...(entry.summary ? { title: entry.summary } : {}) }
+    else if (target) {
+      const parentId = target.type === "reaction" || target.type === "comment"
+        ? target.relations?.find((relation) => relation.predicate === "reactsTo" || relation.predicate === "commentOn")?.target.replace(/^item:/, "")
+        : undefined
+      const resolved = parentId ? this.items.find((item) => item.id === parentId && this.groupItems[groupId]?.includes(item.id)) : target
+      if (resolved) subject = { id: resolved.id, type: resolved.type, createdBy: resolved.createdBy, ...(itemDisplayTitle(resolved) ? { title: itemDisplayTitle(resolved) } : {}), moduleHints: moduleHintsFor(resolved) }
+    }
+    const actor = groupId === "__personal__" || this.groupMembers[groupId]?.includes(entry.actor)
+      ? (this.users.find((user) => user.id === entry.actor) ?? { id: entry.actor }) : null
+    return { groupId, entry, targetExists: Boolean(target), subject, ...(groupId === "__personal__" ? { isPersonal: true } : {}), actor }
+  }
+
   private notifyActivityObservers(): void {
     for (const [rawLimit, observable] of this.activityObservables) {
       observable.set(this.readActivity(rawLimit === "" ? undefined : Number(rawLimit)))
+    }
+    for (const [rawLimit, observable] of this.scopedActivityObservables) {
+      observable.set(this.readScopedActivity(rawLimit === "" ? undefined : Number(rawLimit)))
     }
   }
 }

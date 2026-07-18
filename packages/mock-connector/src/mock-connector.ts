@@ -11,6 +11,10 @@ import type {
   AuthMethod,
   ActivityEntry,
   ActivityLogCapable,
+  ScopedActivityEntry,
+  NotificationState,
+  NotificationStateCapable,
+  NotificationStatePatch,
   RelatedItemsOptions,
   RelationRecord,
   RelationRecordCapable,
@@ -25,6 +29,10 @@ import {
   createDefaultRelationStore,
   createObservable,
   deriveActivitySummary,
+  itemDisplayTitle,
+  moduleHintsFor,
+  applyNotificationStatePatch,
+  cloneNotificationState,
   findRelatedItems,
   matchesFilter,
 } from "@real-life-stack/data-interface"
@@ -61,7 +69,7 @@ function compareActivity(a: ActivityEntry, b: ActivityEntry): number {
   return b.ts.localeCompare(a.ts) || b.actor.localeCompare(a.actor) || b.id.localeCompare(a.id)
 }
 
-export class MockConnector implements FullConnector, ActivityLogCapable, RelationRecordCapable, RelationRecordWriterCapable {
+export class MockConnector implements FullConnector, ActivityLogCapable, NotificationStateCapable, RelationRecordCapable, RelationRecordWriterCapable {
   private itemsByScope = new Map<string | null, Map<string, Item>>()
   private itemOrder: Array<{ scopeId: string | null; id: string }> = []
   private notifyScheduled = false
@@ -83,6 +91,9 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
   private nextItemId = 100
   private activityByScope = new Map<string, Map<string, ActivityEntry>>()
   private activityObservables = new Map<string, ReturnType<typeof createObservable<ActivityEntry[]>>>()
+  private scopedActivityObservables = new Map<string, ReturnType<typeof createObservable<ScopedActivityEntry[]>>>()
+  private notificationState: NotificationState = { readEntryKeys: {}, mutedGroupIds: {} }
+  private notificationStateObs = createObservable<NotificationState>(this.notificationState)
 
   constructor(seed?: MockConnectorSeed, options: MockConnectorOptions = {}) {
     const data = seed ?? {
@@ -142,6 +153,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
     for (const obs of this.itemObservables.values()) obs.destroy()
     for (const obs of this.singleItemObservables.values()) obs.destroy()
     for (const obs of this.activityObservables.values()) obs.destroy()
+    for (const obs of this.scopedActivityObservables.values()) obs.destroy()
     for (const obs of this.relatedObservables.values()) obs.destroy()
     for (const obs of this.memberObservables.values()) obs.destroy()
     this.itemObservables.clear()
@@ -150,6 +162,8 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
     this.relatedObservableParams.clear()
     this.memberObservables.clear()
     this.activityObservables.clear()
+    this.scopedActivityObservables.clear()
+    this.notificationStateObs.destroy()
     this.authState.destroy()
     this.groupsObs.destroy()
     this.currentGroupObs.destroy()
@@ -464,6 +478,33 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
     return observable
   }
 
+  async getScopedActivity(options?: { limit?: number }): Promise<ScopedActivityEntry[]> {
+    return this.readScopedActivity(options?.limit)
+  }
+
+  observeScopedActivity(options?: { limit?: number }): Observable<ScopedActivityEntry[]> {
+    const key = `${options?.limit ?? ""}`
+    let observable = this.scopedActivityObservables.get(key)
+    if (!observable) {
+      observable = createObservable(this.readScopedActivity(options?.limit))
+      this.scopedActivityObservables.set(key, observable)
+    }
+    return observable
+  }
+
+  async getNotificationState(): Promise<NotificationState> {
+    return cloneNotificationState(this.notificationState)
+  }
+
+  observeNotificationState(): Observable<NotificationState> {
+    return this.notificationStateObs
+  }
+
+  async updateNotificationState(patch: NotificationStatePatch): Promise<void> {
+    this.notificationState = applyNotificationStatePatch(this.notificationState, patch)
+    this.notificationStateObs.set(cloneNotificationState(this.notificationState))
+  }
+
   private requireCurrentUser(): User {
     if (!this.currentUser) throw new Error("Authentication required")
     return this.currentUser
@@ -498,9 +539,42 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
     return limit === undefined ? entries : entries.slice(0, Math.max(0, limit))
   }
 
+  private readScopedActivity(limit?: number): ScopedActivityEntry[] {
+    const entries = [...this.activityByScope.entries()].flatMap(([groupId, byId]) =>
+      [...byId.values()]
+        .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
+        .map((entry) => this.resolveScopedActivity(groupId, entry)),
+    ).sort((a, b) => compareActivity(a.entry, b.entry))
+    return limit === undefined ? entries : entries.slice(0, Math.max(0, limit))
+  }
+
+  private resolveScopedActivity(groupId: string, entry: ActivityEntry): ScopedActivityEntry {
+    const items = this.itemsByScope.get(groupId === "__personal__" ? null : groupId)
+    const target = items?.get(entry.targetId)
+    let subject: ScopedActivityEntry["subject"] = null
+    if (entry.action === "delete") {
+      subject = { id: entry.targetId, type: entry.targetType, ...(entry.summary ? { title: entry.summary } : {}) }
+    } else if (target) {
+      const parentId = target.type === "reaction" || target.type === "comment"
+        ? target.relations?.find((relation) => relation.predicate === "reactsTo" || relation.predicate === "commentOn")?.target.replace(/^item:/, "")
+        : undefined
+      const resolved = parentId ? items?.get(parentId) : target
+      if (resolved) subject = { id: resolved.id, type: resolved.type, createdBy: resolved.createdBy, ...(itemDisplayTitle(resolved) ? { title: itemDisplayTitle(resolved) } : {}), moduleHints: moduleHintsFor(resolved) }
+    }
+    const actor = groupId === "__personal__"
+      ? (this.users.find((user) => user.id === entry.actor) ?? { id: entry.actor })
+      : this.groupMembers[groupId]?.includes(entry.actor)
+        ? (this.users.find((user) => user.id === entry.actor) ?? { id: entry.actor })
+        : null
+    return { groupId, entry, targetExists: Boolean(target), subject, ...(groupId === "__personal__" ? { isPersonal: true } : {}), actor }
+  }
+
   private notifyActivityObservers(): void {
     for (const [rawLimit, observable] of this.activityObservables) {
       observable.set(this.readActivity(rawLimit === "" ? undefined : Number(rawLimit)))
+    }
+    for (const [rawLimit, observable] of this.scopedActivityObservables) {
+      observable.set(this.readScopedActivity(rawLimit === "" ? undefined : Number(rawLimit)))
     }
   }
 
