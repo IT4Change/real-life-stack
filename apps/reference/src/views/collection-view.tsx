@@ -7,15 +7,19 @@ import {
   ItemTypeBadge,
   ReactionBar,
   useCurrentUser,
+  useGroups,
   useItemGroupColorResolver,
   useItems,
   useMembers,
   useModulePanel,
+  usePersonalGroupId,
   type SelectionFocusVisibleArea,
 } from "@real-life-stack/toolkit"
 import type { User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
+import { ALL_CONTENT_TYPES } from "../content-types"
+import { withGroupOptions } from "../composer-mapping"
 import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 
@@ -51,17 +55,25 @@ export function CollectionView({
   }), [currentUser, editConfig, members, resolveGroupColor])
   useRegisterDetail("collection", detailConfig)
 
-  // The collection shows every item, so create offers the full type registry
-  // (the edit half already computes it) — the composer's type picker chooses.
+  // The collection shows every item, so create offers the full type registry —
+  // the composer's type picker chooses. Unlike the edit half (which pre-fills
+  // the group from the item), create must default the group widget to the
+  // CURRENT space; the overview falls back to the personal space.
   const { startCreate } = useCreate()
+  const { data: groups } = useGroups()
+  const personalGroupId = usePersonalGroupId()
+  const createTypes = useMemo(
+    () => withGroupOptions(ALL_CONTENT_TYPES, groups, groupId === "__overview__" ? undefined : groupId, personalGroupId),
+    [groups, groupId, personalGroupId],
+  )
   const createConfig = useMemo<CreateConfig>(
     () => ({
-      contentTypes: editConfig.contentTypes,
+      contentTypes: createTypes,
       mapper: editConfig.mapper,
       composerProps: editConfig.composerProps,
       shell: "sheet",
     }),
-    [editConfig],
+    [createTypes, editConfig],
   )
   useRegisterCreate("collection", createConfig)
   const handleCreateItem = useCallback(() => startCreate(), [startCreate])
