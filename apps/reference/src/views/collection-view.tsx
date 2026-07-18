@@ -1,0 +1,59 @@
+import { useMemo } from "react"
+import {
+  CollectionView as ToolkitCollectionView,
+  ItemMetaRow,
+  ItemPreview,
+  ItemTypeBadge,
+  ReactionBar,
+  useCurrentUser,
+  useItemGroupColorResolver,
+  useItems,
+  useMembers,
+  useModulePanel,
+  type SelectionFocusVisibleArea,
+} from "@real-life-stack/toolkit"
+import type { User } from "@real-life-stack/data-interface"
+import { useItemFocus } from "../hooks/use-item-focus"
+import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
+import { useRegisterDetail, type DetailConfig } from "../detail-host"
+
+/** Thin app boundary: collection data, URL focus, and the shared detail host. */
+export function CollectionView({
+  groupId,
+  selectionFocusVisibleArea,
+}: {
+  groupId: string
+  selectionFocusVisibleArea?: SelectionFocusVisibleArea
+}) {
+  const { data: items } = useItems()
+  const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
+  const { data: currentUser } = useCurrentUser()
+  const { itemId: focusedId, focusItem } = useItemFocus()
+  const modulePanel = useModulePanel()
+  const resolveGroupColor = useItemGroupColorResolver(groupId === "__overview__" ? undefined : groupId)
+  const editConfig = useItemDetailEdit(members)
+
+  const detailConfig = useMemo<DetailConfig>(() => ({
+    renderRead: (item, actions) => <ItemPreview
+      item={item}
+      author={members.find((member) => member.id === item.createdBy) ?? (currentUser?.id === item.createdBy ? currentUser : undefined) as User | undefined}
+      headerAdornment={<ItemTypeBadge type={item.type} />}
+      metaAdornment={<ItemMetaRow item={item} />}
+      footerAdornment={item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined}
+      actions={actions}
+      activeGlowColor={resolveGroupColor(item)}
+    />,
+    ...editConfig,
+    renderCommentReactions: (id) => <ReactionBar itemId={id} />,
+    onShare: () => void navigator.clipboard?.writeText(window.location.href),
+  }), [currentUser, editConfig, members, resolveGroupColor])
+  useRegisterDetail("collection", detailConfig)
+
+  return <ToolkitCollectionView
+    className="h-full"
+    items={items}
+    activeItemId={modulePanel.current?.itemId ?? focusedId}
+    selectionFocusVisibleArea={selectionFocusVisibleArea}
+    onItemClick={(item) => focusItem(item.id)}
+  />
+}

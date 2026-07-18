@@ -71,7 +71,7 @@ import { UnsavedChangesGuard } from "./unsaved-changes-guard"
  * mounted) while the user picks a location on the map — so the drawer steps
  * aside on mobile. Lives inside LocationPickProvider to read `isPicking`.
  */
-function ModulePanelHost({ children }: { children: ReactNode }) {
+function ModulePanelHost({ children, onDrawerHeightChange }: { children: ReactNode; onDrawerHeightChange: (height: number) => void }) {
   const { isPicking } = useLocationPick()
   return (
     // No "modal" mode (drops the maximise/mode-switch) and no pinning — both were
@@ -84,6 +84,7 @@ function ModulePanelHost({ children }: { children: ReactNode }) {
       sidebarMinWidth="300px"
       sidebarMaxWidth="70vw"
       suspended={isPicking}
+      onDrawerHeightChange={onDrawerHeightChange}
     >
       {children}
     </ModulePanelProvider>
@@ -409,6 +410,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   )
 
   const [isDark, setIsDark] = useState(false)
+  const [drawerHeight, setDrawerHeight] = useState(0)
   const supportsMessaging = hasMessaging(connector)
 
   const toggleTheme = () => {
@@ -423,7 +425,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <DetailHostProvider>
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
     <CreateHostProvider>
-    <ModulePanelHost>
+    <ModulePanelHost onDrawerHeightChange={setDrawerHeight}>
     <CreateSheetController />
     <DetailHostController activeModule={activeModule} />
     <UnsavedChangesGuard />
@@ -496,6 +498,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
           groups={groups}
           urlSpaceId={urlSpaceId}
           urlItemId={urlItemId}
+          selectionFocusVisibleArea={drawerHeight > 0 ? { bottomInset: drawerHeight } : undefined}
         />
       </AppShellMain>
 

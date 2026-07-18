@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Button, type Workspace } from "@real-life-stack/toolkit"
+import { Button, type SelectionFocusVisibleArea, type Workspace } from "@real-life-stack/toolkit"
 import type { Group } from "@real-life-stack/data-interface"
 import { FeedView } from "./feed-view"
 import { MapView } from "./map-view"
 import { CalendarViewWrapper } from "./calendar-view"
 import { KanbanView } from "./kanban-view"
+import { CollectionView } from "./collection-view"
 
 export interface ModuleOutletProps {
   /**
@@ -17,6 +18,7 @@ export interface ModuleOutletProps {
   groups: Group[]
   urlSpaceId?: string
   urlItemId?: string
+  selectionFocusVisibleArea?: SelectionFocusVisibleArea
 }
 
 /**
@@ -25,7 +27,7 @@ export interface ModuleOutletProps {
  * others = centered container) lives here; everything else stays with
  * the views.
  */
-export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId }: ModuleOutletProps) {
+export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId, selectionFocusVisibleArea }: ModuleOutletProps) {
   const navigate = useNavigate()
 
   const noAccess = !!urlSpaceId && !activeWorkspace
@@ -76,6 +78,11 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
         <div className={containerClass}>
           <CalendarViewWrapper groupId={activeWorkspace?.id ?? ""} />
         </div>
+      ) : activeModule === "collection" ? (
+        <CollectionView
+          groupId={activeWorkspace?.id ?? ""}
+          selectionFocusVisibleArea={selectionFocusVisibleArea}
+        />
       ) : null}
     </>
   )

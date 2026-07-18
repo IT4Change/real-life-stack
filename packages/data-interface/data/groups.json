@@ -8,7 +8,7 @@
       "primaryColor": "#e87520",
       "avatar": "rls-logo.svg",
       "access": "invite-member",
-      "modules": ["kanban", "feed", "calendar"],
+      "modules": ["kanban", "feed", "calendar", "collection"],
       "roles": ["admin", "member"],
       "memberCount": 5
     }
@@ -22,7 +22,7 @@
       "primaryColor": "#2d5a3d",
       "avatar": "money-printer-logo.svg",
       "access": "invite-member",
-      "modules": ["kanban", "feed", "calendar"],
+      "modules": ["kanban", "feed", "calendar", "collection"],
       "roles": ["admin", "member"],
       "memberCount": 4
     }
@@ -36,7 +36,7 @@
       "primaryColor": "#2563eb",
       "avatar": "wot-logo.svg",
       "access": "invite-member",
-      "modules": ["kanban", "feed", "calendar"],
+      "modules": ["kanban", "feed", "calendar", "collection"],
       "roles": ["admin", "member"],
       "memberCount": 4
     }
@@ -49,7 +49,7 @@
       "description": "Unser Garten in der Nachbarschaft",
       "primaryColor": "#7cb342",
       "access": "open",
-      "modules": ["kanban", "feed", "calendar", "map"],
+      "modules": ["kanban", "feed", "calendar", "map", "collection"],
       "roles": ["admin", "member"],
       "memberCount": 8
     }
