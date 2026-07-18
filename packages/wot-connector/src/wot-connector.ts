@@ -19,6 +19,11 @@ import type {
   IncomingEvent,
   ActivityEntry,
   ActivityLogCapable,
+  ScopedActivityLogCapable,
+  ScopedActivityEntry,
+  NotificationState,
+  NotificationStateCapable,
+  NotificationStatePatch,
 } from "@real-life-stack/data-interface"
 import {
   deriveActivitySummary,
@@ -28,6 +33,10 @@ import {
   matchesFilter,
   findRelatedItems,
   applyPagination,
+  itemDisplayTitle,
+  moduleHintsFor,
+  maxTs,
+  pruneReadEntryKeys,
   type ReactiveObservable,
 } from "@real-life-stack/data-interface"
 
@@ -284,7 +293,7 @@ function isVerificationConfirmation(c: ConfirmationView): boolean {
 
 // --- WotConnector ---
 
-export class WotConnector extends BaseConnector implements ActivityLogCapable {
+export class WotConnector extends BaseConnector implements ActivityLogCapable, ScopedActivityLogCapable, NotificationStateCapable {
   private config: WotConnectorConfig
   private runtimeOverrides: WotConnectorRuntimeOverrides
   private identity: WorkflowBackedIdentity
@@ -340,9 +349,17 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
   private syncPendingObs: ReactiveObservable<boolean>
   /** Activity observables are keyed by their requested limit. */
   private activityObservables = new Map<string, ReactiveObservable<ActivityEntry[]>>()
+  private scopedActivityObservables = new Map<string, ReactiveObservable<ScopedActivityEntry[]>>()
+  /** Each keyed refresh may only publish the newest request's resolved view. */
+  private scopedActivityRefreshGeneration = new Map<string, number>()
+  private notificationStateObs = createObservable<NotificationState>({ readEntryKeys: {}, mutedGroupIds: {} })
+  private notificationStateUnsub: (() => void) | null = null
+  /** A hook observed the state at least once — re-login must rebind the doc subscription. */
+  private notificationStateObserved = false
   private activityDirty = false
   /** One active reconciliation plus at most one trailing run per space. */
   private activityReconciliations = new Map<string, { queued: boolean; handle: SpaceHandle<RlsSpaceDoc> }>()
+  private scopedRefreshScheduled = false
   /** Distinguishes A→B→A switches: only the newest open request may touch state. */
   private handleOpenGeneration = 0
   private profileUnsub: (() => void) | null = null
@@ -473,6 +490,12 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     this.relatedObservables.clear()
     for (const obs of this.activityObservables.values()) obs.destroy()
     this.activityObservables.clear()
+    for (const obs of this.scopedActivityObservables.values()) obs.destroy()
+    this.scopedActivityObservables.clear()
+    this.scopedActivityRefreshGeneration.clear()
+    this.notificationStateUnsub?.()
+    this.notificationStateUnsub = null
+    this.notificationStateObs.destroy()
     this.authStateObs.destroy()
     this.contactsObs.destroy()
     this.confirmationsObs.destroy()
@@ -665,6 +688,14 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     // criticalFailures throw below rejects before an async refresh would land.
     this.activityDirty = false
     for (const observable of this.activityObservables.values()) observable.set([])
+    // Stable observable contract (reaktivitaet.md): hooks keep their
+    // references across logout/re-login — EMPTY the instances, never drop
+    // them from the maps (destroying belongs to dispose() only).
+    for (const observable of this.scopedActivityObservables?.values() ?? []) observable.set([])
+    this.scopedActivityRefreshGeneration?.clear()
+    this.notificationStateUnsub?.()
+    this.notificationStateUnsub = null
+    this.notificationStateObs?.set({ readEntryKeys: {}, mutedGroupIds: {} })
     this.notifyAllObservers()
 
     if (criticalFailures.length > 0) {
@@ -1218,6 +1249,102 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     return observable
   }
 
+  async getScopedActivity(options?: { limit?: number }): Promise<ScopedActivityEntry[]> {
+    await this.handleReady
+    const documents = this.crossGroupIndex?.getGroupDocuments() ?? (this.currentHandle ? [{ groupId: this.currentGroupId ?? "__personal__", doc: this.currentHandle.getDoc(), members: this.currentHandle.info().members }] : [])
+    const resolved = await Promise.all(documents.flatMap(({ groupId, doc, members }) =>
+      Object.values(doc.activity ?? {})
+        .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
+        .map((entry) => this.resolveScopedActivity(groupId, doc, members, entry)),
+    ))
+    resolved.sort((a, b) => compareActivity(a.entry, b.entry))
+    return options?.limit === undefined ? resolved : resolved.slice(0, Math.max(0, options.limit))
+  }
+
+  observeScopedActivity(options?: { limit?: number }): Observable<ScopedActivityEntry[]> {
+    const key = `${options?.limit ?? ""}`
+    let observable = this.scopedActivityObservables.get(key)
+    if (!observable) {
+      observable = createObservable<ScopedActivityEntry[]>([])
+      this.scopedActivityObservables.set(key, observable)
+      this.refreshScopedActivity(key, observable, options)
+    }
+    return observable
+  }
+
+  private refreshScopedActivity(key: string, observable: ReactiveObservable<ScopedActivityEntry[]>, options?: { limit?: number }): void {
+    const generation = (this.scopedActivityRefreshGeneration.get(key) ?? 0) + 1
+    this.scopedActivityRefreshGeneration.set(key, generation)
+    void this.getScopedActivity(options).then((entries) => {
+      if (this.scopedActivityRefreshGeneration.get(key) === generation && this.scopedActivityObservables.get(key) === observable) observable.set(entries)
+    })
+  }
+
+  async getNotificationState(): Promise<NotificationState> {
+    return this.readNotificationState()
+  }
+
+  observeNotificationState(): Observable<NotificationState> {
+    this.notificationStateObserved = true
+    if (!this.notificationStateUnsub) {
+      this.notificationStateUnsub = onYjsPersonalDocChange(() => this.notificationStateObs.set(this.readNotificationState()))
+    }
+    this.notificationStateObs.set(this.readNotificationState())
+    return this.notificationStateObs
+  }
+
+  async updateNotificationState(patch: NotificationStatePatch): Promise<void> {
+    await this.handleReady
+    const deviceId = await this.getOrCreateNotificationDeviceId()
+    changeYjsPersonalDoc((doc: any) => {
+      const raw = doc.notificationState ?? (doc.notificationState = {})
+      raw.lastSeenByDevice ??= {}
+      raw.readUpToByDevice ??= {}
+      raw.readEntryKeys ??= {}
+      raw.mutedGroupIds ??= {}
+      if (patch.op === "markSeen") raw.lastSeenByDevice[deviceId] = maxTs(raw.lastSeenByDevice[deviceId], patch.ts)
+      if (patch.op === "markAllReadUpTo") raw.readUpToByDevice[deviceId] = maxTs(raw.readUpToByDevice[deviceId], patch.ts)
+      // These are shared Yjs maps.  Assigning the record itself turns into a
+      // delete-and-rewrite with adapter-yjs, so only ever touch addressed keys.
+      if (patch.op === "markRead") for (const [key, ts] of Object.entries(patch.keys)) raw.readEntryKeys[key] = maxTs(raw.readEntryKeys[key], ts)
+      if (patch.op === "mute") raw.mutedGroupIds[patch.groupId] = true
+      if (patch.op === "unmute") delete raw.mutedGroupIds[patch.groupId]
+      const ownState: NotificationState = { readUpToTs: raw.readUpToByDevice[deviceId], readEntryKeys: { ...raw.readEntryKeys }, mutedGroupIds: { ...raw.mutedGroupIds } }
+      const prunedKeys = pruneReadEntryKeys(ownState)
+      for (const key of prunedKeys) delete raw.readEntryKeys[key]
+      if (ownState.readUpToTs) raw.readUpToByDevice[deviceId] = ownState.readUpToTs
+    })
+    this.notificationStateObs.set(this.readNotificationState())
+  }
+
+  private async resolveScopedActivity(groupId: string, doc: RlsSpaceDoc, members: string[], entry: ActivityEntry): Promise<ScopedActivityEntry> {
+    const target = doc.items?.[entry.targetId] ? deserializeItem(doc.items[entry.targetId]!) : undefined
+    let subject: ScopedActivityEntry["subject"] = null
+    if (entry.action === "delete") subject = { id: entry.targetId, type: entry.targetType, ...(entry.summary ? { title: entry.summary } : {}) }
+    else if (target) {
+      const parentId = target.type === "reaction" || target.type === "comment"
+        ? target.relations?.find((relation) => relation.predicate === "reactsTo" || relation.predicate === "commentOn")?.target.replace(/^item:/, "")
+        : undefined
+      const parent = parentId ? (doc.items?.[parentId] ? deserializeItem(doc.items[parentId]!) : undefined) : target
+      if (parent) subject = { id: parent.id, type: parent.type, createdBy: parent.createdBy, ...(itemDisplayTitle(parent) ? { title: itemDisplayTitle(parent) } : {}), moduleHints: moduleHintsFor(parent) }
+    }
+    const isPersonal = groupId === this.privateSpaceId
+    const actor = (isPersonal || members.includes(entry.actor)) ? await this.getUser(entry.actor) ?? { id: entry.actor } : null
+    return { groupId, entry, targetExists: Boolean(target), subject, ...(isPersonal ? { isPersonal: true } : {}), actor }
+  }
+
+  private readNotificationState(): NotificationState {
+    const raw = (getYjsPersonalDoc() as any)?.notificationState
+    const max = (values: Record<string, string> | undefined): string | undefined => Object.values(values ?? {}).reduce<string | undefined>((result, value) => !result || value > result ? value : result, undefined)
+    return { ...(max(raw?.lastSeenByDevice) ? { lastSeenTs: max(raw.lastSeenByDevice) } : {}), ...(max(raw?.readUpToByDevice) ? { readUpToTs: max(raw.readUpToByDevice) } : {}), readEntryKeys: { ...(raw?.readEntryKeys ?? {}) }, mutedGroupIds: { ...(raw?.mutedGroupIds ?? {}) } }
+  }
+
+  /** Deliberately resolves on every mutation: a restored clone receives a new slot. */
+  private async getOrCreateNotificationDeviceId(): Promise<string> {
+    if (!this.docLogStore) throw new Error("Notification state requires an initialized DocLogStore")
+    return this.docLogStore.resolveConnectDeviceId()
+  }
+
   private requireActivityActor(): string {
     const actor = this.currentUserObs.current?.id
     if (!actor) throw new Error("Authentication required")
@@ -1349,6 +1476,14 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
 
   private async bootstrapAdapters(): Promise<void> {
     const did = this.identity.getDid()
+
+    // Re-login on the same connector instance: hooks still hold the stable
+    // notification-state observable — rebind the PersonalDoc subscription
+    // that logout() tore down, so their references stay live.
+    if (this.notificationStateObserved && !this.notificationStateUnsub) {
+      this.notificationStateUnsub = onYjsPersonalDocChange(() => this.notificationStateObs.set(this.readNotificationState()))
+      this.notificationStateObs.set(this.readNotificationState())
+    }
 
     if (this.replication || this.outboxAdapter || this.docLogStore) {
       await this.teardownRuntimeForIdentitySwitch()
@@ -1634,9 +1769,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     )
     this.crossGroupIndex.start()
     this.crossGroupUnsub = this.crossGroupIndex.onChange(() => {
-      if (this.currentGroupId === null) {
-        this.notifyAllObservers(true)
-      }
+      // Scoped activity is deliberately workspace-independent; a background
+      // group changing must refresh it even while another space is active.
+      this.notifyAllObservers(true)
     })
 
     // 11. Watch spaces for reactive group list
@@ -2140,6 +2275,18 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
         const limit = key === "" ? undefined : Number(key)
         void this.getActivity(limit === undefined ? undefined : { limit }).then((entries) => observable.set(entries))
       }
+    }
+    if (activityMayHaveChanged && this.scopedActivityObservables.size > 0 && !this.scopedRefreshScheduled) {
+      // Active-space remote updates arrive over TWO paths (current handle +
+      // CrossGroupIndex reindex) — coalesce to one resolution per microtask.
+      this.scopedRefreshScheduled = true
+      queueMicrotask(() => {
+        this.scopedRefreshScheduled = false
+        for (const [key, observable] of this.scopedActivityObservables) {
+          const limit = key === "" ? undefined : Number(key)
+          this.refreshScopedActivity(key, observable, limit === undefined ? undefined : { limit })
+        }
+      })
     }
     if (this.notifyScheduled) return
     this.notifyScheduled = true

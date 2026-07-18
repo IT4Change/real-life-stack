@@ -14,6 +14,7 @@ export {
 } from "./relation-records.js"
 export * from "./item-types.js"
 export * from "./vocab.js"
+export { EMPTY_NOTIFICATION_STATE, cloneNotificationState, applyNotificationStatePatch, maxTs, pruneReadEntryKeys } from "./notification-state.js"
 
 // --- Core Types ---
 
@@ -211,6 +212,71 @@ export interface ActivityEntry {
 export interface ActivityLogCapable {
   getActivity(options?: { limit?: number }): Promise<ActivityEntry[]>
   observeActivity(options?: { limit?: number }): Observable<ActivityEntry[]>
+}
+
+/** Additive all-visible-spaces activity projection. */
+export interface ScopedActivityLogCapable {
+  getScopedActivity(options?: { limit?: number }): Promise<ScopedActivityEntry[]>
+  observeScopedActivity(options?: { limit?: number }): Observable<ScopedActivityEntry[]>
+}
+
+export interface ScopedActivityEntry {
+  groupId: string
+  entry: ActivityEntry
+  targetExists: boolean
+  subject: {
+    id: string
+    type: string
+    createdBy?: string
+    title?: string
+    moduleHints?: { hasPosition: boolean; hasStart: boolean; hasStatus: boolean }
+  } | null
+  isPersonal?: boolean
+  actor: User | null
+}
+
+/** Effective, device-map-free notification state exposed to RLS callers. */
+export interface NotificationState {
+  lastSeenTs?: string
+  readUpToTs?: string
+  readEntryKeys: Record<string, string>
+  mutedGroupIds: Record<string, true>
+}
+
+export type NotificationStatePatch =
+  | { op: "markSeen"; ts: string }
+  | { op: "markRead"; keys: Record<string, string> }
+  | { op: "markAllReadUpTo"; ts: string }
+  | { op: "mute"; groupId: string }
+  | { op: "unmute"; groupId: string }
+
+export interface NotificationStateCapable {
+  getNotificationState(): Promise<NotificationState>
+  observeNotificationState(): Observable<NotificationState>
+  updateNotificationState(patch: NotificationStatePatch): Promise<void>
+}
+
+export function hasNotificationState(connector: DataInterface): connector is DataInterface & NotificationStateCapable {
+  return typeof (connector as Partial<NotificationStateCapable>).getNotificationState === "function"
+    && typeof (connector as Partial<NotificationStateCapable>).observeNotificationState === "function"
+    && typeof (connector as Partial<NotificationStateCapable>).updateNotificationState === "function"
+}
+
+const KANBAN_STATUSES = new Set(["open", "in-progress", "done", "archived"])
+export type ModuleHints = NonNullable<NonNullable<ScopedActivityEntry["subject"]>["moduleHints"]>
+
+/** The exact field predicates used by the workspace's default module resolver. */
+export function moduleHintsFor(itemOrHints: Item | ModuleHints): ModuleHints {
+  if ("hasPosition" in itemOrHints) return itemOrHints
+  const item = itemOrHints
+  const data = item.data ?? {}
+  const position = data.position as { coordinates?: unknown } | undefined
+  const status = data.status
+  return {
+    hasPosition: Array.isArray(position?.coordinates),
+    hasStart: typeof data.start === "string" && data.start.length > 0,
+    hasStatus: item.type === "task" || (typeof status === "string" && KANBAN_STATUSES.has(status)),
+  }
 }
 
 /**
@@ -519,6 +585,11 @@ export function isWritable(c: DataInterface): c is DataInterface & ItemWriter {
 export function hasActivityLog(c: DataInterface): c is DataInterface & ActivityLogCapable {
   const candidate = c as DataInterface & Partial<ActivityLogCapable>
   return typeof candidate.getActivity === "function" && typeof candidate.observeActivity === "function"
+}
+
+export function hasScopedActivityLog(c: DataInterface): c is DataInterface & ScopedActivityLogCapable {
+  const candidate = c as DataInterface & Partial<ScopedActivityLogCapable>
+  return typeof candidate.getScopedActivity === "function" && typeof candidate.observeScopedActivity === "function"
 }
 
 export function hasAuthorization(c: DataInterface): c is DataInterface & AuthorizationCapable {

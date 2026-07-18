@@ -142,6 +142,34 @@ Regeln:
 3. Connectoren ohne Log-Unterstützung lassen die Capability weg; UI-Flächen
    MÜSSEN ohne sie funktionieren (Log-Ansicht ausblenden).
 
+### Additiver Scoped-Lesevertrag
+
+Für space-übergreifende Leseflächen kann ein Activity-Log-Connector zusätzlich
+`getScopedActivity()` und `observeScopedActivity()` anbieten. Die Rückgabe ist
+die absteigend geordnete Union aller sichtbaren Spaces, unabhängig vom aktuell
+gewählten Workspace. Jeder Eintrag enthält die `groupId` zusammen mit dem
+unveränderten `ActivityEntry`, das aktuelle `targetExists`, ein live
+aufgelöstes Subject (bei Deletes ein Tombstone aus `targetType`/`summary`), den
+space-lokal aufgelösten Actor und bei privaten Spaces `isPersonal: true`.
+Live-Subjects liefern `createdBy`, Titel und die feldbasierten Module-Hinweise
+`hasPosition`, `hasStart` und `hasStatus`; nicht auflösbare Subjects sind
+`null`. Die stabile Identität eines scoped Eintrags ist
+`JSON.stringify([groupId, entry.id])`, identisch zum kanonischen Notification-
+Read-Key.
+Der bestehende, scope-abhängige Lesevertrag bleibt unverändert für das
+Verlaufs-Panel.
+
+```ts
+interface ScopedActivityLogCapable {
+  getScopedActivity(options?: { limit?: number }): Promise<ScopedActivityEntry[]>
+  observeScopedActivity(options?: { limit?: number }): Observable<ScopedActivityEntry[]>
+}
+```
+
+`ScopedActivityLogCapable` ist optional und erweitert `ActivityLogCapable`
+nicht. Aufrufer prüfen ihn separat mit `hasScopedActivityLog(c)`; ein
+`hasActivityLog(c)`-Treffer garantiert keinen scoped Read.
+
 ## Nicht-Ziele
 
 Diese Spec definiert nicht:

@@ -41,8 +41,27 @@ if (isWritable(connector)) {
 | `ItemGroupCapable` | `hasItemGroups()` | Item-zu-Group-Zuordnung lesen oder verschieben |
 | `AuthorizationCapable` | `hasAuthorization()` | per-Resource-Autorisierung (UCAN/RLS) für Create/Edit/Delete |
 | `ActivityLogCapable` | `hasActivityLog()` | best-effort Änderungsverlauf eines Space lesen und beobachten |
+| `ScopedActivityLogCapable` | `hasScopedActivityLog()` | additive Union des Verlaufs aller sichtbaren Spaces lesen und beobachten |
+| `NotificationStateCapable` | `hasNotificationState()` | gefalteten Benachrichtigungs-Lese-, Gesehen- und Mute-Zustand lesen und ändern |
 
 Neue Capabilities dürfen nur eingeführt werden, wenn ein UI- oder Connector-Vertrag nicht sinnvoll über bestehende Capabilities ausdrückbar ist.
+
+## NotificationStateCapable
+
+`NotificationStateCapable` kapselt den persönlichen, geräteübergreifend
+gefalteten Zustand für Benachrichtigungen. Aufrufer sehen keine Geräte-Maps;
+sie lesen `lastSeenTs`, `readUpToTs`, `readEntryKeys` und `mutedGroupIds` und
+ändern ihn ausschließlich über die geschlossenen Operationen `markSeen`,
+`markRead`, `markAllReadUpTo`, `mute` und `unmute`. Der kanonische Read-Key ist
+`JSON.stringify([groupId, entryId])`. Connectoren verwalten Gerätebeiträge,
+Faltung und deterministisches Pruning intern. Fehlt die Capability, ist das
+eine normale Degradation ohne Fehlerzustand: Leseflächen zeigen keinen
+Badge-/Read-State.
+
+Alle Zustands- und Patch-Zeitstempel (einschließlich `maxTs`- und
+Pruning-Frontier-Werten) verwenden exakt `Date.prototype.toISOString()`:
+`YYYY-MM-DDTHH:mm:ss.sssZ`. Offset-Formate und variable Sekundenbruchteile
+sind nicht erlaubt, damit lexikographische Vergleiche deterministisch bleiben.
 
 ## Capability-Regeln
 
