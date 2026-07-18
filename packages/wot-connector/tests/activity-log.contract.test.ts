@@ -126,17 +126,18 @@ describe("Activity log — WoT transaction boundaries", () => {
     expect(old.value.activity).toEqual(before)
   })
 
-  it("15. reconciles an already-overfull document, but a no-op opens no transaction", async () => {
+  it("15. reconciles an already-overfull document through the real handle-open path, but a no-op opens no transaction", async () => {
     const overfull = handle()
     for (let i = 0; i < 501; i++) overfull.value.activity ??= {}, overfull.value.activity[`a-${i}`] = {
       id: `a-${i}`, ts: `2026-01-01T00:00:00.${String(i % 1000).padStart(3, "0")}Z`, actor: "did:key:a", action: "update", targetId: "x", targetType: "task",
     }
     const c = connector(overfull) as any
-    c.scheduleActivityReconciliation("source", overfull)
+    await invokePrivate<() => Promise<void>>(c, "openCurrentHandle")()
     await vi.waitFor(() => expect(Object.keys(overfull.value.activity ?? {})).toHaveLength(500))
     expect(overfull.transact).toHaveBeenCalledTimes(1)
     const clean = handle()
-    c.scheduleActivityReconciliation("clean", clean)
+    Reflect.set(c, "currentHandle", clean)
+    await invokePrivate<() => Promise<void>>(c, "openCurrentHandle")()
     await new Promise(resolve => queueMicrotask(resolve))
     expect(clean.transact).not.toHaveBeenCalled()
   })
@@ -172,9 +173,25 @@ describe("Activity log — WoT transaction boundaries", () => {
     expect(Object.keys(alice.value.activity ?? {}).sort()).toEqual(Object.keys(bob.value.activity ?? {}).sort())
   })
 
+  it("2. retains exactly the newest 500 entries after 501 serial createItem writes", async () => {
+    const source = handle()
+    const c = connector(source)
+    const ids = Array.from({ length: 501 }, (_, i) => `write-${String(i).padStart(3, "0")}`)
+    const uuid = vi.spyOn(crypto, "randomUUID").mockImplementation(() => ids.shift()!)
+    for (let i = 0; i < 501; i++) {
+      await c.createItem({ id: `item-${i}`, type: "task", createdBy: "forged", data: {} })
+    }
+    uuid.mockRestore()
+    const entries = Object.values(source.value.activity ?? {})
+    expect(entries).toHaveLength(500)
+    expect(entries.map((entry) => entry.id)).not.toContain("write-000")
+    expect(entries.every((entry) => entry.action === "create")).toBe(true)
+  })
+
   it("15. reconciles a non-current overview handle through bootstrap's CrossGroupIndex onHandle wiring", async () => {
     const active = handle()
     const background = handle()
+    const personal = handle()
     let spaces = [
       { id: "background", type: "shared" as const },
       { id: "personal", type: "shared" as const, appTag: "rls-private" },
@@ -182,7 +199,7 @@ describe("Activity log — WoT transaction boundaries", () => {
     const spaceSubscribers = new Set<(value: typeof spaces) => void>()
     const replication = {
       watchSpaces: () => ({ getValue: () => spaces, subscribe: (callback: (value: typeof spaces) => void) => { spaceSubscribers.add(callback); return () => { spaceSubscribers.delete(callback) } } }),
-      openSpace: vi.fn(async (id: string) => id === "background" ? background : active),
+      openSpace: vi.fn(async (id: string) => id === "background" ? background : id === "personal" ? personal : active),
       onSpaceInvite: () => () => {},
       start: async () => {},
     }
@@ -202,6 +219,12 @@ describe("Activity log — WoT transaction boundaries", () => {
     Reflect.set(c, "identity", { getDid: () => "did:key:test", signEd25519: async () => new Uint8Array(), sign: async () => "" })
     await invokePrivate<() => Promise<void>>(c, "bootstrapAdapters")()
     await vi.waitFor(() => expect(replication.openSpace).toHaveBeenCalledWith("background"))
+
+    personal.value.activity = { private: activityEntry("private") }
+    expect((await c.getActivity()).map((entry) => entry.id)).toContain("private")
+    fillActivity(personal, "private-remote", 501)
+    for (const callback of personal.remote) callback()
+    await vi.waitFor(() => expect(Object.keys(personal.value.activity ?? {})).toHaveLength(500))
 
     fillActivity(background, "remote", 501)
     for (const callback of background.remote) callback()

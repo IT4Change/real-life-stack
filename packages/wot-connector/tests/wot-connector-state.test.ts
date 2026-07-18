@@ -283,7 +283,11 @@ function createFakeConnectorForLogout() {
   obs.currentGroupObs.set({ id: "g1", name: "Crew" })
   obs.groupsObs.set([{ id: "g1", name: "Crew" }])
 
-  return {
+  const activityObservables = new Map([
+    ["", createObservable([{ id: "old", ts: "2026-01-01T00:00:00.000Z", actor: "did:key:alice", action: "create" as const, targetId: "old", targetType: "task" }])],
+    ["1", createObservable([{ id: "old", ts: "2026-01-01T00:00:00.000Z", actor: "did:key:alice", action: "create" as const, targetId: "old", targetType: "task" }])],
+  ])
+  const fake: any = {
     bufferedEvents: [] as unknown[],
     ...obs,
     closeCurrentHandle: vi.fn(),
@@ -316,8 +320,18 @@ function createFakeConnectorForLogout() {
       deleteStoredIdentity: vi.fn(async () => {}),
     },
     closeRuntimeStores: vi.fn(async () => {}),
-    notifyAllObservers: vi.fn(),
+    activityObservables,
+    activityDirty: false,
+    currentHandle: null,
+    handleReady: Promise.resolve(),
+    getActivity: vi.fn(async () => []),
+    notifyScheduled: false,
+    invalidateItemCache: vi.fn(),
+    notifyAllObserversNow: vi.fn(),
   }
+  fake.notifyAllObservers = (activityMayHaveChanged = false) =>
+    Reflect.get(WotConnector.prototype, "notifyAllObservers").call(fake, activityMayHaveChanged)
+  return fake
 }
 
 describe("WotConnector.logout() - real method regression", () => {
@@ -348,6 +362,9 @@ describe("WotConnector.logout() - real method regression", () => {
     expect(attestationsUnsub).toHaveBeenCalled()
     expect(profileUnsub).toHaveBeenCalled()
     expect(fake.storage).toBeNull()
+    await vi.waitFor(() => {
+      expect([...fake.activityObservables.values()].map((observable: any) => observable.current)).toEqual([[], []])
+    })
   })
 })
 

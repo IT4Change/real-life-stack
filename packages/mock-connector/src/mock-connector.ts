@@ -148,6 +148,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
     this.relatedObservables.clear()
     this.relatedObservableParams.clear()
     this.memberObservables.clear()
+    this.activityObservables.clear()
     this.authState.destroy()
     this.groupsObs.destroy()
     this.currentGroupObs.destroy()

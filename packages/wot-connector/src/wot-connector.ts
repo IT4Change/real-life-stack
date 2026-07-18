@@ -468,6 +468,8 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     this.itemByIdObservables.clear()
     for (const obs of this.relatedObservables.values()) obs.destroy()
     this.relatedObservables.clear()
+    for (const obs of this.activityObservables.values()) obs.destroy()
+    this.activityObservables.clear()
     this.authStateObs.destroy()
     this.contactsObs.destroy()
     this.confirmationsObs.destroy()
@@ -655,6 +657,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     this.currentUserObs.set(null)
     this.authStateObs.set({ status: "unauthenticated" })
 
+    // Activity is identity-scoped too. Refresh it explicitly so subscribers
+    // cannot retain entries from the just-disposed identity.
+    this.activityDirty = true
     this.notifyAllObservers()
 
     if (criticalFailures.length > 0) {

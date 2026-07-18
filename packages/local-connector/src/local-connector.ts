@@ -207,6 +207,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
     this.relatedObservables.clear()
     this.relatedObservableParams.clear()
     this.memberObservables.clear()
+    this.activityObservables.clear()
     this.authState.destroy()
     this.groupsObs.destroy()
     this.currentGroupObs.destroy()
@@ -739,7 +740,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
       observable.set(applyPagination(filtered, filter.limit, filter.offset))
     }
     for (const [id, observable] of this.singleItemObservables) {
-      const item = this.items.find((i) => i.id === id) ?? null
+      const item = scoped.find((i) => i.id === id) ?? null
       observable.set(item)
     }
     // Update related-items observables

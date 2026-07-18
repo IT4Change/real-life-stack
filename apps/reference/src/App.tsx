@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, lazy, Suspense, type ReactNode } from "react"
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, type ReactNode } from "react"
 import { Routes, Route, useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import {
   Plus,
@@ -100,16 +100,32 @@ function ModulePanelHost({ children, onDrawerHeightChange }: { children: ReactNo
 function ActivityPanelController({ open, onClose }: { open: boolean; onClose: () => void }) {
   const panel = useModulePanel()
   const { focusItem } = useItemFocus()
+  const ownedActivityPanel = useRef(false)
+  const wasOpen = useRef(open)
   const openTarget = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
     focusItem(entry.targetId)
     onClose()
   }, [focusItem, onClose])
   useEffect(() => {
+    const openedNow = open && !wasOpen.current
+    wasOpen.current = open
     if (!open) {
+      ownedActivityPanel.current = false
       if (panel.current?.itemId === "__activity__") panel.close({ silent: true })
       return
     }
-    if (panel.current?.itemId === "__activity__") return
+    if (panel.current?.itemId === "__activity__") {
+      ownedActivityPanel.current = true
+      return
+    }
+    // A content swap does not invoke the previous panel's onClose. Yield the
+    // shared shell instead of reclaiming it from the new owner.
+    if (ownedActivityPanel.current && !openedNow) {
+      ownedActivityPanel.current = false
+      onClose()
+      return
+    }
+    ownedActivityPanel.current = true
     panel.open({
       kind: "custom",
       itemId: "__activity__",

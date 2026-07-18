@@ -406,16 +406,30 @@ function DetailPanelController({
 
 function NetworkActivityPanelController({ open, onClose, selectItem }: { open: boolean; onClose: () => void; selectItem: (id: string) => void }) {
   const panel = useModulePanel()
+  const ownedActivityPanel = useRef(false)
+  const wasOpen = useRef(open)
   const openTarget = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
     selectItem(entry.targetId)
     onClose()
   }, [onClose, selectItem])
   useEffect(() => {
+    const openedNow = open && !wasOpen.current
+    wasOpen.current = open
     if (!open) {
+      ownedActivityPanel.current = false
       if (panel.current?.itemId === "__activity__") panel.close({ silent: true })
       return
     }
-    if (panel.current?.itemId === "__activity__") return
+    if (panel.current?.itemId === "__activity__") {
+      ownedActivityPanel.current = true
+      return
+    }
+    if (ownedActivityPanel.current && !openedNow) {
+      ownedActivityPanel.current = false
+      onClose()
+      return
+    }
+    ownedActivityPanel.current = true
     panel.open({ kind: "custom", itemId: "__activity__", content: <NetworkActivityPanelContent onOpenTarget={openTarget} />, onClose })
   }, [onClose, open, openTarget, panel.close, panel.current?.itemId, panel.open])
   return null

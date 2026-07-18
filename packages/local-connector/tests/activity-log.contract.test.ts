@@ -78,6 +78,32 @@ describe("LocalConnector activity-log contract", () => {
     expect(changes).toHaveBeenCalled()
   })
 
+  it("14. keeps a foreign single-item observable null after an unrelated notification", async () => {
+    const connector = await ready()
+    connector.setCurrentGroup("alpha")
+    await connector.createItem({ id: "alpha-only", type: "task", createdBy: "x", data: {} })
+    connector.setCurrentGroup("beta")
+    const foreign = connector.observeItem("alpha-only")
+    expect(foreign.current).toBeNull()
+
+    await connector.createItem({ id: "beta-mutation", type: "task", createdBy: "x", data: {} })
+    await new Promise((resolve) => queueMicrotask(resolve))
+    expect(foreign.current).toBeNull()
+  })
+
+  it("2. retains 500 deterministic entries locally and pruning writes no extra log entry", async () => {
+    const connector = await ready()
+    const ids = Array.from({ length: 501 }, (_, i) => `entry-${String(i).padStart(3, "0")}`)
+    const uuid = vi.spyOn(crypto, "randomUUID").mockImplementation(() => ids.shift()!)
+    for (let i = 0; i < 501; i++) await connector.createItem({ id: `item-${i}`, type: "task", createdBy: "x", data: {} })
+    uuid.mockRestore()
+
+    const entries = await connector.getActivity()
+    expect(entries).toHaveLength(500)
+    expect(entries.map((entry) => entry.id)).not.toContain("entry-000")
+    expect(entries.map((entry) => entry.action)).toEqual(Array(500).fill("create"))
+  })
+
   it("16. propagates an atomic item mutation and its activity to another local tab", async () => {
     const first = await ready()
     const second = await ready()
