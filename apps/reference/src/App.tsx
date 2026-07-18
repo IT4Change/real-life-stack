@@ -64,13 +64,13 @@ import {
   type GroupDialogMode,
 } from "@real-life-stack/toolkit"
 import type { DataInterface, User } from "@real-life-stack/data-interface"
-import { isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile } from "@real-life-stack/data-interface"
+import { isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile, moduleHintsFor } from "@real-life-stack/data-interface"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers, demoGroupItems } from "@real-life-stack/data-interface/demo-data"
 import { MockConnector } from "@real-life-stack/mock-connector"
 import { LocalConnector } from "@real-life-stack/local-connector"
 import { ModuleOutlet } from "./views/module-outlet"
 import { useWorkspaceRouting, STORAGE_KEY_GROUP } from "./hooks/use-workspace-routing"
-import { buildNotificationRoute } from "./notification-navigation"
+import { buildNotificationRoute, moduleCanDisplay } from "./notification-navigation"
 import { ItemFocusProvider } from "./hooks/use-item-focus"
 import { LocationPickProvider, useLocationPick } from "./location-pick"
 import { CreateHostProvider, CreateSheetController } from "./create-host"
@@ -107,15 +107,15 @@ function ModulePanelHost({ children, onDrawerHeightChange }: { children: ReactNo
 const UNPROJECTABLE_TARGET_TYPES = new Set(["relation", "comment"])
 
 /** Activity deliberately shares the module panel instead of adding a second shell overlay. */
-function ActivityPanelController({ open, onClose, onOpenNotification, onOpenGroup }: { open: boolean; onClose: () => void; onOpenNotification: (notification: import("@real-life-stack/toolkit").NotificationCandidate) => void; onOpenGroup: (groupId: string) => void }) {
+function ActivityPanelController({ open, onClose, onOpenNotification, onOpenGroup, onOpenEntryTarget }: { open: boolean; onClose: () => void; onOpenNotification: (notification: import("@real-life-stack/toolkit").NotificationCandidate) => void; onOpenGroup: (groupId: string) => void; onOpenEntryTarget: (targetId: string) => void }) {
   const panel = useModulePanel()
-  const { focusItem, clearFocus } = useItemFocus()
+  const { clearFocus } = useItemFocus()
   const ownedActivityPanel = useRef(false)
   const wasOpen = useRef(open)
   const openTarget = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
-    focusItem(entry.targetId)
+    onOpenEntryTarget(entry.targetId)
     onClose()
-  }, [focusItem, onClose])
+  }, [onOpenEntryTarget, onClose])
   useEffect(() => {
     const openedNow = open && !wasOpen.current
     wasOpen.current = open
@@ -517,6 +517,19 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     navigate(buildNotificationRoute(notification, groups))
     closeActivity()
   }, [closeActivity, groups, navigate])
+  // Raw-history clicks escalate the module when the active one cannot show
+  // the target (lens-active-item-escalates-view) — otherwise plain focus.
+  const { data: allItems } = useItems()
+  const { focusItem } = useItemFocus()
+  const openEntryTarget = useCallback((targetId: string) => {
+    const item = allItems.find(({ id }) => id === targetId)
+    const hints = item ? moduleHintsFor(item) : undefined
+    if (item && activeWorkspace && !moduleCanDisplay(activeModule ?? "feed", hints)) {
+      navigate(buildNotificationRoute({ groupId: activeWorkspace.id, subjectId: targetId, moduleHints: hints } as import("@real-life-stack/toolkit").NotificationCandidate, groups))
+      return
+    }
+    focusItem(targetId)
+  }, [activeModule, activeWorkspace, allItems, focusItem, groups, navigate])
   const supportsMessaging = hasMessaging(connector)
 
   const toggleTheme = () => {
@@ -532,7 +545,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
     <CreateHostProvider>
     <ModulePanelHost onDrawerHeightChange={setDrawerHeight}>
-    <ActivityPanelController open={activityOpen} onClose={closeActivity} onOpenNotification={openNotification} onOpenGroup={(groupId) => { const group = workspaces.find((workspace) => workspace.id === groupId); if (group) handleWorkspaceChange(group); closeActivity() }} />
+    <ActivityPanelController open={activityOpen} onClose={closeActivity} onOpenNotification={openNotification} onOpenEntryTarget={openEntryTarget} onOpenGroup={(groupId) => { const group = workspaces.find((workspace) => workspace.id === groupId); if (group) handleWorkspaceChange(group); closeActivity() }} />
     <CreateSheetController />
     <DetailHostController activeModule={activeModule} />
     <UnsavedChangesGuard />

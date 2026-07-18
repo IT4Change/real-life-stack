@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react"
 import type { DataInterface, Item, User } from "@real-life-stack/data-interface"
-import { hasGroups, isAuthenticatable, isWritable } from "@real-life-stack/data-interface"
+import { hasGroups, isAuthenticatable, isWritable, moduleHintsFor } from "@real-life-stack/data-interface"
 import {
   AdaptivePanel,
   AppShell,
@@ -68,6 +68,7 @@ import { dwebCampDetailAvatarUrl } from "./data/avatar-detail-urls"
 import { resolveNetworkAvatarSources } from "./lib/avatar-sources"
 import { projectRelationGraph } from "./lib/project-relation-graph"
 import { moveNetworkTask, networkTaskBoardItems } from "./lib/network-task-board"
+import { applyNotificationNavigation, lensCanDisplay, lensForHints } from "./notification-navigation"
 
 const GRAPH_TYPES: readonly GraphTypeDescriptor[] = [
   { id: "person", label: "Personen", color: "#2a78d6", darkColor: "#3987e5" },
@@ -627,15 +628,23 @@ function NetworkShell() {
     if (!itemById.has(itemId)) return
     handleSelectedNodeChange(itemId)
   }, [handleSelectedNodeChange, itemById])
+  // Raw-history clicks escalate the lens when the active one cannot show the
+  // target (lens-active-item-escalates-view) — selection itself stays shell
+  // state and survives the switch.
+  const openActivityTarget = useCallback((itemId: string) => {
+    const item = itemById.get(itemId)
+    if (!item) return
+    const hints = moduleHintsFor(item)
+    selectNode(itemId)
+    if (!lensCanDisplay(activeLens, hints)) setActiveLens(lensForHints(hints))
+  }, [activeLens, itemById, selectNode])
   const openNotification = useCallback((notification: import("@real-life-stack/toolkit").NotificationCandidate) => {
-    if (hasGroups(connector)) connector.setCurrentGroup(notification.groupId)
-    // Cross-space target selection intentionally bypasses the old-space item map.
-    handleSelectedNodeChange(notification.subjectId)
-    if (notification.moduleHints?.hasPosition) setActiveLens("map")
-    else if (notification.moduleHints?.hasStart) setActiveLens("calendar")
-    else if (notification.moduleHints?.hasStatus) setActiveLens("kanban")
-    else setActiveLens("list")
-    closeActivity()
+    applyNotificationNavigation(notification, {
+      connector,
+      selectNodeId: handleSelectedNodeChange,
+      setActiveLens,
+      close: closeActivity,
+    })
   }, [closeActivity, connector, handleSelectedNodeChange])
   const closeDetail = useCallback(() => setSelectedNodeId(null), [])
 
@@ -670,7 +679,7 @@ function NetworkShell() {
         sidebarMaxWidth="70vw"
         onDrawerHeightChange={setDetailDrawerHeight}
       >
-        <NetworkActivityPanelController open={activityOpen} onClose={closeActivity} selectItem={selectNode} onOpenNotification={openNotification} onOpenGroup={(groupId) => { if (hasGroups(connector)) connector.setCurrentGroup(groupId); handleSelectedNodeChange(null); closeActivity() }} />
+        <NetworkActivityPanelController open={activityOpen} onClose={closeActivity} selectItem={openActivityTarget} onOpenNotification={openNotification} onOpenGroup={(groupId) => { if (hasGroups(connector)) connector.setCurrentGroup(groupId); handleSelectedNodeChange(null); closeActivity() }} />
         <DetailPanelController
           item={selectedItem}
           connections={selectedConnections}

@@ -25,13 +25,14 @@ describe("Notification Center contract", () => {
       scoped({ id: "personal", isPersonal: true }),
       scoped({ id: "delete", entry: { ...scoped({ id: "x" }).entry, action: "delete" }, subject: { id: "post", type: "post" } }),
       scoped({ id: "comment-delete", entry: { ...scoped({ id: "x" }).entry, action: "delete", targetType: "comment" } }),
+      scoped({ id: "reaction-delete", entry: { ...scoped({ id: "x" }).entry, action: "delete", targetType: "reaction" } }),
       scoped({ id: "unknown", entry: { ...scoped({ id: "x" }).entry, action: "update", targetType: "reaction" } }),
       scoped({ id: "missing-owner", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction" }, subject: { id: "post", type: "post" } }),
     ])
     expect(candidates.map(({ entryId }) => entryId)).toEqual(expect.arrayContaining(["delete", "reaction"]))
     expect(candidates.find(({ entryId }) => entryId === "reaction")).toMatchObject({ semanticAction: "reacted", priority: "high", readKey: JSON.stringify(["a", "reaction"]) })
     expect(candidates.find(({ entryId }) => entryId === "delete")).toMatchObject({ semanticAction: "deleted", priority: "low" })
-    expect(candidates.map(({ entryId }) => entryId)).not.toEqual(expect.arrayContaining(["comment-delete", "unknown"]))
+    expect(candidates.map(({ entryId }) => entryId)).not.toEqual(expect.arrayContaining(["comment-delete", "reaction-delete", "unknown"]))
     const missingOwner = scoped({ id: "missing-owner", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction" }, subject: { id: "other", type: "post" } })
     expect(project([missingOwner])[0]).toMatchObject({ priority: "low" })
     const mutedState = state({ mutedGroupIds: { b: true } })
@@ -53,6 +54,18 @@ describe("Notification Center contract", () => {
     expect(bundles.find((bundle) => bundle.entryId === "r1")?.isRead).toBe(false)
     const equalTs = project([scoped({ id: "a", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction", ts: "2026-07-18T11:00:00.000Z", actor: "a" }, actor: { id: "a" } }), scoped({ id: "b", entry: { ...scoped({ id: "x" }).entry, targetType: "comment", ts: "2026-07-18T11:00:00.000Z", actor: "b" }, actor: { id: "b" } })])
     expect(equalTs.map(({ semanticAction }) => semanticAction)).toEqual(expect.arrayContaining(["reacted", "commented"]))
+    // Vollständige Gleichstands-Kaskade: gleicher ts + gleiche Lifecycle-Stufe
+    // → actorId absteigend entscheidet; gleicher actor → entryId absteigend.
+    const actorTie = project([
+      scoped({ id: "u1", actor: { id: "anna" }, entry: { ...scoped({ id: "x" }).entry, action: "update", actor: "anna", ts: "2026-07-18T11:00:00.000Z" } }),
+      scoped({ id: "u2", actor: { id: "zoe" }, entry: { ...scoped({ id: "x" }).entry, action: "update", actor: "zoe", ts: "2026-07-18T11:00:00.000Z" } }),
+    ])
+    expect(actorTie.find(({ semanticAction }) => semanticAction === "updated")?.actorId).toBe("zoe")
+    const entryTie = project([
+      scoped({ id: "e1", entry: { ...scoped({ id: "x" }).entry, action: "update", ts: "2026-07-18T11:00:00.000Z" } }),
+      scoped({ id: "e2", entry: { ...scoped({ id: "x" }).entry, action: "update", ts: "2026-07-18T11:00:00.000Z" } }),
+    ])
+    expect(entryTie.find(({ semanticAction }) => semanticAction === "updated")?.entryId).toBe("e2")
     const boundary = project([scoped({ id: "newest", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction", ts: "2026-07-18T11:00:00.000Z" } }), scoped({ id: "inside", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction", ts: "2026-07-17T11:00:00.000Z" } }), scoped({ id: "outside", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction", ts: "2026-07-17T10:59:59.999Z" } })])
     expect(boundary).toHaveLength(2)
     expect(boundary.find(({ entryId }) => entryId === "newest")?.readKeys).toMatchObject({ [JSON.stringify(["a", "inside"])]: "2026-07-17T11:00:00.000Z" })
@@ -80,7 +93,20 @@ describe("Notification Center contract", () => {
     root.unmount(); host.remove()
   })
 
-  it("B-T5 leaves the raw activity panel contract independent of the center", () => {
-    expect(project([])).toEqual([])
+  it("B-T5 leaves the raw activity panel contract independent of the center", async () => {
+    // The raw history stays reachable (footer handoff) and the existing
+    // ActivityPanel keeps rendering its entries untouched by center state.
+    const { ActivityPanel } = await import("../src/components/activity/activity-panel")
+    const host = document.createElement("div"); document.body.append(host)
+    const root = createRoot(host); const openActivity = vi.fn()
+    await act(async () => root.render(<NotificationCenter notifications={[]} onOpenActivity={openActivity} />))
+    const footer = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Alle Benachrichtigungen ansehen"))
+    expect(footer, "footer handoff to the raw history").toBeTruthy()
+    await act(async () => footer!.click())
+    expect(openActivity).toHaveBeenCalledTimes(1)
+    await act(async () => root.render(<ActivityPanel entries={[{ id: "e1", ts: "2026-07-18T11:00:00.000Z", actor: "maria", action: "create", targetId: "post", targetType: "post", summary: "Mein Post" }]} />))
+    expect(host.textContent).toContain("Mein Post")
+    expect(host.textContent).toContain("erstellt")
+    root.unmount(); host.remove()
   })
 })

@@ -20,3 +20,18 @@ export function buildNotificationRoute(
   )
   return `/${notification.groupId}/${module}/${notification.subjectId}`
 }
+
+export type ModuleHintsLike = { hasPosition: boolean; hasStart: boolean; hasStatus: boolean }
+
+/**
+ * Can the ACTIVE module actually show this item? Mirrors the lens escalation
+ * rule (lens-active-item-escalates-view): a click in the raw history must
+ * switch to a module that can display the target instead of focusing into a
+ * view that will never render it.
+ */
+export function moduleCanDisplay(module: string, hints: ModuleHintsLike | undefined): boolean {
+  if (module === "map") return Boolean(hints?.hasPosition)
+  if (module === "calendar") return Boolean(hints?.hasStart)
+  if (module === "kanban") return Boolean(hints?.hasStatus)
+  return true
+}

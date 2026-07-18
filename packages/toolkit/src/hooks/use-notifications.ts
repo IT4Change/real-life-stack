@@ -32,10 +32,17 @@ export function useNotifications() {
 
 /** Mark the visible frontier once per center mount, and only when it advances. */
 export function useMarkNotificationsSeen(notifications: ReturnType<typeof useNotifications>) {
-  const seenAtOpen = useRef<string | undefined>(undefined)
+  // Keyed by (maxTs, persisted lastSeenTs): a repeat emission of the same
+  // cloned state writes nothing (no loop), while a state RESET (logout/
+  // re-login wipes lastSeenTs below maxTs) legitimately writes again.
+  const lastWriteKey = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (!notifications.stateSupported || !notifications.maxTs || notifications.maxTs <= (seenAtOpen.current ?? notifications.state.lastSeenTs ?? "")) return
-    seenAtOpen.current = notifications.maxTs
+    if (!notifications.stateSupported || !notifications.maxTs) return
+    const persisted = notifications.state.lastSeenTs ?? ""
+    if (notifications.maxTs <= persisted) return
+    const key = `${notifications.maxTs}|${persisted}`
+    if (lastWriteKey.current === key) return
+    lastWriteKey.current = key
     void notifications.update?.({ op: "markSeen", ts: notifications.maxTs })
   }, [notifications.maxTs, notifications.state.lastSeenTs, notifications.stateSupported, notifications.update])
 }
