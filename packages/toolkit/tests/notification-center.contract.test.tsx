@@ -60,7 +60,7 @@ describe("Notification Center contract", () => {
     await act(async () => (buttons.find((button) => button.textContent?.includes("Maria")) as HTMLButtonElement).click())
     await act(async () => (buttons.find((button) => button.textContent?.includes("Gruppe a")) as HTMLButtonElement).click())
     expect(subject).toHaveBeenCalledTimes(1); expect(space).toHaveBeenCalledWith("a")
-    await act(async () => (host.querySelectorAll("button")[2] as HTMLButtonElement).click())
+    await act(async () => (host.querySelectorAll("button")[1] as HTMLButtonElement).click())
     expect(host.textContent).toContain("gelöscht")
     root.unmount(); host.remove()
   })

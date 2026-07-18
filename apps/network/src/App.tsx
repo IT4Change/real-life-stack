@@ -451,7 +451,7 @@ function NetworkNotificationCenterContent({ onOpenNotification, onOpenGroup, onO
   const notifications = useNotifications()
   useEffect(() => { if (notifications.stateSupported && notifications.maxTs) void notifications.update?.({ op: "markSeen", ts: notifications.maxTs }) }, [notifications.maxTs, notifications.stateSupported, notifications.update])
   if (!notifications.supported) return <NetworkActivityPanelContent onOpenTarget={onOpenTarget} />
-  return <NotificationCenter notifications={notifications.notifications} onOpenSubject={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={onOpenActivity} onMarkRead={(keys) => void notifications.update?.({ op: "markRead", keys })} onMarkAllRead={() => notifications.maxTs && void notifications.update?.({ op: "markAllReadUpTo", ts: notifications.maxTs })} onMuteGroup={(groupId, muted) => void notifications.update?.(muted ? { op: "mute", groupId } : { op: "unmute", groupId })} />
+  return <NotificationCenter notifications={notifications.notifications} onOpenSubject={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={onOpenActivity} onMarkRead={notifications.stateSupported ? (keys) => void notifications.update?.({ op: "markRead", keys }) : undefined} onMarkAllRead={notifications.stateSupported ? () => notifications.maxTs && void notifications.update?.({ op: "markAllReadUpTo", ts: notifications.maxTs }) : undefined} onMuteGroup={notifications.stateSupported ? (groupId, muted) => void notifications.update?.(muted ? { op: "mute", groupId } : { op: "unmute", groupId }) : undefined} />
 }
 
 /** Meta-item types the shell has no detail projection for (log stays visible, not clickable). */
