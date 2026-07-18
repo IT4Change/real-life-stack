@@ -1280,12 +1280,14 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, N
       raw.mutedGroupIds ??= {}
       if (patch.op === "markSeen") raw.lastSeenByDevice[deviceId] = maxTs(raw.lastSeenByDevice[deviceId], patch.ts)
       if (patch.op === "markAllReadUpTo") raw.readUpToByDevice[deviceId] = maxTs(raw.readUpToByDevice[deviceId], patch.ts)
-      if (patch.op === "markRead") Object.assign(raw.readEntryKeys, patch.keys)
+      // These are shared Yjs maps.  Assigning the record itself turns into a
+      // delete-and-rewrite with adapter-yjs, so only ever touch addressed keys.
+      if (patch.op === "markRead") for (const [key, ts] of Object.entries(patch.keys)) raw.readEntryKeys[key] = ts
       if (patch.op === "mute") raw.mutedGroupIds[patch.groupId] = true
       if (patch.op === "unmute") delete raw.mutedGroupIds[patch.groupId]
-      const ownState: NotificationState = { readUpToTs: raw.readUpToByDevice[deviceId], readEntryKeys: raw.readEntryKeys, mutedGroupIds: raw.mutedGroupIds }
-      pruneReadEntryKeys(ownState)
-      raw.readEntryKeys = ownState.readEntryKeys
+      const ownState: NotificationState = { readUpToTs: raw.readUpToByDevice[deviceId], readEntryKeys: { ...raw.readEntryKeys }, mutedGroupIds: { ...raw.mutedGroupIds } }
+      const prunedKeys = pruneReadEntryKeys(ownState)
+      for (const key of prunedKeys) delete raw.readEntryKeys[key]
       if (ownState.readUpToTs) raw.readUpToByDevice[deviceId] = ownState.readUpToTs
     })
     this.notificationStateObs.set(this.readNotificationState())
@@ -1735,9 +1737,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, N
     )
     this.crossGroupIndex.start()
     this.crossGroupUnsub = this.crossGroupIndex.onChange(() => {
-      if (this.currentGroupId === null) {
-        this.notifyAllObservers(true)
-      }
+      // Scoped activity is deliberately workspace-independent; a background
+      // group changing must refresh it even while another space is active.
+      this.notifyAllObservers(true)
     })
 
     // 11. Watch spaces for reactive group list

@@ -12,7 +12,7 @@ import {
   type Module,
 } from "@real-life-stack/toolkit"
 import type { Group, Item } from "@real-life-stack/data-interface"
-import { hasGroups } from "@real-life-stack/data-interface"
+import { hasGroups, moduleHintsFor, type ModuleHints } from "@real-life-stack/data-interface"
 
 export const STORAGE_KEY_GROUP = "rls-active-group"
 export const STORAGE_KEY_MODULE = "rls-active-module"
@@ -46,8 +46,6 @@ const slugToScope = (slug: string) => (slug === OVERVIEW_SLUG ? OVERVIEW_ID : sl
 
 const OVERVIEW_WORKSPACE: Workspace = { id: OVERVIEW_ID, name: "Mein Netzwerk", scope: "overview" }
 
-const TASK_STATUS = new Set(["open", "in-progress", "done", "archived"])
-
 /**
  * Default module for a module-less item link (`/{scope}/{itemId}`), by field
  * presence: position→map, start→calendar, status/task→kanban, content→feed.
@@ -55,16 +53,14 @@ const TASK_STATUS = new Set(["open", "in-progress", "done", "archived"])
  * has priority — an event-at-a-place opens on the map.) Only the module-less
  * default; an explicit `/{scope}/{module}/{itemId}` always wins.
  */
-function resolveDefaultModule(item: Item, available: string[]): string {
-  const d = (item.data ?? {}) as Record<string, unknown>
-  const pos = d.position as { coordinates?: unknown } | undefined
-  const status = d.status
+export function resolveDefaultModule(itemOrHints: Item | ModuleHints, available: string[]): string {
+  const hints = moduleHintsFor(itemOrHints)
   const preferred =
-    pos && Array.isArray(pos.coordinates)
+    hints.hasPosition
       ? "map"
-      : typeof d.start === "string" && d.start.length > 0
+      : hints.hasStart
         ? "calendar"
-        : item.type === "task" || (typeof status === "string" && TASK_STATUS.has(status))
+        : hints.hasStatus
           ? "kanban"
           : "feed"
   return available.includes(preferred) ? preferred : (available[0] ?? "feed")

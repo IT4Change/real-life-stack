@@ -40,6 +40,10 @@ describe("Notification contracts — LocalConnector", () => {
     await connector.updateNotificationState({ op: "markRead", keys })
     const state = await connector.getNotificationState()
     expect(Object.keys(state.readEntryKeys)).toHaveLength(500)
-    expect(state.readUpToTs).toBeDefined()
+    const oldest = JSON.stringify(["alpha", "000"])
+    expect(state.readEntryKeys[oldest]).toBeUndefined()
+    expect(state.readUpToTs).toBe(keys[oldest])
+    // A late sync at/below the compacted frontier must remain read.
+    expect(state.readUpToTs! >= keys[oldest]!).toBe(true)
   })
 })

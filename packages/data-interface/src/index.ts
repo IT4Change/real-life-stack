@@ -259,9 +259,12 @@ export function hasNotificationState(connector: DataInterface): connector is Dat
 }
 
 const KANBAN_STATUSES = new Set(["open", "in-progress", "done", "archived"])
+export type ModuleHints = NonNullable<NonNullable<ScopedActivityEntry["subject"]>["moduleHints"]>
 
 /** The exact field predicates used by the workspace's default module resolver. */
-export function moduleHintsFor(item: Item): NonNullable<ScopedActivityEntry["subject"]>["moduleHints"] {
+export function moduleHintsFor(itemOrHints: Item | ModuleHints): ModuleHints {
+  if ("hasPosition" in itemOrHints) return itemOrHints
+  const item = itemOrHints
   const data = item.data ?? {}
   const position = data.position as { coordinates?: unknown } | undefined
   const status = data.status
