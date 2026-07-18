@@ -43,7 +43,9 @@ import {
   useDeleteGroup,
   useInviteMember,
   useRemoveMember,
+  useCurrentGroup,
   useCurrentUser,
+  useMembers,
   useConnector,
   useContacts,
   useVerification,
@@ -139,9 +141,16 @@ function ActivityPanelController({ open, onClose }: { open: boolean; onClose: ()
 function ReferenceActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {
   const { data: entries } = useActivity()
   const { data: items } = useItems()
+  const currentGroup = useCurrentGroup()
+  const { data: members } = useMembers(currentGroup?.id ?? null)
+  const { data: currentUser } = useCurrentUser()
   const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items])
   const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => entry.targetType !== "relation" && entry.action !== "delete" && itemIds.has(entry.targetId), [itemIds])
-  return <ActivityPanel entries={entries} isTargetOpenable={isTargetOpenable} onOpenTarget={onOpenTarget} />
+  const resolveActor = useCallback(
+    (actorId: string) => members.find((member) => member.id === actorId) ?? (currentUser?.id === actorId ? currentUser : undefined),
+    [members, currentUser],
+  )
+  return <ActivityPanel entries={entries} isTargetOpenable={isTargetOpenable} onOpenTarget={onOpenTarget} resolveActor={resolveActor} />
 }
 
 const CONNECTOR_OPTIONS: ConnectorOption[] = [
