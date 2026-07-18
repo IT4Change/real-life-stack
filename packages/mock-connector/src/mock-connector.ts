@@ -212,6 +212,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
       this.currentGroupObs.set(this.currentGroup)
     }
     this.notifyGroupObservers()
+    this.notifyActivityObservers()
   }
 
   async getMembers(groupId: string | null): Promise<User[]> {
@@ -481,7 +482,9 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
   }
 
   private readActivity(limit?: number): ActivityEntry[] {
-    const scopes = this.currentGroup ? [this.currentGroup.id] : [...this.activityByScope.keys()]
+    const scopes = this.currentGroup
+      ? [this.currentGroup.id]
+      : [...this.groups.map((group) => group.id), "__personal__"]
     const entries = scopes.flatMap((scope) => [...(this.activityByScope.get(scope)?.values() ?? [])])
       .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
       .sort(compareActivity)
@@ -516,15 +519,18 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
     return this.relationStore.observeRelationNeighbors(endpoint, predicate)
   }
 
-  createRelationRecord(input: RelationRecordInput): Promise<RelationRecord> {
+  async createRelationRecord(input: RelationRecordInput): Promise<RelationRecord> {
+    this.requireCurrentUser()
     return this.relationStore.createRelationRecord(input)
   }
 
-  updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord> {
+  async updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord> {
+    this.requireCurrentUser()
     return this.relationStore.updateRelationRecord(id, updates)
   }
 
-  deleteRelationRecord(id: string): Promise<void> {
+  async deleteRelationRecord(id: string): Promise<void> {
+    this.requireCurrentUser()
     return this.relationStore.deleteRelationRecord(id)
   }
 

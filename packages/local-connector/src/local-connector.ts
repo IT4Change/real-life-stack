@@ -754,7 +754,9 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
   }
 
   private readActivity(limit?: number): ActivityEntry[] {
-    const scopes = this.currentGroup ? [this.activityScope(this.currentGroup.id)] : Object.keys(this.activityByScope)
+    const scopes = this.currentGroup
+      ? [this.activityScope(this.currentGroup.id)]
+      : [...this.groups.map((group) => this.activityScope(group.id)), "__personal__"]
     const entries = scopes.flatMap((scope) => Object.values(this.activityByScope[scope] ?? {}))
       .filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
       .sort(compareActivity)

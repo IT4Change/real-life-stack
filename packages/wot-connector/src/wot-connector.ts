@@ -338,6 +338,8 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
   private currentUserObs: ReactiveObservable<User | null>
   private syncPendingObs: ReactiveObservable<boolean>
   private activityObs: ReactiveObservable<ActivityEntry[]> = createObservable<ActivityEntry[]>([])
+  /** One active reconciliation plus at most one trailing run per space. */
+  private activityReconciliations = new Map<string, { queued: boolean; handle: SpaceHandle<RlsSpaceDoc> }>()
   private profileUnsub: (() => void) | null = null
   private groupsCache: Group[] = []
   private outboxCountUnsub: (() => void) | null = null
@@ -432,6 +434,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     this.closeCurrentHandle()
     this.crossGroupUnsub?.()
     this.crossGroupIndex?.stop()
+    this.activityReconciliations.clear()
     this.crossGroupIndex = null
     this.privateSpaceId = null
     this.spacesSubscriptionUnsub?.()
@@ -1213,6 +1216,45 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     for (const oldest of Object.values(entries).sort(compareActivity).slice(500)) delete entries[oldest.id]
   }
 
+  /** Repairs the eventual soft cap after remote CRDT merges; it is log-free. */
+  private scheduleActivityReconciliation(spaceId: string, handle: SpaceHandle<RlsSpaceDoc>): void {
+    const existing = this.activityReconciliations.get(spaceId)
+    if (existing) {
+      existing.queued = true
+      existing.handle = handle
+      return
+    }
+    const state = { queued: false, handle }
+    this.activityReconciliations.set(spaceId, state)
+    const run = () => {
+      if (this.activityReconciliations.get(spaceId) !== state) return
+      if (Object.keys(state.handle.getDoc().activity ?? {}).length <= 500) {
+        if (state.queued) {
+          state.queued = false
+          queueMicrotask(run)
+        } else {
+          this.activityReconciliations.delete(spaceId)
+        }
+        return
+      }
+      let pruned = false
+      state.handle.transact((doc) => {
+        const entries = doc.activity
+        if (!entries || Object.keys(entries).length <= 500) return
+        for (const oldest of Object.values(entries).sort(compareActivity).slice(500)) delete entries[oldest.id]
+        pruned = true
+      })
+      if (pruned) this.notifyAllObservers()
+      if (state.queued) {
+        state.queued = false
+        queueMicrotask(run)
+      } else {
+        this.activityReconciliations.delete(spaceId)
+      }
+    }
+    queueMicrotask(run)
+  }
+
   /**
    * Resolve the SpaceHandle that owns a given item.
    * In overview view, looks up the group via CrossGroupIndex and opens a handle.
@@ -1556,7 +1598,17 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
         return map
       },
       (item) => item.type,
-      { groupFilter: (info) => info.type === "shared" },
+      {
+        groupFilter: (info) => info.type === "shared",
+        onHandle: (spaceId, handle) => {
+          this.scheduleActivityReconciliation(spaceId, handle)
+          const remoteUnsub = handle.onRemoteUpdate(() => this.scheduleActivityReconciliation(spaceId, handle))
+          return () => {
+            remoteUnsub()
+            this.activityReconciliations.delete(spaceId)
+          }
+        },
+      },
     )
     this.crossGroupIndex.start()
     this.crossGroupUnsub = this.crossGroupIndex.onChange(() => {
@@ -1985,9 +2037,11 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
 
     try {
       this.currentHandle = await this.replication.openSpace<RlsSpaceDoc>(this.currentGroupId)
+      this.scheduleActivityReconciliation(this.currentGroupId, this.currentHandle)
 
       // Listen for remote updates -> refresh observables
       this.handleRemoteUnsub = this.currentHandle!.onRemoteUpdate(() => {
+        if (this.currentHandle && this.currentGroupId) this.scheduleActivityReconciliation(this.currentGroupId, this.currentHandle)
         this.notifyAllObservers()
       })
     } catch (err) {
@@ -2000,6 +2054,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
     this.handleRemoteUnsub?.()
     this.handleRemoteUnsub = null
     this.currentHandle?.close()
+    if (this.currentGroupId) this.activityReconciliations.delete(this.currentGroupId)
     this.currentHandle = null
     this.invalidateItemCache()
   }

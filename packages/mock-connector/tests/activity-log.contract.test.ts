@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { hasActivityLog, type ActivityEntry } from "@real-life-stack/data-interface"
 import { MockConnector } from "../src/index.js"
 
@@ -121,13 +121,29 @@ describe("Activity-Log contract", () => {
     expect((await activity(connector, 1)).length).toBe(1)
   })
 
-  it("13. observes overview changes when space access changes", () => {
+  it("13. observes overview changes when space access changes", async () => {
     const connector = new MockConnector(seed)
-    expect(hasActivityLog(connector)).toBe(true)
+    await connector.init()
+    connector.setCurrentGroup("alpha")
+    await connector.createItem({ id: "a", type: "task", createdBy: "x", data: {} })
+    connector.setCurrentGroup(null)
+    const observed = connector.observeActivity()
+    const changes = vi.fn()
+    observed.subscribe(changes)
+    await connector.deleteGroup("alpha")
+    expect(observed.current).toEqual([])
+    expect(changes).toHaveBeenCalled()
   })
 
-  it("14. keeps per-space retention independent from the overview union", () => {
-    expect(true).toBe(true)
+  it("14. keeps per-space retention independent from the overview union", async () => {
+    const connector = new MockConnector(seed)
+    await connector.init()
+    connector.setCurrentGroup("alpha")
+    for (let i = 0; i < 501; i++) await connector.createItem({ id: `a-${i}`, type: "task", createdBy: "x", data: {} })
+    connector.setCurrentGroup("beta")
+    await connector.createItem({ id: "b", type: "task", createdBy: "x", data: {} })
+    connector.setCurrentGroup(null)
+    expect(await activity(connector)).toHaveLength(501)
   })
 
   it("15. rejects unauthenticated item, move, and relation mutations without side effects", async () => {
@@ -135,10 +151,18 @@ describe("Activity-Log contract", () => {
     await connector.init()
     await connector.logout()
     await expect(connector.createItem({ id: "one", type: "task", createdBy: "x", data: {} })).rejects.toThrow(/auth/i)
+    await expect(connector.updateItem("one", { data: {} })).rejects.toThrow(/auth/i)
+    await expect(connector.deleteItem("one")).rejects.toThrow(/auth/i)
+    expect(() => connector.moveItemToGroup("one", "beta")).toThrow(/auth/i)
+    await expect(connector.createRelationRecord({ predicate: "knows", from: "item:a", to: "item:b" })).rejects.toThrow(/auth/i)
   })
 
-  it("16. gives deletes the target type and summary from the last known item", () => {
-    expect(true).toBe(true)
+  it("16. gives deletes the target type and summary from the last known item", async () => {
+    const connector = new MockConnector(seed)
+    await connector.init()
+    await connector.createItem({ id: "one", type: "task", createdBy: "x", data: { title: "Last title" } })
+    await connector.deleteItem("one")
+    expect((await activity(connector)).find((entry) => entry.action === "delete")).toMatchObject({ action: "delete", targetType: "task", summary: "Last title" })
   })
 
   it("17. keeps legacy documents without activity compatible", () => {

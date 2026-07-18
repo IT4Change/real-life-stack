@@ -68,6 +68,7 @@ import { LocationPickProvider, useLocationPick } from "./location-pick"
 import { CreateHostProvider, CreateSheetController } from "./create-host"
 import { DetailHostProvider, DetailHostController } from "./detail-host"
 import { UnsavedChangesGuard } from "./unsaved-changes-guard"
+import { useItemFocus } from "./hooks/use-item-focus"
 
 /**
  * Renders the single app-level ModulePanel and suspends it (hidden, kept
@@ -92,6 +93,25 @@ function ModulePanelHost({ children, onDrawerHeightChange }: { children: ReactNo
       {children}
     </ModulePanelProvider>
   )
+}
+
+/** Activity deliberately shares the module panel instead of adding a second shell overlay. */
+function ActivityPanelController({ open, onClose, entries }: { open: boolean; onClose: () => void; entries: readonly import("@real-life-stack/data-interface").ActivityEntry[] }) {
+  const panel = useModulePanel()
+  const { focusItem } = useItemFocus()
+  useEffect(() => {
+    if (!open) {
+      if (panel.current?.itemId === "__activity__") panel.close({ silent: true })
+      return
+    }
+    panel.open({
+      kind: "custom",
+      itemId: "__activity__",
+      content: <ActivityPanel entries={entries} isTargetOpenable={(entry) => entry.targetType !== "relation" && entry.action !== "delete"} onOpenTarget={(entry) => { focusItem(entry.targetId); onClose() }} />,
+      onClose,
+    })
+  }, [entries, focusItem, onClose, open, panel])
+  return null
 }
 
 const CONNECTOR_OPTIONS: ConnectorOption[] = [
@@ -431,6 +451,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
     <CreateHostProvider>
     <ModulePanelHost onDrawerHeightChange={setDrawerHeight}>
+    <ActivityPanelController open={activityOpen} onClose={() => setActivityOpen(false)} entries={activity.data} />
     <CreateSheetController />
     <DetailHostController activeModule={activeModule} />
     <UnsavedChangesGuard />
@@ -493,9 +514,6 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
           />
         </NavbarEnd>
       </Navbar>
-      <AdaptivePanel open={activityOpen} onClose={() => setActivityOpen(false)} allowedModes={["sidebar", "drawer"]}>
-        <ActivityPanel entries={activity.data} />
-      </AdaptivePanel>
 
       {/* Map is full-bleed: skip the bottom-nav padding so the map fills the
           area behind the translucent BottomNav instead of leaving a gap above

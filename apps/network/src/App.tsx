@@ -404,6 +404,18 @@ function DetailPanelController({
   return null
 }
 
+function NetworkActivityPanelController({ open, onClose, entries, selectItem }: { open: boolean; onClose: () => void; entries: readonly import("@real-life-stack/data-interface").ActivityEntry[]; selectItem: (id: string) => void }) {
+  const panel = useModulePanel()
+  useEffect(() => {
+    if (!open) {
+      if (panel.current?.itemId === "__activity__") panel.close({ silent: true })
+      return
+    }
+    panel.open({ kind: "custom", itemId: "__activity__", content: <ActivityPanel entries={entries} isTargetOpenable={(entry) => entry.targetType !== "relation" && entry.action !== "delete"} onOpenTarget={(entry) => { selectItem(entry.targetId); onClose() }} />, onClose })
+  }, [entries, onClose, open, panel, selectItem])
+  return null
+}
+
 function NetworkShell() {
   const connector = useConnector()
   const { data: groups } = useGroups()
@@ -565,6 +577,7 @@ function NetworkShell() {
         sidebarMaxWidth="70vw"
         onDrawerHeightChange={setDetailDrawerHeight}
       >
+        <NetworkActivityPanelController open={activityOpen} onClose={() => setActivityOpen(false)} entries={activity.data} selectItem={selectNode} />
         <DetailPanelController
           item={selectedItem}
           connections={selectedConnections}
@@ -838,13 +851,6 @@ function NetworkShell() {
         </AppShell>
       </ModulePanelProvider>
 
-      <AdaptivePanel
-        open={activityOpen}
-        onClose={() => setActivityOpen(false)}
-        allowedModes={["sidebar", "drawer"]}
-      >
-        <ActivityPanel entries={activity.data} />
-      </AdaptivePanel>
       <AdaptivePanel
         open={profileOpen && currentUser !== null}
         onClose={() => setProfileOpen(false)}
