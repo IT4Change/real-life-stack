@@ -34,6 +34,28 @@ function handle(id: string, value: RlsSpaceDoc, members: string[]) {
 }
 
 describe("Notification contracts — WotConnector", () => {
+  it("A-T3 guard: patch ops never reassign whole records (only addressed keys)", async () => {
+    const c = connector()
+    const topLevelSets: string[] = []
+    const inner: any = { lastSeenByDevice: {}, readUpToByDevice: {}, readEntryKeys: { keep: "2026-07-18T10:00:00.000Z" }, mutedGroupIds: {} }
+    personalDoc.notificationState = new Proxy(inner, {
+      set(target, prop, value) {
+        if (typeof prop === "string") topLevelSets.push(prop)
+        return Reflect.set(target, prop, value)
+      },
+    })
+    await c.updateNotificationState({ op: "markSeen", ts: "2026-07-18T12:00:00.000Z" })
+    await c.updateNotificationState({ op: "markRead", keys: { added: "2026-07-18T11:00:00.000Z" } })
+    await c.updateNotificationState({ op: "mute", groupId: "alpha" })
+    // On the 0.1.4 proxy a record reassignment means delete-all + rewrite —
+    // patch ops must mutate nested keys only.
+    expect(topLevelSets).toEqual([])
+    expect(inner.lastSeenByDevice["device-a"]).toBe("2026-07-18T12:00:00.000Z")
+    expect(inner.readEntryKeys).toMatchObject({ keep: "2026-07-18T10:00:00.000Z", added: "2026-07-18T11:00:00.000Z" })
+    expect(inner.mutedGroupIds.alpha).toBe(true)
+    personalDoc.notificationState = undefined
+  })
+
   it("A-T3/T4: writes only addressed shared-map keys and moves the frontier only when pruning", async () => {
     const c = connector(); personalDoc.notificationState = { lastSeenByDevice: {}, readUpToByDevice: {}, readEntryKeys: { keep: "2026-07-18T10:00:00.000Z" }, mutedGroupIds: {} }
     await c.updateNotificationState({ op: "markRead", keys: { added: "2026-07-18T11:00:00.000Z" } })

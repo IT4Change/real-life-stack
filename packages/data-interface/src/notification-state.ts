@@ -32,12 +32,15 @@ export function pruneReadEntryKeys(state: NotificationState): string[] {
   const ordered = Object.entries(state.readEntryKeys).sort(([keyA, tsA], [keyB, tsB]) => tsA.localeCompare(tsB) || keyA.localeCompare(keyB))
   const removed: string[] = []
   while (ordered.length > 500) {
-    const [key, ts] = ordered.shift()!
+    const [key] = ordered.shift()!
     delete state.readEntryKeys[key]
     removed.push(key)
-    // The frontier represents precisely the exceptions that were compacted.
+  }
+  if (removed.length > 0) {
+    // The frontier moves to the OLDEST REMAINING entry's ts (normative):
+    // everything at or below it — including every pruned key — stays read.
     // It must never move merely because a caller marked an individual entry.
-    state.readUpToTs = maxTs(state.readUpToTs, ts)
+    state.readUpToTs = maxTs(state.readUpToTs, ordered[0]![1])
   }
   return removed
 }

@@ -354,6 +354,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, N
   private activityDirty = false
   /** One active reconciliation plus at most one trailing run per space. */
   private activityReconciliations = new Map<string, { queued: boolean; handle: SpaceHandle<RlsSpaceDoc> }>()
+  private scopedRefreshScheduled = false
   /** Distinguishes A→B→A switches: only the newest open request may touch state. */
   private handleOpenGeneration = 0
   private profileUnsub: (() => void) | null = null
@@ -2244,11 +2245,17 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, N
         void this.getActivity(limit === undefined ? undefined : { limit }).then((entries) => observable.set(entries))
       }
     }
-    if (activityMayHaveChanged && this.scopedActivityObservables.size > 0) {
-      for (const [key, observable] of this.scopedActivityObservables) {
-        const limit = key === "" ? undefined : Number(key)
-        void this.getScopedActivity(limit === undefined ? undefined : { limit }).then((entries) => observable.set(entries))
-      }
+    if (activityMayHaveChanged && this.scopedActivityObservables.size > 0 && !this.scopedRefreshScheduled) {
+      // Active-space remote updates arrive over TWO paths (current handle +
+      // CrossGroupIndex reindex) — coalesce to one resolution per microtask.
+      this.scopedRefreshScheduled = true
+      queueMicrotask(() => {
+        this.scopedRefreshScheduled = false
+        for (const [key, observable] of this.scopedActivityObservables) {
+          const limit = key === "" ? undefined : Number(key)
+          void this.getScopedActivity(limit === undefined ? undefined : { limit }).then((entries) => observable.set(entries))
+        }
+      })
     }
     if (this.notifyScheduled) return
     this.notifyScheduled = true
