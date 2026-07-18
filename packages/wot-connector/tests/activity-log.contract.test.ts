@@ -78,6 +78,7 @@ function connector(current: ReturnType<typeof handle>, handles = new Map<string,
   value.activityObservables = new Map()
   value.activityDirty = false
   value.activityReconciliations = new Map()
+  value.handleOpenGeneration = 0
   value.crossGroupIndex = null
   value.notifyAllObservers = vi.fn()
   value.replication = { openSpace: vi.fn(async (id: string) => handles.get(id) ?? current) }
@@ -264,5 +265,51 @@ describe("Activity log — stale handle race", () => {
     expect(stale.close).toHaveBeenCalled()
     expect(c.currentHandle).toBeNull()
     expect(c.activityReconciliations.size).toBe(0)
+  })
+})
+
+describe("Activity log — migration cap and failed stale open", () => {
+  it("prunes the merged history to 500 and migrates entries of deleted items", async () => {
+    const target = handle()
+    fillActivity(target, "target", 500)
+    const source = handle()
+    source.value.items.dup = { id: "dup", type: "task", createdBy: "x", createdAt: "2026-01-01T00:00:00.000Z", data: {} } as any
+    fillActivity(source, "source", 2) // e.g. one create + one delete of an already-gone item
+    const c = connector(target, new Map([["canonical", target], ["duplicate", source]])) as any
+    c.replication = { openSpace: vi.fn(async (id: string) => (id === "canonical" ? target : source)) }
+    c.crossGroupIndex = null
+
+    await invokePrivate<(canonicalId: string, duplicateIds: string[]) => Promise<void>>(
+      c, "migratePrivateSpaceDuplicates",
+    )("canonical", ["duplicate"])
+
+    const merged = target.value.activity ?? {}
+    expect(Object.keys(merged).length).toBeLessThanOrEqual(500)
+    // History of the duplicate (including entries without a live item) moved over.
+    expect(Object.keys(merged).some((id) => id.startsWith("source-"))).toBe(true)
+    expect(Object.keys(source.value.activity ?? {})).toHaveLength(0)
+  })
+
+  it("a late-failing stale open request never clears the valid handle of the new scope", async () => {
+    const b = handle()
+    const c = connector(b) as any
+    c.currentHandle = null
+    c.currentGroupId = "a"
+    let rejectA: (reason: unknown) => void = () => {}
+    c.replication = {
+      openSpace: vi.fn((id: string) =>
+        id === "a" ? new Promise((_, reject) => { rejectA = reject }) : Promise.resolve(b),
+      ),
+    }
+
+    const openA = invokePrivate<() => Promise<void>>(c, "openCurrentHandle")()
+    // Switch to B and install its handle via the real path.
+    c.currentGroupId = "b"
+    await invokePrivate<() => Promise<void>>(c, "openCurrentHandle")()
+    expect(c.currentHandle).toBe(b)
+
+    rejectA(new Error("relay down"))
+    await openA
+    expect(c.currentHandle).toBe(b)
   })
 })

@@ -343,6 +343,8 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
   private activityDirty = false
   /** One active reconciliation plus at most one trailing run per space. */
   private activityReconciliations = new Map<string, { queued: boolean; handle: SpaceHandle<RlsSpaceDoc> }>()
+  /** Distinguishes A→B→A switches: only the newest open request may touch state. */
+  private handleOpenGeneration = 0
   private profileUnsub: (() => void) | null = null
   private groupsCache: Group[] = []
   private outboxCountUnsub: (() => void) | null = null
@@ -1966,9 +1968,11 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
 
     for (const duplicateId of duplicateIds) {
       const sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(duplicateId)
-      const sourceItems = sourceHandle.getDoc().items ?? {}
+      const sourceDocSnapshot = sourceHandle.getDoc()
+      const sourceItems = sourceDocSnapshot.items ?? {}
       const entries = Object.entries(sourceItems) as Array<[string, SerializedItem]>
-      if (entries.length === 0) continue
+      // A duplicate can be item-empty but still carry history of deleted items.
+      if (entries.length === 0 && Object.keys(sourceDocSnapshot.activity ?? {}).length === 0) continue
 
       const migratedIds = new Set<string>()
       targetHandle.transact((targetDoc: RlsSpaceDoc) => {
@@ -1988,13 +1992,22 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
           migratedIds.add(itemId)
         }
 
-        // The items' activity history migrates with them (re-keyed like the
-        // items; retention on the target applies as usual).
+        // The ENTIRE activity history migrates (also entries whose items are
+        // already deleted — Regel 7 keeps those readable); only targetIds of
+        // migrated items get remapped. The merged map is pruned to the
+        // normative 500 cap in the SAME transact (Regel 4).
         const sourceActivity = sourceHandle.getDoc().activity ?? {}
         for (const [entryId, entry] of Object.entries(sourceActivity)) {
-          if (!idRemap.has(entry.targetId) || targetDoc.activity?.[entryId]) continue
+          if (targetDoc.activity?.[entryId]) continue
           const activity = targetDoc.activity ?? (targetDoc.activity = {})
-          activity[entryId] = { ...entry, targetId: idRemap.get(entry.targetId)! }
+          const remapped = idRemap.get(entry.targetId)
+          activity[entryId] = remapped ? { ...entry, targetId: remapped } : { ...entry }
+        }
+        const merged = targetDoc.activity
+        if (merged) {
+          for (const oldest of Object.values(merged).sort(compareActivity).slice(500)) {
+            delete merged[oldest.id]
+          }
         }
       })
 
@@ -2002,11 +2015,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
         for (const itemId of migratedIds) {
           delete sourceDoc.items[itemId]
         }
-        const activity = sourceDoc.activity
-        if (activity) {
-          for (const [entryId, entry] of Object.entries(activity)) {
-            if (migratedIds.has(entry.targetId)) delete activity[entryId]
-          }
+        // The whole history moved to the canonical space.
+        if (sourceDoc.activity) {
+          for (const entryId of Object.keys(sourceDoc.activity)) delete sourceDoc.activity[entryId]
         }
       })
 
@@ -2069,13 +2080,15 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
 
   private async openCurrentHandle(): Promise<void> {
     if (!this.replication || !this.currentGroupId) return
-    // A rapid A→B/Overview switch can resolve A's openSpace AFTER the scope
-    // already moved on — installing that handle would expose the wrong space.
+    // A rapid A→B(→A) switch can settle A's openSpace AFTER the scope moved
+    // on — neither success NOR failure of a stale request may touch state.
+    // The generation token (not just the group id) distinguishes A→B→A.
     const requestedGroupId = this.currentGroupId
+    const generation = ++this.handleOpenGeneration
 
     try {
       const handle = await this.replication.openSpace<RlsSpaceDoc>(requestedGroupId)
-      if (this.currentGroupId !== requestedGroupId) {
+      if (generation !== this.handleOpenGeneration || this.currentGroupId !== requestedGroupId) {
         handle.close()
         return
       }
@@ -2089,7 +2102,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable {
       })
     } catch (err) {
       console.error("[WotConnector] Failed to open space:", err)
-      this.currentHandle = null
+      if (generation === this.handleOpenGeneration && this.currentGroupId === requestedGroupId) {
+        this.currentHandle = null
+      }
     }
   }
 
