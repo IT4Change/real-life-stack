@@ -43,6 +43,9 @@ describe("B-T4 — Netzwerk-Cross-Group über den echten Handler-Vertrag", () =>
     expect(lensCanDisplay("kanban", task)).toBe(true)
     expect(lensCanDisplay("kanban", post)).toBe(false)
     expect(lensCanDisplay("list", post)).toBe(true)
+    // marketplace renders resources exclusively — a task escalates away
+    expect(lensCanDisplay("marketplace", task, "task")).toBe(false)
+    expect(lensCanDisplay("marketplace", post, "resource")).toBe(true)
     expect(lensForHints(place)).toBe("map")
     expect(lensForHints(task)).toBe("kanban")
     expect(lensForHints(post)).toBe("list")

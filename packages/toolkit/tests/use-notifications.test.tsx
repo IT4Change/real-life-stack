@@ -18,7 +18,7 @@ function connector() {
   })
   const groups = createObservable([{ id: "other", name: "Andere", data: {} }])
   const user = createObservable({ id: "self", displayName: "Self" })
-  return { scoped, updates, getScopedActivity: async () => scoped.current, observeScopedActivity: () => scoped, observeNotificationState: () => notifications, updateNotificationState: updates, getNotificationState: async () => notifications.current,
+  return { scoped, updates, stateObs: notifications, getScopedActivity: async () => scoped.current, observeScopedActivity: () => scoped, observeNotificationState: () => notifications, updateNotificationState: updates, getNotificationState: async () => notifications.current,
     getGroups: async () => groups.current, observeGroups: () => groups, getMembers: async () => [], observeMembers: () => createObservable([]), getCurrentGroup: () => groups.current[0], observeCurrentGroup: () => createObservable(groups.current[0]), setCurrentGroup: () => {}, createGroup: async () => groups.current[0], updateGroup: async () => groups.current[0], deleteGroup: async () => {}, inviteMember: async () => {}, removeMember: async () => {},
     getCurrentUser: async () => user.current, observeCurrentUser: () => user, getUser: async () => user.current, getAuthState: () => createObservable({ status: "authenticated" as const }), getAuthMethods: () => [], authenticate: async () => user.current, logout: async () => {},
   }
@@ -46,6 +46,12 @@ describe("useNotifications", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
     expect(fake.updates).toHaveBeenCalledTimes(1)
     expect(fake.updates).toHaveBeenCalledWith({ op: "markSeen", ts: "2026-07-18T11:00:00.000Z" })
+
+    // A state RESET (logout/re-login wipes lastSeenTs) with the SAME maxTs is
+    // a new, legitimate write — the guard must not suppress it (Sol SF1).
+    await act(async () => { fake.stateObs.set({ readEntryKeys: {}, mutedGroupIds: {} }) })
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    expect(fake.updates).toHaveBeenCalledTimes(2)
     root.unmount(); host.remove()
   })
 })

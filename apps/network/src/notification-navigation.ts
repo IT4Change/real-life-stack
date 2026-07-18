@@ -18,10 +18,12 @@ export function lensForHints(hints: ModuleHintsLike | undefined): NetworkLensId 
 }
 
 /** Can the given lens actually SHOW an item with these hints? */
-export function lensCanDisplay(lens: NetworkLensId, hints: ModuleHintsLike | undefined): boolean {
+export function lensCanDisplay(lens: NetworkLensId, hints: ModuleHintsLike | undefined, itemType?: string): boolean {
   if (lens === "map") return Boolean(hints?.hasPosition)
   if (lens === "calendar") return Boolean(hints?.hasStart)
   if (lens === "kanban") return Boolean(hints?.hasStatus)
+  // The marketplace lens renders resource items exclusively.
+  if (lens === "marketplace") return itemType === "resource"
   return true
 }
 

@@ -39,7 +39,13 @@ export function useMarkNotificationsSeen(notifications: ReturnType<typeof useNot
   useEffect(() => {
     if (!notifications.stateSupported || !notifications.maxTs) return
     const persisted = notifications.state.lastSeenTs ?? ""
-    if (notifications.maxTs <= persisted) return
+    if (notifications.maxTs <= persisted) {
+      // The persisted frontier caught up — clear the pending marker so a
+      // LATER state reset (logout/re-login drops lastSeenTs again) is a new,
+      // legitimate write even though it reproduces the same key.
+      lastWriteKey.current = undefined
+      return
+    }
     const key = `${notifications.maxTs}|${persisted}`
     if (lastWriteKey.current === key) return
     lastWriteKey.current = key

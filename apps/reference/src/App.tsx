@@ -524,7 +524,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   const openEntryTarget = useCallback((targetId: string) => {
     const item = allItems.find(({ id }) => id === targetId)
     const hints = item ? moduleHintsFor(item) : undefined
-    if (item && activeWorkspace && !moduleCanDisplay(activeModule ?? "feed", hints)) {
+    if (item && activeWorkspace && !moduleCanDisplay(activeModule ?? "feed", hints, item.type)) {
       navigate(buildNotificationRoute({ groupId: activeWorkspace.id, subjectId: targetId, moduleHints: hints } as import("@real-life-stack/toolkit").NotificationCandidate, groups))
       return
     }

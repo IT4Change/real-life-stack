@@ -23,6 +23,26 @@ function candidate(overrides: Partial<NotificationCandidate>): NotificationCandi
   } as NotificationCandidate
 }
 
+import { moduleCanDisplay } from "./notification-navigation"
+
+describe("Linsen-Eskalation — moduleCanDisplay", () => {
+  const task = { hasPosition: false, hasStart: false, hasStatus: true }
+  const place = { hasPosition: true, hasStart: false, hasStatus: false }
+  const event = { hasPosition: false, hasStart: true, hasStatus: false }
+  it("feed shows only content/start items — pure tasks and places escalate", () => {
+    expect(moduleCanDisplay("feed", task, "task")).toBe(false)
+    expect(moduleCanDisplay("feed", place, "place")).toBe(false)
+    expect(moduleCanDisplay("feed", event, "event")).toBe(true)
+    expect(moduleCanDisplay("feed", { hasPosition: false, hasStart: false, hasStatus: false }, "post")).toBe(true)
+    expect(moduleCanDisplay("kanban", task, "task")).toBe(true)
+    expect(moduleCanDisplay("map", task, "task")).toBe(false)
+  })
+  it("unknown scope (overview) resolves against the full module set, not just feed", () => {
+    expect(buildNotificationRoute(candidate({ groupId: "__overview__", moduleHints: { hasPosition: false, hasStart: false, hasStatus: true } }), groups))
+      .toBe("/__overview__/kanban/p1")
+  })
+})
+
 describe("B-T4 — Klick-Sprünge über die echten App-Verträge", () => {
   it("builds ONE canonical cross-group route with the module from the shared resolver", () => {
     expect(buildNotificationRoute(candidate({ moduleHints: { hasPosition: true, hasStart: false, hasStatus: false } }), groups))

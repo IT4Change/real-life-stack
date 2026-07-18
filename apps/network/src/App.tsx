@@ -636,7 +636,7 @@ function NetworkShell() {
     if (!item) return
     const hints = moduleHintsFor(item)
     selectNode(itemId)
-    if (!lensCanDisplay(activeLens, hints)) setActiveLens(lensForHints(hints))
+    if (!lensCanDisplay(activeLens, hints, item.type)) setActiveLens(lensForHints(hints))
   }, [activeLens, itemById, selectNode])
   const openNotification = useCallback((notification: import("@real-life-stack/toolkit").NotificationCandidate) => {
     applyNotificationNavigation(notification, {
