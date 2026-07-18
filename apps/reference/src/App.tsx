@@ -69,7 +69,8 @@ import { demoItems, demoGroups, demoUsers, demoGroupMembers, demoGroupItems } fr
 import { MockConnector } from "@real-life-stack/mock-connector"
 import { LocalConnector } from "@real-life-stack/local-connector"
 import { ModuleOutlet } from "./views/module-outlet"
-import { useWorkspaceRouting, STORAGE_KEY_GROUP, resolveDefaultModule } from "./hooks/use-workspace-routing"
+import { useWorkspaceRouting, STORAGE_KEY_GROUP } from "./hooks/use-workspace-routing"
+import { buildNotificationRoute } from "./notification-navigation"
 import { ItemFocusProvider } from "./hooks/use-item-focus"
 import { LocationPickProvider, useLocationPick } from "./location-pick"
 import { CreateHostProvider, CreateSheetController } from "./create-host"
@@ -513,9 +514,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   const activity = useActivity()
   const notifications = useNotifications()
   const openNotification = useCallback((notification: import("@real-life-stack/toolkit").NotificationCandidate) => {
-    const group = groups.find(({ id }) => id === notification.groupId)
-    const available = Array.isArray(group?.data?.modules) ? group.data.modules as string[] : ["feed"]
-    navigate(`/${notification.groupId}/${resolveDefaultModule(notification.moduleHints ?? { hasPosition: false, hasStart: false, hasStatus: false }, available)}/${notification.subjectId}`)
+    navigate(buildNotificationRoute(notification, groups))
     closeActivity()
   }, [closeActivity, groups, navigate])
   const supportsMessaging = hasMessaging(connector)
