@@ -14,4 +14,5 @@ export {
   updateMapLensViewport,
   type MapLensProps,
   type MapLensViewportState,
+  type MapLensViewportContext,
 } from "./map-lens"

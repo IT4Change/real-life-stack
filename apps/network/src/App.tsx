@@ -27,7 +27,7 @@ import {
   CollectionView,
   Input,
   KanbanBoard,
-  MapLens,
+  MapView,
   Navbar,
   NavbarCenter,
   NavbarEnd,
@@ -656,14 +656,18 @@ function NetworkShell() {
               </div>
             )}
             {deferredLens === "map" && (
-              <MapLens
+              <MapView
                 items={domainItems}
+                itemsLoading={isLoading}
+                inventoryKey={currentGroup?.id ?? "none"}
                 createAdapter={createMapAdapter}
                 initialView={{ center: [12.4066, 52.1183], zoom: 16 }}
+                viewportMode="lens-auto-fit"
                 activeItemId={selectedNodeId ?? undefined}
                 selectionFocusVisibleArea={selectionFocusVisibleArea}
-                viewportResetKey={currentGroup?.id ?? "none"}
                 onItemClick={(item) => selectItem(item.id)}
+                clustering={{}}
+                resolveGroupColor={() => "#64748b"}
               />
             )}
             {deferredLens === "calendar" && (

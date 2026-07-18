@@ -31,6 +31,25 @@ Es unterstützt:
 
 Die Karte rendert **full-bleed** — sie füllt den Space randlos, ohne zentrierten Container und (auf Mobile) ohne BottomNav-Abstand. Andere Module nutzen den zentrierten Container-Füllmodus; siehe [01-app-composition.md → Content-Bereich](../01-app-composition.md).
 
+## Toolkit MapView und MapLens
+
+`MapView` aus `@real-life-stack/toolkit` ist das vollständige, props-getriebene
+Space-Modul. Es besitzt die lokale FilterBar, bbox-Inventar-Akkumulation,
+Location-Pick-UI, Mount-Recovery und das Create-Gate. Die App bleibt Eigentümerin
+der bbox-Abfrage, URL-/Panel-Selektion und Composer-Callback.
+
+`viewportMode: "bbox-module"` startet ausschließlich mit dem von der App
+gelieferten `initialView`; es führt keinen Auto-Fit aus und meldet Bounds für
+die begrenzte Abfrage. `viewportMode: "lens-auto-fit"` ist der P3-Linsenvertrag:
+erstes nicht-leeres Marker-Inventar fitten, Selektion zuerst, und bei
+`inventoryKey` neu arming. Jeder Modus hat genau einen Viewport-Owner.
+
+`MapLens` bleibt dagegen der filterlose presentationale Kern: supplied Point-
+Items, Marker, Selection-Gate, Inset und Adapter-Mount. Es bietet weder Filter
+noch Create/Pick oder bbox-Laden. Beide Flächen schließen `type: "relation"`
+aus. Clustering wird ausschließlich als Adapter-Capability via
+`setClusterConfig` gesetzt; Cluster-Klick/Zoom ist Adapter-Verhalten.
+
 ## Datenmodell
 
 Das Map Module liest Items im Current Space, die eine geografische Position tragen. Es ist damit **feldbasiert, nicht typbasiert**.

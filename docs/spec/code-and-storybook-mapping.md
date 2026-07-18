@@ -167,3 +167,6 @@ Diese Spec definiert nicht:
 1. Ob `components/auth/` dauerhaft App Shell bleibt oder später stärker WoT-spezifisch ausgelagert wird.
 2. Ob einzelne Module Components, z.B. `ReactionBar`, eigene geteilte Code-Ordner bekommen sollen.
 3. Ob Storybook später automatisiert gegen die Spec-Module-Liste geprüft werden soll.
+# MapView
+
+- `MapView` → `packages/toolkit/src/components/map/map-view.tsx` → Storybook `RLS/Space Modules/MapView` (bbox-module und lens-auto-fit, Auswahl und Cluster).

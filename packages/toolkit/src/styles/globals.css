@@ -76,6 +76,23 @@
   --shadow-navbar: var(--shadow-md);
 }
 
+/* Transparent globe canvases need a toolkit-owned backdrop around the planet. */
+.rls-globe-sky {
+  background: radial-gradient(circle at 50% 44%, #ffffff 24%, #e2f0fc 40%, #93bce4 64%, #4b82bd 86%, #2f679f 100%);
+}
+
+.dark .rls-globe-sky {
+  background-color: #04060c;
+  background-image:
+    radial-gradient(1.5px 1.5px at 34px 60px, rgba(255, 255, 255, .95), transparent),
+    radial-gradient(.7px .7px at 41px 66px, rgba(255, 255, 255, .5), transparent),
+    radial-gradient(1.7px 1.7px at 175px 95px, rgba(255, 255, 255, .98), transparent),
+    radial-gradient(1px 1px at 250px 40px, rgba(255, 255, 255, .7), transparent),
+    radial-gradient(900px 620px at 50% 44%, rgba(70, 130, 225, .5), transparent 60%);
+  background-size: 380px 380px, 380px 380px, 380px 380px, 250px 250px, 100% 100%;
+  background-repeat: repeat, repeat, repeat, repeat, no-repeat;
+}
+
 .dark {
   /* Background & Foreground - Dark slate */
   --background: oklch(0.15 0.02 265);

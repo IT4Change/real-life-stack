@@ -2,14 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { Item } from "@real-life-stack/data-interface"
 
 import { latLngFromPoint } from "../../lib/geo"
-import { getItemColor } from "../../lib/utils"
+import { getItemColor, getSpacePrimaryColor } from "../../lib/utils"
 import {
   focusActiveItemInVisibleArea,
   initialSelectionFocusVisibleAreaState,
   type SelectionFocusVisibleArea,
   type SelectionFocusVisibleAreaState,
 } from "../../lib/selection-focus"
-import type { MapAdapter, MapBounds, MapMarkerSpec, MapMountOptions } from "../map"
+import { hasCluster, type MapAdapter, type MapBounds, type MapMarkerSpec, type MapMountOptions } from "../map"
 
 /** A single selected marker is close enough to read without a street-level jump. */
 export const SINGLE_MARKER_ZOOM = 16
@@ -29,10 +29,32 @@ export interface MapLensProps {
   viewportResetKey?: string | number
   /** Opens the item through the owning shell's existing detail path. */
   onItemClick?: (item: Item) => void
+  /** Optional native clustering; engines without this capability keep individual markers. */
+  clustering?: false | { radius?: number }
+  /** Allows a host to retain its origin-space marker and selection colours. */
+  resolveGroupColor?: (item: Item) => string | undefined
+  /** Display-only markers (for example a composer draft) stay highlighted. */
+  highlightedItemIds?: readonly string[]
+  /** Display-only markers must not enter the shell's item-detail path. */
+  nonClickableItemIds?: readonly string[]
+  /** MapView owns the reference module viewport; the lens keeps its P3 auto-fit contract. */
+  viewportMode?: "lens-auto-fit" | "bbox-module"
+  /** Keep-alive maps need a resize after they become visible again. */
+  active?: boolean
+  onAdapterChange?: (adapter: MapAdapter | null) => void
+  mountKey?: string | number
+  onMountError?: () => void
+  /** Background class for transparent adapter canvases, e.g. the globe sky. */
+  containerClassName?: string
 }
 
 /** Map markers are field-composed and never expose relation records as map items. */
-export function mapLensMarkers(items: readonly Item[], activeItemId?: string): MapMarkerSpec[] {
+export function mapLensMarkers(
+  items: readonly Item[],
+  activeItemId?: string,
+  resolveGroupColor?: (item: Item) => string | undefined,
+  highlightedItemIds: readonly string[] = [],
+): MapMarkerSpec[] {
   const markers: MapMarkerSpec[] = []
 
   for (const item of items) {
@@ -45,14 +67,21 @@ export function mapLensMarkers(items: readonly Item[], activeItemId?: string): M
       id: item.id,
       position: [lng, lat],
       label: typeof item.data.title === "string" ? item.data.title : item.id,
-      color: getItemColor(item, { groupColor: "#64748b" }),
+      color: getItemColor(item, { groupColor: resolveGroupColor?.(item) ?? getSpacePrimaryColor("map") }),
       icon: typeof item.data.icon === "string" ? item.data.icon : item.tags?.[0],
-      selected: item.id === activeItemId,
-      glowColor: "#64748b",
+      selected: item.id === activeItemId || highlightedItemIds.includes(item.id),
+      glowColor: resolveGroupColor?.(item),
     })
   }
 
   return markers
+}
+
+/** Marker-click lookup deliberately excludes relation records and display-only overlays. */
+export function mapLensClickableItemsById(items: readonly Item[], nonClickableItemIds: readonly string[] = []): Map<string, Item> {
+  return new Map(items
+    .filter(({ id, type }) => type !== "relation" && !nonClickableItemIds.includes(id))
+    .map((item) => [item.id, item]))
 }
 
 export function mapLensBounds(markers: readonly MapMarkerSpec[]): MapBounds | null {
@@ -229,6 +258,7 @@ interface MountMapLensAdapterOptions {
   initialView: MapMountOptions
   onMounted: (adapter: MapAdapter) => void
   onUnmounted: (adapter: MapAdapter) => void
+  onMountError?: () => void
 }
 
 /**
@@ -243,6 +273,7 @@ export function mountMapLensAdapter({
   initialView,
   onMounted,
   onUnmounted,
+  onMountError,
 }: MountMapLensAdapterOptions): () => void {
   const inner = createInnerContainer()
   outer.appendChild(inner)
@@ -260,7 +291,7 @@ export function mountMapLensAdapter({
       onMounted(adapter)
     },
     (error: unknown) => {
-      if (!cancelled) console.error("MapLens adapter mount failed", error)
+      if (!cancelled) { console.error("MapLens adapter mount failed", error); onMountError?.() }
     },
   )
 
@@ -287,16 +318,29 @@ export function MapLens({
   selectionFocusVisibleArea,
   viewportResetKey,
   onItemClick,
+  clustering = false,
+  resolveGroupColor,
+  highlightedItemIds,
+  nonClickableItemIds,
+  viewportMode = "lens-auto-fit",
+  active = true,
+  onAdapterChange,
+  mountKey,
+  onMountError,
+  containerClassName,
 }: MapLensProps) {
   const outerRef = useRef<HTMLDivElement>(null)
   const initialViewRef = useRef(initialView)
   const [adapter, setAdapter] = useState<MapAdapter | null>(null)
   const adapterOwnerRef = useRef<MapAdapter | null>(null)
   const viewportContextRef = useRef<MapLensViewportContext>(initialMapLensViewportContext())
-  const markers = useMemo(() => mapLensMarkers(items, activeItemId), [activeItemId, items])
+  const markers = useMemo(
+    () => mapLensMarkers(items, activeItemId, resolveGroupColor, highlightedItemIds),
+    [activeItemId, highlightedItemIds, items, resolveGroupColor],
+  )
   const itemsByMarkerId = useMemo(
-    () => new Map(items.filter(({ type }) => type !== "relation").map((item) => [item.id, item])),
-    [items],
+    () => mapLensClickableItemsById(items, nonClickableItemIds),
+    [items, nonClickableItemIds],
   )
 
   useEffect(() => {
@@ -323,13 +367,16 @@ export function MapLens({
         }
         adapterOwnerRef.current = candidate
         setAdapter(candidate)
+        onAdapterChange?.(candidate)
       },
       onUnmounted: (candidate) => {
         if (adapterOwnerRef.current === candidate) adapterOwnerRef.current = null
         setAdapter((current) => current === candidate ? null : current)
+        onAdapterChange?.(null)
       },
+      onMountError,
     })
-  }, [createAdapter])
+  }, [createAdapter, mountKey, onAdapterChange])
 
   useEffect(() => {
     const outer = outerRef.current
@@ -343,6 +390,15 @@ export function MapLens({
   }, [adapter, markers])
 
   useEffect(() => {
+    if (!adapter || !hasCluster(adapter)) return
+    adapter.setClusterConfig(clustering === false ? null : clustering)
+  }, [adapter, clustering])
+
+  useEffect(() => {
+    if (active) adapter?.resize?.()
+  }, [active, adapter])
+
+  useEffect(() => {
     if (!adapter || !onItemClick) return
     return adapter.observeMarkerClicks((markerId) => {
       const item = itemsByMarkerId.get(markerId)
@@ -352,6 +408,7 @@ export function MapLens({
 
   useEffect(() => {
     if (!adapter) return
+    if (viewportMode !== "lens-auto-fit") return
     try {
       viewportContextRef.current = updateMapLensViewportForResetKey(
         adapter,
@@ -364,11 +421,11 @@ export function MapLens({
     } catch {
       // Keep the gate armed: a later render may use an adapter that is ready.
     }
-  }, [activeItemId, adapter, markers, selectionFocusVisibleArea, viewportResetKey])
+  }, [activeItemId, adapter, markers, selectionFocusVisibleArea, viewportMode, viewportResetKey])
 
   return (
     <section aria-label="Kartenansicht" className="relative h-full min-h-80">
-      <div ref={outerRef} className="absolute inset-0" />
+      <div ref={outerRef} className={`absolute inset-0 isolate ${containerClassName ?? ""}`} />
     </section>
   )
 }
