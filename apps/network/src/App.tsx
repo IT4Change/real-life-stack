@@ -49,6 +49,9 @@ import {
   ActivityBell,
   ActivityPanel,
   useActivity,
+  NotificationBell,
+  NotificationCenter,
+  useNotifications,
   type GraphEdge,
   type GraphNode,
   type GraphTypeDescriptor,
@@ -413,7 +416,7 @@ function DetailPanelController({
   return null
 }
 
-function NetworkActivityPanelController({ open, onClose, selectItem }: { open: boolean; onClose: () => void; selectItem: (id: string) => void }) {
+function NetworkActivityPanelController({ open, onClose, selectItem, onOpenNotification, onOpenGroup }: { open: boolean; onClose: () => void; selectItem: (id: string) => void; onOpenNotification: (notification: import("@real-life-stack/toolkit").NotificationCandidate) => void; onOpenGroup: (groupId: string) => void }) {
   const panel = useModulePanel()
   const ownedActivityPanel = useRef(false)
   const wasOpen = useRef(open)
@@ -439,9 +442,16 @@ function NetworkActivityPanelController({ open, onClose, selectItem }: { open: b
       return
     }
     ownedActivityPanel.current = true
-    panel.open({ kind: "custom", itemId: "__activity__", content: <NetworkActivityPanelContent onOpenTarget={openTarget} />, onClose })
+    panel.open({ kind: "custom", itemId: "__activity__", content: <NetworkNotificationCenterContent onOpenNotification={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={() => panel.open({ kind: "custom", itemId: "__activity__", content: <NetworkActivityPanelContent onOpenTarget={openTarget} />, onClose })} onOpenTarget={openTarget} />, onClose })
   }, [onClose, open, openTarget, panel.close, panel.current?.itemId, panel.open])
   return null
+}
+
+function NetworkNotificationCenterContent({ onOpenNotification, onOpenGroup, onOpenActivity, onOpenTarget }: { onOpenNotification: (notification: import("@real-life-stack/toolkit").NotificationCandidate) => void; onOpenGroup: (groupId: string) => void; onOpenActivity: () => void; onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {
+  const notifications = useNotifications()
+  useEffect(() => { if (notifications.stateSupported && notifications.maxTs) void notifications.update?.({ op: "markSeen", ts: notifications.maxTs }) }, [notifications.maxTs, notifications.stateSupported, notifications.update])
+  if (!notifications.supported) return <NetworkActivityPanelContent onOpenTarget={onOpenTarget} />
+  return <NotificationCenter notifications={notifications.notifications} onOpenSubject={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={onOpenActivity} onMarkRead={(keys) => void notifications.update?.({ op: "markRead", keys })} onMarkAllRead={() => notifications.maxTs && void notifications.update?.({ op: "markAllReadUpTo", ts: notifications.maxTs })} onMuteGroup={(groupId, muted) => void notifications.update?.(muted ? { op: "mute", groupId } : { op: "unmute", groupId })} />
 }
 
 /** Meta-item types the shell has no detail projection for (log stays visible, not clickable). */
@@ -505,6 +515,7 @@ function NetworkShell() {
   const [activityOpen, setActivityOpen] = useState(false)
   const closeActivity = useCallback(() => setActivityOpen(false), [])
   const activity = useActivity()
+  const notifications = useNotifications()
   const [detailDrawerHeight, setDetailDrawerHeight] = useState(0)
   const currentUser = useOptionalCurrentUser(connector)
 
@@ -615,6 +626,16 @@ function NetworkShell() {
     if (!itemById.has(itemId)) return
     handleSelectedNodeChange(itemId)
   }, [handleSelectedNodeChange, itemById])
+  const openNotification = useCallback((notification: import("@real-life-stack/toolkit").NotificationCandidate) => {
+    if (hasGroups(connector)) connector.setCurrentGroup(notification.groupId)
+    // Cross-space target selection intentionally bypasses the old-space item map.
+    handleSelectedNodeChange(notification.subjectId)
+    if (notification.moduleHints?.hasPosition) setActiveLens("map")
+    else if (notification.moduleHints?.hasStart) setActiveLens("calendar")
+    else if (notification.moduleHints?.hasStatus) setActiveLens("kanban")
+    else setActiveLens("list")
+    closeActivity()
+  }, [closeActivity, connector, handleSelectedNodeChange])
   const closeDetail = useCallback(() => setSelectedNodeId(null), [])
 
   const handleWorkspaceChange = useCallback((workspace: Workspace) => {
@@ -648,7 +669,7 @@ function NetworkShell() {
         sidebarMaxWidth="70vw"
         onDrawerHeightChange={setDetailDrawerHeight}
       >
-        <NetworkActivityPanelController open={activityOpen} onClose={closeActivity} selectItem={selectNode} />
+        <NetworkActivityPanelController open={activityOpen} onClose={closeActivity} selectItem={selectNode} onOpenNotification={openNotification} onOpenGroup={(groupId) => { if (hasGroups(connector)) connector.setCurrentGroup(groupId); handleSelectedNodeChange(null); closeActivity() }} />
         <DetailPanelController
           item={selectedItem}
           connections={selectedConnections}
@@ -684,7 +705,7 @@ function NetworkShell() {
               </div>
             </NavbarCenter>
             <NavbarEnd>
-              {activity.supported && <ActivityBell open={activityOpen} onOpenChange={toggleActivity} />}
+              {notifications.supported ? <NotificationBell open={activityOpen} count={notifications.badgeCount} onOpenChange={toggleActivity} /> : activity.supported && <ActivityBell open={activityOpen} onOpenChange={toggleActivity} />}
               <IconTooltip label={isDark ? "Helles Design" : "Dunkles Design"}>
                 <Button
                   type="button"

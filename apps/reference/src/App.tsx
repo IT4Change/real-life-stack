@@ -53,6 +53,9 @@ import {
   ActivityBell,
   ActivityPanel,
   useActivity,
+  NotificationBell,
+  NotificationCenter,
+  useNotifications,
   useItems,
   type Workspace,
   type UserData,
@@ -65,7 +68,7 @@ import { demoItems, demoGroups, demoUsers, demoGroupMembers, demoGroupItems } fr
 import { MockConnector } from "@real-life-stack/mock-connector"
 import { LocalConnector } from "@real-life-stack/local-connector"
 import { ModuleOutlet } from "./views/module-outlet"
-import { useWorkspaceRouting, STORAGE_KEY_GROUP } from "./hooks/use-workspace-routing"
+import { useWorkspaceRouting, STORAGE_KEY_GROUP, resolveDefaultModule } from "./hooks/use-workspace-routing"
 import { ItemFocusProvider } from "./hooks/use-item-focus"
 import { LocationPickProvider, useLocationPick } from "./location-pick"
 import { CreateHostProvider, CreateSheetController } from "./create-host"
@@ -102,7 +105,7 @@ function ModulePanelHost({ children, onDrawerHeightChange }: { children: ReactNo
 const UNPROJECTABLE_TARGET_TYPES = new Set(["relation", "comment"])
 
 /** Activity deliberately shares the module panel instead of adding a second shell overlay. */
-function ActivityPanelController({ open, onClose }: { open: boolean; onClose: () => void }) {
+function ActivityPanelController({ open, onClose, onOpenNotification, onOpenGroup }: { open: boolean; onClose: () => void; onOpenNotification: (notification: import("@real-life-stack/toolkit").NotificationCandidate) => void; onOpenGroup: (groupId: string) => void }) {
   const panel = useModulePanel()
   const { focusItem, clearFocus } = useItemFocus()
   const ownedActivityPanel = useRef(false)
@@ -139,11 +142,18 @@ function ActivityPanelController({ open, onClose }: { open: boolean; onClose: ()
     panel.open({
       kind: "custom",
       itemId: "__activity__",
-      content: <ReferenceActivityPanelContent onOpenTarget={openTarget} />,
+      content: <ReferenceNotificationCenterContent onOpenTarget={openTarget} onOpenNotification={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={() => panel.open({ kind: "custom", itemId: "__activity__", content: <ReferenceActivityPanelContent onOpenTarget={openTarget} />, onClose })} />,
       onClose,
     })
   }, [clearFocus, onClose, open, openTarget, panel.close, panel.current?.itemId, panel.open])
   return null
+}
+
+function ReferenceNotificationCenterContent({ onOpenTarget, onOpenNotification, onOpenGroup, onOpenActivity }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void; onOpenNotification: (notification: import("@real-life-stack/toolkit").NotificationCandidate) => void; onOpenGroup: (groupId: string) => void; onOpenActivity: () => void }) {
+  const notifications = useNotifications()
+  useEffect(() => { if (notifications.stateSupported && notifications.maxTs) void notifications.update?.({ op: "markSeen", ts: notifications.maxTs }) }, [notifications.maxTs, notifications.stateSupported, notifications.update])
+  if (!notifications.supported) return <ReferenceActivityPanelContent onOpenTarget={onOpenTarget} />
+  return <NotificationCenter notifications={notifications.notifications} onOpenSubject={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={onOpenActivity} onMarkRead={(keys) => void notifications.update?.({ op: "markRead", keys })} onMarkAllRead={() => notifications.maxTs && void notifications.update?.({ op: "markAllReadUpTo", ts: notifications.maxTs })} onMuteGroup={(groupId, muted) => void notifications.update?.(muted ? { op: "mute", groupId } : { op: "unmute", groupId })} />
 }
 
 function ReferenceActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {
@@ -500,6 +510,13 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   const [activityOpen, setActivityOpen] = useState(false)
   const closeActivity = useCallback(() => setActivityOpen(false), [])
   const activity = useActivity()
+  const notifications = useNotifications()
+  const openNotification = useCallback((notification: import("@real-life-stack/toolkit").NotificationCandidate) => {
+    const group = groups.find(({ id }) => id === notification.groupId)
+    const available = Array.isArray(group?.data?.modules) ? group.data.modules as string[] : ["feed"]
+    navigate(`/${notification.groupId}/${resolveDefaultModule(notification.moduleHints ?? { hasPosition: false, hasStart: false, hasStatus: false }, available)}/${notification.subjectId}`)
+    closeActivity()
+  }, [closeActivity, groups, navigate])
   const supportsMessaging = hasMessaging(connector)
 
   const toggleTheme = () => {
@@ -515,7 +532,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
     <CreateHostProvider>
     <ModulePanelHost onDrawerHeightChange={setDrawerHeight}>
-    <ActivityPanelController open={activityOpen} onClose={closeActivity} />
+    <ActivityPanelController open={activityOpen} onClose={closeActivity} onOpenNotification={openNotification} onOpenGroup={(groupId) => { const group = workspaces.find((workspace) => workspace.id === groupId); if (group) handleWorkspaceChange(group); closeActivity() }} />
     <CreateSheetController />
     <DetailHostController activeModule={activeModule} />
     <UnsavedChangesGuard />
@@ -552,7 +569,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         </NavbarCenter>
         <NavbarEnd>
           {supportsMessaging && <RelayStatusBadgeWrapper />}
-          {activity.supported && <ActivityBell open={activityOpen} onOpenChange={setActivityOpen} />}
+          {notifications.supported ? <NotificationBell open={activityOpen} count={notifications.badgeCount} onOpenChange={setActivityOpen} /> : activity.supported && <ActivityBell open={activityOpen} onOpenChange={setActivityOpen} />}
           <Button
             variant="ghost"
             size="icon"
