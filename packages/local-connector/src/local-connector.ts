@@ -236,6 +236,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
       this.currentGroup = null
       this.currentGroupObs.set(null)
       this.notifyObservers()
+      this.notifyActivityObservers()
       return
     }
     if (this.currentGroup?.id === id) return
@@ -244,6 +245,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
       this.currentGroup = group
       this.currentGroupObs.set(group)
       this.notifyObservers()
+      this.notifyActivityObservers()
     }
   }
 
@@ -345,7 +347,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
   }
 
   async getItem(id: string): Promise<Item | null> {
-    return this.items.find((item) => item.id === id) ?? null
+    return this.getScopedItems().find((item) => item.id === id) ?? null
   }
 
   observe(filter: ItemFilter): Observable<Item[]> {
@@ -360,7 +362,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
 
   observeItem(id: string): Observable<Item | null> {
     if (!this.singleItemObservables.has(id)) {
-      const item = this.items.find((i) => i.id === id) ?? null
+      const item = this.getScopedItems().find((i) => i.id === id) ?? null
       this.singleItemObservables.set(id, createObservable(item))
     }
     return this.singleItemObservables.get(id)!
@@ -438,7 +440,8 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
       result = { ...current.items[idx], ...updates, id }
       const items = [...current.items]
       items[idx] = result
-      committedState = { ...current, items, activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(this.currentGroup?.id ?? null), "update", result, actor) }
+      const ownerScope = Object.entries(current.groupItems).find(([, ids]) => ids.includes(id))?.[0] ?? null
+      committedState = { ...current, items, activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(ownerScope), "update", result, actor) }
       return committedState
     }, this.store)
 
@@ -466,7 +469,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
         ...current,
         items: current.items.filter((candidate) => candidate.id !== id),
         groupItems,
-        activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(this.currentGroup?.id ?? null), "delete", item, actor),
+        activityByScope: appendActivity(current.activityByScope ?? {}, this.activityScope(Object.entries(current.groupItems).find(([, ids]) => ids.includes(id))?.[0] ?? null), "delete", item, actor),
       }
       return committedState
     }, this.store)
@@ -524,7 +527,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
   }
 
   observeActivity(options?: { limit?: number }): Observable<ActivityEntry[]> {
-    const key = `${this.currentGroup?.id ?? "__overview__"}:${options?.limit ?? ""}`
+    const key = `${options?.limit ?? ""}`
     let observable = this.activityObservables.get(key)
     if (!observable) {
       observable = createObservable(this.readActivity(options?.limit))
@@ -769,12 +772,8 @@ export class LocalConnector implements FullConnector, ActivityLogCapable {
   }
 
   private notifyActivityObservers(): void {
-    for (const [key, observable] of this.activityObservables) {
-      const [scope, rawLimit] = key.split(":")
-      const previous = this.currentGroup
-      this.currentGroup = scope === "__overview__" ? null : this.groups.find((group) => group.id === scope) ?? null
+    for (const [rawLimit, observable] of this.activityObservables) {
       observable.set(this.readActivity(rawLimit === "" ? undefined : Number(rawLimit)))
-      this.currentGroup = previous
     }
   }
 }

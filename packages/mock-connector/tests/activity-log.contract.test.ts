@@ -26,11 +26,17 @@ describe("Activity-Log contract", () => {
     expect((await activity(connector)).map((entry) => entry.action)).toEqual(["create"])
   })
 
-  it("2. retains at most 500 entries and removes the deterministic oldest key", async () => {
+  it("2. retains at most 500 entries, removes the deterministic oldest key, and pruning is log-free", async () => {
     const connector = new MockConnector(seed)
     await connector.init()
+    const ids = Array.from({ length: 501 }, (_, i) => `entry-${String(i).padStart(3, "0")}`)
+    const uuid = vi.spyOn(crypto, "randomUUID").mockImplementation(() => ids.shift()!)
     for (let i = 0; i < 501; i++) await connector.createItem({ id: `item-${i}`, type: "task", createdBy: "x", data: {} })
-    expect((await activity(connector)).length).toBe(500)
+    uuid.mockRestore()
+    const entries = await activity(connector)
+    expect(entries).toHaveLength(500)
+    expect(entries.map((entry) => entry.id)).not.toContain("entry-000")
+    expect(entries.map((entry) => entry.action)).toEqual(Array(500).fill("create"))
   })
 
   it("3. derives actor exclusively from the authenticated connector identity", async () => {
@@ -43,9 +49,15 @@ describe("Activity-Log contract", () => {
   it("4. returns entries in descending (ts, actor, id) order with canonical ISO timestamps", async () => {
     const connector = new MockConnector(seed)
     await connector.init()
-    await connector.createItem({ id: "one", type: "task", createdBy: "x", data: {} })
-    const [entry] = await activity(connector)
-    expect(entry?.ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    const store = connector as unknown as { activityByScope: Map<string, Map<string, ActivityEntry>> }
+    store.activityByScope.set("__personal__", new Map([
+      ["a", { id: "a", ts: "2026-01-01T00:00:00.000Z", actor: "alice", action: "create", targetId: "a", targetType: "task" }],
+      ["z", { id: "z", ts: "2026-01-01T00:00:00.000Z", actor: "alice", action: "create", targetId: "z", targetType: "task" }],
+      ["b", { id: "b", ts: "2026-01-01T00:00:00.000Z", actor: "zoe", action: "create", targetId: "b", targetType: "task" }],
+      ["new", { id: "new", ts: "2026-01-02T00:00:00.000Z", actor: "alice", action: "create", targetId: "new", targetType: "task" }],
+    ]))
+    expect((await activity(connector)).map((entry) => entry.id)).toEqual(["new", "b", "z", "a"])
+    expect((await activity(connector))[0]?.ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
   })
 
   it("5. exposes the capability only on supporting connectors", () => {
@@ -60,13 +72,16 @@ describe("Activity-Log contract", () => {
     expect((await activity(connector)).some((entry) => entry.action === "update")).toBe(true)
   })
 
-  it("7. relation CRUD delegates once and logs exactly one relation entry", async () => {
+  it("7. relation CRUD delegates once and logs exactly one relation entry per CRUD operation", async () => {
     const connector = new MockConnector(seed)
     await connector.init()
-    await connector.createRelationRecord({ predicate: "knows", from: "item:a", to: "item:b" })
+    const relation = await connector.createRelationRecord({ predicate: "knows", from: "item:a", to: "item:b" })
+    await connector.updateRelationRecord(relation.id, { fields: { note: "updated" } })
+    await connector.deleteRelationRecord(relation.id)
     const entries = await activity(connector)
-    expect(entries).toHaveLength(1)
-    expect(entries[0]?.targetType).toBe("relation")
+    expect(entries).toHaveLength(3)
+    expect(entries.map((entry) => entry.action).sort()).toEqual(["create", "delete", "update"])
+    expect(entries.every((entry) => entry.targetType === "relation")).toBe(true)
   })
 
   it("8. moves create exactly delete/source and create/target entries", async () => {
@@ -165,7 +180,4 @@ describe("Activity-Log contract", () => {
     expect((await activity(connector)).find((entry) => entry.action === "delete")).toMatchObject({ action: "delete", targetType: "task", summary: "Last title" })
   })
 
-  it("17. keeps legacy documents without activity compatible", () => {
-    expect(true).toBe(true)
-  })
 })

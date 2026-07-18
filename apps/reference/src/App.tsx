@@ -51,6 +51,7 @@ import {
   ActivityBell,
   ActivityPanel,
   useActivity,
+  useItems,
   type Workspace,
   type UserData,
   type ConnectorOption,
@@ -96,22 +97,35 @@ function ModulePanelHost({ children, onDrawerHeightChange }: { children: ReactNo
 }
 
 /** Activity deliberately shares the module panel instead of adding a second shell overlay. */
-function ActivityPanelController({ open, onClose, entries }: { open: boolean; onClose: () => void; entries: readonly import("@real-life-stack/data-interface").ActivityEntry[] }) {
+function ActivityPanelController({ open, onClose }: { open: boolean; onClose: () => void }) {
   const panel = useModulePanel()
   const { focusItem } = useItemFocus()
+  const openTarget = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
+    focusItem(entry.targetId)
+    onClose()
+  }, [focusItem, onClose])
   useEffect(() => {
     if (!open) {
       if (panel.current?.itemId === "__activity__") panel.close({ silent: true })
       return
     }
+    if (panel.current?.itemId === "__activity__") return
     panel.open({
       kind: "custom",
       itemId: "__activity__",
-      content: <ActivityPanel entries={entries} isTargetOpenable={(entry) => entry.targetType !== "relation" && entry.action !== "delete"} onOpenTarget={(entry) => { focusItem(entry.targetId); onClose() }} />,
+      content: <ReferenceActivityPanelContent onOpenTarget={openTarget} />,
       onClose,
     })
-  }, [entries, focusItem, onClose, open, panel])
+  }, [onClose, open, openTarget, panel.close, panel.current?.itemId, panel.open])
   return null
+}
+
+function ReferenceActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {
+  const { data: entries } = useActivity()
+  const { data: items } = useItems()
+  const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items])
+  const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => entry.targetType !== "relation" && entry.action !== "delete" && itemIds.has(entry.targetId), [itemIds])
+  return <ActivityPanel entries={entries} isTargetOpenable={isTargetOpenable} onOpenTarget={onOpenTarget} />
 }
 
 const CONNECTOR_OPTIONS: ConnectorOption[] = [
@@ -435,6 +449,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   const [isDark, setIsDark] = useState(false)
   const [drawerHeight, setDrawerHeight] = useState(0)
   const [activityOpen, setActivityOpen] = useState(false)
+  const closeActivity = useCallback(() => setActivityOpen(false), [])
   const activity = useActivity()
   const supportsMessaging = hasMessaging(connector)
 
@@ -451,7 +466,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
     <CreateHostProvider>
     <ModulePanelHost onDrawerHeightChange={setDrawerHeight}>
-    <ActivityPanelController open={activityOpen} onClose={() => setActivityOpen(false)} entries={activity.data} />
+    <ActivityPanelController open={activityOpen} onClose={closeActivity} />
     <CreateSheetController />
     <DetailHostController activeModule={activeModule} />
     <UnsavedChangesGuard />

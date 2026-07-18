@@ -39,7 +39,8 @@ function connector(current: ReturnType<typeof handle>, handles = new Map<string,
   value.currentHandle = current
   value.currentGroupId = "source"
   value.currentUserObs = createObservable({ id: "did:key:alice", displayName: "Alice" })
-  value.activityObs = createObservable([])
+  value.activityObservables = new Map()
+  value.activityDirty = false
   value.activityReconciliations = new Map()
   value.crossGroupIndex = null
   value.notifyAllObservers = vi.fn()
@@ -56,9 +57,9 @@ describe("Activity log — WoT transaction boundaries", () => {
     await c.createItem({ id: "one", type: "task", createdBy: "forged", data: { title: "One" } })
     await c.updateItem("one", { data: { title: "Two" } })
     await c.deleteItem("one")
-    for (const snapshot of source.snapshots) {
-      expect(Object.keys(snapshot.activity ?? {})).not.toHaveLength(0)
-    }
+    expect(Object.values(source.snapshots[0]!.activity ?? {})).toContainEqual(expect.objectContaining({ action: "create", targetId: "one" }))
+    expect(Object.values(source.snapshots[1]!.activity ?? {})).toContainEqual(expect.objectContaining({ action: "update", targetId: "one" }))
+    expect(Object.values(source.snapshots[2]!.activity ?? {})).toContainEqual(expect.objectContaining({ action: "delete", targetId: "one" }))
     expect(source.transact).toHaveBeenCalledTimes(3)
 
     await c.createItem({ id: "move", type: "task", createdBy: "x", data: {} })
@@ -66,9 +67,9 @@ describe("Activity log — WoT transaction boundaries", () => {
     expect(target.snapshots).toHaveLength(1)
     expect(source.snapshots).toHaveLength(5)
     expect(target.snapshots[0]!.items.move).toBeDefined()
-    expect(Object.values(target.snapshots[0]!.activity ?? {}).some(entry => entry.action === "create")).toBe(true)
+    expect(Object.values(target.snapshots[0]!.activity ?? {})).toContainEqual(expect.objectContaining({ action: "create", targetId: "move" }))
     expect(source.snapshots[4]!.items.move).toBeUndefined()
-    expect(Object.values(source.snapshots[4]!.activity ?? {}).some(entry => entry.action === "delete")).toBe(true)
+    expect(Object.values(source.snapshots[4]!.activity ?? {})).toContainEqual(expect.objectContaining({ action: "delete", targetId: "move" }))
   })
 
   it("5 and 12. preserves activity through a legacy writer and accepts old docs until first logged mutation", async () => {

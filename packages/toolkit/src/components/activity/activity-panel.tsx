@@ -12,14 +12,15 @@ export interface ActivityPanelProps {
 export function ActivityPanel({ entries, onOpenTarget, isTargetOpenable }: ActivityPanelProps) {
   const visible = entries.filter((entry) => entry.action === "create" || entry.action === "update" || entry.action === "delete")
   if (visible.length === 0) {
-    return <EmptyState icon={History} title="Noch keine Änderungen" description="Für alle Mitglieder sichtbare Verlaufsansicht." />
+    return <section id="activity-panel" aria-label="Verlauf"><EmptyState icon={History} title="Noch keine Änderungen" description="Für alle Mitglieder sichtbare Verlaufsansicht." /></section>
   }
   return (
-    <section aria-label="Verlauf" className="space-y-1 p-4">
+    <section id="activity-panel" aria-label="Verlauf" className="space-y-1 p-4">
       <p className="mb-3 text-sm text-muted-foreground">Für alle Mitglieder sichtbare Verlaufsansicht.</p>
       {visible.map((entry) => {
         const openable = Boolean(onOpenTarget && isTargetOpenable?.(entry))
-        const content = <><span className="font-medium">{entry.action}</span>{" · "}{entry.targetType}{entry.summary ? ` · ${entry.summary}` : ""}<span className="ml-2 text-muted-foreground">{entry.actor} · <RelativeTime date={entry.ts} /></span></>
+        const actionLabel = entry.action === "create" ? "erstellt" : entry.action === "update" ? "geändert" : "gelöscht"
+        const content = <><span className="font-medium">{actionLabel}</span>{" · "}{entry.targetType}{entry.summary ? ` · ${entry.summary}` : ""}<span className="ml-2 text-muted-foreground">{entry.actor} · <RelativeTime date={entry.ts} /></span></>
         return openable ? <button key={entry.id} type="button" className="block w-full rounded-md p-2 text-left text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50" onClick={() => onOpenTarget?.(entry)}>{content}</button> : <div key={entry.id} className="rounded-md p-2 text-sm">{content}</div>
       })}
     </section>

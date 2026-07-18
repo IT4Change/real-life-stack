@@ -177,6 +177,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
       this.currentGroup = null
       this.currentGroupObs.set(null)
       this.notifyObservers()
+      this.notifyActivityObservers()
       return
     }
     if (this.currentGroup?.id === id) return
@@ -185,6 +186,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
       this.currentGroup = group
       this.currentGroupObs.set(group)
       this.notifyObservers()
+      this.notifyActivityObservers()
     }
   }
 
@@ -341,7 +343,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
     if (location.item.type !== "feature" && updated.type === "feature") {
       this.assertNoItemOutsideScope(location.scopeId, id)
     }
-    this.appendActivity(this.activityScopeFor(this.currentGroup?.id ?? null), "update", updated)
+    this.appendActivity(this.activityScopeFor(location.scopeId), "update", updated)
     if (updated.type === "feature" && location.scopeId !== null) {
       const globalItems = this.getScopeItems(null, true)
       location.items.delete(id)
@@ -363,7 +365,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
     this.requireCurrentUser()
     const location = this.findVisibleItemLocation(id)
     if (!location) return
-    this.appendActivity(this.activityScopeFor(this.currentGroup?.id ?? null), "delete", location.item)
+    this.appendActivity(this.activityScopeFor(location.scopeId), "delete", location.item)
     location.items.delete(id)
     this.removeItemOrder(location.scopeId, id)
     if (location.scopeId === null) {
@@ -447,7 +449,7 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
   }
 
   observeActivity(options?: { limit?: number }): Observable<ActivityEntry[]> {
-    const key = `${this.currentGroup?.id ?? "__overview__"}:${options?.limit ?? ""}`
+    const key = `${options?.limit ?? ""}`
     let observable = this.activityObservables.get(key)
     if (!observable) {
       observable = createObservable(this.readActivity(options?.limit))
@@ -492,12 +494,8 @@ export class MockConnector implements FullConnector, ActivityLogCapable, Relatio
   }
 
   private notifyActivityObservers(): void {
-    for (const [key, observable] of this.activityObservables) {
-      const [scope, rawLimit] = key.split(":")
-      const previous = this.currentGroup
-      this.currentGroup = scope === "__overview__" ? null : this.groups.find((group) => group.id === scope) ?? null
+    for (const [rawLimit, observable] of this.activityObservables) {
       observable.set(this.readActivity(rawLimit === "" ? undefined : Number(rawLimit)))
-      this.currentGroup = previous
     }
   }
 

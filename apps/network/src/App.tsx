@@ -404,16 +404,29 @@ function DetailPanelController({
   return null
 }
 
-function NetworkActivityPanelController({ open, onClose, entries, selectItem }: { open: boolean; onClose: () => void; entries: readonly import("@real-life-stack/data-interface").ActivityEntry[]; selectItem: (id: string) => void }) {
+function NetworkActivityPanelController({ open, onClose, selectItem }: { open: boolean; onClose: () => void; selectItem: (id: string) => void }) {
   const panel = useModulePanel()
+  const openTarget = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
+    selectItem(entry.targetId)
+    onClose()
+  }, [onClose, selectItem])
   useEffect(() => {
     if (!open) {
       if (panel.current?.itemId === "__activity__") panel.close({ silent: true })
       return
     }
-    panel.open({ kind: "custom", itemId: "__activity__", content: <ActivityPanel entries={entries} isTargetOpenable={(entry) => entry.targetType !== "relation" && entry.action !== "delete"} onOpenTarget={(entry) => { selectItem(entry.targetId); onClose() }} />, onClose })
-  }, [entries, onClose, open, panel, selectItem])
+    if (panel.current?.itemId === "__activity__") return
+    panel.open({ kind: "custom", itemId: "__activity__", content: <NetworkActivityPanelContent onOpenTarget={openTarget} />, onClose })
+  }, [onClose, open, openTarget, panel.close, panel.current?.itemId, panel.open])
   return null
+}
+
+function NetworkActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {
+  const { data: entries } = useActivity()
+  const { data: items } = useItems()
+  const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items])
+  const isTargetOpenable = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => entry.targetType !== "relation" && entry.action !== "delete" && itemIds.has(entry.targetId), [itemIds])
+  return <ActivityPanel entries={entries} isTargetOpenable={isTargetOpenable} onOpenTarget={onOpenTarget} />
 }
 
 function NetworkShell() {
@@ -440,6 +453,7 @@ function NetworkShell() {
   const [isDark, setIsDark] = useState(initialDarkMode)
   const [profileOpen, setProfileOpen] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
+  const closeActivity = useCallback(() => setActivityOpen(false), [])
   const activity = useActivity()
   const [detailDrawerHeight, setDetailDrawerHeight] = useState(0)
   const currentUser = useOptionalCurrentUser(connector)
@@ -577,7 +591,7 @@ function NetworkShell() {
         sidebarMaxWidth="70vw"
         onDrawerHeightChange={setDetailDrawerHeight}
       >
-        <NetworkActivityPanelController open={activityOpen} onClose={() => setActivityOpen(false)} entries={activity.data} selectItem={selectNode} />
+        <NetworkActivityPanelController open={activityOpen} onClose={closeActivity} selectItem={selectNode} />
         <DetailPanelController
           item={selectedItem}
           connections={selectedConnections}

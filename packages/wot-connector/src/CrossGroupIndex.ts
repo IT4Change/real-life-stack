@@ -235,12 +235,14 @@ export class CrossGroupIndex<TDoc, TItem> {
     this.pendingGroups.add(groupId)
     try {
       const handle = await this.replication.openSpace<TDoc>(groupId)
-      this.pendingGroups.delete(groupId)
 
-      if (!this.started) {
+      // A watchSpaces update may have removed this group while openSpace was
+      // pending. Never resurrect access or hooks for that stale request.
+      if (!this.started || this.handles.has(groupId) || !this.pendingGroups.has(groupId)) {
         handle.close()
         return
       }
+      this.pendingGroups.delete(groupId)
 
       this.handles.set(groupId, handle)
       const hookUnsub = this.onHandle?.(groupId, handle)
