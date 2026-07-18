@@ -577,6 +577,13 @@ function NetworkShell() {
   const handleSelectedNodeChange = useCallback((nodeId: string | null) => {
     setSelectedNodeId(nodeId)
   }, [])
+  // Opening the history DROPS the selection (create-host precedent): the shared
+  // panel shows one thing, and only a selection CHANGE hands it back to the
+  // detail — a kept selection would make re-clicking the same item a no-op.
+  const toggleActivity = useCallback((next: boolean) => {
+    if (next) handleSelectedNodeChange(null)
+    setActivityOpen(next)
+  }, [handleSelectedNodeChange])
 
   const selectNode = useCallback((nodeId: string) => {
     const node = nodeById.get(nodeId)
@@ -658,7 +665,7 @@ function NetworkShell() {
               </div>
             </NavbarCenter>
             <NavbarEnd>
-              {activity.supported && <ActivityBell open={activityOpen} onOpenChange={setActivityOpen} />}
+              {activity.supported && <ActivityBell open={activityOpen} onOpenChange={toggleActivity} />}
               <IconTooltip label={isDark ? "Helles Design" : "Dunkles Design"}>
                 <Button
                   type="button"

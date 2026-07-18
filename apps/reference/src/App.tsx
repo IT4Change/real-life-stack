@@ -101,7 +101,7 @@ function ModulePanelHost({ children, onDrawerHeightChange }: { children: ReactNo
 /** Activity deliberately shares the module panel instead of adding a second shell overlay. */
 function ActivityPanelController({ open, onClose }: { open: boolean; onClose: () => void }) {
   const panel = useModulePanel()
-  const { focusItem } = useItemFocus()
+  const { focusItem, clearFocus } = useItemFocus()
   const ownedActivityPanel = useRef(false)
   const wasOpen = useRef(open)
   const openTarget = useCallback((entry: import("@real-life-stack/data-interface").ActivityEntry) => {
@@ -128,13 +128,18 @@ function ActivityPanelController({ open, onClose }: { open: boolean; onClose: ()
       return
     }
     ownedActivityPanel.current = true
+    // Like starting a create, opening the history DROPS the item focus: the
+    // shared panel shows exactly one thing, and only a focus CHANGE hands it
+    // back to the detail host. Keeping a stale focus would make clicking the
+    // same item a no-op (no focus change → no detail reopen).
+    clearFocus()
     panel.open({
       kind: "custom",
       itemId: "__activity__",
       content: <ReferenceActivityPanelContent onOpenTarget={openTarget} />,
       onClose,
     })
-  }, [onClose, open, openTarget, panel.close, panel.current?.itemId, panel.open])
+  }, [clearFocus, onClose, open, openTarget, panel.close, panel.current?.itemId, panel.open])
   return null
 }
 
