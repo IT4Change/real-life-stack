@@ -1,6 +1,7 @@
-import { useMemo } from "react"
+import { useCallback, useMemo } from "react"
 import {
   CollectionView as ToolkitCollectionView,
+  CreateFab,
   ItemMetaRow,
   ItemPreview,
   ItemTypeBadge,
@@ -15,6 +16,7 @@ import {
 import type { User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
+import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 
 /** Thin app boundary: collection data, URL focus, and the shared detail host. */
@@ -49,11 +51,29 @@ export function CollectionView({
   }), [currentUser, editConfig, members, resolveGroupColor])
   useRegisterDetail("collection", detailConfig)
 
-  return <ToolkitCollectionView
-    className="h-full"
-    items={items}
-    activeItemId={modulePanel.current?.itemId ?? focusedId}
-    selectionFocusVisibleArea={selectionFocusVisibleArea}
-    onItemClick={(item) => focusItem(item.id)}
-  />
+  // The collection shows every item, so create offers the full type registry
+  // (the edit half already computes it) — the composer's type picker chooses.
+  const { startCreate } = useCreate()
+  const createConfig = useMemo<CreateConfig>(
+    () => ({
+      contentTypes: editConfig.contentTypes,
+      mapper: editConfig.mapper,
+      composerProps: editConfig.composerProps,
+      shell: "sheet",
+    }),
+    [editConfig],
+  )
+  useRegisterCreate("collection", createConfig)
+  const handleCreateItem = useCallback(() => startCreate(), [startCreate])
+
+  return <>
+    <ToolkitCollectionView
+      className="h-full"
+      items={items}
+      activeItemId={modulePanel.current?.itemId ?? focusedId}
+      selectionFocusVisibleArea={selectionFocusVisibleArea}
+      onItemClick={(item) => focusItem(item.id)}
+    />
+    <CreateFab onClick={handleCreateItem} label="Eintrag erstellen" />
+  </>
 }
