@@ -108,17 +108,16 @@ function sectionFor(ts: string, now: Date): string {
   return "Früher"
 }
 
-/** Sentence with the mockup's bold-name grammar. */
-function sentenceParts(notification: NotificationCandidate, personal: boolean): { lead: string; rest: string } {
+/** Sentence with the mockup's bold-name grammar — always the title form
+ * (Antons Entscheid 19.07.: „Titel" schlägt „dein Event", in BEIDEN Tabs). */
+function sentenceParts(notification: NotificationCandidate): { lead: string; rest: string } {
   const name = notification.actor?.displayName ?? notification.actorId
   const lead = notification.actorCount > 1 ? `${name} und ${notification.actorCount - 1} weitere` : name
   const plural = notification.actorCount > 1
-  const word = subjectWord(notification.subjectType)
-  const owner = personal ? `deinen ${word}` : `„${notification.subjectTitle ?? word}"`
-  if (notification.semanticAction === "reacted") return { lead, rest: `${plural ? "haben" : "hat"} auf ${owner} reagiert` }
-  if (notification.semanticAction === "commented") return { lead, rest: `${plural ? "haben" : "hat"} ${owner} kommentiert` }
-  const verb = presentation[notification.semanticAction].verb
-  return { lead, rest: `${plural ? "haben" : "hat"} „${notification.subjectTitle ?? word}" ${verb}` }
+  const subject = `„${notification.subjectTitle ?? subjectWord(notification.subjectType)}"`
+  if (notification.semanticAction === "reacted") return { lead, rest: `${plural ? "haben" : "hat"} auf ${subject} reagiert` }
+  if (notification.semanticAction === "commented") return { lead, rest: `${plural ? "haben" : "hat"} ${subject} kommentiert` }
+  return { lead, rest: `${plural ? "haben" : "hat"} ${subject} ${presentation[notification.semanticAction].verb}` }
 }
 
 const reactionEmoji = (notification: NotificationCandidate) => {
@@ -153,7 +152,7 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
   // Beide Tabs teilen EIN Zeilen-Layout (Antons Entscheid 19.07.) — der
   // Gruppen-Tab zeigt alle Bündel, formuliert nur nicht in der Du-Form und
   // trägt das Mute-Menü.
-  const renderRows = (list: readonly NotificationCandidate[], limit: number, raiseLimit: () => void, personalPhrasing: boolean, withMute: boolean) => {
+  const renderRows = (list: readonly NotificationCandidate[], limit: number, raiseLimit: () => void) => {
     const visible = list.slice(0, limit)
     const sections: Array<{ label: string; rows: NotificationCandidate[] }> = []
     for (const notification of visible) {
@@ -167,7 +166,7 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
         <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{section.label}</p>
         <ol className="space-y-0.5">{section.rows.map((notification) => {
           const navigable = notification.semanticAction !== "deleted" && notification.targetExists
-          const { lead, rest } = sentenceParts(notification, personalPhrasing)
+          const { lead, rest } = sentenceParts(notification)
           const sentence = <><strong>{lead}</strong> {rest}</>
           const quote = notification.semanticAction === "commented" && notification.entrySummary ? notification.entrySummary : undefined
           const unread = !notification.isRead && !notification.muted
@@ -178,16 +177,14 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
                 {navigable
                   ? <button type="button" onClick={() => { onMarkRead?.(notification.readKeys); onOpenSubject?.(notification) }} className="cursor-pointer rounded-sm text-left text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{sentence}</button>
                   : <p className="text-sm">{sentence}</p>}
-                {quote
-                  ? <p className="mt-1 truncate rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">„{quote}"</p>
-                  : !personalPhrasing || !notification.subjectTitle ? null : <p className="truncate text-xs text-muted-foreground">„{notification.subjectTitle}"</p>}
+                {quote && <p className="mt-1 truncate rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">„{quote}"</p>}
                 <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                   <RelativeTime date={notification.ts} /><span aria-hidden>·</span>
                   <button type="button" onClick={() => onOpenGroup?.(notification.groupId)} className="cursor-pointer rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{notification.groupName}</button>
                   {notification.muted && <BellOff aria-label="Stummgeschaltet" className="size-3 shrink-0" />}
                 </p>
               </div>
-              {withMute && onMuteGroup && <DropdownMenu><DropdownMenuTrigger aria-label={`${notification.muted ? "Aktivieren" : "Stummschalten"}: ${notification.groupName}`} className="cursor-pointer self-start rounded-sm p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"><MoreHorizontal className="size-4" /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => onMuteGroup(notification.groupId, !notification.muted)}>{notification.muted ? "Gruppe aktivieren" : "Gruppe stummschalten"}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+              {onMuteGroup && <DropdownMenu><DropdownMenuTrigger aria-label={`${notification.muted ? "Aktivieren" : "Stummschalten"}: ${notification.groupName}`} className="cursor-pointer self-start rounded-sm p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"><MoreHorizontal className="size-4" /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => onMuteGroup(notification.groupId, !notification.muted)}>{notification.muted ? "Gruppe aktivieren" : "Gruppe stummschalten"}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
               {unread && <span aria-label="Ungelesen" className="mt-1 size-2 shrink-0 rounded-full bg-primary" />}
             </div>
           </li>
@@ -211,10 +208,10 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
       {tab === "personal"
         ? (personal.length === 0
             ? <EmptyState icon={Bell} title="Keine Benachrichtigungen" description="Hier erscheinen neue Aktivitäten für dich." />
-            : renderRows(personal, personalLimit, () => setPersonalLimit((limit) => limit + 2 * PAGE_SIZE), true, false))
+            : renderRows(personal, personalLimit, () => setPersonalLimit((limit) => limit + 2 * PAGE_SIZE)))
         : (notifications.length === 0
             ? <EmptyState icon={Bell} title="Keine Gruppen-Aktivität" description="Hier erscheint, was in deinen Gruppen passiert." />
-            : renderRows(notifications, groupsLimit, () => setGroupsLimit((limit) => limit + 2 * PAGE_SIZE), false, true))}
+            : renderRows(notifications, groupsLimit, () => setGroupsLimit((limit) => limit + 2 * PAGE_SIZE)))}
       </TabsContent>
     </Tabs>
     <footer className="mt-3 border-t pt-3"><button type="button" onClick={onOpenActivity} className="cursor-pointer text-sm text-primary hover:underline">Alle Benachrichtigungen ansehen</button></footer>
