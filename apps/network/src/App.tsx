@@ -680,7 +680,7 @@ function NetworkShell() {
         sidebarMaxWidth="70vw"
         onDrawerHeightChange={setDetailDrawerHeight}
       >
-        <NetworkActivityPanelController open={activityOpen} onClose={closeActivity} selectItem={openActivityTarget} onOpenNotification={openNotification} onOpenGroup={(groupId) => { if (hasGroups(connector)) connector.setCurrentGroup(groupId); handleSelectedNodeChange(null); closeActivity() }} />
+        <NetworkActivityPanelController open={activityOpen} onClose={closeActivity} selectItem={openActivityTarget} onOpenNotification={openNotification} onOpenGroup={(groupId) => { if (hasGroups(connector)) connector.setCurrentGroup(groupId); handleSelectedNodeChange(null); setQuery(""); setEnabledTypes(new Set(ALL_GRAPH_TYPES)); closeActivity() }} />
         <DetailPanelController
           item={selectedItem}
           connections={selectedConnections}

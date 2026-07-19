@@ -36,6 +36,12 @@ describe("Notification Center contract", () => {
     for (const excluded of ["own", "gone", "personal", "comment-delete", "reaction-delete", "unknown"]) {
       expect(ids, `${excluded} ausgeschlossen`).not.toContain(excluded)
     }
+    // Ausgeschlossene Einträge dürfen sich auch nicht als konstituierende
+    // readKeys in ein Bündel schmuggeln.
+    const allBundledKeys = candidates.flatMap((candidate) => Object.keys(candidate.readKeys))
+    for (const excluded of ["own", "gone", "personal", "comment-delete", "reaction-delete", "unknown"]) {
+      expect(allBundledKeys, `${excluded} nicht in readKeys gebündelt`).not.toContain(JSON.stringify(["a", excluded]))
+    }
     // Eigene Aktion zählt auch dann als eigene, wenn der Actor nicht auflösbar ist.
     const unresolvedOwn = scoped({ id: "own-unresolved", actor: null, entry: { ...scoped({ id: "x" }).entry, actor: "anton", targetType: "reaction" } })
     expect(project([unresolvedOwn])).toEqual([])
