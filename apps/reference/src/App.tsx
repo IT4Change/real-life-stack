@@ -144,18 +144,18 @@ function ActivityPanelController({ open, onClose, onOpenNotification, onOpenGrou
     panel.open({
       kind: "custom",
       itemId: "__activity__",
-      content: <ReferenceNotificationCenterContent onOpenTarget={openTarget} onOpenNotification={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={() => panel.open({ kind: "custom", itemId: "__activity__", content: <ReferenceActivityPanelContent onOpenTarget={openTarget} />, onClose })} />,
+      content: <ReferenceNotificationCenterContent onOpenTarget={openTarget} onOpenNotification={onOpenNotification} onOpenGroup={onOpenGroup} onCloseCenter={onClose} onOpenActivity={() => panel.open({ kind: "custom", itemId: "__activity__", content: <ReferenceActivityPanelContent onOpenTarget={openTarget} />, onClose })} />,
       onClose,
     })
   }, [clearFocus, onClose, open, openTarget, panel.close, panel.current?.itemId, panel.open])
   return null
 }
 
-function ReferenceNotificationCenterContent({ onOpenTarget, onOpenNotification, onOpenGroup, onOpenActivity }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void; onOpenNotification: (notification: import("@real-life-stack/toolkit").NotificationCandidate) => void; onOpenGroup: (groupId: string) => void; onOpenActivity: () => void }) {
+function ReferenceNotificationCenterContent({ onOpenTarget, onOpenNotification, onOpenGroup, onOpenActivity, onCloseCenter }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void; onOpenNotification: (notification: import("@real-life-stack/toolkit").NotificationCandidate) => void; onOpenGroup: (groupId: string) => void; onOpenActivity: () => void; onCloseCenter: () => void }) {
   const notifications = useNotifications()
   useMarkNotificationsSeen(notifications)
   if (!notifications.supported) return <ReferenceActivityPanelContent onOpenTarget={onOpenTarget} />
-  return <NotificationCenter notifications={notifications.notifications} onOpenSubject={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={onOpenActivity} onMarkRead={notifications.stateSupported ? (keys) => void notifications.update?.({ op: "markRead", keys }) : undefined} onMarkAllRead={notifications.stateSupported ? () => notifications.maxTs && void notifications.update?.({ op: "markAllReadUpTo", ts: notifications.maxTs }) : undefined} onMuteGroup={notifications.stateSupported ? (groupId, muted) => void notifications.update?.(muted ? { op: "mute", groupId } : { op: "unmute", groupId }) : undefined} />
+  return <NotificationCenter notifications={notifications.notifications} onOpenSubject={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={onOpenActivity} onMarkRead={notifications.stateSupported ? (keys) => void notifications.update?.({ op: "markRead", keys }) : undefined} onMarkAllRead={notifications.stateSupported ? () => { if (notifications.maxTs) void notifications.update?.({ op: "markAllReadUpTo", ts: notifications.maxTs }); onCloseCenter() } : undefined} onMuteGroup={notifications.stateSupported ? (groupId, muted) => void notifications.update?.(muted ? { op: "mute", groupId } : { op: "unmute", groupId }) : undefined} />
 }
 
 function ReferenceActivityPanelContent({ onOpenTarget }: { onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {

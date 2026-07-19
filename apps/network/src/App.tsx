@@ -444,16 +444,16 @@ function NetworkActivityPanelController({ open, onClose, selectItem, onOpenNotif
       return
     }
     ownedActivityPanel.current = true
-    panel.open({ kind: "custom", itemId: "__activity__", content: <NetworkNotificationCenterContent onOpenNotification={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={() => panel.open({ kind: "custom", itemId: "__activity__", content: <NetworkActivityPanelContent onOpenTarget={openTarget} />, onClose })} onOpenTarget={openTarget} />, onClose })
+    panel.open({ kind: "custom", itemId: "__activity__", content: <NetworkNotificationCenterContent onCloseCenter={onClose} onOpenNotification={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={() => panel.open({ kind: "custom", itemId: "__activity__", content: <NetworkActivityPanelContent onOpenTarget={openTarget} />, onClose })} onOpenTarget={openTarget} />, onClose })
   }, [onClose, open, openTarget, panel.close, panel.current?.itemId, panel.open])
   return null
 }
 
-function NetworkNotificationCenterContent({ onOpenNotification, onOpenGroup, onOpenActivity, onOpenTarget }: { onOpenNotification: (notification: import("@real-life-stack/toolkit").NotificationCandidate) => void; onOpenGroup: (groupId: string) => void; onOpenActivity: () => void; onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void }) {
+function NetworkNotificationCenterContent({ onOpenNotification, onOpenGroup, onOpenActivity, onOpenTarget, onCloseCenter }: { onOpenNotification: (notification: import("@real-life-stack/toolkit").NotificationCandidate) => void; onOpenGroup: (groupId: string) => void; onOpenActivity: () => void; onOpenTarget: (entry: import("@real-life-stack/data-interface").ActivityEntry) => void; onCloseCenter: () => void }) {
   const notifications = useNotifications()
   useMarkNotificationsSeen(notifications)
   if (!notifications.supported) return <NetworkActivityPanelContent onOpenTarget={onOpenTarget} />
-  return <NotificationCenter notifications={notifications.notifications} onOpenSubject={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={onOpenActivity} onMarkRead={notifications.stateSupported ? (keys) => void notifications.update?.({ op: "markRead", keys }) : undefined} onMarkAllRead={notifications.stateSupported ? () => notifications.maxTs && void notifications.update?.({ op: "markAllReadUpTo", ts: notifications.maxTs }) : undefined} onMuteGroup={notifications.stateSupported ? (groupId, muted) => void notifications.update?.(muted ? { op: "mute", groupId } : { op: "unmute", groupId }) : undefined} />
+  return <NotificationCenter notifications={notifications.notifications} onOpenSubject={onOpenNotification} onOpenGroup={onOpenGroup} onOpenActivity={onOpenActivity} onMarkRead={notifications.stateSupported ? (keys) => void notifications.update?.({ op: "markRead", keys }) : undefined} onMarkAllRead={notifications.stateSupported ? () => { if (notifications.maxTs) void notifications.update?.({ op: "markAllReadUpTo", ts: notifications.maxTs }); onCloseCenter() } : undefined} onMuteGroup={notifications.stateSupported ? (groupId, muted) => void notifications.update?.(muted ? { op: "mute", groupId } : { op: "unmute", groupId }) : undefined} />
 }
 
 /** Meta-item types the shell has no detail projection for (log stays visible, not clickable). */
