@@ -7,6 +7,7 @@ export type { ConnectorProviderProps } from "./connector-context"
 // Data Hooks
 export { useItems, useItem, useItemsWithDraft } from "./use-items"
 export { useActivity } from "./use-activity"
+export { useNotifications, useMarkNotificationsSeen } from "./use-notifications"
 export {
   DraftItemProvider,
   useDraftItem,
@@ -48,3 +49,4 @@ export {
   type ItemEditorPayload,
 } from "./use-item-editor"
 export { useFilterableItems, applyFilterBarValue } from "./use-filterable-items"
+export { useResolvedUsers } from "./use-resolved-users"

@@ -171,9 +171,13 @@ export function itemDisplayTitle(item: Item): string | undefined {
     const value = item.data[key]
     if (typeof value === "string" && value.trim()) return value
   }
-  const text = item.data.text
-  if (typeof text === "string" && text.trim()) {
-    return text.length > 40 ? `${text.slice(0, 40)}…` : text
+  // Posts and comments carry their body in `content` (base/v1) — an excerpt
+  // beats the bare type word everywhere a title is displayed.
+  for (const key of ["content", "text"]) {
+    const value = item.data[key]
+    if (typeof value === "string" && value.trim()) {
+      return value.length > 40 ? `${value.slice(0, 40)}…` : value
+    }
   }
   return undefined
 }

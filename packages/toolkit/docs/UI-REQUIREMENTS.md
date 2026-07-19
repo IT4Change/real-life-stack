@@ -39,6 +39,10 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 - [x] **focus-visible-only**: Focus-Ring nur bei Keyboard-Navigation, nicht bei Mausklick
 - [x] **focus-ring-consistent**: Einheitlicher Focus-Ring mit `ring-ring/50`
 
+## Benachrichtigungen
+
+- [x] **notification-center-primitives**: Filter-Tabs und Gruppenaktionen verwenden die gemeinsamen Radix-Primitives; die Glocke behält den einheitlichen `focus-visible`-Ring.
+
 ---
 
 ## Navbar

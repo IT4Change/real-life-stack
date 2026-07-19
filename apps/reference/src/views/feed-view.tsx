@@ -20,6 +20,7 @@ import {
   useItemsWithDraft,
   useMembers,
   useCurrentUser,
+  useResolvedUsers,
   useGroups,
   usePersonalGroupId,
   useItemGroupColorResolver,
@@ -85,14 +86,22 @@ export function FeedView({ groupId }: { groupId: string }) {
     () => new Map(members.map((m) => [m.id, m])),
     [members],
   )
+  // Members can lag behind synced items (membership entry not yet arrived) —
+  // resolve unknown authors through the connector cascade (contacts!) before
+  // ever showing a raw DID.
+  const unknownAuthorIds = useMemo(
+    () => [...new Set(feedItems.map(({ createdBy }) => createdBy))].filter((id) => !memberMap.has(id) && id !== currentUser?.id),
+    [feedItems, memberMap, currentUser],
+  )
+  const resolvedAuthors = useResolvedUsers(unknownAuthorIds)
   const resolveAuthor = useCallback(
     (createdBy: string): User | undefined => {
       const member = memberMap.get(createdBy)
       if (member) return member
       if (currentUser?.id === createdBy) return currentUser
-      return undefined
+      return resolvedAuthors.get(createdBy)
     },
-    [memberMap, currentUser],
+    [memberMap, currentUser, resolvedAuthors],
   )
 
   // Detail panel — shared single panel via ModulePanelProvider
