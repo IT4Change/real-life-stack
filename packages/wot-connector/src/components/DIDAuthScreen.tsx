@@ -55,14 +55,18 @@ export function DIDAuthScreen({ connector, onAuthenticated }: DIDAuthScreenProps
 
   if (view === "loading") {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex h-full min-h-0 items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Laden…</div>
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    // The app shell pins html/body/#root to overflow:hidden (each surface owns
+    // its scrolling) — the wizard must bring its OWN scroll container, or tall
+    // steps (Magic Words!) get clipped without any way to scroll.
+    <div className="h-full min-h-0 overflow-y-auto">
+      <div className="flex min-h-full items-center justify-center p-4">
       <div className="w-full max-w-md">
         {view === "onboarding" && (
           <OnboardingFlow
@@ -88,6 +92,7 @@ export function DIDAuthScreen({ connector, onAuthenticated }: DIDAuthScreenProps
             }}
           />
         )}
+      </div>
       </div>
     </div>
   )
