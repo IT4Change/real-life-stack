@@ -871,6 +871,11 @@ function createFakePrivateSpaceConnector(spaces: SpaceInfo[], docs: Record<strin
         docs[id] = initialDoc
         return spaces[spaces.length - 1]
       }),
+      leaveSpace: vi.fn(async (id: string) => {
+        const index = spaces.findIndex((space) => space.id === id)
+        if (index !== -1) spaces.splice(index, 1)
+        delete docs[id]
+      }),
     },
     crossGroupIndex: { reindexGroup: vi.fn() },
     notifyAllObservers: vi.fn(),
@@ -949,10 +954,86 @@ describe("WotConnector private space reconciliation", () => {
     expect(fake.privateSpaceId).toBe("private-a")
     expect(docs["private-a"].items.keep.data.title).toBe("Keep")
     expect(docs["private-a"].items.move.data.title).toBe("Move")
-    expect(docs["private-b"].items.move).toBeUndefined()
+    expect(docs["private-b"]).toBeUndefined()
     expect(fake.crossGroupIndex.reindexGroup).toHaveBeenCalledWith("private-a")
-    expect(fake.crossGroupIndex.reindexGroup).toHaveBeenCalledWith("private-b")
+    expect(fake.crossGroupIndex.reindexGroup).not.toHaveBeenCalledWith("private-b")
+    expect(fake.replication.leaveSpace).toHaveBeenCalledWith("private-b")
     expect(fake.notifyAllObservers).toHaveBeenCalledTimes(1)
+  })
+
+  it("migrates private duplicates, tears them down locally, and stays singular after reload", async () => {
+    const spaces = [
+      createSpaceInfo("private-c"),
+      createSpaceInfo("private-a"),
+      createSpaceInfo("private-b"),
+    ]
+    const docs = {
+      "private-a": {
+        _type: "rls",
+        items: { canonical: createSerializedItem("canonical", "Canonical") },
+      } as RlsSpaceDoc,
+      "private-b": { _type: "rls", items: {} } as RlsSpaceDoc,
+      "private-c": {
+        _type: "rls",
+        items: { migrated: createSerializedItem("migrated", "Migrated") },
+        activity: {
+          "migrated-create": {
+            id: "migrated-create",
+            action: "create",
+            targetId: "migrated",
+            targetType: "task",
+            actor: "did:key:alice",
+            summary: "Migrated",
+            timestamp: "2026-07-19T00:00:00.000Z",
+          },
+        },
+      } as RlsSpaceDoc,
+    }
+    const firstStart = createFakePrivateSpaceConnector(spaces, docs)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(firstStart, { createIfMissing: false })
+
+    expect(docs["private-a"].items).toMatchObject({
+      canonical: expect.anything(),
+      migrated: expect.anything(),
+    })
+    expect(docs["private-a"].activity).toHaveProperty("migrated-create")
+    expect(firstStart.replication.leaveSpace).toHaveBeenCalledTimes(2)
+    expect(firstStart.replication.leaveSpace).toHaveBeenCalledWith("private-b")
+    expect(firstStart.replication.leaveSpace).toHaveBeenCalledWith("private-c")
+
+    // A second connector start shares the same replication stores. The migration
+    // must now be a no-op: only the canonical private space remains discoverable.
+    const reloaded = createFakePrivateSpaceConnector(spaces, docs)
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(reloaded, { createIfMissing: false })
+
+    expect(spaces.filter((space) => space.appTag === "rls-private")).toHaveLength(1)
+    expect(reloaded.privateSpaceId).toBe("private-a")
+    expect(reloaded.replication.leaveSpace).not.toHaveBeenCalled()
+  })
+
+  it("keeps a non-empty duplicate when its migration fails", async () => {
+    const spaces = [createSpaceInfo("private-a"), createSpaceInfo("private-b")]
+    const docs = {
+      "private-a": { _type: "rls", items: {} } as RlsSpaceDoc,
+      "private-b": {
+        _type: "rls",
+        items: { migrate: createSerializedItem("migrate", "Must remain") },
+      } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    const canonicalHandle = createSpaceHandle(docs["private-a"])
+    canonicalHandle.transact = vi.fn(() => { throw new Error("target write failed") })
+    fake.replication.openSpace.mockImplementation(async (id: string) =>
+      id === "private-a" ? canonicalHandle : createSpaceHandle(docs[id]),
+    )
+
+    await expect(
+      (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: false }),
+    ).rejects.toThrow("target write failed")
+
+    expect(docs["private-b"].items.migrate.data.title).toBe("Must remain")
+    expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
   })
 
   it("remaps relations between migrated items when duplicate IDs are renamed", async () => {
