@@ -98,7 +98,7 @@ const subjectWord = (type: string) => SUBJECT_WORD[type] ?? "Beitrag"
 
 
 /** HEUTE / GESTERN / DIESE WOCHE / FRÜHER — the mockup's time sections. */
-function sectionFor(ts: string, now: Date): string {
+export function sectionFor(ts: string, now: Date): string {
   const day = (value: Date) => `${value.getFullYear()}-${value.getMonth()}-${value.getDate()}`
   const date = new Date(ts)
   if (day(date) === day(now)) return "Heute"
