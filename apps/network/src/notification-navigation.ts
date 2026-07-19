@@ -34,15 +34,18 @@ export function lensCanDisplay(lens: NetworkLensId, hints: ModuleHintsLike | und
  * the hints — the detail resolves reactively after the space switch.
  */
 export function applyNotificationNavigation(
-  target: { groupId: string; subjectId: string; moduleHints?: ModuleHintsLike },
+  target: { groupId: string; subjectId: string; subjectType?: string; moduleHints?: ModuleHintsLike },
   shell: {
     connector: DataInterface
     selectNodeId: (id: string) => void
     setActiveLens: (lens: NetworkLensId) => void
     close: () => void
+    /** Graph filters from the OLD space must not hide the target type. */
+    ensureTypeVisible?: (type: string) => void
   },
 ): void {
   if (hasGroups(shell.connector)) shell.connector.setCurrentGroup(target.groupId)
+  if (target.subjectType) shell.ensureTypeVisible?.(target.subjectType)
   shell.selectNodeId(target.subjectId)
   shell.setActiveLens(lensForHints(target.moduleHints))
   shell.close()

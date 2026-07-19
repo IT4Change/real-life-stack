@@ -32,7 +32,13 @@ describe("Notification Center contract", () => {
     expect(candidates.map(({ entryId }) => entryId)).toEqual(expect.arrayContaining(["delete", "reaction"]))
     expect(candidates.find(({ entryId }) => entryId === "reaction")).toMatchObject({ semanticAction: "reacted", priority: "high", readKey: JSON.stringify(["a", "reaction"]) })
     expect(candidates.find(({ entryId }) => entryId === "delete")).toMatchObject({ semanticAction: "deleted", priority: "low" })
-    expect(candidates.map(({ entryId }) => entryId)).not.toEqual(expect.arrayContaining(["comment-delete", "reaction-delete", "unknown"]))
+    const ids = candidates.map(({ entryId }) => entryId)
+    for (const excluded of ["own", "gone", "personal", "comment-delete", "reaction-delete", "unknown"]) {
+      expect(ids, `${excluded} ausgeschlossen`).not.toContain(excluded)
+    }
+    // Eigene Aktion zählt auch dann als eigene, wenn der Actor nicht auflösbar ist.
+    const unresolvedOwn = scoped({ id: "own-unresolved", actor: null, entry: { ...scoped({ id: "x" }).entry, actor: "anton", targetType: "reaction" } })
+    expect(project([unresolvedOwn])).toEqual([])
     const missingOwner = scoped({ id: "missing-owner", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction" }, subject: { id: "other", type: "post" } })
     expect(project([missingOwner])[0]).toMatchObject({ priority: "low" })
     const mutedState = state({ mutedGroupIds: { b: true } })

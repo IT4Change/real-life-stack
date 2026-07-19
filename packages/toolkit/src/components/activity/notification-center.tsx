@@ -35,7 +35,7 @@ function actionFor(scoped: ScopedActivityEntry): NotificationAction | null {
 export function projectNotifications(scoped: readonly ScopedActivityEntry[], ctx: { groupsById: Map<string, Group>; selfId: string }, state: NotificationState, _now: Date): NotificationCandidate[] {
   const normal = scoped.flatMap((item): NotificationCandidate[] => {
     const semanticAction = actionFor(item)
-    if (!semanticAction || item.isPersonal || item.actor?.id === ctx.selfId) return []
+    if (!semanticAction || item.isPersonal || (item.actor?.id ?? item.entry.actor) === ctx.selfId) return []
     if (semanticAction !== "deleted" && (!item.targetExists || !item.subject)) return []
     const subject = item.subject
     if (!subject) return []
@@ -179,7 +179,9 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
               <div className="min-w-0 flex-1">
                 {navigable
                   ? <button type="button" onClick={() => { onMarkRead?.(notification.readKeys); onOpenSubject?.(notification) }} className="cursor-pointer rounded-sm text-left text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{sentence}</button>
-                  : <p className="text-sm">{sentence}</p>}
+                  : unread && onMarkRead
+                    ? <button type="button" onClick={() => onMarkRead(notification.readKeys)} aria-label="Als gelesen markieren" className="cursor-pointer rounded-sm text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{sentence}</button>
+                    : <p className="text-sm">{sentence}</p>}
                 {quote && <p className="mt-1 truncate rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">„{quote}"</p>}
                 <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                   <RelativeTime date={notification.ts} /><span aria-hidden>·</span>
@@ -217,7 +219,7 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
             : renderRows(notifications, groupsLimit, () => setGroupsLimit((limit) => limit + 2 * PAGE_SIZE)))}
       </TabsContent>
     </Tabs>
-    <footer className="mt-3 border-t pt-3"><button type="button" onClick={onOpenActivity} className="cursor-pointer text-sm text-primary hover:underline">Alle Benachrichtigungen ansehen</button></footer>
+    {onOpenActivity && <footer className="mt-3 border-t pt-3"><button type="button" onClick={onOpenActivity} className="cursor-pointer text-sm text-primary hover:underline">Alle Benachrichtigungen ansehen</button></footer>}
   </section>
 }
 
