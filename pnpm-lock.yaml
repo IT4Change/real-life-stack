@@ -561,8 +561,8 @@ importers:
         specifier: workspace:*
         version: link:../toolkit
       '@real-life/adapter-yjs':
-        specifier: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.4/web_of_trust-adapter-yjs-0.1.4.tgz
-        version: '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.4/web_of_trust-adapter-yjs-0.1.4.tgz(@web_of_trust/core@0.3.0(react@19.2.3))'
+        specifier: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.5/web_of_trust-adapter-yjs-0.1.5.tgz
+        version: '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.5/web_of_trust-adapter-yjs-0.1.5.tgz(@web_of_trust/core@0.3.0(react@19.2.3))'
       '@real-life/wot-core':
         specifier: npm:@web_of_trust/core@^0.3.0
         version: '@web_of_trust/core@0.3.0(react@19.2.3)'
@@ -2520,9 +2520,9 @@ packages:
   '@vue/shared@3.5.26':
     resolution: {integrity: sha512-7Z6/y3uFI5PRoKeorTOSXKcDj0MSasfNNltcslbFrPpcw6aXRUALq4IfJlaTRspiWIUOEZbrpM+iQGmCOiWe4A==}
 
-  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.4/web_of_trust-adapter-yjs-0.1.4.tgz':
-    resolution: {tarball: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.4/web_of_trust-adapter-yjs-0.1.4.tgz}
-    version: 0.1.4
+  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.5/web_of_trust-adapter-yjs-0.1.5.tgz':
+    resolution: {tarball: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.5/web_of_trust-adapter-yjs-0.1.5.tgz}
+    version: 0.1.5
     peerDependencies:
       '@web_of_trust/core': 0.3.0
 
@@ -6789,7 +6789,7 @@ snapshots:
 
   '@vue/shared@3.5.26': {}
 
-  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.4/web_of_trust-adapter-yjs-0.1.4.tgz(@web_of_trust/core@0.3.0(react@19.2.3))':
+  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.5/web_of_trust-adapter-yjs-0.1.5.tgz(@web_of_trust/core@0.3.0(react@19.2.3))':
     dependencies:
       '@web_of_trust/core': 0.3.0(react@19.2.3)
       y-protocols: 1.0.7(yjs@13.6.31)
