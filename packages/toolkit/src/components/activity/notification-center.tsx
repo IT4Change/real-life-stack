@@ -209,7 +209,7 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
                           : <p className="text-sm">{sentence}</p>}
                         {quote
                           ? <p className="mt-1 truncate rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">„{quote}"</p>
-                          : <p className="truncate text-xs text-muted-foreground">„{notification.subjectTitle ?? subjectWord(notification.subjectType)}"</p>}
+                          : notification.subjectTitle && <p className="truncate text-xs text-muted-foreground">„{notification.subjectTitle}"</p>}
                         <p className="mt-0.5 flex gap-1 text-xs text-muted-foreground">
                           <RelativeTime date={notification.ts} /><span aria-hidden>·</span>
                           <button type="button" onClick={() => onOpenGroup?.(notification.groupId)} className="cursor-pointer rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{notification.groupName}</button>
