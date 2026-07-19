@@ -644,7 +644,7 @@ function NetworkShell() {
       selectNodeId: handleSelectedNodeChange,
       setActiveLens,
       close: closeActivity,
-      ensureTypeVisible: (type) => setEnabledTypes((current) => current.has(type) ? current : new Set([...current, type])),
+      resetFilters: () => { setQuery(""); setEnabledTypes(new Set(ALL_GRAPH_TYPES)) },
     })
   }, [closeActivity, connector, handleSelectedNodeChange])
   const closeDetail = useCallback(() => setSelectedNodeId(null), [])

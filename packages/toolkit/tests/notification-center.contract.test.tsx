@@ -56,8 +56,15 @@ describe("Notification Center contract", () => {
     ]
     const bundles = project(entries)
     expect(bundles.map((bundle) => [bundle.groupId, bundle.semanticAction])).toEqual(expect.arrayContaining([["a", "deleted"], ["a", "reacted"], ["b", "reacted"]]))
-    expect(bundles.find((bundle) => bundle.entryId === "r1")?.actorCount).toBe(2)
-    expect(bundles.find((bundle) => bundle.entryId === "r1")?.isRead).toBe(false)
+    const reactedBundle = bundles.find((bundle) => bundle.entryId === "r1")
+    expect(reactedBundle?.actorCount).toBe(2)
+    expect(reactedBundle?.isRead).toBe(false)
+    // Das Bündel trägt die VOLLSTÄNDIGEN konstituierenden readKeys mit ihren
+    // Zeiten — sonst könnte markRead einzelne Einträge ungelesen zurücklassen.
+    expect(reactedBundle?.readKeys).toEqual({
+      [JSON.stringify(["a", "r1"])]: "2026-07-18T11:00:00.000Z",
+      [JSON.stringify(["a", "r2"])]: "2026-07-18T10:30:00.000Z",
+    })
     const equalTs = project([scoped({ id: "a", entry: { ...scoped({ id: "x" }).entry, targetType: "reaction", ts: "2026-07-18T11:00:00.000Z", actor: "a" }, actor: { id: "a" } }), scoped({ id: "b", entry: { ...scoped({ id: "x" }).entry, targetType: "comment", ts: "2026-07-18T11:00:00.000Z", actor: "b" }, actor: { id: "b" } })])
     expect(equalTs.map(({ semanticAction }) => semanticAction)).toEqual(expect.arrayContaining(["reacted", "commented"]))
     // Vollständige Gleichstands-Kaskade: gleicher ts + gleiche Lifecycle-Stufe

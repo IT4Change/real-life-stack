@@ -40,12 +40,12 @@ export function applyNotificationNavigation(
     selectNodeId: (id: string) => void
     setActiveLens: (lens: NetworkLensId) => void
     close: () => void
-    /** Graph filters from the OLD space must not hide the target type. */
-    ensureTypeVisible?: (type: string) => void
+    /** A cross-space jump is a workspace change: reset query/type filters. */
+    resetFilters?: () => void
   },
 ): void {
   if (hasGroups(shell.connector)) shell.connector.setCurrentGroup(target.groupId)
-  if (target.subjectType) shell.ensureTypeVisible?.(target.subjectType)
+  shell.resetFilters?.()
   shell.selectNodeId(target.subjectId)
   shell.setActiveLens(lensForHints(target.moduleHints))
   shell.close()

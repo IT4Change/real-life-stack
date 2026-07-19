@@ -21,10 +21,12 @@ describe("B-T4 — Netzwerk-Cross-Group über den echten Handler-Vertrag", () =>
     const selected: string[] = []
     const lenses: string[] = []
     let closed = 0
+    let filtersReset = 0
     applyNotificationNavigation(
-      { groupId: "beta", subjectId: "task-b", moduleHints: { hasPosition: false, hasStart: false, hasStatus: true } },
-      { connector, selectNodeId: (id) => selected.push(id), setActiveLens: (lens) => lenses.push(lens), close: () => { closed += 1 } },
+      { groupId: "beta", subjectId: "task-b", subjectType: "task", moduleHints: { hasPosition: false, hasStart: false, hasStatus: true } },
+      { connector, selectNodeId: (id) => selected.push(id), setActiveLens: (lens) => lenses.push(lens), close: () => { closed += 1 }, resetFilters: () => { filtersReset += 1 } },
     )
+    expect(filtersReset).toBe(1)
 
     expect(connector.getCurrentGroup()?.id).toBe("beta")
     expect(selected).toEqual(["task-b"])
