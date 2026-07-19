@@ -96,8 +96,6 @@ export interface NotificationCenterProps {
 const SUBJECT_WORD: Record<string, string> = { post: "Post", event: "Event", task: "Aufgabe", place: "Ort", resource: "Ressource", person: "Profil", project: "Projekt" }
 const subjectWord = (type: string) => SUBJECT_WORD[type] ?? "Beitrag"
 
-const GROUP_AVATAR_CLASSES = ["bg-emerald-100 text-emerald-700", "bg-blue-100 text-blue-700", "bg-purple-100 text-purple-700", "bg-amber-100 text-amber-700", "bg-rose-100 text-rose-700", "bg-teal-100 text-teal-700"]
-const groupAvatarClass = (groupId: string) => GROUP_AVATAR_CLASSES[[...groupId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % GROUP_AVATAR_CLASSES.length]
 
 /** HEUTE / GESTERN / DIESE WOCHE / FRÜHER — the mockup's time sections. */
 function sectionFor(ts: string, now: Date): string {
