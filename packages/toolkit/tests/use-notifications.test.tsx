@@ -2,9 +2,10 @@
 import { act, createElement } from "react"
 import { createRoot } from "react-dom/client"
 import { describe, expect, it, vi } from "vitest"
-import { createObservable, type ScopedActivityEntry } from "@real-life-stack/data-interface"
+import { applyNotificationStatePatch, createObservable, type ScopedActivityEntry } from "@real-life-stack/data-interface"
 import { ConnectorProvider } from "../src/hooks/connector-context"
 import { useMarkNotificationsSeen, useNotifications } from "../src/hooks/use-notifications"
+import { NotificationCenter } from "../src/components/activity/notification-center"
 
 function notificationEntry(id: string): ScopedActivityEntry {
   return { groupId: "other", targetExists: true, isPersonal: false, actor: { id: "maria", displayName: "Maria" }, subject: { id: "post", type: "post", createdBy: "self", title: "Post" }, entry: { id, ts: "2026-07-18T11:00:00.000Z", actor: "maria", action: "create", targetId: "post", targetType: "reaction", summary: "" } }
@@ -13,8 +14,8 @@ function notificationEntry(id: string): ScopedActivityEntry {
 function connector() {
   const scoped = createObservable<ScopedActivityEntry[]>([])
   const notifications = createObservable({ readEntryKeys: {}, mutedGroupIds: {} })
-  const updates = vi.fn(async (patch: { op: string; ts?: string }) => {
-    if (patch.op === "markSeen") notifications.set({ ...notifications.current, lastSeenTs: patch.ts })
+  const updates = vi.fn(async (patch: Parameters<typeof applyNotificationStatePatch>[1]) => {
+    notifications.set(applyNotificationStatePatch(notifications.current, patch))
   })
   const groups = createObservable([{ id: "other", name: "Andere", data: {} }])
   const user = createObservable({ id: "self", displayName: "Self" })
@@ -52,6 +53,41 @@ describe("useNotifications", () => {
     await act(async () => { fake.stateObs.set({ readEntryKeys: {}, mutedGroupIds: {} }) })
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
     expect(fake.updates).toHaveBeenCalledTimes(2)
+    root.unmount(); host.remove()
+  })
+})
+
+function CenterProbe() {
+  const result = useNotifications()
+  return createElement(NotificationCenter, {
+    notifications: result.notifications,
+    onMarkRead: (keys) => void result.update?.({ op: "markRead", keys }),
+    onMarkAllRead: () => result.maxTs && void result.update?.({ op: "markAllReadUpTo", ts: result.maxTs }),
+    onOpenSubject: () => {},
+  })
+}
+
+describe("Center read-state integration (Repro Anton 19.07.)", () => {
+  it("'Alle als gelesen' clears the unread dots through the real state round-trip", async () => {
+    const fake = connector(); const host = document.createElement("div"); const root = createRoot(host); document.body.append(host)
+    fake.scoped.set([notificationEntry("n1")])
+    await act(async () => root.render(createElement(ConnectorProvider, { connector: fake as never }, createElement(CenterProbe))))
+    expect(host.querySelectorAll('[aria-label="Ungelesen"]').length).toBeGreaterThan(0)
+    const button = [...host.querySelectorAll("button")].find((el) => el.textContent === "Alle als gelesen")
+    expect(button, "mark-all button rendered").toBeTruthy()
+    await act(async () => { button!.click(); await new Promise((resolve) => setTimeout(resolve, 0)) })
+    expect(host.querySelectorAll('[aria-label="Ungelesen"]')).toHaveLength(0)
+    root.unmount(); host.remove()
+  })
+
+  it("clicking a notification marks its bundle read (dot disappears)", async () => {
+    const fake = connector(); const host = document.createElement("div"); const root = createRoot(host); document.body.append(host)
+    fake.scoped.set([notificationEntry("n1")])
+    await act(async () => root.render(createElement(ConnectorProvider, { connector: fake as never }, createElement(CenterProbe))))
+    const row = [...host.querySelectorAll("button")].find((el) => el.textContent?.includes("Maria"))
+    expect(row, "subject row rendered").toBeTruthy()
+    await act(async () => { row!.click(); await new Promise((resolve) => setTimeout(resolve, 0)) })
+    expect(host.querySelectorAll('[aria-label="Ungelesen"]')).toHaveLength(0)
     root.unmount(); host.remove()
   })
 })
