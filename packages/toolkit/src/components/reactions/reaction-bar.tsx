@@ -139,7 +139,9 @@ export function ReactionBar({ itemId, maxVisible = 6, onOpenDetails, className }
   if (reactions.length === 0 && !canReact) return null
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-1", className)}>
+    // Reacting is its own interaction — it must never bubble into the card's
+    // open-item click (ItemPreview wraps the bar in a clickable surface).
+    <div className={cn("flex flex-wrap items-center gap-1", className)} onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
       {visibleReactions.map((r) => (
         <ReactionPill
           key={r.emoji}
