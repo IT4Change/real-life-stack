@@ -276,7 +276,10 @@ describe("Activity log — migration cap and failed stale open", () => {
     source.value.items.dup = { id: "dup", type: "task", createdBy: "x", createdAt: "2026-01-01T00:00:00.000Z", data: {} } as any
     fillActivity(source, "source", 2) // e.g. one create + one delete of an already-gone item
     const c = connector(target, new Map([["canonical", target], ["duplicate", source]])) as any
-    c.replication = { openSpace: vi.fn(async (id: string) => (id === "canonical" ? target : source)) }
+    c.replication = {
+      openSpace: vi.fn(async (id: string) => (id === "canonical" ? target : source)),
+      leaveSpace: vi.fn(async () => {}),
+    }
     c.crossGroupIndex = null
 
     await invokePrivate<(canonicalId: string, duplicateIds: string[]) => Promise<void>>(

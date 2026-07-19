@@ -2098,8 +2098,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     if (!this.replication) return
 
     const targetHandle = await this.replication.openSpace<RlsSpaceDoc>(canonicalId)
-    const reindexIds = new Set<string>([canonicalId])
-    let migrated = false
+    let changed = false
 
     for (const duplicateId of duplicateIds) {
       const sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(duplicateId)
@@ -2107,64 +2106,65 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       const sourceItems = sourceDocSnapshot.items ?? {}
       const entries = Object.entries(sourceItems) as Array<[string, SerializedItem]>
       // A duplicate can be item-empty but still carry history of deleted items.
-      if (entries.length === 0 && Object.keys(sourceDocSnapshot.activity ?? {}).length === 0) continue
+      if (entries.length > 0 || Object.keys(sourceDocSnapshot.activity ?? {}).length > 0) {
+        const migratedIds = new Set<string>()
+        targetHandle.transact((targetDoc: RlsSpaceDoc) => {
+          if (!targetDoc.items) targetDoc.items = {}
+          const idRemap = new Map<string, string>()
 
-      const migratedIds = new Set<string>()
-      targetHandle.transact((targetDoc: RlsSpaceDoc) => {
-        if (!targetDoc.items) targetDoc.items = {}
-        const idRemap = new Map<string, string>()
-
-        for (const [itemId, serialized] of entries) {
-          const targetItemId = targetDoc.items[itemId]
-            ? `${itemId}-private-${crypto.randomUUID()}`
-            : itemId
-          idRemap.set(itemId, targetItemId)
-        }
-
-        for (const [itemId, serialized] of entries) {
-          const targetItemId = idRemap.get(itemId)!
-          targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId, idRemap)
-          migratedIds.add(itemId)
-        }
-
-        // The ENTIRE activity history migrates (also entries whose items are
-        // already deleted — Regel 7 keeps those readable); only targetIds of
-        // migrated items get remapped. The merged map is pruned to the
-        // normative 500 cap in the SAME transact (Regel 4).
-        const sourceActivity = sourceHandle.getDoc().activity ?? {}
-        for (const [entryId, entry] of Object.entries(sourceActivity)) {
-          if (targetDoc.activity?.[entryId]) continue
-          const activity = targetDoc.activity ?? (targetDoc.activity = {})
-          const remapped = idRemap.get(entry.targetId)
-          activity[entryId] = remapped ? { ...entry, targetId: remapped } : { ...entry }
-        }
-        const merged = targetDoc.activity
-        if (merged) {
-          for (const oldest of Object.values(merged).sort(compareActivity).slice(500)) {
-            delete merged[oldest.id]
+          for (const [itemId, serialized] of entries) {
+            const targetItemId = targetDoc.items[itemId]
+              ? `${itemId}-private-${crypto.randomUUID()}`
+              : itemId
+            idRemap.set(itemId, targetItemId)
           }
-        }
-      })
 
-      sourceHandle.transact((sourceDoc: RlsSpaceDoc) => {
-        for (const itemId of migratedIds) {
-          delete sourceDoc.items[itemId]
-        }
-        // The whole history moved to the canonical space.
-        if (sourceDoc.activity) {
-          for (const entryId of Object.keys(sourceDoc.activity)) delete sourceDoc.activity[entryId]
-        }
-      })
+          for (const [itemId, serialized] of entries) {
+            const targetItemId = idRemap.get(itemId)!
+            targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId, idRemap)
+            migratedIds.add(itemId)
+          }
 
-      reindexIds.add(duplicateId)
-      migrated = true
+          // The ENTIRE activity history migrates (also entries whose items are
+          // already deleted — Regel 7 keeps those readable); only targetIds of
+          // migrated items get remapped. The merged map is pruned to the
+          // normative 500 cap in the SAME transact (Regel 4).
+          const sourceActivity = sourceHandle.getDoc().activity ?? {}
+          for (const [entryId, entry] of Object.entries(sourceActivity)) {
+            if (targetDoc.activity?.[entryId]) continue
+            const activity = targetDoc.activity ?? (targetDoc.activity = {})
+            const remapped = idRemap.get(entry.targetId)
+            activity[entryId] = remapped ? { ...entry, targetId: remapped } : { ...entry }
+          }
+          const merged = targetDoc.activity
+          if (merged) {
+            for (const oldest of Object.values(merged).sort(compareActivity).slice(500)) {
+              delete merged[oldest.id]
+            }
+          }
+        })
+
+        sourceHandle.transact((sourceDoc: RlsSpaceDoc) => {
+          for (const itemId of migratedIds) {
+            delete sourceDoc.items[itemId]
+          }
+          // The whole history moved to the canonical space.
+          if (sourceDoc.activity) {
+            for (const entryId of Object.keys(sourceDoc.activity)) delete sourceDoc.activity[entryId]
+          }
+        })
+      }
+
+      // `leaveSpace()` is the replication layer's public local teardown path.
+      // It removes this replica and its metadata; it neither removes members nor
+      // rotates keys. For non-empty duplicates it runs only after both writes above.
+      await this.replication.leaveSpace(duplicateId)
+      changed = true
     }
 
-    if (!migrated) return
+    if (!changed) return
 
-    for (const groupId of reindexIds) {
-      this.crossGroupIndex?.reindexGroup(groupId)
-    }
+    this.crossGroupIndex?.reindexGroup(canonicalId)
     this.notifyAllObservers(true)
   }
 
