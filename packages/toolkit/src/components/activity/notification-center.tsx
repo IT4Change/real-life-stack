@@ -130,7 +130,10 @@ function ActorBadge({ notification }: { notification: NotificationCandidate }) {
   const emoji = reactionEmoji(notification)
   const info = presentation[notification.semanticAction]; const Icon = info.icon
   const name = notification.actor?.displayName ?? notification.actorId
-  return <span className="relative inline-block shrink-0">
+  // Exakte Avatar-Box + self-start: im Flex-Row wird der Wrapper sonst auf
+  // Zeilenhöhe gestreckt und das Badge rutscht unter den Avatar statt an
+  // seine rechte untere Ecke.
+  return <span className="relative inline-block size-10 shrink-0 self-start">
     <Avatar className="size-10"><AvatarImage src={notification.actor?.avatarUrl} alt="" /><AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
     <span aria-label={info.verb} className="absolute -bottom-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full border bg-background text-[11px] shadow-sm">
       {emoji ?? <Icon className="size-3 text-muted-foreground" />}
