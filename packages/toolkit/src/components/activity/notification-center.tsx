@@ -152,30 +152,51 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
   const personal = notifications.filter((notification) => notification.priority === "high" && !notification.muted)
   const groupsUnread = notifications.some((notification) => !notification.muted && !notification.isRead)
 
-  // Gruppen-Tab: eine Zeile pro Gruppe — jüngste Aktivität, die letzten
-  // Sätze als Sammel-Zusammenfassung, Mute-Zustand wie im Mockup.
-  const groupRows = useMemo(() => {
-    const byGroup = new Map<string, NotificationCandidate[]>()
-    for (const notification of notifications) {
-      const bucket = byGroup.get(notification.groupId)
-      if (bucket) bucket.push(notification)
-      else byGroup.set(notification.groupId, [notification])
+  // Beide Tabs teilen EIN Zeilen-Layout (Antons Entscheid 19.07.) — der
+  // Gruppen-Tab zeigt alle Bündel, formuliert nur nicht in der Du-Form und
+  // trägt das Mute-Menü.
+  const renderRows = (list: readonly NotificationCandidate[], limit: number, raiseLimit: () => void, personalPhrasing: boolean, withMute: boolean) => {
+    const visible = list.slice(0, limit)
+    const sections: Array<{ label: string; rows: NotificationCandidate[] }> = []
+    for (const notification of visible) {
+      const label = sectionFor(notification.ts, now)
+      const section = sections[sections.length - 1]
+      if (section?.label === label) section.rows.push(notification)
+      else sections.push({ label, rows: [notification] })
     }
-    return [...byGroup.entries()].map(([groupId, bundles]) => ({
-      groupId, groupName: bundles[0].groupName, muted: bundles[0].muted,
-      latestTs: bundles.reduce((latest, bundle) => bundle.ts > latest ? bundle.ts : latest, bundles[0].ts),
-      unread: bundles.some((bundle) => !bundle.isRead), summaries: bundles.slice(0, 2),
-      readKeys: Object.assign({}, ...bundles.map(({ readKeys }) => readKeys)) as Record<string, string>,
-    })).sort((first, second) => second.latestTs.localeCompare(first.latestTs))
-  }, [notifications])
-
-  const personalVisible = personal.slice(0, personalLimit)
-  const sections: Array<{ label: string; rows: NotificationCandidate[] }> = []
-  for (const notification of personalVisible) {
-    const label = sectionFor(notification.ts, now)
-    const section = sections[sections.length - 1]
-    if (section?.label === label) section.rows.push(notification)
-    else sections.push({ label, rows: [notification] })
+    return <div>
+      {sections.map((section) => <div key={section.label}>
+        <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{section.label}</p>
+        <ol className="space-y-0.5">{section.rows.map((notification) => {
+          const navigable = notification.semanticAction !== "deleted" && notification.targetExists
+          const { lead, rest } = sentenceParts(notification, personalPhrasing)
+          const sentence = <><strong>{lead}</strong> {rest}</>
+          const quote = notification.semanticAction === "commented" && notification.entrySummary ? notification.entrySummary : undefined
+          const unread = !notification.isRead && !notification.muted
+          return <li key={`${notification.readKey}:${notification.ts}`} className={cn("rounded-md p-2", unread && "bg-accent/50", notification.muted && "opacity-70")}>
+            <div className="flex gap-2.5">
+              <ActorBadge notification={notification} />
+              <div className="min-w-0 flex-1">
+                {navigable
+                  ? <button type="button" onClick={() => { onMarkRead?.(notification.readKeys); onOpenSubject?.(notification) }} className="cursor-pointer rounded-sm text-left text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{sentence}</button>
+                  : <p className="text-sm">{sentence}</p>}
+                {quote
+                  ? <p className="mt-1 truncate rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">„{quote}"</p>
+                  : !personalPhrasing || !notification.subjectTitle ? null : <p className="truncate text-xs text-muted-foreground">„{notification.subjectTitle}"</p>}
+                <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                  <RelativeTime date={notification.ts} /><span aria-hidden>·</span>
+                  <button type="button" onClick={() => onOpenGroup?.(notification.groupId)} className="cursor-pointer rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{notification.groupName}</button>
+                  {notification.muted && <BellOff aria-label="Stummgeschaltet" className="size-3 shrink-0" />}
+                </p>
+              </div>
+              {withMute && onMuteGroup && <DropdownMenu><DropdownMenuTrigger aria-label={`${notification.muted ? "Aktivieren" : "Stummschalten"}: ${notification.groupName}`} className="cursor-pointer self-start rounded-sm p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"><MoreHorizontal className="size-4" /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => onMuteGroup(notification.groupId, !notification.muted)}>{notification.muted ? "Gruppe aktivieren" : "Gruppe stummschalten"}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+              {unread && <span aria-label="Ungelesen" className="mt-1 size-2 shrink-0 rounded-full bg-primary" />}
+            </div>
+          </li>
+        })}</ol>
+      </div>)}
+      {list.length > limit && <button type="button" onClick={raiseLimit} className="mt-2 w-full cursor-pointer rounded-md border-t py-2 text-center text-sm text-primary hover:underline">Ältere laden</button>}
+    </div>
   }
 
   return <section id="notification-center" aria-label="Benachrichtigungen" className="p-4">
@@ -189,65 +210,13 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
         <TabsTrigger value="groups"><span className="flex items-center gap-1.5">Gruppen{groupsUnread && <span aria-label="Ungelesene Gruppen-Aktivität" className="size-1.5 rounded-full bg-primary" />}</span></TabsTrigger>
       </TabsList>
       <TabsContent value={tab}>
-      {tab === "personal" ? (
-        personalVisible.length === 0
-          ? <EmptyState icon={Bell} title="Keine Benachrichtigungen" description="Hier erscheinen neue Aktivitäten für dich." />
-          : <div>
-              {sections.map((section) => <div key={section.label}>
-                <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{section.label}</p>
-                <ol className="space-y-0.5">{section.rows.map((notification) => {
-                  const navigable = notification.semanticAction !== "deleted" && notification.targetExists
-                  const { lead, rest } = sentenceParts(notification, true)
-                  const sentence = <><strong>{lead}</strong> {rest}</>
-                  const quote = notification.semanticAction === "commented" && notification.entrySummary ? notification.entrySummary : undefined
-                  return <li key={`${notification.readKey}:${notification.ts}`} className={cn("rounded-md p-2", !notification.isRead && "bg-accent/50")}>
-                    <div className="flex gap-2.5">
-                      <ActorBadge notification={notification} />
-                      <div className="min-w-0 flex-1">
-                        {navigable
-                          ? <button type="button" onClick={() => { onMarkRead?.(notification.readKeys); onOpenSubject?.(notification) }} className="cursor-pointer rounded-sm text-left text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{sentence}</button>
-                          : <p className="text-sm">{sentence}</p>}
-                        {quote
-                          ? <p className="mt-1 truncate rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">„{quote}"</p>
-                          : notification.subjectTitle && <p className="truncate text-xs text-muted-foreground">„{notification.subjectTitle}"</p>}
-                        <p className="mt-0.5 flex gap-1 text-xs text-muted-foreground">
-                          <RelativeTime date={notification.ts} /><span aria-hidden>·</span>
-                          <button type="button" onClick={() => onOpenGroup?.(notification.groupId)} className="cursor-pointer rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{notification.groupName}</button>
-                        </p>
-                      </div>
-                      {!notification.isRead && <span aria-label="Ungelesen" className="mt-1 size-2 shrink-0 rounded-full bg-primary" />}
-                    </div>
-                  </li>
-                })}</ol>
-              </div>)}
-              {personal.length > personalLimit && <button type="button" onClick={() => setPersonalLimit((limit) => limit + 2 * PAGE_SIZE)} className="mt-2 w-full cursor-pointer rounded-md border-t py-2 text-center text-sm text-primary hover:underline">Ältere laden</button>}
-            </div>
-      ) : (
-        groupRows.length === 0
-          ? <EmptyState icon={Bell} title="Keine Gruppen-Aktivität" description="Hier erscheint, was in deinen Gruppen passiert." />
-          : <div>
-              <ol className="space-y-0.5">{groupRows.slice(0, groupsLimit).map((row) => <li key={row.groupId} className={cn("rounded-md p-2", row.muted && "opacity-70", !row.muted && row.unread && "bg-accent/50")}>
-                <div className="flex gap-2.5">
-                  <span aria-hidden className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg text-sm font-semibold", groupAvatarClass(row.groupId))}>{row.groupName.slice(0, 1).toUpperCase()}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-1.5 text-sm">
-                      <button type="button" onClick={() => { onMarkRead?.(row.readKeys); onOpenGroup?.(row.groupId) }} className="cursor-pointer truncate rounded-sm font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{row.groupName}</button>
-                      {row.muted ? <BellOff aria-label="Stummgeschaltet" className="size-3.5 shrink-0 text-muted-foreground" /> : <span className="shrink-0 text-xs text-muted-foreground"><RelativeTime date={row.latestTs} /></span>}
-                    </p>
-                    {row.muted
-                      ? <p className="text-sm text-muted-foreground">Stummgeschaltet — Aktivität wird gesammelt, ohne Punkt</p>
-                      : <p className="text-sm text-muted-foreground">{row.summaries.map((bundle, index) => {
-                          const { lead, rest } = sentenceParts(bundle, false)
-                          return <span key={bundle.readKey}>{index > 0 && <span aria-hidden> · </span>}<strong className="text-foreground">{lead}</strong> {rest}</span>
-                        })}</p>}
-                  </div>
-                  {onMuteGroup && <DropdownMenu><DropdownMenuTrigger aria-label={`${row.muted ? "Aktivieren" : "Stummschalten"}: ${row.groupName}`} className="cursor-pointer self-start rounded-sm p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"><MoreHorizontal className="size-4" /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => onMuteGroup(row.groupId, !row.muted)}>{row.muted ? "Gruppe aktivieren" : "Gruppe stummschalten"}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
-                  {!row.muted && row.unread && <span aria-label="Ungelesen" className="mt-1 size-2 shrink-0 rounded-full bg-primary" />}
-                </div>
-              </li>)}</ol>
-              {groupRows.length > groupsLimit && <button type="button" onClick={() => setGroupsLimit((limit) => limit + 2 * PAGE_SIZE)} className="mt-2 w-full cursor-pointer rounded-md border-t py-2 text-center text-sm text-primary hover:underline">Ältere laden</button>}
-            </div>
-      )}
+      {tab === "personal"
+        ? (personal.length === 0
+            ? <EmptyState icon={Bell} title="Keine Benachrichtigungen" description="Hier erscheinen neue Aktivitäten für dich." />
+            : renderRows(personal, personalLimit, () => setPersonalLimit((limit) => limit + 2 * PAGE_SIZE), true, false))
+        : (notifications.length === 0
+            ? <EmptyState icon={Bell} title="Keine Gruppen-Aktivität" description="Hier erscheint, was in deinen Gruppen passiert." />
+            : renderRows(notifications, groupsLimit, () => setGroupsLimit((limit) => limit + 2 * PAGE_SIZE), false, true))}
       </TabsContent>
     </Tabs>
     <footer className="mt-3 border-t pt-3"><button type="button" onClick={onOpenActivity} className="cursor-pointer text-sm text-primary hover:underline">Alle Benachrichtigungen ansehen</button></footer>
