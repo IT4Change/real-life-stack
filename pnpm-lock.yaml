@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@web_of_trust/core': https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.0/web_of_trust-core-0.4.0.tgz
+
 importers:
 
   .:
@@ -561,11 +564,11 @@ importers:
         specifier: workspace:*
         version: link:../toolkit
       '@real-life/adapter-yjs':
-        specifier: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.6/web_of_trust-adapter-yjs-0.1.6.tgz
-        version: '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.6/web_of_trust-adapter-yjs-0.1.6.tgz(@web_of_trust/core@0.3.0(react@19.2.3))'
+        specifier: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.7/web_of_trust-adapter-yjs-0.1.7.tgz
+        version: '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.7/web_of_trust-adapter-yjs-0.1.7.tgz(@web_of_trust/core@https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.0/web_of_trust-core-0.4.0.tgz(react@19.2.3))'
       '@real-life/wot-core':
-        specifier: npm:@web_of_trust/core@^0.3.0
-        version: '@web_of_trust/core@0.3.0(react@19.2.3)'
+        specifier: https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.0/web_of_trust-core-0.4.0.tgz
+        version: '@web_of_trust/core@https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.0/web_of_trust-core-0.4.0.tgz(react@19.2.3)'
       react:
         specifier: ^18 || ^19
         version: 19.2.3
@@ -2520,14 +2523,15 @@ packages:
   '@vue/shared@3.5.26':
     resolution: {integrity: sha512-7Z6/y3uFI5PRoKeorTOSXKcDj0MSasfNNltcslbFrPpcw6aXRUALq4IfJlaTRspiWIUOEZbrpM+iQGmCOiWe4A==}
 
-  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.6/web_of_trust-adapter-yjs-0.1.6.tgz':
-    resolution: {tarball: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.6/web_of_trust-adapter-yjs-0.1.6.tgz}
-    version: 0.1.6
+  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.7/web_of_trust-adapter-yjs-0.1.7.tgz':
+    resolution: {tarball: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.7/web_of_trust-adapter-yjs-0.1.7.tgz}
+    version: 0.1.7
     peerDependencies:
-      '@web_of_trust/core': 0.3.0
+      '@web_of_trust/core': https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.0/web_of_trust-core-0.4.0.tgz
 
-  '@web_of_trust/core@0.3.0':
-    resolution: {integrity: sha512-M7Fx510UJxYXSvAdtUlqNNXqQFIchibyVEDZ4skKedCyJh0B6E475b+FmUAYe9EBz89MszA/i9scYeC8Js9jng==}
+  '@web_of_trust/core@https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.0/web_of_trust-core-0.4.0.tgz':
+    resolution: {tarball: https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.0/web_of_trust-core-0.4.0.tgz}
+    version: 0.4.0
     peerDependencies:
       react: ^19.0.0
     peerDependenciesMeta:
@@ -6789,13 +6793,13 @@ snapshots:
 
   '@vue/shared@3.5.26': {}
 
-  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.6/web_of_trust-adapter-yjs-0.1.6.tgz(@web_of_trust/core@0.3.0(react@19.2.3))':
+  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.7/web_of_trust-adapter-yjs-0.1.7.tgz(@web_of_trust/core@https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.0/web_of_trust-core-0.4.0.tgz(react@19.2.3))':
     dependencies:
-      '@web_of_trust/core': 0.3.0(react@19.2.3)
+      '@web_of_trust/core': https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.0/web_of_trust-core-0.4.0.tgz(react@19.2.3)
       y-protocols: 1.0.7(yjs@13.6.31)
       yjs: 13.6.31
 
-  '@web_of_trust/core@0.3.0(react@19.2.3)':
+  '@web_of_trust/core@https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.0/web_of_trust-core-0.4.0.tgz(react@19.2.3)':
     dependencies:
       '@noble/ed25519': 3.1.0
       '@scure/base': 2.2.0
