@@ -112,6 +112,36 @@ describe("Notification Center contract", () => {
     root.unmount(); host.remove()
   })
 
+  it("A0 projects unknown target types as standalone neutral, non-navigable candidates", async () => {
+    const unknowns = [
+      scoped({ id: "membership-create", targetExists: false, subject: null, entry: { ...scoped({ id: "x" }).entry, targetId: "did:example:maria", targetType: "membership", summary: "Maria" } }),
+      scoped({ id: "member-update", targetExists: false, subject: null, entry: { ...scoped({ id: "x" }).entry, action: "update", targetId: "did:example:toni", targetType: "member", summary: "Toni" } }),
+      scoped({ id: "membership-delete", targetExists: false, subject: null, entry: { ...scoped({ id: "x" }).entry, action: "delete", targetId: "did:example:toni", targetType: "membership", summary: "Toni" } }),
+    ]
+    const candidates = project(unknowns)
+    expect(candidates).toHaveLength(3)
+    expect(candidates.map(({ entryId }) => entryId)).toEqual(expect.arrayContaining(["membership-create", "member-update", "membership-delete"]))
+    for (const candidate of candidates) {
+      expect(candidate).toMatchObject({ semanticAction: "generic", priority: "low", targetExists: false })
+      expect(candidate.subjectId).toBeUndefined()
+      expect(candidate.subjectType).toBeUndefined()
+      expect(Object.keys(candidate.readKeys)).toEqual([candidate.readKey])
+    }
+
+    const host = document.createElement("div"); document.body.append(host)
+    const root = createRoot(host); const subject = vi.fn()
+    await act(async () => root.render(<NotificationCenter notifications={candidates} onOpenSubject={subject} onMarkRead={vi.fn()} />))
+    const groupTab = [...host.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent === "Gruppen") as HTMLButtonElement
+    await act(async () => groupTab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })))
+    const neutralRow = [...host.querySelectorAll("p")].find((element) => element.textContent?.includes("membership-Ereignis"))
+    expect(neutralRow?.textContent).toContain("Maria · membership-Ereignis")
+    expect(neutralRow?.closest("button")).toBeNull()
+    await act(async () => neutralRow?.dispatchEvent(new MouseEvent("click", { bubbles: true })))
+    expect(subject).not.toHaveBeenCalled()
+    expect(host.textContent).not.toContain("Maria\u201d")
+    root.unmount(); host.remove()
+  })
+
   it("B-T5 leaves the raw activity panel contract independent of the center", async () => {
     // The raw history stays reachable (footer handoff) and the existing
     // ActivityPanel keeps rendering its entries untouched by center state.

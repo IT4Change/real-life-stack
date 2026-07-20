@@ -3,29 +3,33 @@ import type { Group, NotificationState, ScopedActivityEntry } from "@real-life-s
 import { Bell, BellOff, MessageCircle, MoreHorizontal, Pencil, Plus, Smile, Trash2 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, EmptyState, RelativeTime, Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives"
 import { cn } from "../../lib/utils"
+import { isKnownContentTargetType } from "./known-content-target-types"
 
-export type NotificationAction = "created" | "updated" | "deleted" | "reacted" | "commented"
+export type NotificationAction = "created" | "updated" | "deleted" | "reacted" | "commented" | "generic"
 export type NotificationPriority = "high" | "low"
 
 export interface NotificationCandidate {
-  groupId: string; groupName: string; subjectId: string; subjectType: string; subjectTitle?: string
+  groupId: string; groupName: string; subjectId?: string; subjectType?: string; subjectTitle?: string
   semanticAction: NotificationAction; priority: NotificationPriority; muted: boolean
   entryId: string; readKey: string; actorId: string; actor: ScopedActivityEntry["actor"]; ts: string
   targetExists: boolean; moduleHints?: NonNullable<ScopedActivityEntry["subject"]>["moduleHints"]
   readKeys: Record<string, string>; actorCount: number; isRead: boolean
   /** Roh-Summary des Log-Eintrags (Reaktionen: „<emoji> auf „…""). */
   entrySummary?: string
+  /** targetType eines neutralen, nicht item-basierten Ereignisses. */
+  neutralTargetType?: string
 }
 
 const lifecycle = new Set<NotificationAction>(["created", "updated", "deleted"])
-const lifecycleRank: Record<NotificationAction, number> = { deleted: 3, updated: 2, created: 1, reacted: 0, commented: 0 }
+const lifecycleRank: Record<NotificationAction, number> = { deleted: 3, updated: 2, created: 1, reacted: 0, commented: 0, generic: 0 }
 const isReadKey = (key: string, ts: string, state: NotificationState) => Boolean(state.readEntryKeys[key]) || (!!state.readUpToTs && ts <= state.readUpToTs)
 const compare = (a: NotificationCandidate, b: NotificationCandidate) => b.ts.localeCompare(a.ts) || lifecycleRank[b.semanticAction] - lifecycleRank[a.semanticAction] || b.actorId.localeCompare(a.actorId) || b.entryId.localeCompare(a.entryId)
 
 function actionFor(scoped: ScopedActivityEntry): NotificationAction | null {
   const { entry } = scoped
+  if (entry.action !== "create" && entry.action !== "update" && entry.action !== "delete") return null
+  if (!isKnownContentTargetType(entry.targetType)) return "generic"
   if (entry.action === "delete") return entry.targetType === "reaction" || entry.targetType === "comment" ? null : "deleted"
-  if (entry.action !== "create" && entry.action !== "update") return null
   if (entry.targetType === "reaction") return entry.action === "create" ? "reacted" : null
   if (entry.targetType === "comment") return entry.action === "create" ? "commented" : null
   return entry.action === "create" ? "created" : "updated"
@@ -36,12 +40,19 @@ export function projectNotifications(scoped: readonly ScopedActivityEntry[], ctx
   const normal = scoped.flatMap((item): NotificationCandidate[] => {
     const semanticAction = actionFor(item)
     if (!semanticAction || item.isPersonal || (item.actor?.id ?? item.entry.actor) === ctx.selfId) return []
-    if (semanticAction !== "deleted" && (!item.targetExists || !item.subject)) return []
+    if (semanticAction !== "generic" && semanticAction !== "deleted" && (!item.targetExists || !item.subject)) return []
     const subject = item.subject
-    if (!subject) return []
     const group = ctx.groupsById.get(item.groupId)
     if (!group) return []
     const entryId = item.entry.id; const readKey = JSON.stringify([item.groupId, entryId])
+    if (semanticAction === "generic") return [{
+      groupId: item.groupId, groupName: group.name,
+      semanticAction, priority: "low", muted: Boolean(state.mutedGroupIds[item.groupId]), entryId, readKey,
+      actorId: item.actor?.id ?? item.entry.actor, actor: item.actor, ts: item.entry.ts, targetExists: false,
+      readKeys: { [readKey]: item.entry.ts }, actorCount: 1, isRead: isReadKey(readKey, item.entry.ts, state),
+      entrySummary: item.entry.summary, neutralTargetType: item.entry.targetType,
+    }]
+    if (!subject) return []
     return [{
       groupId: item.groupId, groupName: group.name, subjectId: subject.id, subjectType: subject.type, subjectTitle: subject.title,
       semanticAction, priority: semanticAction === "reacted" || semanticAction === "commented" ? (subject.createdBy === ctx.selfId ? "high" : "low") : "low",
@@ -51,8 +62,10 @@ export function projectNotifications(scoped: readonly ScopedActivityEntry[], ctx
     }]
   })
   const nonLifecycle: NotificationCandidate[] = []
+  const standalone: NotificationCandidate[] = []
   const latestLifecycle = new Map<string, NotificationCandidate>()
   for (const candidate of normal) {
+    if (candidate.semanticAction === "generic") { standalone.push(candidate); continue }
     if (!lifecycle.has(candidate.semanticAction)) { nonLifecycle.push(candidate); continue }
     const key = JSON.stringify([candidate.groupId, candidate.subjectType, candidate.subjectId])
     const existing = latestLifecycle.get(key)
@@ -76,7 +89,7 @@ export function projectNotifications(scoped: readonly ScopedActivityEntry[], ctx
       bundles.push({ ...newest, readKeys, actorCount: actors.size, isRead: Object.entries(readKeys).every(([key, ts]) => isReadKey(key, ts, state)) })
     }
   }
-  return bundles.sort(compare)
+  return [...bundles, ...standalone].sort(compare)
 }
 
 export function unreadHighPriorityKeys(notifications: readonly NotificationCandidate[], state?: NotificationState): string[] {
@@ -85,7 +98,7 @@ export function unreadHighPriorityKeys(notifications: readonly NotificationCandi
 }
 
 const presentation = {
-  created: { verb: "erstellt", icon: Plus }, updated: { verb: "geändert", icon: Pencil }, deleted: { verb: "gelöscht", icon: Trash2 }, reacted: { verb: "reagiert", icon: Smile }, commented: { verb: "kommentiert", icon: MessageCircle },
+  created: { verb: "erstellt", icon: Plus }, updated: { verb: "geändert", icon: Pencil }, deleted: { verb: "gelöscht", icon: Trash2 }, reacted: { verb: "reagiert", icon: Smile }, commented: { verb: "kommentiert", icon: MessageCircle }, generic: { verb: "Ereignis", icon: Pencil },
 } as const
 
 export interface NotificationCenterProps {
@@ -113,8 +126,9 @@ export function sectionFor(ts: string, now: Date): string {
 function sentenceParts(notification: NotificationCandidate): { lead: string; rest: string } {
   const name = notification.actor?.displayName ?? notification.actorId
   const lead = notification.actorCount > 1 ? `${name} und ${notification.actorCount - 1} weitere` : name
+  if (notification.semanticAction === "generic") return { lead, rest: `· ${notification.neutralTargetType}-Ereignis` }
   const plural = notification.actorCount > 1
-  const subject = `„${notification.subjectTitle ?? subjectWord(notification.subjectType)}"`
+  const subject = `„${notification.subjectTitle ?? subjectWord(notification.subjectType ?? "")}"`
   if (notification.semanticAction === "reacted") return { lead, rest: `${plural ? "haben" : "hat"} auf ${subject} reagiert` }
   if (notification.semanticAction === "commented") return { lead, rest: `${plural ? "haben" : "hat"} ${subject} kommentiert` }
   return { lead, rest: `${plural ? "haben" : "hat"} ${subject} ${presentation[notification.semanticAction].verb}` }
@@ -168,7 +182,8 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
       {sections.map((section) => <div key={section.label}>
         <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{section.label}</p>
         <ol className="space-y-0.5">{section.rows.map((notification) => {
-          const navigable = notification.semanticAction !== "deleted" && notification.targetExists
+          const neutral = notification.semanticAction === "generic"
+          const navigable = !neutral && notification.semanticAction !== "deleted" && notification.targetExists
           const { lead, rest } = sentenceParts(notification)
           const sentence = <><strong>{lead}</strong> {rest}</>
           const quote = notification.semanticAction === "commented" && notification.entrySummary ? notification.entrySummary : undefined
@@ -179,7 +194,7 @@ export function NotificationCenter({ notifications, onOpenSubject, onOpenGroup, 
               <div className="min-w-0 flex-1">
                 {navigable
                   ? <button type="button" onClick={() => { onMarkRead?.(notification.readKeys); onOpenSubject?.(notification) }} className="cursor-pointer rounded-sm text-left text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{sentence}</button>
-                  : unread && onMarkRead
+                  : !neutral && unread && onMarkRead
                     ? <button type="button" onClick={() => onMarkRead(notification.readKeys)} aria-label="Als gelesen markieren" className="cursor-pointer rounded-sm text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{sentence}</button>
                     : <p className="text-sm">{sentence}</p>}
                 {quote && <p className="mt-1 truncate rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">„{quote}"</p>}

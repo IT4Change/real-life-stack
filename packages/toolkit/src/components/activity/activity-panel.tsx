@@ -4,6 +4,7 @@ import { History, MessageCircle, Pencil, Plus, Trash2, UserRound } from "lucide-
 import { Avatar, AvatarFallback, AvatarImage, EmptyState, RelativeTime } from "../primitives"
 import { cn } from "../../lib/utils"
 import { sectionFor } from "./notification-center"
+import { isKnownContentTargetType } from "./known-content-target-types"
 
 export interface ActivityPanelProps {
   entries: readonly ActivityEntry[]
@@ -33,6 +34,9 @@ function reactionParts(entry: ActivityEntry): { emoji: string; target?: string }
 
 /** Sentence + badge in the SAME visual language as the notification center. */
 function rowPresentation(entry: ActivityEntry): { rest: React.ReactNode; badge: React.ReactNode; quote?: string } {
+  if (!isKnownContentTargetType(entry.targetType)) {
+    return { rest: <>· {entry.targetType}-Ereignis</>, badge: <Pencil className="size-3 text-muted-foreground" /> }
+  }
   const reaction = reactionParts(entry)
   if (reaction) {
     const rest = entry.action === "delete"
@@ -72,7 +76,7 @@ export function ActivityPanel({ entries, onOpenTarget, isTargetOpenable, resolve
           <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{section.label}</p>
           <ol className="space-y-0.5">
             {section.rows.map((entry) => {
-              const openable = Boolean(onOpenTarget && isTargetOpenable?.(entry))
+              const openable = isKnownContentTargetType(entry.targetType) && Boolean(onOpenTarget && isTargetOpenable?.(entry))
               const actor = resolveActor?.(entry.actor)
               const actorName = actor?.displayName ?? shortActor(entry.actor)
               const { rest, badge, quote } = rowPresentation(entry)
