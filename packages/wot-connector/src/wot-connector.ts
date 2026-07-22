@@ -105,15 +105,15 @@ import type { YjsCompactStore } from "@real-life/adapter-yjs"
 
 const LOGOUT_STEP_TIMEOUT_MS = 2_000
 
-async function awaitLogoutStep<T>(step: string, operation: () => Promise<T> | T): Promise<T> {
+async function awaitLogoutStep<T>(step: string, operation: () => Promise<T> | T, timeoutMs = LOGOUT_STEP_TIMEOUT_MS): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
       Promise.resolve().then(operation),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(
-          () => reject(new Error(`${step} timed out after ${LOGOUT_STEP_TIMEOUT_MS}ms`)),
-          LOGOUT_STEP_TIMEOUT_MS,
+          () => reject(new Error(`${step} timed out after ${timeoutMs}ms`)),
+          timeoutMs,
         )
       }),
     ])
@@ -646,9 +646,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // geloggt und übersprungen; Fehler der privacy-kritischen Schritte (Wipe,
     // Seed-Delete) werden gesammelt und NACH dem Auth-Reset geworfen.
     const criticalFailures: unknown[] = []
-    const guarded = async (step: string, critical: boolean, fn: () => Promise<unknown> | unknown): Promise<void> => {
+    const guarded = async (step: string, critical: boolean, fn: () => Promise<unknown> | unknown, timeoutMs?: number): Promise<void> => {
       try {
-        await awaitLogoutStep(step, fn)
+        await awaitLogoutStep(step, fn, timeoutMs)
       } catch (error) {
         console.warn(`[WotConnector] logout: ${step} fehlgeschlagen — Restabbau läuft weiter`, error)
         if (critical) criticalFailures.push(error)
@@ -694,7 +694,11 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
     await guarded("personalDoc.reset", false, () => resetYjsPersonalDoc())
     await guarded("runtimeStores.close", false, () => this.closeRuntimeStores())
-    await guarded("persistence.wipe", true, () => wipeIdentityPersistence(did))
+    // Der Wipe hat eine EIGENE per-DB-Diagnostik (2s-Delete-Timeout, benennt die
+    // blockierende DB). Sein Aussenbudget muss darueber liegen, sonst kappt der
+    // generische Step-Timeout die Diagnose (realistischer Worst-Case ~3 blockierte
+    // DBs x 2s + schnelle Deletes < 10s).
+    await guarded("persistence.wipe", true, () => wipeIdentityPersistence(did), 10_000)
     await guarded("seed.delete", true, () => this.identity.deleteStoredIdentity())
 
     // Clear identity switch marker + DID-gebundene Pending-Saves

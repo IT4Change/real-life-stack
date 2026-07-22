@@ -1,5 +1,5 @@
 export const ACTIVE_DID_STORAGE_KEY = "rls-wot-active-did"
-const DELETE_DATABASE_TIMEOUT_MS = 5_000
+const DELETE_DATABASE_TIMEOUT_MS = 2_000
 
 /**
  * Every IndexedDB database whose lifetime is bound to one local identity.
