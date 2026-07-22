@@ -61,9 +61,10 @@ export async function wipeIdentityPersistence(
   // Fehler werden gesammelt und am Ende geworfen — ein blockiertes Delete ist
   // weiterhin ein Fehler, nie ein erfolgreicher Wipe.
   const failures: unknown[] = []
+  let cancelled = false
   for (const name of identityDatabaseNames(did)) {
     if (options.isCancelled?.()) {
-      failures.push(new Error("wipe cancelled by newer session"))
+      cancelled = true
       break
     }
     try {
@@ -72,15 +73,17 @@ export async function wipeIdentityPersistence(
       failures.push(error)
     }
   }
-  if (failures.length === 0) {
-    if (options.isCancelled?.()) {
-      failures.push(new Error("wipe cancelled by newer session"))
-    } else {
-      try {
-        await deleteLegacyIdentityDatabases(options)
-      } catch (error) {
-        failures.push(error)
-      }
+  // Privacy-Vertrag: der Legacy-Sweep läuft auch nach fehlgeschlagenen
+  // DID-Deletes — NUR eine echte Cancellation (neuere Session besitzt die
+  // Persistenz) stoppt ihn. Ein Fehler darf nie neun weitere Läufe skippen.
+  if (!cancelled && options.isCancelled?.()) cancelled = true
+  if (cancelled) {
+    failures.push(new Error("wipe cancelled by newer session"))
+  } else {
+    try {
+      await deleteLegacyIdentityDatabases(options)
+    } catch (error) {
+      failures.push(error)
     }
   }
   if (failures.length > 0) {
