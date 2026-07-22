@@ -4,7 +4,7 @@
 // importiert, damit die Datei sauber kollektiert und jeder Test mit klarer
 // Botschaft rot ist, solange src/work-queue-store.ts nicht existiert.
 import { IDBFactory } from "fake-indexeddb"
-import { beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 type WorkItem = {
   id: string
@@ -24,12 +24,15 @@ async function loadStore() {
     complete(id: string): Promise<void>
     fail(id: string, now: number): Promise<boolean>
     count(): Promise<number>
+    getNextDueAt(): Promise<number | null>
   }
 }
 
 const DB = "wot-work-queue:did:key:test"
 
 describe("Vertrag #145 — WorkQueueStore Durability & Lebenszyklus", () => {
+  afterEach(() => vi.useRealTimers())
+
   beforeEach(() => {
     Object.defineProperty(globalThis, "indexedDB", {
       configurable: true,
@@ -60,6 +63,29 @@ describe("Vertrag #145 — WorkQueueStore Durability & Lebenszyklus", () => {
     await store.open()
     await store.close()
 
+    await expect(store.enqueue({ id: "late", kind: "receipt-ack", payload: {} }))
+      .rejects.toThrow("WorkQueueStore is closed")
+  })
+
+  it("V3: close begrenzt eine nie settle-nde Operation, schließt trotzdem und bleibt terminal", async () => {
+    const WorkQueueStore = await loadStore()
+    const store = new WorkQueueStore("work-queue-close-times-out")
+    await store.open()
+    vi.useFakeTimers()
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    ;(store as any).getAll = () => new Promise(() => {})
+
+    void store.getNextDueAt()
+    const closing = store.close()
+    let closeSettled = false
+    void closing.then(() => { closeSettled = true })
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(closeSettled).toBe(true)
+    await closing
+    expect(warn).toHaveBeenCalledWith(
+      "[WorkQueueStore] close timed out waiting for active operations — closing anyway: work",
+    )
     await expect(store.enqueue({ id: "late", kind: "receipt-ack", payload: {} }))
       .rejects.toThrow("WorkQueueStore is closed")
   })

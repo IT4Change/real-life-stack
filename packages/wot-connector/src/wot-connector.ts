@@ -103,6 +103,25 @@ import {
 } from "@real-life/adapter-yjs"
 import type { YjsCompactStore } from "@real-life/adapter-yjs"
 
+const LOGOUT_STEP_TIMEOUT_MS = 2_000
+
+async function awaitLogoutStep<T>(step: string, operation: () => Promise<T> | T): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`${step} timed out after ${LOGOUT_STEP_TIMEOUT_MS}ms`)),
+          LOGOUT_STEP_TIMEOUT_MS,
+        )
+      }),
+    ])
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout)
+  }
+}
+
 import type {
   WotConnectorConfig,
   WotConnectorRuntimeOverrides,
@@ -629,7 +648,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     const criticalFailures: unknown[] = []
     const guarded = async (step: string, critical: boolean, fn: () => Promise<unknown> | unknown): Promise<void> => {
       try {
-        await fn()
+        await awaitLogoutStep(step, fn)
       } catch (error) {
         console.warn(`[WotConnector] logout: ${step} fehlgeschlagen — Restabbau läuft weiter`, error)
         if (critical) criticalFailures.push(error)

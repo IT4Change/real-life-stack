@@ -1,5 +1,5 @@
 import { IDBFactory } from "fake-indexeddb"
-import { beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { WireMessage } from "@real-life/wot-core/ports"
 
 import { LocalOutboxStore } from "../src/local-outbox-store.js"
@@ -10,6 +10,8 @@ const message = {
 } as unknown as WireMessage
 
 describe("LocalOutboxStore attestation correlation", () => {
+  afterEach(() => vi.useRealTimers())
+
   beforeEach(() => {
     Object.defineProperty(globalThis, "indexedDB", {
       configurable: true,
@@ -63,5 +65,26 @@ describe("LocalOutboxStore attestation correlation", () => {
     await pendingRead
     await closing
     expect(closeSettled).toBe(true)
+  })
+
+  it("bounds a never-settling operation, closes anyway, and remains terminal", async () => {
+    const store = new LocalOutboxStore("outbox-close-times-out")
+    await store.open()
+    vi.useFakeTimers()
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    ;(store as any).getAll = () => new Promise(() => {})
+
+    void store.getPending()
+    const closing = store.close()
+    let closeSettled = false
+    void closing.then(() => { closeSettled = true })
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(closeSettled).toBe(true)
+    await closing
+    expect(warn).toHaveBeenCalledWith(
+      "[LocalOutboxStore] close timed out waiting for active operations — closing anyway: outbox",
+    )
+    await expect(store.getPending()).rejects.toThrow("LocalOutboxStore is closed")
   })
 })

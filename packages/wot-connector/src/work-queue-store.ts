@@ -1,5 +1,7 @@
 import type { Subscribable } from "@real-life/wot-core/ports"
 
+const CLOSE_ACTIVE_OPERATIONS_TIMEOUT_MS = 2_000
+
 export type WorkQueueKind = "deliver-attestation" | "receipt-ack"
 
 export interface WorkQueueItem {
@@ -76,8 +78,8 @@ export class WorkQueueStore implements WorkQueue {
     if (this.closePromise) return this.closePromise
     this.closed = true
     this.closePromise = (async () => {
-      await Promise.allSettled([...this.activeOperations])
-      const db = this.openPromise
+      const timedOut = await this.waitForActiveOperations()
+      const db = !timedOut && this.openPromise
         ? await this.openPromise.catch(() => null)
         : this.db
       db?.close()
@@ -261,8 +263,10 @@ export class WorkQueueStore implements WorkQueue {
         }
       }
       request.onsuccess = () => {
-        this.db = request.result
-        resolve(request.result)
+        const db = request.result
+        if (this.closed) db.close()
+        else this.db = db
+        resolve(db)
       }
       request.onerror = () => {
         this.openPromise = null
@@ -322,5 +326,23 @@ export class WorkQueueStore implements WorkQueue {
       () => this.activeOperations.delete(promise),
     )
     return promise
+  }
+
+  private async waitForActiveOperations(): Promise<boolean> {
+    if (this.activeOperations.size === 0) return false
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    const timedOut = await Promise.race([
+      Promise.allSettled([...this.activeOperations]).then(() => false),
+      new Promise<boolean>((resolve) => {
+        timeout = setTimeout(() => resolve(true), CLOSE_ACTIVE_OPERATIONS_TIMEOUT_MS)
+      }),
+    ])
+    if (timeout !== undefined) clearTimeout(timeout)
+    if (timedOut) {
+      console.warn(
+        `[WorkQueueStore] close timed out waiting for active operations — closing anyway: ${this.storeName}`,
+      )
+    }
+    return timedOut
   }
 }
