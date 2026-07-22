@@ -5,6 +5,8 @@ import type {
   WireMessage,
 } from "@real-life/wot-core/ports"
 
+const CLOSE_ACTIVE_OPERATIONS_TIMEOUT_MS = 2_000
+
 interface StoredOutboxEntry {
   id: string
   envelopeJson: string
@@ -46,6 +48,9 @@ export class LocalOutboxStore implements OutboxStore {
   private pendingCount = 0
   private listeners = new Set<(count: number) => void>()
   private attestationCorrelations = new Map<string, string>()
+  private closed = false
+  private closePromise: Promise<void> | null = null
+  private activeOperations = new Set<Promise<unknown>>()
 
   constructor(
     private readonly dbName: string,
@@ -53,24 +58,30 @@ export class LocalOutboxStore implements OutboxStore {
   ) {}
 
   async open(): Promise<void> {
-    await this.ensureOpen()
-    this.pendingCount = await this.count()
-    for (const { messageId, attestationId } of await this.getAttestationCorrelations()) {
-      this.attestationCorrelations.set(messageId, attestationId)
-    }
+    await this.run(async () => {
+      await this.ensureOpen()
+      this.pendingCount = await this.count()
+      for (const { messageId, attestationId } of await this.getAttestationCorrelations()) {
+        this.attestationCorrelations.set(messageId, attestationId)
+      }
+    })
   }
 
   async close(): Promise<void> {
-    if (this.openPromise) {
-      const db = await this.openPromise.catch(() => null)
+    if (this.closePromise) return this.closePromise
+    this.closed = true
+    this.closePromise = (async () => {
+      const timedOut = await this.waitForActiveOperations()
+      const db = !timedOut && this.openPromise
+        ? await this.openPromise.catch(() => null)
+        : this.db
       db?.close()
-    } else {
-      this.db?.close()
-    }
-    this.db = null
-    this.openPromise = null
-    this.listeners.clear()
-    this.attestationCorrelations.clear()
+      this.db = null
+      this.openPromise = null
+      this.listeners.clear()
+      this.attestationCorrelations.clear()
+    })()
+    return this.closePromise
   }
 
   /**
@@ -78,90 +89,113 @@ export class LocalOutboxStore implements OutboxStore {
    * correlation into the same durable outbox row atomically with the envelope.
    */
   async setAttestationCorrelation(messageId: string, attestationId: string): Promise<void> {
-    this.attestationCorrelations.set(messageId, attestationId)
-    await this.updateStoredAttestationId(messageId, attestationId)
+    await this.run(async () => {
+      this.attestationCorrelations.set(messageId, attestationId)
+      await this.updateStoredAttestationId(messageId, attestationId)
+    })
   }
 
   async clearAttestationCorrelation(messageId: string): Promise<void> {
-    this.attestationCorrelations.delete(messageId)
-    await this.updateStoredAttestationId(messageId, undefined)
+    await this.run(async () => {
+      this.attestationCorrelations.delete(messageId)
+      await this.updateStoredAttestationId(messageId, undefined)
+    })
   }
 
   async getAttestationCorrelations(): Promise<AttestationOutboxCorrelation[]> {
-    return (await this.getAll()).flatMap((entry) =>
+    return this.run(async () => (await this.getAll()).flatMap((entry) =>
       entry.attestationId
         ? [{ messageId: entry.id, attestationId: entry.attestationId }]
         : [],
-    )
+    ))
   }
 
   async enqueue(envelope: WireMessage): Promise<void> {
-    if (await this.has(envelope.id)) return
-    const entry: StoredOutboxEntry = {
-      id: envelope.id,
-      envelopeJson: JSON.stringify(envelope),
-      createdAt: new Date().toISOString(),
-      retryCount: 0,
-      attestationId: this.attestationCorrelations.get(envelope.id),
-    }
-    await this.put(entry)
-    await this.refreshPendingCount()
+    await this.run(async () => {
+      if (await this.has(envelope.id)) return
+      const entry: StoredOutboxEntry = {
+        id: envelope.id,
+        envelopeJson: JSON.stringify(envelope),
+        createdAt: new Date().toISOString(),
+        retryCount: 0,
+        attestationId: this.attestationCorrelations.get(envelope.id),
+      }
+      await this.put(entry)
+      await this.refreshPendingCount()
+    })
   }
 
   async dequeue(envelopeId: string): Promise<void> {
-    const db = await this.ensureOpen()
-    await new Promise<void>((resolve, reject) => {
+    await this.run(async () => {
+      const db = await this.ensureOpen()
+      await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(this.storeName, "readwrite")
       tx.objectStore(this.storeName).delete(envelopeId)
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
       tx.onabort = () => reject(tx.error)
+      })
+      this.attestationCorrelations.delete(envelopeId)
+      await this.refreshPendingCount()
     })
-    this.attestationCorrelations.delete(envelopeId)
-    await this.refreshPendingCount()
   }
 
   async getPending(): Promise<OutboxEntry[]> {
-    const entries = await this.getAll()
-    return entries
+    return this.run(async () => {
+      const entries = await this.getAll()
+      return entries
       .map((entry) => ({
         envelope: JSON.parse(entry.envelopeJson) as WireMessage,
         createdAt: entry.createdAt,
         retryCount: entry.retryCount,
       }))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    })
   }
 
   async has(envelopeId: string): Promise<boolean> {
-    const db = await this.ensureOpen()
-    return new Promise<boolean>((resolve, reject) => {
-      const request = db.transaction(this.storeName, "readonly")
-        .objectStore(this.storeName)
-        .getKey(envelopeId)
-      request.onsuccess = () => resolve(request.result !== undefined)
-      request.onerror = () => reject(request.error)
+    return this.run(async () => {
+      const db = await this.ensureOpen()
+      return new Promise<boolean>((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readonly")
+        const request = tx.objectStore(this.storeName).getKey(envelopeId)
+        let found = false
+        request.onsuccess = () => { found = request.result !== undefined }
+        request.onerror = () => reject(request.error)
+        tx.oncomplete = () => resolve(found)
+        tx.onerror = () => reject(tx.error)
+        tx.onabort = () => reject(tx.error)
+      })
     })
   }
 
   async incrementRetry(envelopeId: string): Promise<void> {
-    const entry = await this.get(envelopeId)
-    if (!entry) return
-    entry.retryCount += 1
-    await this.put(entry)
+    await this.run(async () => {
+      const entry = await this.get(envelopeId)
+      if (!entry) return
+      entry.retryCount += 1
+      await this.put(entry)
+    })
   }
 
   async count(): Promise<number> {
-    const db = await this.ensureOpen()
-    return new Promise<number>((resolve, reject) => {
-      const request = db.transaction(this.storeName, "readonly")
-        .objectStore(this.storeName)
-        .count()
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => reject(request.error)
+    return this.run(async () => {
+      const db = await this.ensureOpen()
+      return new Promise<number>((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readonly")
+        const request = tx.objectStore(this.storeName).count()
+        let count = 0
+        request.onsuccess = () => { count = request.result }
+        request.onerror = () => reject(request.error)
+        tx.oncomplete = () => resolve(count)
+        tx.onerror = () => reject(tx.error)
+        tx.onabort = () => reject(tx.error)
+      })
     })
   }
 
   watchPendingCount(): Subscribable<number> {
+    this.assertOpen()
     return {
       getValue: () => this.pendingCount,
       subscribe: (callback) => {
@@ -172,6 +206,7 @@ export class LocalOutboxStore implements OutboxStore {
   }
 
   private async ensureOpen(): Promise<IDBDatabase> {
+    this.assertOpen()
     if (this.db) return this.db
     if (this.openPromise) return this.openPromise
     this.openPromise = new Promise<IDBDatabase>((resolve, reject) => {
@@ -183,8 +218,10 @@ export class LocalOutboxStore implements OutboxStore {
         }
       }
       request.onsuccess = () => {
-        this.db = request.result
-        resolve(request.result)
+        const db = request.result
+        if (this.closed) db.close()
+        else this.db = db
+        resolve(db)
       }
       request.onerror = () => {
         this.openPromise = null
@@ -197,22 +234,28 @@ export class LocalOutboxStore implements OutboxStore {
   private async get(envelopeId: string): Promise<StoredOutboxEntry | null> {
     const db = await this.ensureOpen()
     return new Promise<StoredOutboxEntry | null>((resolve, reject) => {
-      const request = db.transaction(this.storeName, "readonly")
-        .objectStore(this.storeName)
-        .get(envelopeId)
-      request.onsuccess = () => resolve((request.result as StoredOutboxEntry | undefined) ?? null)
+      const tx = db.transaction(this.storeName, "readonly")
+      const request = tx.objectStore(this.storeName).get(envelopeId)
+      let entry: StoredOutboxEntry | null = null
+      request.onsuccess = () => { entry = (request.result as StoredOutboxEntry | undefined) ?? null }
       request.onerror = () => reject(request.error)
+      tx.oncomplete = () => resolve(entry)
+      tx.onerror = () => reject(tx.error)
+      tx.onabort = () => reject(tx.error)
     })
   }
 
   private async getAll(): Promise<StoredOutboxEntry[]> {
     const db = await this.ensureOpen()
     return new Promise<StoredOutboxEntry[]>((resolve, reject) => {
-      const request = db.transaction(this.storeName, "readonly")
-        .objectStore(this.storeName)
-        .getAll()
-      request.onsuccess = () => resolve(request.result as StoredOutboxEntry[])
+      const tx = db.transaction(this.storeName, "readonly")
+      const request = tx.objectStore(this.storeName).getAll()
+      let entries: StoredOutboxEntry[] = []
+      request.onsuccess = () => { entries = request.result as StoredOutboxEntry[] }
       request.onerror = () => reject(request.error)
+      tx.oncomplete = () => resolve(entries)
+      tx.onerror = () => reject(tx.error)
+      tx.onabort = () => reject(tx.error)
     })
   }
 
@@ -255,5 +298,38 @@ export class LocalOutboxStore implements OutboxStore {
     if (next === this.pendingCount) return
     this.pendingCount = next
     for (const listener of this.listeners) listener(next)
+  }
+
+  private assertOpen(): void {
+    if (this.closed) throw new Error("LocalOutboxStore is closed")
+  }
+
+  private async run<T>(operation: () => Promise<T>): Promise<T> {
+    this.assertOpen()
+    const promise = operation()
+    this.activeOperations.add(promise)
+    promise.then(
+      () => this.activeOperations.delete(promise),
+      () => this.activeOperations.delete(promise),
+    )
+    return promise
+  }
+
+  private async waitForActiveOperations(): Promise<boolean> {
+    if (this.activeOperations.size === 0) return false
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    const timedOut = await Promise.race([
+      Promise.allSettled([...this.activeOperations]).then(() => false),
+      new Promise<boolean>((resolve) => {
+        timeout = setTimeout(() => resolve(true), CLOSE_ACTIVE_OPERATIONS_TIMEOUT_MS)
+      }),
+    ])
+    if (timeout !== undefined) clearTimeout(timeout)
+    if (timedOut) {
+      console.warn(
+        `[LocalOutboxStore] close timed out waiting for active operations — closing anyway: ${this.storeName}`,
+      )
+    }
+    return timedOut
   }
 }

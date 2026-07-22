@@ -130,6 +130,74 @@ describe("WotConnector.logout() - auth-scoped observable reset", () => {
   })
 })
 
+describe("WotConnector DID-store teardown contract", () => {
+  it("requires a real close for every runtime DID store", () => {
+    const close = sliceMethod(readConnectorSource(), "private async closeRuntimeStores", "private async cleanupOldIdentity")
+    expect(close).toMatch(/await compact\.close\(\)/)
+    expect(close).toMatch(/await outbox\.close\(\)/)
+    expect(close).toMatch(/await workQueue\.close\(\)/)
+    expect(close).not.toMatch(/close\?\./)
+  })
+
+  it("keeps a relogin runtime intact when an old store-close continuation settles", async () => {
+    let releaseOldClose!: () => void
+    const oldCompact = {
+      close: vi.fn(() => new Promise<void>((resolve) => { releaseOldClose = resolve })),
+    }
+    const oldOutbox = { close: vi.fn(async () => {}) }
+    const oldWorkQueue = { close: vi.fn(async () => {}) }
+    const oldDurable = { close: vi.fn(async () => {}) }
+    const newCompact = { close: vi.fn(async () => {}) }
+    const newOutbox = { close: vi.fn(async () => {}) }
+    const newWorkQueue = { close: vi.fn(async () => {}) }
+    const newDurable = { close: vi.fn(async () => {}) }
+    const fake = {
+      runtimeGeneration: 1,
+      spaceCompactStore: oldCompact,
+      outboxStore: oldOutbox,
+      workQueue: oldWorkQueue,
+      durableStores: [oldDurable],
+      docLogStore: { old: true },
+      keyManagement: { old: true },
+      memberUpdateStore: { old: true },
+      messageIdHistory: { old: true },
+      workQueueCountUnsub: vi.fn(),
+      stopWorkQueueTimer: vi.fn(),
+      deliveryMessageIds: new Map([["old", "old"]]),
+      inFlightDeliveryMessageIds: new Set(["old"]),
+      pendingDeliveryReceipts: new Map([["old", {}]]),
+      lastSyncStateLog: "old",
+    }
+
+    const oldTeardown = WotConnector.prototype["closeRuntimeStores"].call(fake as any)
+    await vi.waitFor(() => expect(oldCompact.close).toHaveBeenCalledOnce())
+
+    // Same connector instance, new authenticated runtime.
+    Object.assign(fake, {
+      runtimeGeneration: 2,
+      spaceCompactStore: newCompact,
+      outboxStore: newOutbox,
+      workQueue: newWorkQueue,
+      durableStores: [newDurable],
+      docLogStore: { fresh: true },
+      keyManagement: { fresh: true },
+      memberUpdateStore: { fresh: true },
+      messageIdHistory: { fresh: true },
+    })
+
+    releaseOldClose()
+    await oldTeardown
+
+    expect(fake.spaceCompactStore).toBe(newCompact)
+    expect(fake.outboxStore).toBe(newOutbox)
+    expect(fake.workQueue).toBe(newWorkQueue)
+    expect(fake.durableStores).toEqual([newDurable])
+    expect(newOutbox.close).not.toHaveBeenCalled()
+    expect(newWorkQueue.close).not.toHaveBeenCalled()
+    expect(newDurable.close).not.toHaveBeenCalled()
+  })
+})
+
 describe("WotConnector bootstrap - delivery receipt ordering", () => {
   const bootstrap = sliceMethod(
     readConnectorSource(),
@@ -1132,10 +1200,10 @@ describe("WotConnector loop-review #143: Teardown-Resilienz + Delivery-Monotonie
       persistenceSource.indexOf("export async function deleteLegacyIdentityDatabases"),
     )
     expect(wipe).toMatch(/failures\.push\(error\)/)
-    expect(wipe).toMatch(/deleteLegacyIdentityDatabases\(\)/)
+    expect(wipe).toMatch(/deleteLegacyIdentityDatabases\(options\)/)
     expect(wipe).toMatch(/wipeIdentityPersistence: .*nicht gelöscht/)
     // Legacy-Wipe läuft VOR dem Fehler-Throw (wird nie übersprungen)
-    expect(wipe.indexOf("deleteLegacyIdentityDatabases()")).toBeLessThan(wipe.indexOf("nicht gelöscht"))
+    expect(wipe.indexOf("deleteLegacyIdentityDatabases(options)")).toBeLessThan(wipe.indexOf("nicht gelöscht"))
   })
 
   it("records a durable pending-save after the accept gate and never heals via consumed gates", () => {
