@@ -11,6 +11,14 @@ import type { YjsCompactStore } from "@real-life/adapter-yjs"
 import type { YjsReplicationAdapter } from "@real-life/adapter-yjs"
 import type { WorkQueue } from "./work-queue-store.js"
 
+/** Every DID-scoped IndexedDB store must close its real connection on teardown. */
+export interface ClosableIdentityStore {
+  close(): void | Promise<void>
+}
+
+export type ClosableOutboxStore = OutboxStore & ClosableIdentityStore
+export type ClosableYjsCompactStore = YjsCompactStore & ClosableIdentityStore
+
 // --- WoT Connector Configuration ---
 
 export interface WotConnectorConfig {
@@ -23,7 +31,7 @@ export interface WotConnectorRuntimeOverrides {
   /** Raw transport. Production creates a Sync-003 WebSocket adapter. */
   messaging?: MessagingAdapter
   /** Device-local generic outbox. Production creates an IndexedDB store. */
-  outboxStore?: OutboxStore
+  outboxStore?: ClosableOutboxStore
   /** Device-local key-discovery and app-receipt work queue. */
   workQueue?: WorkQueue
   /** Shared Personal-Doc/Space log store and deviceId owner. */
@@ -31,7 +39,7 @@ export interface WotConnectorRuntimeOverrides {
   keyManagement?: KeyManagementPort
   memberUpdateStore?: MemberUpdatePendingStore
   messageIdHistory?: MessageIdHistoryPort
-  compactStore?: YjsCompactStore
+  compactStore?: ClosableYjsCompactStore
   /** Test/runtime replacement for space replication (for example an in-memory CRDT peer). */
   replication?: YjsReplicationAdapter
   /** Tests can disable trace decoration without changing transport semantics. */

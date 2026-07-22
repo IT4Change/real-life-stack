@@ -130,6 +130,16 @@ describe("WotConnector.logout() - auth-scoped observable reset", () => {
   })
 })
 
+describe("WotConnector DID-store teardown contract", () => {
+  it("requires a real close for every runtime DID store", () => {
+    const close = sliceMethod(readConnectorSource(), "private async closeRuntimeStores", "private async cleanupOldIdentity")
+    expect(close).toMatch(/await compact\.close\(\)/)
+    expect(close).toMatch(/await outbox\.close\(\)/)
+    expect(close).toMatch(/await workQueue\.close\(\)/)
+    expect(close).not.toMatch(/close\?\./)
+  })
+})
+
 describe("WotConnector bootstrap - delivery receipt ordering", () => {
   const bootstrap = sliceMethod(
     readConnectorSource(),

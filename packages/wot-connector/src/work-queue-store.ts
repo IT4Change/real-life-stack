@@ -19,7 +19,7 @@ export interface WorkQueueEntry {
 /** Runtime seam used by WotConnector and injectable store implementations. */
 export interface WorkQueue {
   open?(): Promise<void>
-  close?(): Promise<void>
+  close(): Promise<void>
   enqueue(item: WorkQueueEntry): Promise<void>
   claimDue(now: number): Promise<WorkQueueItem[]>
   complete(id: string): Promise<void>
@@ -53,6 +53,9 @@ export class WorkQueueStore implements WorkQueue {
   private claimedIds = new Set<string>()
   private claimChain: Promise<void> = Promise.resolve()
   private readonly maxAttempts: number
+  private closed = false
+  private closePromise: Promise<void> | null = null
+  private activeOperations = new Set<Promise<unknown>>()
 
   constructor(
     private readonly dbName: string,
@@ -63,28 +66,35 @@ export class WorkQueueStore implements WorkQueue {
   }
 
   async open(): Promise<void> {
-    await this.ensureOpen()
-    this.pendingCount = await this.count()
+    await this.run(async () => {
+      await this.ensureOpen()
+      this.pendingCount = await this.count()
+    })
   }
 
   async close(): Promise<void> {
-    if (this.openPromise) {
-      const db = await this.openPromise.catch(() => null)
+    if (this.closePromise) return this.closePromise
+    this.closed = true
+    this.closePromise = (async () => {
+      await Promise.allSettled([...this.activeOperations])
+      const db = this.openPromise
+        ? await this.openPromise.catch(() => null)
+        : this.db
       db?.close()
-    } else {
-      this.db?.close()
-    }
-    this.db = null
-    this.openPromise = null
-    this.claimedIds.clear()
-    this.listeners.clear()
-    this.claimChain = Promise.resolve()
+      this.db = null
+      this.openPromise = null
+      this.claimedIds.clear()
+      this.listeners.clear()
+      this.claimChain = Promise.resolve()
+    })()
+    return this.closePromise
   }
 
   async enqueue(item: WorkQueueEntry): Promise<void> {
-    const db = await this.ensureOpen()
-    let inserted = false
-    await new Promise<void>((resolve, reject) => {
+    await this.run(async () => {
+      const db = await this.ensureOpen()
+      let inserted = false
+      await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(this.storeName, "readwrite")
       const store = tx.objectStore(this.storeName)
       const request = store.get(item.id)
@@ -102,8 +112,9 @@ export class WorkQueueStore implements WorkQueue {
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
       tx.onabort = () => reject(tx.error ?? request.error)
+      })
+      if (inserted) await this.refreshPendingCount()
     })
-    if (inserted) await this.refreshPendingCount()
   }
 
   /**
@@ -119,6 +130,10 @@ export class WorkQueueStore implements WorkQueue {
   }
 
   async claimDue(now: number): Promise<WorkQueueItem[]> {
+    return this.run(() => this.claimDueOpen(now))
+  }
+
+  private async claimDueOpen(now: number): Promise<WorkQueueItem[]> {
     let resolveResult!: (items: WorkQueueItem[]) => void
     let rejectResult!: (error: unknown) => void
     const result = new Promise<WorkQueueItem[]>((resolve, reject) => {
@@ -145,20 +160,23 @@ export class WorkQueueStore implements WorkQueue {
   }
 
   async complete(id: string): Promise<void> {
-    try {
-      await this.delete(id)
-      await this.refreshPendingCount()
-    } finally {
+    await this.run(async () => {
+      try {
+        await this.delete(id)
+        await this.refreshPendingCount()
+      } finally {
       // A failed completion may safely run again (at-least-once), but must not
       // crash the connector or remain stuck in-flight for this whole session.
-      this.claimedIds.delete(id)
-    }
+        this.claimedIds.delete(id)
+      }
+    })
   }
 
   async fail(id: string, now: number): Promise<boolean> {
-    const db = await this.ensureOpen()
-    let dropped = false
-    try {
+    return this.run(async () => {
+      const db = await this.ensureOpen()
+      let dropped = false
+      try {
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction(this.storeName, "readwrite")
         const store = tx.objectStore(this.storeName)
@@ -184,24 +202,31 @@ export class WorkQueueStore implements WorkQueue {
         tx.onabort = () => reject(tx.error ?? request.error)
       })
       if (dropped) await this.refreshPendingCount()
-      return dropped
-    } finally {
-      this.claimedIds.delete(id)
-    }
+        return dropped
+      } finally {
+        this.claimedIds.delete(id)
+      }
+    })
   }
 
   async count(): Promise<number> {
-    const db = await this.ensureOpen()
-    return new Promise<number>((resolve, reject) => {
-      const request = db.transaction(this.storeName, "readonly")
-        .objectStore(this.storeName)
-        .count()
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => reject(request.error)
+    return this.run(async () => {
+      const db = await this.ensureOpen()
+      return new Promise<number>((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readonly")
+        const request = tx.objectStore(this.storeName).count()
+        let count = 0
+        request.onsuccess = () => { count = request.result }
+        request.onerror = () => reject(request.error)
+        tx.oncomplete = () => resolve(count)
+        tx.onerror = () => reject(tx.error)
+        tx.onabort = () => reject(tx.error)
+      })
     })
   }
 
   watchPendingCount(): Subscribable<number> {
+    this.assertOpen()
     return {
       getValue: () => this.pendingCount,
       subscribe: (callback) => {
@@ -212,16 +237,19 @@ export class WorkQueueStore implements WorkQueue {
   }
 
   async getNextDueAt(): Promise<number | null> {
-    const entries = await this.getAll()
-    let next: number | null = null
-    for (const entry of entries) {
-      if (this.claimedIds.has(entry.id)) continue
-      if (next === null || entry.nextDueAt < next) next = entry.nextDueAt
-    }
-    return next
+    return this.run(async () => {
+      const entries = await this.getAll()
+      let next: number | null = null
+      for (const entry of entries) {
+        if (this.claimedIds.has(entry.id)) continue
+        if (next === null || entry.nextDueAt < next) next = entry.nextDueAt
+      }
+      return next
+    })
   }
 
   private async ensureOpen(): Promise<IDBDatabase> {
+    this.assertOpen()
     if (this.db) return this.db
     if (this.openPromise) return this.openPromise
     this.openPromise = new Promise<IDBDatabase>((resolve, reject) => {
@@ -247,11 +275,14 @@ export class WorkQueueStore implements WorkQueue {
   private async getAll(): Promise<WorkQueueItem[]> {
     const db = await this.ensureOpen()
     return new Promise<WorkQueueItem[]>((resolve, reject) => {
-      const request = db.transaction(this.storeName, "readonly")
-        .objectStore(this.storeName)
-        .getAll()
-      request.onsuccess = () => resolve(request.result as WorkQueueItem[])
+      const tx = db.transaction(this.storeName, "readonly")
+      const request = tx.objectStore(this.storeName).getAll()
+      let entries: WorkQueueItem[] = []
+      request.onsuccess = () => { entries = request.result as WorkQueueItem[] }
       request.onerror = () => reject(request.error)
+      tx.oncomplete = () => resolve(entries)
+      tx.onerror = () => reject(tx.error)
+      tx.onabort = () => reject(tx.error)
     })
   }
 
@@ -276,5 +307,20 @@ export class WorkQueueStore implements WorkQueue {
       // verschlucken — der Store-Zustand ist zu diesem Zeitpunkt committed.
       try { listener(next) } catch (error) { console.warn("[WorkQueueStore] pending listener failed", error) }
     }
+  }
+
+  private assertOpen(): void {
+    if (this.closed) throw new Error("WorkQueueStore is closed")
+  }
+
+  private async run<T>(operation: () => Promise<T>): Promise<T> {
+    this.assertOpen()
+    const promise = operation()
+    this.activeOperations.add(promise)
+    promise.then(
+      () => this.activeOperations.delete(promise),
+      () => this.activeOperations.delete(promise),
+    )
+    return promise
   }
 }

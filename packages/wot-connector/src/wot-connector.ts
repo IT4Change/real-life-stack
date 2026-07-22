@@ -109,6 +109,8 @@ import type {
   WotSyncState,
   RlsSpaceDoc,
   SerializedItem,
+  ClosableOutboxStore,
+  ClosableYjsCompactStore,
 } from "./types.js"
 import { serializeItem, deserializeItem } from "./serialization.js"
 import { CrossGroupIndex } from "./CrossGroupIndex.js"
@@ -309,7 +311,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   // Adapters (initialized after auth)
   private transportAdapter: MessagingAdapter | null = null
   private outboxAdapter: OutboxMessagingRuntime | null = null
-  private outboxStore: OutboxStore | null = null
+  private outboxStore: ClosableOutboxStore | null = null
   private workQueue: WorkQueue | null = null
   private replication: YjsReplicationAdapter | null = null
   private storage: YjsStorageAdapter | null = null
@@ -318,7 +320,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   private keyManagement: KeyManagementPort | null = null
   private memberUpdateStore: MemberUpdatePendingStore | null = null
   private messageIdHistory: MessageIdHistoryPort | null = null
-  private spaceCompactStore: YjsCompactStore | null = null
+  private spaceCompactStore: ClosableYjsCompactStore | null = null
   private durableStores: Array<{ close(): void | Promise<void> }> = []
 
   // State
@@ -3729,16 +3731,16 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.invalidateRuntimeGeneration()
     // Jeder Close einzeln geguardet: ein fehlschlagender Store darf die übrigen
     // Closes (und damit den nachfolgenden Wipe) nicht verhindern.
-    const compact = this.spaceCompactStore as (YjsCompactStore & { close?: () => void | Promise<void> }) | null
-    try { await compact?.close?.() } catch { /* best-effort teardown */ }
-    const outbox = this.outboxStore as (OutboxStore & { close?: () => void | Promise<void> }) | null
-    try { await outbox?.close?.() } catch { /* best-effort teardown */ }
+    const compact = this.spaceCompactStore
+    if (compact) try { await compact.close() } catch { /* best-effort teardown */ }
+    const outbox = this.outboxStore
+    if (outbox) try { await outbox.close() } catch { /* best-effort teardown */ }
     this.stopWorkQueueTimer()
     this.workQueueCountUnsub?.()
     this.workQueueCountUnsub = null
     const workQueue = this.workQueue
     this.workQueue = null
-    try { await workQueue?.close?.() } catch { /* best-effort teardown */ }
+    if (workQueue) try { await workQueue.close() } catch { /* best-effort teardown */ }
     for (const store of this.durableStores.splice(0)) {
       try { await store.close() } catch { /* best-effort teardown */ }
     }

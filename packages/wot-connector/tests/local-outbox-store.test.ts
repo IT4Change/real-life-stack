@@ -37,4 +37,31 @@ describe("LocalOutboxStore attestation correlation", () => {
 
     await reloadedStore.close()
   })
+
+  it("does not reopen its IndexedDB connection after close", async () => {
+    const store = new LocalOutboxStore("outbox-close-is-terminal")
+    await store.open()
+    await store.close()
+
+    await expect(store.getPending()).rejects.toThrow("LocalOutboxStore is closed")
+  })
+
+  it("resolves close only after an operation already using the connection settles", async () => {
+    const store = new LocalOutboxStore("outbox-close-waits-for-operation")
+    await store.open()
+    let release!: () => void
+    ;(store as any).getAll = () => new Promise((resolve) => { release = () => resolve([]) })
+
+    const pendingRead = store.getPending()
+    const closing = store.close()
+    let closeSettled = false
+    void closing.then(() => { closeSettled = true })
+    await Promise.resolve()
+    expect(closeSettled).toBe(false)
+
+    release()
+    await pendingRead
+    await closing
+    expect(closeSettled).toBe(true)
+  })
 })

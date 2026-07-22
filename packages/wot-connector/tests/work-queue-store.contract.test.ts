@@ -54,6 +54,16 @@ describe("Vertrag #145 — WorkQueueStore Durability & Lebenszyklus", () => {
     await s2.close()
   })
 
+  it("V3: close ist terminal und verhindert eine stille IndexedDB-Resurrection", async () => {
+    const WorkQueueStore = await loadStore()
+    const store = new WorkQueueStore("work-queue-close-is-terminal")
+    await store.open()
+    await store.close()
+
+    await expect(store.enqueue({ id: "late", kind: "receipt-ack", payload: {} }))
+      .rejects.toThrow("WorkQueueStore is closed")
+  })
+
   it("V3: claimDue liefert ein Item pro Session genau einmal (Claim), complete entfernt durabel", async () => {
     const WorkQueueStore = await loadStore()
     const store = new WorkQueueStore(DB)

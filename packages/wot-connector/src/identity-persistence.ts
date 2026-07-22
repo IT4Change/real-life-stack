@@ -1,4 +1,5 @@
 export const ACTIVE_DID_STORAGE_KEY = "rls-wot-active-did"
+const DELETE_DATABASE_TIMEOUT_MS = 5_000
 
 /**
  * Every IndexedDB database whose lifetime is bound to one local identity.
@@ -78,11 +79,18 @@ export async function deleteLegacyIdentityDatabases(): Promise<void> {
   }
 }
 
-async function deleteIndexedDatabase(name: string): Promise<void> {
+export async function deleteIndexedDatabase(name: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const request = indexedDB.deleteDatabase(name)
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error ?? new Error(`IndexedDB delete failed: ${name}`))
-    request.onblocked = () => reject(new Error(`IndexedDB delete blocked by an open connection: ${name}`))
+    const timeout = setTimeout(() => {
+      reject(new Error(`delete timed out — connection still open: ${name}`))
+    }, DELETE_DATABASE_TIMEOUT_MS)
+    const settle = (callback: () => void) => {
+      clearTimeout(timeout)
+      callback()
+    }
+    request.onsuccess = () => settle(resolve)
+    request.onerror = () => settle(() => reject(request.error ?? new Error(`IndexedDB delete failed: ${name}`)))
+    request.onblocked = () => settle(() => reject(new Error(`IndexedDB delete blocked by an open connection: ${name}`)))
   })
 }
