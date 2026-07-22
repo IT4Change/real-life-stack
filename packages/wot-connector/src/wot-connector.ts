@@ -384,6 +384,12 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   /** Distinguishes A→B→A switches: only the newest open request may touch state. */
   private handleOpenGeneration = 0
   private profileUnsub: (() => void) | null = null
+  /** Profile content last observed through the PersonalDoc subscription. */
+  private lastObservedProfileKey = ""
+  /** Last profile content that this connector session successfully published. */
+  private lastPublishedProfileFingerprint: string | null = null
+  /** Deduplicates concurrent direct and PersonalDoc-triggered publishes. */
+  private profilePublishInFlight = new Map<string, Promise<void>>()
   private groupsCache: Group[] = []
   private outboxCountUnsub: (() => void) | null = null
   private workQueueCountUnsub: (() => void) | null = null
@@ -1517,6 +1523,8 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
   private async bootstrapAdapters(): Promise<void> {
     const did = this.identity.getDid()
+    this.lastPublishedProfileFingerprint = null
+    this.profilePublishInFlight.clear()
 
     // Re-login on the same connector instance: hooks still hold the stable
     // notification-state observable — rebind the PersonalDoc subscription
@@ -1770,17 +1778,10 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.attestationsUnsub = this.storage.watchAllAttestations().subscribe(() => this.syncConfirmationsFromPersonalDoc())
     this.syncConfirmationsFromPersonalDoc()
 
-    // Reactive profile via PersonalDoc changes
-    let lastProfileKey = ""
-    this.profileUnsub = onYjsPersonalDocChange(() => {
-      const doc = getYjsPersonalDoc()
-      const profile = doc?.profile
-      const key = JSON.stringify(profile ?? null)
-      if (key !== lastProfileKey) {
-        lastProfileKey = key
-        this.syncProfileObservable()
-      }
-    })
+    // Reactive profile via PersonalDoc changes. Discovery publishing is safe here:
+    // publishProfile only writes to Discovery, never back into PersonalDoc.
+    this.lastObservedProfileKey = JSON.stringify(getYjsPersonalDoc()?.profile ?? null)
+    this.profileUnsub = onYjsPersonalDocChange(() => this.handlePersonalDocProfileChange())
     this.syncProfileObservable()
 
     // 10. CrossGroupIndex for personal view (aggregates items across all shared spaces)
@@ -1846,17 +1847,53 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.publishProfile().catch(() => {})
   }
 
+  private handlePersonalDocProfileChange(): void {
+    const doc = getYjsPersonalDoc()
+    const profile = doc?.profile
+    const key = JSON.stringify(profile ?? null)
+    if (key === this.lastObservedProfileKey) return
+
+    this.lastObservedProfileKey = key
+    this.syncProfileObservable()
+    // A recovered PersonalDoc can arrive after authentication. This retry is
+    // content-idempotent and publishProfile does not mutate PersonalDoc.
+    void this.publishProfile().catch(() => {})
+  }
+
   private async publishProfile(): Promise<void> {
     const did = this.identity.getDid()
     const doc = getYjsPersonalDoc()
+    const name = doc.profile?.name
+    if (!name) {
+      console.debug("[WotConnector] skipping profile publish — no local profile yet")
+      return
+    }
     const profile: PublicProfile = {
       did,
-      name: doc.profile?.name ?? getDefaultDisplayName(did),
+      name,
       ...(doc.profile?.bio ? { bio: doc.profile.bio } : {}),
       ...(doc.profile?.avatar ? { avatar: doc.profile.avatar } : {}),
       updatedAt: new Date().toISOString(),
     }
-    await this.discovery.publishProfile(profile, this.identity)
+    const fingerprint = JSON.stringify({
+      did,
+      name,
+      bio: profile.bio ?? null,
+      avatar: profile.avatar ?? null,
+    })
+    if (this.lastPublishedProfileFingerprint === fingerprint) return
+
+    const inFlight = (this.profilePublishInFlight ??= new Map<string, Promise<void>>()).get(fingerprint)
+    if (inFlight) {
+      await inFlight
+      return
+    }
+
+    const publish = this.discovery.publishProfile(profile, this.identity)
+      .then(() => { this.lastPublishedProfileFingerprint = fingerprint })
+      .finally(() => this.profilePublishInFlight.delete(fingerprint))
+    this.profilePublishInFlight.set(fingerprint, publish)
+    await publish
   }
 
   /** Notify all contacts about a profile change (fire-and-forget via relay) */
@@ -2023,9 +2060,15 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     const did = this.identity.getDid()
     await this.discovery.syncPending(did, this.identity, async () => {
       const doc = getYjsPersonalDoc()
+      // Gleiche Invariante wie publishProfile: NIE erfundene Defaults über
+      // echte Remote-Daten publishen. Ohne echten lokalen Namen liefern wir
+      // KEIN profile — syncPending skippt dann und lässt den Dirty-Marker
+      // stehen, bis der PersonalDoc-Sync das echte Profil geliefert hat.
+      const name = doc.profile?.name
+      if (!name) return {}
       const profile: PublicProfile = {
         did,
-        name: doc.profile?.name ?? getDefaultDisplayName(did),
+        name,
         ...(doc.profile?.bio ? { bio: doc.profile.bio } : {}),
         ...(doc.profile?.avatar ? { avatar: doc.profile.avatar } : {}),
         updatedAt: new Date().toISOString(),

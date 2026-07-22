@@ -494,6 +494,79 @@ describe("WotConnector profile publish and contact refresh", () => {
     expect(broadcastProfileUpdate).toHaveBeenCalledTimes(1)
   })
 
+  it("skips discovery publishing when the PersonalDoc has no local profile name", async () => {
+    yjsMockState.personalDoc = { profile: null, contacts: {} }
+    const publishProfile = vi.fn(async () => {})
+    const fake = {
+      identity: { getDid: () => "did:key:recovered" },
+      discovery: { publishProfile },
+      getCurrentUser: vi.fn(async () => null),
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    await (WotConnector.prototype as any).setAuthAuthenticated.call(fake)
+    await Promise.resolve()
+
+    expect(publishProfile).not.toHaveBeenCalled()
+  })
+
+  it("dirty-retry supplies no profile without a real local name (default-overwrite guard)", async () => {
+    // Reviewer-Blocker #175: syncDiscoveryPending baute Retry-Daten mit
+    // getDefaultDisplayName-Fallback — ein alter dirty-Marker + leerer
+    // PersonalDoc publizierte so wieder "User-…" über das echte Profil.
+    yjsMockState.personalDoc = { profile: null, contacts: {} }
+    let captured: (() => Promise<{ profile?: { name?: string } }>) | null = null
+    const fake = {
+      identity: { getDid: () => "did:key:recovered" },
+      discovery: { syncPending: vi.fn(async (_did: unknown, _identity: unknown, cb: never) => { captured = cb }) },
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    await (WotConnector.prototype as any).syncDiscoveryPending.call(fake)
+    expect(captured).toBeTruthy()
+    const withoutName = await captured!()
+    expect(withoutName.profile).toBeUndefined()
+
+    yjsMockState.personalDoc.profile = { name: "Alice" }
+    const withName = await captured!()
+    expect(withName.profile?.name).toBe("Alice")
+  })
+
+  it("publishes a recovered local profile once, without republishing it for irrelevant PersonalDoc changes", async () => {
+    yjsMockState.personalDoc = { profile: null, contacts: {} }
+    const publishProfile = vi.fn(async () => {})
+    const syncProfileObservable = vi.fn()
+    const fake = {
+      identity: { getDid: () => "did:key:recovered" },
+      discovery: { publishProfile },
+      syncProfileObservable,
+      lastObservedProfileKey: JSON.stringify(null),
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    yjsMockState.personalDoc.profile = {
+      did: "did:key:recovered",
+      name: "Alice",
+      bio: null,
+      avatar: null,
+    }
+    ;(WotConnector.prototype as any).handlePersonalDocProfileChange.call(fake)
+
+    await vi.waitFor(() => {
+      expect(publishProfile).toHaveBeenCalledTimes(1)
+    })
+    expect(publishProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ did: "did:key:recovered", name: "Alice" }),
+      fake.identity,
+    )
+
+    yjsMockState.personalDoc.contacts["did:key:bob"] = { did: "did:key:bob", name: "Bob" }
+    ;(WotConnector.prototype as any).handlePersonalDocProfileChange.call(fake)
+
+    expect(syncProfileObservable).toHaveBeenCalledTimes(1)
+    expect(publishProfile).toHaveBeenCalledTimes(1)
+  })
+
   it("refreshes summaries and projects a changed avatar into contacts and users", async () => {
     const oldContact = {
       did: "did:key:bob",
