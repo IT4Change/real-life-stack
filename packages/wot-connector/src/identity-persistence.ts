@@ -47,20 +47,42 @@ export const LEGACY_IDENTITY_DB_NAMES = [
  * every runtime store before invoking this function; a blocked delete is an
  * error, never a successful wipe.
  */
-export async function wipeIdentityPersistence(did: string): Promise<void> {
+export type WipeIdentityPersistenceOptions = {
+  /** Returns true when a newer runtime owns this DID's persistence. */
+  isCancelled?: () => boolean
+}
+
+export async function wipeIdentityPersistence(
+  did: string,
+  options: WipeIdentityPersistenceOptions = {},
+): Promise<void> {
   // Best-effort über ALLE Datenbanken: ein blockiertes Delete darf die übrigen
   // DID-Datenbanken und den Legacy-Wipe nicht überspringen (CodeRabbit #143).
   // Fehler werden gesammelt und am Ende geworfen — ein blockiertes Delete ist
   // weiterhin ein Fehler, nie ein erfolgreicher Wipe.
   const failures: unknown[] = []
   for (const name of identityDatabaseNames(did)) {
+    if (options.isCancelled?.()) {
+      failures.push(new Error("wipe cancelled by newer session"))
+      break
+    }
     try {
       await deleteIndexedDatabase(name)
     } catch (error) {
       failures.push(error)
     }
   }
-  await deleteLegacyIdentityDatabases()
+  if (failures.length === 0) {
+    if (options.isCancelled?.()) {
+      failures.push(new Error("wipe cancelled by newer session"))
+    } else {
+      try {
+        await deleteLegacyIdentityDatabases(options)
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+  }
   if (failures.length > 0) {
     // Portabler Sammel-Fehler (lib-Target < ES2021, kein AggregateError-Typ).
     const error = new Error(`wipeIdentityPersistence: ${failures.length} Datenbank(en) nicht gelöscht`)
@@ -69,8 +91,13 @@ export async function wipeIdentityPersistence(did: string): Promise<void> {
   }
 }
 
-export async function deleteLegacyIdentityDatabases(): Promise<void> {
+export async function deleteLegacyIdentityDatabases(
+  options: WipeIdentityPersistenceOptions = {},
+): Promise<void> {
   for (const name of LEGACY_IDENTITY_DB_NAMES) {
+    if (options.isCancelled?.()) {
+      throw new Error("wipe cancelled by newer session")
+    }
     try {
       await deleteIndexedDatabase(name)
     } catch {

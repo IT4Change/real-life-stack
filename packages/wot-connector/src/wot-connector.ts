@@ -619,7 +619,13 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // Inline for the established method-level logout seam, which deliberately
     // binds the real method to a narrow object without the private helpers.
     this.runtimeGeneration = (this.runtimeGeneration ?? 0) + 1
+    const logoutGeneration = this.runtimeGeneration
     const did = this.identity.getDid()
+    // Capture timeout-abandonable runtime collaborators before the first await.
+    // A new login may install replacements while an old step is still settling.
+    const replication = this.replication
+    const outboxAdapter = this.outboxAdapter
+    const identity = this.identity
     this.closeCurrentHandle()
     this.crossGroupUnsub?.()
     this.crossGroupIndex?.stop()
@@ -646,7 +652,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // geloggt und übersprungen; Fehler der privacy-kritischen Schritte (Wipe,
     // Seed-Delete) werden gesammelt und NACH dem Auth-Reset geworfen.
     const criticalFailures: unknown[] = []
+    const isSuperseded = () => this.runtimeGeneration !== logoutGeneration
     const guarded = async (step: string, critical: boolean, fn: () => Promise<unknown> | unknown, timeoutMs?: number): Promise<void> => {
+      if (isSuperseded()) return
       try {
         await awaitLogoutStep(step, fn, timeoutMs)
       } catch (error) {
@@ -655,8 +663,10 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       }
     }
 
-    await guarded("replication.stop", false, () => this.replication?.stop())
-    await guarded("outbox.disconnect", false, () => this.outboxAdapter?.disconnect())
+    await guarded("replication.stop", false, () => replication?.stop())
+    if (isSuperseded()) return
+    await guarded("outbox.disconnect", false, () => outboxAdapter?.disconnect())
+    if (isSuperseded()) return
 
     this.contactsUnsub?.()
     this.contactsUnsub = null
@@ -693,13 +703,19 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.syncPendingObs.set(false)
 
     await guarded("personalDoc.reset", false, () => resetYjsPersonalDoc())
+    if (isSuperseded()) return
     await guarded("runtimeStores.close", false, () => this.closeRuntimeStores())
+    if (isSuperseded()) return
     // Der Wipe hat eine EIGENE per-DB-Diagnostik (2s-Delete-Timeout, benennt die
     // blockierende DB). Sein Aussenbudget muss darueber liegen, sonst kappt der
     // generische Step-Timeout die Diagnose (realistischer Worst-Case ~3 blockierte
     // DBs x 2s + schnelle Deletes < 10s).
-    await guarded("persistence.wipe", true, () => wipeIdentityPersistence(did), 10_000)
-    await guarded("seed.delete", true, () => this.identity.deleteStoredIdentity())
+    await guarded("persistence.wipe", true, () => wipeIdentityPersistence(did, {
+      isCancelled: () => this.runtimeGeneration !== logoutGeneration,
+    }), 10_000)
+    if (isSuperseded()) return
+    await guarded("seed.delete", true, () => identity.deleteStoredIdentity())
+    if (isSuperseded()) return
 
     // Clear identity switch marker + DID-gebundene Pending-Saves
     try { localStorage.removeItem(ACTIVE_DID_STORAGE_KEY) } catch { /* ignore */ }
@@ -3751,38 +3767,53 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   }
 
   private async closeRuntimeStores(): Promise<void> {
-    this.invalidateRuntimeGeneration()
-    // Jeder Close einzeln geguardet: ein fehlschlagender Store darf die übrigen
-    // Closes (und damit den nachfolgenden Wipe) nicht verhindern.
+    const generation = this.runtimeGeneration
+    // Swap every shared reference BEFORE the first await. A timed-out logout
+    // deliberately leaves these close operations running in the background;
+    // they must only ever retain the old runtime's objects.
     const compact = this.spaceCompactStore
-    if (compact) try { await compact.close() } catch { /* best-effort teardown */ }
     const outbox = this.outboxStore
-    if (outbox) try { await outbox.close() } catch { /* best-effort teardown */ }
-    this.stopWorkQueueTimer()
-    this.workQueueCountUnsub?.()
-    this.workQueueCountUnsub = null
     const workQueue = this.workQueue
-    this.workQueue = null
-    if (workQueue) try { await workQueue.close() } catch { /* best-effort teardown */ }
-    for (const store of this.durableStores.splice(0)) {
-      try { await store.close() } catch { /* best-effort teardown */ }
-    }
+    const durableStores = this.durableStores.splice(0)
+    const workQueueCountUnsub = this.workQueueCountUnsub
     this.spaceCompactStore = null
     this.outboxStore = null
+    this.workQueue = null
     this.docLogStore = null
     this.keyManagement = null
     this.memberUpdateStore = null
     this.messageIdHistory = null
+    this.workQueueCountUnsub = null
+    this.stopWorkQueueTimer()
+    workQueueCountUnsub?.()
     this.deliveryMessageIds.clear()
     this.inFlightDeliveryMessageIds.clear()
     this.pendingDeliveryReceipts.clear()
     this.lastSyncStateLog = null
+
+    // All connector mutations above are synchronous. Do not add a this.*
+    // mutation below an await without this guard: a newer session owns them.
+    const isStillClosingThisGeneration = () => this.runtimeGeneration === generation
+    // Jeder Close einzeln geguardet: ein fehlschlagender Store darf die übrigen
+    // Closes (und damit den nachfolgenden Wipe) nicht verhindern.
+    if (compact) try { await compact.close() } catch { /* best-effort teardown */ }
+    if (outbox) try { await outbox.close() } catch { /* best-effort teardown */ }
+    if (workQueue) try { await workQueue.close() } catch { /* best-effort teardown */ }
+    for (const store of durableStores) {
+      try { await store.close() } catch { /* best-effort teardown */ }
+    }
+    // Kept as an explicit second line of defence for future post-await cleanup.
+    // Today there intentionally is no shared-state mutation after an await.
+    void isStillClosingThisGeneration
   }
 
   private async cleanupOldIdentity(did: string): Promise<void> {
     this.invalidateRuntimeGeneration()
+    const cleanupGeneration = this.runtimeGeneration
     try { localStorage.removeItem(`rls-wot-pending-verification-save:${did}`) } catch { /* ignore */ }
-    await wipeIdentityPersistence(did)
+    await wipeIdentityPersistence(did, {
+      isCancelled: () => this.runtimeGeneration !== cleanupGeneration,
+    })
   }
 
   private invalidateRuntimeGeneration(): void {
