@@ -2019,9 +2019,15 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     const did = this.identity.getDid()
     await this.discovery.syncPending(did, this.identity, async () => {
       const doc = getYjsPersonalDoc()
+      // Gleiche Invariante wie publishProfile: NIE erfundene Defaults über
+      // echte Remote-Daten publishen. Ohne echten lokalen Namen liefern wir
+      // KEIN profile — syncPending skippt dann und lässt den Dirty-Marker
+      // stehen, bis der PersonalDoc-Sync das echte Profil geliefert hat.
+      const name = doc.profile?.name
+      if (!name) return {}
       const profile: PublicProfile = {
         did,
-        name: doc.profile?.name ?? getDefaultDisplayName(did),
+        name,
         ...(doc.profile?.bio ? { bio: doc.profile.bio } : {}),
         ...(doc.profile?.avatar ? { avatar: doc.profile.avatar } : {}),
         updatedAt: new Date().toISOString(),
