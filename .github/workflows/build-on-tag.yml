@@ -1,0 +1,52 @@
+# Duenne Huelle um scripts/release/build-android.sh — die gesamte Logik lebt
+# dort ("Plattform ist Trigger, nicht Gehirn"). Ein Umzug zu Forgejo/GitLab
+# ersetzt nur diese Datei. Schwester-Workflow: web-of-trust (Tag-Muster v*).
+#
+# Das Artefakt ist ein UNSIGNIERTES APK und wird bewusst NICHT ans
+# GitHub-Release gehaengt: dort liegt ausschliesslich das mit dem
+# F-Droid-Schluessel signierte APK.
+name: Build on Tag
+
+on:
+  push:
+    tags: ['app-v[0-9]*']      # nur App-Tags; ota-* nicht
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'App-Tag, der gebaut werden soll (z.B. app-v0.2.1)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      # KEIN version:-Input — packageManager in der package.json entscheidet.
+      # v4 bricht sonst mit "Multiple versions of pnpm specified" ab.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build
+        run: scripts/release/build-android.sh "${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          path: out/release/
+          retention-days: 30
+          if-no-files-found: error

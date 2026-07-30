@@ -12,3 +12,4 @@ packages/toolkit/storybook-static/
 
 # TS incremental build info
 *.tsbuildinfo
+/out/
