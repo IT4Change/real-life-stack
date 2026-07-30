@@ -30,8 +30,8 @@
   "dependencies": {
     "@real-life-stack/data-interface": "workspace:*",
     "@real-life-stack/toolkit": "workspace:*",
-    "@real-life/adapter-yjs": "https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.8/web_of_trust-adapter-yjs-0.1.8.tgz",
-    "@real-life/wot-core": "https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz"
+    "@real-life/adapter-yjs": "npm:@web_of_trust/adapter-yjs@^0.2.0",
+    "@real-life/wot-core": "npm:@web_of_trust/core@^0.5.0"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.0.0",

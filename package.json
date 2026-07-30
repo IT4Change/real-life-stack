@@ -19,10 +19,5 @@
   "devDependencies": {
     "turbo": "^2.3.3",
     "typescript": "~5.7.2"
-  },
-  "pnpm": {
-    "overrides": {
-      "@web_of_trust/core": "https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz"
-    }
   }
 }
