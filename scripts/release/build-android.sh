@@ -59,7 +59,9 @@ esac
 
 # HEAD muss den Tag tragen. Sonst baut man einen Stand und behauptet einen
 # anderen — exakt die Provenienz-Luecke, wegen der es dieses Skript gibt.
-if ! git tag --points-at HEAD | grep -qx "$TAG"; then
+# -F: der Tag ist ein LITERAL, kein Regex — sonst sind die Punkte in 0.2.1
+# Wildcards, und ein praeparierter Tag koennte als Muster wirken.
+if ! git tag --points-at HEAD | grep -qxF "$TAG"; then
   abort "HEAD traegt den Tag '$TAG' nicht. Erst den Tag auschecken."
 fi
 
@@ -88,12 +90,15 @@ for bad in utopia-lab relay.box; do
     abort "'$bad' im Bundle gefunden (tote/lokale Infrastruktur)."
   fi
 done
-grep -rlqE "wss://relay\.web-of-trust\.de" "$d"/*.js \
+# Alle ws/wss-URLs EINMAL extrahieren, Positiv- und Allowlist-Pruefung auf
+# derselben Liste. Der Anker ([/:?#]|$) ist entscheidend: ein blosses
+# Praefix-Match liesse wss://relay.web-of-trust.de.angreifer.tld durch und
+# haette es zugleich als "Produktions-Relay vorhanden" gezaehlt.
+WS_URLS=$(grep -rhoE "wss?://[^\"'\`[:space:]]+" "$d"/*.js | sort -u || true)
+ALLOW='^wss://relay\.web-of-trust\.de([/:?#]|$)'
+printf '%s\n' "$WS_URLS" | grep -qE "$ALLOW" \
   || abort "Produktions-Relay fehlt im Bundle."
-# Jede ws/wss-URL gegen die Allowlist — ein grep nur auf Bekanntes wuerde einen
-# NEUEN falschen Host nie sehen.
-UNEXPECTED_WS=$(grep -rhoE "wss?://[^\"'\`[:space:]]+" "$d"/*.js | sort -u \
-  | grep -vE '^wss://relay\.web-of-trust\.de' || true)
+UNEXPECTED_WS=$(printf '%s\n' "$WS_URLS" | grep -vE "$ALLOW" || true)
 if [ -n "$UNEXPECTED_WS" ]; then
   echo "ABBRUCH: unerwartete WebSocket-URLs im Bundle:" >&2
   printf '  %s\n' $UNEXPECTED_WS >&2
@@ -125,26 +130,27 @@ OUT=out/release
 rm -rf "$OUT" && mkdir -p "$OUT"
 cp "$BUILT" "$OUT/"
 COMMIT=$(git rev-parse HEAD)
-# Bewusst KEIN Zeitstempel in build-info: die Datei soll bei einem
-# Reproduzierbarkeits-Vergleich zweier Builds desselben Tags identisch sein.
-cat > "$OUT/build-info.json" <<EOF
-{
-  "app": "$APP_ID",
-  "tag": "$TAG",
-  "commit": "$COMMIT",
-  "versionName": "$VERSION_NAME",
-  "versionCode": $VERSION_CODE,
-  "gradleTask": "$GRADLE_TASK",
-  "updateChannel": "android-foss",
-  "toolchain": {
-    "node": "$(node --version)",
-    "pnpm": "$(pnpm --version)",
-    "java": "$(java -version 2>&1 | head -1 | sed 's/"/\\\\"/g')"
-  },
-  "signed": false,
-  "note": "Unsigniert. Signierung erfolgt getrennt (Schluessel-Verwahrung)."
-}
-EOF
+# JSON maschinell erzeugen statt per Heredoc: die Java-Versionszeile enthaelt
+# Anfuehrungszeichen, Hand-Escaping hat nachweislich ungueltiges JSON erzeugt.
+# Werte gehen als Env hinein, node uebernimmt das Escaping. Kein Zeitstempel —
+# die Datei soll bei einem Reproduzierbarkeits-Vergleich identisch sein.
+BI_APP="$APP_ID" BI_TAG="$TAG" BI_COMMIT="$COMMIT" \
+BI_VNAME="$VERSION_NAME" BI_VCODE="$VERSION_CODE" BI_TASK="$GRADLE_TASK" \
+BI_NODE="$(node --version)" BI_PNPM="$(pnpm --version)" \
+BI_JAVA="$(java -version 2>&1 | head -1)" \
+node -e '
+const e = process.env;
+require("fs").writeFileSync(process.argv[1], JSON.stringify({
+  app: e.BI_APP, tag: e.BI_TAG, commit: e.BI_COMMIT,
+  versionName: e.BI_VNAME, versionCode: Number(e.BI_VCODE),
+  gradleTask: e.BI_TASK, updateChannel: "android-foss",
+  toolchain: { node: e.BI_NODE, pnpm: e.BI_PNPM, java: e.BI_JAVA },
+  signed: false,
+  note: "Unsigniert. Signierung erfolgt getrennt (Schluessel-Verwahrung)."
+}, null, 2) + "\n");
+' "$OUT/build-info.json"
+node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$OUT/build-info.json"
+
 ( cd "$OUT" && sha256sum ./* > SHA256SUMS )
 
 echo

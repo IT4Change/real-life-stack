@@ -41,8 +41,12 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # inputs.tag NIE direkt in run: interpolieren — das waere Script-Injection.
+      # Ueber env ist der Wert ein inertes Datum, das Skript quotet ihn.
       - name: Build
-        run: scripts/release/build-android.sh "${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: scripts/release/build-android.sh "$TAG"
 
       - uses: actions/upload-artifact@v4
         with:
