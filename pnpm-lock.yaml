@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  '@web_of_trust/core': https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz
-
 importers:
 
   .:
@@ -564,11 +561,11 @@ importers:
         specifier: workspace:*
         version: link:../toolkit
       '@real-life/adapter-yjs':
-        specifier: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.8/web_of_trust-adapter-yjs-0.1.8.tgz
-        version: '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.8/web_of_trust-adapter-yjs-0.1.8.tgz(@web_of_trust/core@https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz(react@19.2.3))'
+        specifier: npm:@web_of_trust/adapter-yjs@^0.2.0
+        version: '@web_of_trust/adapter-yjs@0.2.0(@web_of_trust/core@0.5.0(react@19.2.3))'
       '@real-life/wot-core':
-        specifier: https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz
-        version: '@web_of_trust/core@https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz(react@19.2.3)'
+        specifier: npm:@web_of_trust/core@^0.5.0
+        version: '@web_of_trust/core@0.5.0(react@19.2.3)'
       react:
         specifier: ^18 || ^19
         version: 19.2.3
@@ -2523,15 +2520,13 @@ packages:
   '@vue/shared@3.5.26':
     resolution: {integrity: sha512-7Z6/y3uFI5PRoKeorTOSXKcDj0MSasfNNltcslbFrPpcw6aXRUALq4IfJlaTRspiWIUOEZbrpM+iQGmCOiWe4A==}
 
-  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.8/web_of_trust-adapter-yjs-0.1.8.tgz':
-    resolution: {tarball: https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.8/web_of_trust-adapter-yjs-0.1.8.tgz}
-    version: 0.1.8
+  '@web_of_trust/adapter-yjs@0.2.0':
+    resolution: {integrity: sha512-0t3mHr89eVvN6jgbgjyuaykaJvtqMw2nXBBc5qoYWyx2qkTrOujCSQpiuXKZUmJUNJtnmbEBc9aC2LpK8LzhPA==}
     peerDependencies:
-      '@web_of_trust/core': https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz
+      '@web_of_trust/core': ^0.5.0
 
-  '@web_of_trust/core@https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz':
-    resolution: {tarball: https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz}
-    version: 0.4.1
+  '@web_of_trust/core@0.5.0':
+    resolution: {integrity: sha512-zIPKmPflmElHvY2ePSuvnWe7+C/E0tGOXyyhS9jD9eaDKx7GiomwP8MlD5nW5IrQfEkI1wcXdTG2RtBj6dqegA==}
     peerDependencies:
       react: ^19.0.0
     peerDependenciesMeta:
@@ -6793,13 +6788,13 @@ snapshots:
 
   '@vue/shared@3.5.26': {}
 
-  '@web_of_trust/adapter-yjs@https://github.com/real-life-org/web-of-trust/releases/download/adapter-yjs-v0.1.8/web_of_trust-adapter-yjs-0.1.8.tgz(@web_of_trust/core@https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz(react@19.2.3))':
+  '@web_of_trust/adapter-yjs@0.2.0(@web_of_trust/core@0.5.0(react@19.2.3))':
     dependencies:
-      '@web_of_trust/core': https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz(react@19.2.3)
+      '@web_of_trust/core': 0.5.0(react@19.2.3)
       y-protocols: 1.0.7(yjs@13.6.31)
       yjs: 13.6.31
 
-  '@web_of_trust/core@https://github.com/real-life-org/web-of-trust/releases/download/core-v0.4.1/web_of_trust-core-0.4.1.tgz(react@19.2.3)':
+  '@web_of_trust/core@0.5.0(react@19.2.3)':
     dependencies:
       '@noble/ed25519': 3.1.0
       '@scure/base': 2.2.0
