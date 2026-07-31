@@ -12,6 +12,7 @@
  * internally.
  */
 
+import type { ColorSchemePreference } from "../../lib/color-scheme"
 import type { MarkerShape } from "./markers/marker-shapes"
 
 export type LngLat = [number, number]
@@ -32,6 +33,18 @@ export interface MapMountOptions {
    * (e.g. OSM standard for the Leaflet adapter).
    */
   tileSource?: string
+  /**
+   * Tile source used while the resolved colour scheme is dark. Omitted, the
+   * adapter falls back to its own dark default — but only when `tileSource` was
+   * omitted too, so a consumer that pins one style never gets a foreign style
+   * substituted behind its back.
+   */
+  tileSourceDark?: string
+  /**
+   * Which of the two sources to show. `"auto"` (the default) follows the app's
+   * `dark` class and re-styles the live map when the user toggles the theme.
+   */
+  colorScheme?: ColorSchemePreference
   /** Optional tile attribution shown in the corner. */
   attribution?: string
 }

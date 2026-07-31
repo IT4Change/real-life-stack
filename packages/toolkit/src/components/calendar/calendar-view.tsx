@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type TouchEvent, type TransitionEvent } from "react"
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent, type TransitionEvent } from "react"
 import {
   Calendar as CalendarIcon,
   CalendarDays,
@@ -13,8 +13,27 @@ import {
 } from "lucide-react"
 import { Button } from "../primitives/button"
 import { Input } from "../primitives/input"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "../primitives/dropdown-menu"
 import { cn, getItemColor, getReadableTextColor, getActivePanelGlow } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
+import {
+  addDays,
+  buildEventsByDay,
+  eventCoversDay,
+  eventOverlapsRange,
+  isMultiDayEvent,
+  isSameDate,
+  layoutWeekBars,
+  startOfWeek,
+  toDateKey,
+  type WeekBar,
+} from "./calendar-layout"
 import { focusActiveItemOnce } from "../../lib/selection-focus"
 import { ItemPreview } from "../preview/item-preview"
 import { ItemTypeBadge } from "../preview/item-type-badge"
@@ -52,6 +71,15 @@ const SWIPE_COMMIT_PX = 60
  *  fit the viewport (no horizontal scroll), so the week paginates via the same
  *  swipe carousel as month/day instead of an inner scroll. */
 const WEEK_COLS = "grid-cols-[3.25rem_repeat(7,minmax(0,1fr))]"
+
+/** Month-grid geometry. Bars span columns, so a week row is sized from the
+ *  number of stacked LANES it needs — not from any single day's event count.
+ *  Counted, never measured, so browser zoom cannot ratchet the layout. */
+const MAX_MONTH_LANES = 3
+const MONTH_DATE_ROW_PX = 30
+const MONTH_LANE_PX = 22
+const MONTH_OVERFLOW_ROW_PX = 18
+const MONTH_ROW_MIN_PX = 80
 
 export type CalendarViewMode = "month" | "week" | "day" | "list"
 type LocationFilter = "all" | "with" | "without"
@@ -119,39 +147,8 @@ function getOptionalInitialDate(value?: Date | string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-function toDateKey(date: Date): string {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-")
-}
-
-function isSameDate(a: Date, b: Date): boolean {
-  return toDateKey(a) === toDateKey(b)
-}
-
-function atStartOfDay(date: Date): Date {
-  const next = new Date(date)
-  next.setHours(0, 0, 0, 0)
-  return next
-}
-
-function addDays(date: Date, amount: number): Date {
-  const next = new Date(date)
-  next.setDate(next.getDate() + amount)
-  return next
-}
-
 function addMonths(date: Date, amount: number): Date {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1)
-}
-
-function startOfWeek(date: Date): Date {
-  const start = atStartOfDay(date)
-  const weekday = start.getDay()
-  start.setDate(start.getDate() - (weekday === 0 ? 6 : weekday - 1))
-  return start
 }
 
 function getEventDate(value: unknown): Date | null {
@@ -235,17 +232,17 @@ function buildCalendarDays(
   })
 }
 
+/** Day groups for the list view. A multi-day event appears under each of its
+ *  days, so a festival that started last week is still listed under today. */
 function groupEventsByDay(events: CalendarEvent[]): CalendarEventGroup[] {
-  const grouped = new Map<string, CalendarEventGroup>()
-  for (const event of events) {
-    const key = toDateKey(event.start)
-    grouped.set(key, {
+  const byDay = buildEventsByDay(events, compareEvents)
+  return [...byDay.entries()]
+    .map(([key, dayEvents]) => ({
       key,
-      date: grouped.get(key)?.date ?? atStartOfDay(event.start),
-      events: [...(grouped.get(key)?.events ?? []), event].sort(compareEvents),
-    })
-  }
-  return [...grouped.values()].sort((a, b) => a.date.getTime() - b.date.getTime())
+      date: parseEventDate(key),
+      events: dayEvents,
+    }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
 }
 
 function withTime(date: Date, hour: number, minute = 0): Date {
@@ -258,20 +255,19 @@ function getEventsForDay(eventsByDay: Map<string, CalendarEvent[]>, date: Date):
   return eventsByDay.get(toDateKey(date)) ?? []
 }
 
+/** Events *overlapping* the visible period — a multi-day event belongs to every
+ *  period it reaches into, not only the one it starts in. */
 function getPeriodEvents(events: CalendarEvent[], visibleDate: Date, viewMode: CalendarViewMode): CalendarEvent[] {
   if (viewMode === "day") {
-    return events.filter((event) => isSameDate(event.start, visibleDate))
+    return events.filter((event) => eventCoversDay(event, visibleDate))
   }
   if (viewMode === "week") {
     const weekStart = startOfWeek(visibleDate)
-    const weekEnd = addDays(weekStart, 7)
-    return events.filter((event) => event.start >= weekStart && event.start < weekEnd)
+    return events.filter((event) => eventOverlapsRange(event, weekStart, addDays(weekStart, 6)))
   }
-  return events.filter(
-    (event) =>
-      event.start.getFullYear() === visibleDate.getFullYear() &&
-      event.start.getMonth() === visibleDate.getMonth(),
-  )
+  const monthStart = new Date(visibleDate.getFullYear(), visibleDate.getMonth(), 1)
+  const monthEnd = new Date(visibleDate.getFullYear(), visibleDate.getMonth() + 1, 0)
+  return events.filter((event) => eventOverlapsRange(event, monthStart, monthEnd))
 }
 
 function getHeaderLabel(date: Date, viewMode: CalendarViewMode): string {
@@ -425,27 +421,21 @@ export function CalendarView({
         // aktive Event nicht zeigt (Limit 3 Desktop / 2 Mobil), öffnet
         // die Tagesansicht — statt die Zell-Reihenfolge zu verbiegen.
         if (viewMode !== "month") return
-        const dayKey = toDateKey(date)
         const dayEvents = filteredEvents
-          .filter((event) => toDateKey(event.start) === dayKey)
+          .filter((event) => eventCoversDay(event, date))
           .sort(compareEvents)
-        const cellLimit = typeof matchMedia !== "undefined" && matchMedia("(min-width: 768px)").matches ? 3 : 2
-        if (!monthCellShowsActiveEvent(dayEvents, activeItemId, cellLimit)) {
+        if (!monthCellShowsActiveEvent(dayEvents, activeItemId, MAX_MONTH_LANES)) {
           setViewMode("day")
         }
       },
     )
   }, [activeItemId, filteredEvents, viewMode])
 
+  // Keyed by EVERY day an event covers, not just its start — otherwise a
+  // multi-day event vanishes from the day view and the month cell counts on
+  // every day but the first.
   const eventsByDay = useMemo(
-    () => {
-      const map = new Map<string, CalendarEvent[]>()
-      for (const event of filteredEvents) {
-        const key = toDateKey(event.start)
-        map.set(key, [...(map.get(key) ?? []), event].sort(compareEvents))
-      }
-      return map
-    },
+    () => buildEventsByDay(filteredEvents, compareEvents),
     [filteredEvents],
   )
 
@@ -851,6 +841,25 @@ function MonthCalendar({
     [eventsByDay, selectedDate, today, visibleDate],
   )
 
+  // One layout per week row. Bars are laid out over the whole row rather than
+  // per cell, which is what lets a multi-day event render as ONE continuous bar
+  // (Thunderbird-style) instead of a repeated pill in each day.
+  const weeks = useMemo(() => {
+    const rows: Array<{ key: string; days: CalendarDay[]; layout: WeekLayout }> = []
+    for (let index = 0; index < days.length; index += 7) {
+      const rowDays = days.slice(index, index + 7)
+      rows.push({
+        key: rowDays[0].key,
+        days: rowDays,
+        // Events are read off the row's own day buckets, so the layout sees the
+        // same set the cells count. `buildEventsByDay` lists an event under each
+        // covered day, hence the dedupe by item id.
+        layout: layoutWeekBars(dedupeEvents(rowDays), rowDays[0].date, MAX_MONTH_LANES),
+      })
+    }
+    return rows
+  }, [days])
+
   return (
     <div>
       <div className="grid grid-cols-7 border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
@@ -860,92 +869,164 @@ function MonthCalendar({
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7">
-        {days.map((day) => (
-          <div
-            key={day.key}
-            className={cn(
-              "group flex min-h-20 flex-col border-b border-r p-1.5 text-left align-top transition-colors sm:min-h-28 lg:min-h-32",
-              !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
-              day.isCurrentMonth && "hover:bg-muted/50",
-              day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
-            )}
-          >
-            <div className="mb-1 flex items-center justify-between gap-1">
-              <button
-                type="button"
-                onClick={() => onSelectDate(day.date)}
-                onDoubleClick={() => onOpenDay(day.date)}
+      {weeks.map(({ key, days: rowDays, layout }) => {
+        const overflowing = layout.hiddenByCol.some((count) => count > 0)
+        // Room for the date row, the occupied lanes and — when something was
+        // dropped — the "+N weitere" line.
+        const contentPx =
+          MONTH_DATE_ROW_PX +
+          layout.laneCount * MONTH_LANE_PX +
+          (overflowing ? MONTH_OVERFLOW_ROW_PX : 0)
+        return (
+          <div key={key} className="relative grid grid-cols-7">
+            {/* Backdrop: borders, the date number and the create-here hit area.
+                The event layer below sits on top of it. */}
+            {rowDays.map((day) => (
+              <div
+                key={day.key}
                 className={cn(
-                  "flex h-6 min-w-6 items-center justify-center rounded-full text-sm font-semibold",
-                  day.isToday && "bg-primary text-primary-foreground",
+                  "group flex flex-col border-b border-r p-1.5 text-left align-top transition-colors",
+                  !day.isCurrentMonth && "bg-muted/20 text-muted-foreground/50",
+                  day.isCurrentMonth && "hover:bg-muted/50",
+                  day.isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/40",
                 )}
+                style={{ minHeight: `${Math.max(contentPx, MONTH_ROW_MIN_PX)}px` }}
               >
-                {day.number}
-              </button>
-              {day.events.length > 0 && (
-                <span className="text-xs font-medium text-primary">{day.events.length}</span>
-              )}
-            </div>
+                <div className="flex items-center justify-between gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onSelectDate(day.date)}
+                    onDoubleClick={() => onOpenDay(day.date)}
+                    className={cn(
+                      "flex h-6 min-w-6 items-center justify-center rounded-full text-sm font-semibold",
+                      day.isToday && "bg-primary text-primary-foreground",
+                    )}
+                  >
+                    {day.number}
+                  </button>
+                  {day.events.length > 0 && (
+                    <span className="text-xs font-medium text-primary">{day.events.length}</span>
+                  )}
+                </div>
+                {onCreateEvent && day.isCurrentMonth && (
+                  <button
+                    type="button"
+                    aria-label="Event an diesem Tag erstellen"
+                    onClick={() => onCreateEvent(day.date)}
+                    tabIndex={-1}
+                    className="min-h-4 flex-1 rounded transition-colors hover:bg-primary/5"
+                  />
+                )}
+              </div>
+            ))}
 
-            <div className="hidden space-y-1 md:block">
-              {day.events.slice(0, 3).map((event) => (
-                <EventPill
-                  key={event.item.id}
-                  event={event}
-                  compact
-                  onClick={onEventClick}
-                />
-              ))}
-              {day.events.length > 3 && (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onOpenDay(day.date)
+            {/* Event layer: same 7-column geometry as the backdrop, so a bar can
+                span columns. `pointer-events-none` keeps the empty space between
+                bars clickable as "create on this day"; the bars re-enable it. */}
+            <div
+              className="pointer-events-none absolute inset-x-0 grid grid-cols-7 gap-y-0.5"
+              style={{ top: `${MONTH_DATE_ROW_PX}px`, gridAutoRows: `${MONTH_LANE_PX - 2}px` }}
+            >
+              {layout.bars.map((bar) => (
+                <div
+                  key={bar.event.item.id}
+                  className="pointer-events-auto min-w-0 px-0.5"
+                  style={{
+                    gridColumn: `${bar.startCol + 1} / span ${bar.span}`,
+                    gridRow: bar.lane + 1,
                   }}
-                  className="text-xs font-medium text-muted-foreground hover:text-foreground"
                 >
-                  +{day.events.length - 3} weitere
-                </button>
-              )}
-            </div>
-
-            <div className="mt-1 space-y-0.5 md:hidden">
-              {day.events.slice(0, 2).map((event) => (
-                <EventPill
-                  key={event.item.id}
-                  event={event}
-                  onClick={onEventClick}
-                />
+                  <EventPill event={bar.event} bar={bar} compact onClick={onEventClick} />
+                </div>
               ))}
-              {day.events.length > 2 && (
-                <button
-                  type="button"
-                  onClick={(clickEvent) => {
-                    clickEvent.stopPropagation()
-                    onOpenDay(day.date)
-                  }}
-                  className="w-full rounded px-1 py-0.5 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
-                >
-                  +{day.events.length - 2} weitere
-                </button>
-              )}
+              {overflowing &&
+                layout.hiddenByCol.map((hidden, col) =>
+                  hidden > 0 ? (
+                    <div
+                      key={`overflow-${col}`}
+                      className="pointer-events-auto min-w-0 px-0.5"
+                      style={{ gridColumn: col + 1, gridRow: layout.laneCount + 1 }}
+                    >
+                      <DayEventsMenu
+                        date={rowDays[col].date}
+                        events={rowDays[col].events}
+                        onEventClick={onEventClick}
+                      >
+                        <button
+                          type="button"
+                          onClick={(clickEvent) => clickEvent.stopPropagation()}
+                          className="w-full truncate rounded px-1 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                        >
+                          +{hidden} weitere
+                        </button>
+                      </DayEventsMenu>
+                    </div>
+                  ) : null,
+                )}
             </div>
-
-            {onCreateEvent && day.isCurrentMonth && (
-              <button
-                type="button"
-                aria-label="Event an diesem Tag erstellen"
-                onClick={() => onCreateEvent(day.date)}
-                tabIndex={-1}
-                className="mt-2 min-h-4 flex-1 rounded transition-colors hover:bg-primary/5"
-              />
-            )}
           </div>
-        ))}
-      </div>
+        )
+      })}
     </div>
+  )
+}
+
+type WeekLayout = ReturnType<typeof layoutWeekBars<CalendarEvent>>
+
+/** The row's distinct events. Day buckets repeat a multi-day event per day. */
+function dedupeEvents(days: readonly CalendarDay[]): CalendarEvent[] {
+  const seen = new Map<string, CalendarEvent>()
+  for (const day of days) {
+    for (const event of day.events) {
+      if (!seen.has(event.item.id)) seen.set(event.item.id, event)
+    }
+  }
+  return [...seen.values()]
+}
+
+/**
+ * The "+N weitere" overflow menu for a month day: lists ALL of that day's
+ * events in a portalled menu, so a day can hold arbitrarily many events without
+ * cramming the cell or stretching the row. The trigger is passed as `children`.
+ */
+function DayEventsMenu({
+  date,
+  events,
+  onEventClick,
+  children,
+}: {
+  date: Date
+  events: CalendarEvent[]
+  onEventClick?: (event: Item) => void
+  children: ReactNode
+}) {
+  const resolveGroupColor = useContext(CalendarGroupColorContext)
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-80 w-64 overflow-y-auto">
+        <DropdownMenuLabel className="text-xs text-muted-foreground">
+          {formatDayLabel(date)}
+        </DropdownMenuLabel>
+        {events.map((event) => (
+          <DropdownMenuItem
+            key={event.item.id}
+            onSelect={() => onEventClick?.(event.item)}
+            className="gap-2"
+          >
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: getItemColor(event.item, { groupColor: resolveGroupColor(event.item) }) }}
+              aria-hidden
+            />
+            <span className="min-w-0 flex-1 truncate">{event.title}</span>
+            {!event.allDay && !isMultiDayEvent(event) && (
+              <span className="shrink-0 text-xs text-muted-foreground">{formatTime(event.start)}</span>
+            )}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -981,21 +1062,21 @@ function WeekCalendar({
 }: WeekCalendarProps) {
   const weekStart = startOfWeek(visibleDate)
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index))
-  const weekEnd = addDays(weekStart, 6)
 
-  // All-day / multi-day events overlapping the visible week, as spanning bars
-  // (Thunderbird-style). They are invisible in the timed grid (start at local
-  // midnight, below the 06:00 first slot), so this row is where they appear.
-  const dayIndex = (d: Date) =>
-    Math.max(0, Math.min(6, Math.round((atStartOfDay(d).getTime() - weekStart.getTime()) / 86_400_000)))
-  const allDayBars = events
-    .filter((e) => e.allDay && atStartOfDay(e.start) <= weekEnd && atStartOfDay(e.end ?? e.start) >= weekStart)
-    .sort(compareEvents)
-    .map((e) => {
-      const startCol = dayIndex(e.start)
-      const endCol = dayIndex(e.end ?? e.start)
-      return { event: e, startCol, span: endCol - startCol + 1 }
-    })
+  // All-day and multi-day events, as spanning bars above the timed grid
+  // (Thunderbird-style). Both kinds need this row: an all-day event sits at
+  // local midnight, below the 06:00 first slot, and a multi-day timed event
+  // would otherwise show up only in its start day's hour — invisible on every
+  // following day. No lane cap here: the header row may grow.
+  const allDayLayout = layoutWeekBars(
+    events.filter((event) => event.allDay || isMultiDayEvent(event)).sort(compareEvents),
+    weekStart,
+    Number.POSITIVE_INFINITY,
+  )
+  const allDayBars = allDayLayout.bars
+  const allDayLaneCount = allDayLayout.laneCount
+  /** Events already drawn as a bar must not be repeated in the hour grid. */
+  const barItemIds = new Set(allDayBars.map((bar) => bar.event.item.id))
 
   return (
     <div>
@@ -1017,21 +1098,22 @@ function WeekCalendar({
       {allDayBars.length > 0 && (
         <div
           className={cn("grid gap-y-0.5 border-b bg-background py-0.5", WEEK_COLS)}
-          style={{ gridTemplateRows: `repeat(${allDayBars.length}, minmax(22px, auto))` }}
+          style={{ gridTemplateRows: `repeat(${allDayLaneCount}, minmax(22px, auto))` }}
         >
           <div
             className="flex items-center justify-center border-r bg-muted/20 px-0.5 text-center text-[9px] leading-tight text-muted-foreground"
-            style={{ gridColumn: 1, gridRow: `1 / ${allDayBars.length + 1}` }}
+            style={{ gridColumn: 1, gridRow: `1 / ${allDayLaneCount + 1}` }}
           >
             Ganztägig
           </div>
-          {allDayBars.map(({ event, startCol, span }, index) => (
+          {allDayBars.map((bar) => (
             <div
-              key={event.item.id}
-              className="px-0.5"
-              style={{ gridColumn: `${startCol + 2} / span ${span}`, gridRow: index + 1 }}
+              key={bar.event.item.id}
+              className="min-w-0 px-0.5"
+              // +2: column 1 is the time gutter.
+              style={{ gridColumn: `${bar.startCol + 2} / span ${bar.span}`, gridRow: bar.lane + 1 }}
             >
-              <EventPill event={event} onClick={onEventClick} />
+              <EventPill event={bar.event} bar={bar} onClick={onEventClick} />
             </div>
           ))}
         </div>
@@ -1044,7 +1126,9 @@ function WeekCalendar({
               {String(hour).padStart(2, "0")}:00
             </div>
             {weekDays.map((day) => {
-              const slotEvents = getEventsForDay(eventsByDay, day).filter((event) => event.start.getHours() === hour)
+              const slotEvents = getEventsForDay(eventsByDay, day).filter(
+                (event) => !barItemIds.has(event.item.id) && event.start.getHours() === hour,
+              )
               const canCreateInSlot = slotEvents.length === 0 && onCreateEvent
               const SlotElement = canCreateInSlot ? "button" : "div"
               return (
@@ -1085,6 +1169,12 @@ interface DayCalendarProps {
 
 function DayCalendar({ visibleDate, eventsByDay, onEventClick, onCreateEvent }: DayCalendarProps) {
   const dayEvents = getEventsForDay(eventsByDay, visibleDate)
+  // All-day and multi-day events have no hour to sit in on this day: an all-day
+  // event starts below the 06:00 first slot, and on the second day of a
+  // multi-day event the start hour belongs to a different date. They get their
+  // own band above the grid instead of silently disappearing.
+  const bandEvents = dayEvents.filter((event) => event.allDay || isMultiDayEvent(event))
+  const timedEvents = dayEvents.filter((event) => !bandEvents.includes(event))
   const activeItemId = useContext(CalendarActiveItemContext)
   const activeCardRef = useRef<HTMLDivElement>(null)
   const lastScrolledItemIdRef = useRef<string | null>(null)
@@ -1111,9 +1201,27 @@ function DayCalendar({ visibleDate, eventsByDay, onEventClick, onCreateEvent }: 
         </p>
       </div>
 
+      {bandEvents.length > 0 && (
+        <div className="grid w-full grid-cols-[72px_1fr] border-b">
+          <div className="flex items-center justify-end border-r bg-muted/20 px-2 py-3 text-right text-xs text-muted-foreground">
+            Ganztägig
+          </div>
+          <div className="space-y-2 p-2">
+            {bandEvents.map((event) => (
+              <div
+                key={event.item.id}
+                ref={event.item.id === activeItemId ? activeCardRef : undefined}
+              >
+                <EventCard event={event} onClick={onEventClick} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         {TIME_SLOTS.map((hour) => {
-          const slotEvents = dayEvents.filter((event) => event.start.getHours() === hour)
+          const slotEvents = timedEvents.filter((event) => event.start.getHours() === hour)
           const canCreateInSlot = slotEvents.length === 0 && onCreateEvent
           const SlotElement = canCreateInSlot ? "button" : "div"
           return (
@@ -1191,14 +1299,21 @@ interface EventPillProps {
   event: CalendarEvent
   compact?: boolean
   onClick?: (event: Item) => void
+  /** Set when the pill is a spanning bar in a week row, so it can render the
+   *  clipped ends and drop the start time on continuation days. */
+  bar?: Pick<WeekBar<CalendarEvent>, "continuesBefore" | "continuesAfter">
 }
 
-function EventPill({ event, compact = false, onClick }: EventPillProps) {
+function EventPill({ event, compact = false, onClick, bar }: EventPillProps) {
   const resolveGroupColor = useContext(CalendarGroupColorContext)
   const activeItemId = useContext(CalendarActiveItemContext)
   const groupColor = resolveGroupColor(event.item)
   const color = getItemColor(event.item, { groupColor })
   const isActive = activeItemId === event.item.id
+  const multiDay = isMultiDayEvent(event)
+  // A start time only makes sense on the day the event actually starts. On a
+  // bar that runs in from an earlier week it would be plain wrong.
+  const showTime = compact && !event.allDay && !multiDay
   return (
     <button
       type="button"
@@ -1214,13 +1329,21 @@ function EventPill({ event, compact = false, onClick }: EventPillProps) {
         // Soft glow in the group colour for the item open in the shared panel.
         ...(isActive ? getActivePanelGlow(groupColor) : null),
       }}
-      className="block w-full truncate rounded-md px-2 py-1.5 text-left text-xs font-medium transition-opacity hover:opacity-90"
+      className={cn(
+        "flex w-full items-center gap-1 rounded-md px-2 text-left text-xs font-medium transition-opacity hover:opacity-90",
+        // A bar fills its lane row exactly; a free-standing pill sizes itself.
+        bar ? "h-full py-0" : "py-1.5",
+        // A square end reads as "continues past the edge"; a rounded one as
+        // "the event ends here" — the Thunderbird convention.
+        bar?.continuesBefore && "rounded-l-none",
+        bar?.continuesAfter && "rounded-r-none",
+      )}
     >
-      {compact
-        ? event.allDay
-          ? event.title
-          : `${formatTime(event.start)} ${event.title}`
-        : event.title}
+      {bar?.continuesBefore && <span aria-hidden>◀</span>}
+      <span className="min-w-0 flex-1 truncate">
+        {showTime ? `${formatTime(event.start)} ${event.title}` : event.title}
+      </span>
+      {bar?.continuesAfter && <span aria-hidden>▶</span>}
     </button>
   )
 }
