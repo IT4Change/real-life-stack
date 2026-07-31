@@ -14,27 +14,58 @@
 #      stirbt hier.
 #   3. Backend-URLs sind explizit gesetzt und gegen eine Allowlist geprueft,
 #      BEVOR irgendetwas signierfaehig wird.
-#   4. Output ist ein UNSIGNIERTES APK + build-info.json + SHA256SUMS.
-#      Signiert wird woanders (Schluessel-Verwahrung!).
+#   4. ZWEI getrennte Web-Builds, weil F-Droid und Play sich im Bundle
+#      unterscheiden MUESSEN:
+#        - F-Droid-APK: mit OTA-Kanal android-foss (Self-Update erlaubt/gewollt).
+#        - Play-AAB:    OHNE OTA (VITE_DISABLE_LIVE_UPDATE) — Google verbietet
+#          Self-Updates ausserhalb seines eigenen Mechanismus ausdruecklich.
+#      Ein OTA-Sentinel erzwingt diese Trennung, statt sie nur zu meinen.
+#   5. Output ist ein UNSIGNIERTES APK (F-Droid) + AAB (Play) + build-info.json
+#      + SHA256SUMS. Signiert wird woanders (Schluessel-Verwahrung!).
 set -euo pipefail
 
 # ---------------------------------------------------------------- App-Profil
 APP_DIR=apps/reference
 APP_ID=org.reallife.reallifestack
 TAG_PREFIX=app-v                               # RLS taggt app-v0.2.1
-BUILD_SCRIPT=build:android
-GRADLE_TASK=assembleRelease                    # kein Flavor → unsigniertes APK (F-Droid)
-AAB_TASK=bundleRelease                          # unsigniertes AAB (Play, Pipeline signiert)
+BUILD_SCRIPT=build:android                      # tsc -b && vite build && cap sync android
+GRADLE_TASK=assembleRelease                     # flavorlos → unsigniertes APK (F-Droid)
+AAB_TASK=bundleRelease                           # flavorlos → unsigniertes AAB (Play)
 APK_OUT="$APP_DIR/android/app/build/outputs/apk/release"
 AAB_OUT="$APP_DIR/android/app/build/outputs/bundle/release"
 UPDATE_SERVER=https://real-life-stack.de
-BUILD_ENV=(
+
+# Gemeinsame Backend-URLs. Identisch fuer beide Kanaele — nur das OTA-Verhalten
+# unterscheidet sich.
+COMMON_ENV=(
   VITE_BASE_PATH=/
   VITE_RELAY_URL=wss://relay.web-of-trust.de
   VITE_PROFILE_SERVICE_URL=https://profiles.web-of-trust.de
+)
+# F-Droid: OTA AN. Der Self-Updater holt Web-Layer-Updates ohne neues APK — bei
+# F-Droid gewollt (langsame Store-Reviews).
+FDROID_ENV=(
+  "${COMMON_ENV[@]}"
   VITE_UPDATE_SERVER_URL="$UPDATE_SERVER"
   VITE_UPDATE_CHANNEL=android-foss
 )
+# Play: OTA AUS. Anders als die WoT-App kennt RLS' live-update.ts KEIN
+# VITE_DISABLE_LIVE_UPDATE — es faellt bei fehlendem Kanal auf getPlatform()
+# ('android') zurueck und wuerde WEITER self-updaten. RLS' eigener Abschalter ist
+# der Sentinel-Kanal '__local__' (live-update.ts): der ruft LiveUpdate.reset()
+# und kehrt zurueck, ohne je ein Bundle zu holen. Genau das braucht Play.
+# Google-Play-Richtlinie:
+# https://support.google.com/googleplay/android-developer/answer/16559646
+PLAY_ENV=(
+  "${COMMON_ENV[@]}"
+  VITE_UPDATE_CHANNEL=__local__
+)
+# Zwei Marker, weil RLS OTA zur LAUFZEIT abschaltet (Kanal __local__), nicht zur
+# Compile-Zeit — der OTA-Code bleibt im Bundle, also beweist blosse Abwesenheit
+# nichts. Der eingebackene Kanal ist der Beweis:
+OTA_ON_MARKER=android-foss                      # nur im F-Droid-Bundle
+OTA_OFF_MARKER=__local__                         # RLS-Abschalter, nur im Play-Bundle
+
 # Workspace-Pakete, die vor dem App-Build gebaut sein muessen. Reihenfolge und
 # Auswahl gespiegelt aus deploy-prototypes.yml (dort bewaehrt).
 build_workspace_deps() {
@@ -82,59 +113,98 @@ pnpm install --frozen-lockfile
 echo "==> 3/6 Workspace-Pakete bauen"
 build_workspace_deps
 
-echo "==> 4/6 Web-Assets bauen (URLs explizit gepinnt)"
-( cd "$APP_DIR" && env "${BUILD_ENV[@]}" pnpm "$BUILD_SCRIPT" )
-
-echo "==> 5/6 Bundle verifizieren"
-d="$APP_DIR/dist/assets"
-for bad in utopia-lab relay.box; do
-  if grep -rlq "$bad" "$d"/*.js; then
-    abort "'$bad' im Bundle gefunden (tote/lokale Infrastruktur)."
+# --------------------------------------------------------------- Bundle-Pruefung
+# Prueft dist/assets: tote Infra, WebSocket-Allowlist, und den OTA-Sentinel fuer
+# den jeweiligen Kanal. Wird pro Web-Build aufgerufen.
+#   $1 = Label (fdroid|play)   $2 = OTA-Erwartung (on|off)
+verify_bundle() {
+  local label="$1" ota="$2"
+  local d="$APP_DIR/dist/assets"
+  for bad in utopia-lab relay.box; do
+    if grep -rlq "$bad" "$d"/*.js; then
+      abort "'$bad' im $label-Bundle gefunden (tote/lokale Infrastruktur)."
+    fi
+  done
+  # Alle ws/wss-URLs EINMAL extrahieren, Positiv- und Allowlist-Pruefung auf
+  # derselben Liste. Der Anker ([/:?#]|$) ist entscheidend: ein blosses
+  # Praefix-Match liesse wss://relay.web-of-trust.de.angreifer.tld durch.
+  local ws allow unexpected
+  ws=$(grep -rhoE "wss?://[^\"'\`[:space:]]+" "$d"/*.js | sort -u || true)
+  allow='^wss://relay\.web-of-trust\.de([/:?#]|$)'
+  printf '%s\n' "$ws" | grep -qE "$allow" \
+    || abort "$label: Produktions-Relay fehlt im Bundle."
+  unexpected=$(printf '%s\n' "$ws" | grep -vE "$allow" || true)
+  if [ -n "$unexpected" ]; then
+    echo "ABBRUCH: unerwartete WebSocket-URLs im $label-Bundle:" >&2
+    printf '  %s\n' $unexpected >&2
+    exit 1
   fi
-done
-# Alle ws/wss-URLs EINMAL extrahieren, Positiv- und Allowlist-Pruefung auf
-# derselben Liste. Der Anker ([/:?#]|$) ist entscheidend: ein blosses
-# Praefix-Match liesse wss://relay.web-of-trust.de.angreifer.tld durch und
-# haette es zugleich als "Produktions-Relay vorhanden" gezaehlt.
-WS_URLS=$(grep -rhoE "wss?://[^\"'\`[:space:]]+" "$d"/*.js | sort -u || true)
-ALLOW='^wss://relay\.web-of-trust\.de([/:?#]|$)'
-printf '%s\n' "$WS_URLS" | grep -qE "$ALLOW" \
-  || abort "Produktions-Relay fehlt im Bundle."
-UNEXPECTED_WS=$(printf '%s\n' "$WS_URLS" | grep -vE "$ALLOW" || true)
-if [ -n "$UNEXPECTED_WS" ]; then
-  echo "ABBRUCH: unerwartete WebSocket-URLs im Bundle:" >&2
-  printf '  %s\n' $UNEXPECTED_WS >&2
-  exit 1
-fi
-echo "    ok: WebSocket-Allowlist bestanden"
-echo "    HTTPS-Hosts im Bundle (zur Durchsicht):"
-grep -rhoE "https://[a-zA-Z0-9.-]+" "$d"/*.js | sed 's|https://|      |' | sort -u
+  # OTA-Sentinel: erzwingt die Kanal-Trennung, statt sie nur zu meinen. Fuer den
+  # F-Droid-Build muss android-foss da sein und __local__ fehlen; fuer Play
+  # umgekehrt. So kann ein Self-Updater nie ins Play-AAB geraten (Policy-Verstoss),
+  # und ein Play-Build, dem der Abschalt-Kanal fehlt (→ self-update ueber Default
+  # 'android'), faellt ebenfalls auf.
+  local has_on has_off
+  if grep -rlq "$OTA_ON_MARKER"  "$d"/*.js; then has_on=1;  else has_on=0;  fi
+  if grep -rlq "$OTA_OFF_MARKER" "$d"/*.js; then has_off=1; else has_off=0; fi
+  if [ "$ota" = "on" ]; then
+    [ "$has_on"  = 1 ] || abort "$label: OTA-Kanal '$OTA_ON_MARKER' fehlt — F-Droid-OTA wuerde nicht funktionieren."
+    [ "$has_off" = 0 ] || abort "$label: Abschalt-Kanal '$OTA_OFF_MARKER' im F-Droid-Bundle — OTA waere aus."
+  else
+    [ "$has_on"  = 0 ] || abort "$label-Bundle enthaelt OTA-Kanal '$OTA_ON_MARKER' — Play verbietet Self-Updates."
+    [ "$has_off" = 1 ] || abort "$label-Bundle: Abschalt-Kanal '$OTA_OFF_MARKER' fehlt — App wuerde ueber Default-Kanal self-updaten."
+  fi
+  echo "    ok: $label — Allowlist bestanden, OTA $ota bestaetigt (on=$has_on off=$has_off)"
+  echo "    HTTPS-Hosts im $label-Bundle (zur Durchsicht):"
+  grep -rhoE "https://[a-zA-Z0-9.-]+" "$d"/*.js | sed 's|https://|      |' | sort -u
+}
 
-echo "==> 6/6 Android-Build (APK für F-Droid + AAB für Play)"
-rm -rf "$APK_OUT" "$AAB_OUT"
-( cd "$APP_DIR/android" && ./gradlew --no-daemon "$GRADLE_TASK" "$AAB_TASK" )
-
-# APK waehlen — ohne Pipe: unter pipefail bricht sowohl ein leerer grep -v als
-# auch ein leeres ls die Zuweisung ab, bevor Fallback/Fehlermeldung greifen.
-# Bei RLS ist das einzige APK das unsignierte — der Fallback ist der Normalfall.
-shopt -s nullglob
-APKS=("$APK_OUT"/*.apk)
-AABS=("$AAB_OUT"/*.aab)
-shopt -u nullglob
-[ ${#APKS[@]} -gt 0 ] || abort "kein APK in $APK_OUT"
-[ ${#AABS[@]} -gt 0 ] || abort "kein AAB in $AAB_OUT"
-BUILT=""
-for a in "${APKS[@]}"; do
-  case "$a" in *-unsigned.apk) continue ;; esac
-  BUILT="$a"; break
-done
-[ -n "$BUILT" ] || BUILT="${APKS[0]}"
-AAB="${AABS[0]}"
+# Baut die Web-Assets mit dem gegebenen Env und verifiziert sie.
+#   $1 = Label   $2 = OTA-Erwartung   ab $3 = KEY=VAL-Env-Paare
+build_web() {
+  local label="$1" ota="$2"; shift 2
+  echo "==> Web-Assets ($label, OTA $ota — URLs explizit gepinnt)"
+  ( cd "$APP_DIR" && env "$@" pnpm "$BUILD_SCRIPT" )
+  verify_bundle "$label" "$ota"
+}
 
 OUT=out/release
 rm -rf "$OUT" && mkdir -p "$OUT"
+
+echo "==> 4/6 F-Droid: Web-Build (OTA an) → unsigniertes APK"
+build_web fdroid on "${FDROID_ENV[@]}"
+rm -rf "$APK_OUT"
+( cd "$APP_DIR/android" && ./gradlew --no-daemon "$GRADLE_TASK" )
+shopt -s nullglob
+APKS=("$APK_OUT"/*.apk)
+shopt -u nullglob
+[ ${#APKS[@]} -gt 0 ] || abort "kein APK in $APK_OUT"
+# F-Droid erwartet das UNSIGNIERTE APK — die Pipeline signiert es. Deterministisch:
+# genau ein *-unsigned.apk (flavorlos, ohne signingConfig), sonst genau ein APK.
+# Alles andere ist mehrdeutig und koennte das falsche Artefakt attestieren.
+UNSIGNED=()
+for a in "${APKS[@]}"; do case "$a" in *-unsigned.apk) UNSIGNED+=("$a") ;; esac; done
+if [ ${#UNSIGNED[@]} -eq 1 ]; then
+  BUILT="${UNSIGNED[0]}"
+elif [ ${#APKS[@]} -eq 1 ]; then
+  BUILT="${APKS[0]}"
+else
+  abort "APK-Auswahl mehrdeutig (erwarte genau ein unsigniertes APK): ${APKS[*]}"
+fi
 cp "$BUILT" "$OUT/"
+
+echo "==> 5/6 Play: Web-Build (OTA aus) → unsigniertes AAB"
+build_web play off "${PLAY_ENV[@]}"
+rm -rf "$AAB_OUT"
+( cd "$APP_DIR/android" && ./gradlew --no-daemon "$AAB_TASK" )
+shopt -s nullglob
+AABS=("$AAB_OUT"/*.aab)
+shopt -u nullglob
+[ ${#AABS[@]} -eq 1 ] || abort "erwarte genau ein AAB in $AAB_OUT, fand: ${AABS[*]:-keins}"
+AAB="${AABS[0]}"
 cp "$AAB" "$OUT/"
+
+echo "==> 6/6 build-info + Pruefsummen"
 COMMIT=$(git rev-parse HEAD)
 # JSON maschinell erzeugen statt per Heredoc: die Java-Versionszeile enthaelt
 # Anfuehrungszeichen, Hand-Escaping hat nachweislich ungueltiges JSON erzeugt.
@@ -151,11 +221,12 @@ const e = process.env;
 require("fs").writeFileSync(process.argv[1], JSON.stringify({
   app: e.BI_APP, tag: e.BI_TAG, commit: e.BI_COMMIT,
   versionName: e.BI_VNAME, versionCode: Number(e.BI_VCODE),
-  gradleTask: e.BI_TASK, updateChannel: "android-foss",
+  gradleTask: e.BI_TASK,
   artifacts: { apk: e.BI_APK, aab: e.BI_AAB },
+  otaChannels: { apk: "android-foss", aab: "disabled" },
   toolchain: { node: e.BI_NODE, pnpm: e.BI_PNPM, java: e.BI_JAVA },
   signed: false,
-  note: "APK (F-Droid) und AAB (Play) unsigniert. Signierung erfolgt getrennt (Schluessel-Verwahrung)."
+  note: "APK (F-Droid, OTA an) und AAB (Play, OTA aus) getrennt gebaut, beide unsigniert. Signierung erfolgt getrennt (Schluessel-Verwahrung)."
 }, null, 2) + "\n");
 ' "$OUT/build-info.json"
 node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$OUT/build-info.json"
