@@ -1,4 +1,5 @@
 import { getReadableTextColor } from "../../../lib/utils"
+import type { ColorScheme } from "../../../lib/color-scheme"
 import { resolveIcon, DEFAULT_ICON, type IconData } from "../../../lib/icons/icon-registry"
 import {
   markerShapeBody,
@@ -12,7 +13,22 @@ import {
 /** Glyph box size in pin viewBox units (standardised — no per-icon size tuning). */
 const GLYPH_TARGET = 17
 /** Subtle default outline, like Utopia's marker border. */
-const BORDER = "rgba(20,20,20,0.18)"
+const BORDER_LIGHT = "rgba(20,20,20,0.18)"
+/**
+ * On a dark map both of the pin's depth cues stop working: the drop shadow is
+ * black on a near-black background, and so is this rim. The pin collapses into
+ * a flat patch of colour. A light rim gives it its edge back — the same
+ * "cut-out sticker" separation the shadow provides on a light map.
+ */
+const BORDER_DARK = "rgba(255,255,255,0.8)"
+/**
+ * Accent colours are chosen to read on a light surface; on near-black they
+ * glare. Pulling the fill toward the map's own darkness keeps the hue
+ * recognisable while taking the harshness off — this does more for the
+ * "cheap neon" look than the rim does.
+ */
+const DARK_FILL_MIX = 0.32
+const DARK_BACKDROP = "#111111"
 
 export interface RenderMarkerOptions {
   /** Marker colour (`#rrggbb`) — fills the pin; the glyph uses a readable contrast colour. */
@@ -20,6 +36,22 @@ export interface RenderMarkerOptions {
   /** Icon string (curated name | inline SVG | emoji). Falls back to a dot. */
   icon?: string | null
   shape?: MarkerShape
+  /** Map style the pin is drawn onto. Changes the rim and mutes the fill. */
+  colorScheme?: ColorScheme
+}
+
+/** Blend `hex` toward `toward` by `amount` (0…1). Both must be `#rrggbb`. */
+function mixHex(hex: string, toward: string, amount: number): string {
+  if (!/^#[0-9a-f]{6}$/i.test(hex) || !/^#[0-9a-f]{6}$/i.test(toward)) return hex
+  const a = parseInt(hex.slice(1), 16)
+  const b = parseInt(toward.slice(1), 16)
+  const channel = (shift: number) => {
+    const from = (a >> shift) & 255
+    const to = (b >> shift) & 255
+    return Math.round(from + (to - from) * amount)
+  }
+  const out = (channel(16) << 16) | (channel(8) << 8) | channel(0)
+  return `#${out.toString(16).padStart(6, "0")}`
 }
 
 /**
@@ -33,9 +65,12 @@ export function renderMarkerSvg({
   color,
   icon,
   shape = DEFAULT_SHAPE,
+  colorScheme = "light",
 }: RenderMarkerOptions): string {
-  const glyphColor = getReadableTextColor(color)
-  const pin = markerShapeBody(shape, color, BORDER)
+  const dark = colorScheme === "dark"
+  const fill = dark ? mixHex(color, DARK_BACKDROP, DARK_FILL_MIX) : color
+  const glyphColor = getReadableTextColor(fill)
+  const pin = markerShapeBody(shape, fill, dark ? BORDER_DARK : BORDER_LIGHT)
   const glyph = placeGlyph(resolveIcon(icon) ?? DEFAULT_ICON, glyphColor)
   // The drop shadow is applied by the adapters via the `.rls-marker-shadow` CSS
   // class (a CSS `filter: drop-shadow`), which is reliable for `<img>`-embedded

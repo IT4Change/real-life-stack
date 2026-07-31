@@ -140,16 +140,19 @@ export async function prefetchMapLibre(styleUrl?: string): Promise<void> {
  * glow are not baked into the pin image; they become a separate layer). The
  * icon registry version invalidates cached images when an icon is redefined.
  */
-function imageKey(spec: MapMarkerSpec): string {
-  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${iconRegistryVersion()}`
+function imageKey(spec: MapMarkerSpec, scheme: ColorScheme): string {
+  // The scheme is part of the key: light and dark render the pin differently
+  // (rim colour, muted fill), so they must not share a cached atlas image.
+  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${scheme}|${iconRegistryVersion()}`
 }
 
 /** The marker's pin as an SVG `data:` URL (see markerDataUrl — no injection surface). */
-function markerSrc(spec: MapMarkerSpec): string {
+function markerSrc(spec: MapMarkerSpec, scheme: ColorScheme): string {
   return markerDataUrl({
     color: spec.color ?? DEFAULT_MARKER_COLOR,
     icon: spec.icon,
     shape: spec.shape,
+    colorScheme: scheme,
   })
 }
 
@@ -521,7 +524,7 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     for (const m of markers) {
       const properties = {
         id: m.id,
-        iconImage: imageKey(m),
+        iconImage: imageKey(m, this.currentScheme),
         label: m.label ?? "",
         selected: m.selected ? 1 : 0,
         glowColor: m.glowColor ?? "",
@@ -785,13 +788,14 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
   private async ensureImages(map: MlMap, markers: MapMarkerSpec[]): Promise<void> {
     const missing = new Map<string, MapMarkerSpec>()
     for (const m of markers) {
-      const key = imageKey(m)
+      const key = imageKey(m, this.currentScheme)
       if (!this.addedImages.has(key) && !map.hasImage(key)) missing.set(key, m)
     }
+    const scheme = this.currentScheme
     await Promise.all(
       [...missing].map(async ([key, spec]) => {
         try {
-          const image = await rasterizePin(markerSrc(spec), PIN_RASTER_SCALE)
+          const image = await rasterizePin(markerSrc(spec, scheme), PIN_RASTER_SCALE)
           if (this.mapInstance === map && !map.hasImage(key)) {
             map.addImage(key, image, { pixelRatio: PIN_RASTER_SCALE })
           }
