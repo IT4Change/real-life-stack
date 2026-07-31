@@ -46,7 +46,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
@@ -72,10 +72,18 @@ jobs:
       # from `cap sync` is also base "/"). Building them with "/app/"
       # (the web deployment base) makes every asset 404 after an OTA
       # reload — a blank screen. The web-of-trust demo gets this right.
+      #
+      # EINMAL bauen, dreimal zippen. Der Build war je Channel identisch —
+      # `$channel` kam im Build-Kommando nicht vor und `VITE_UPDATE_CHANNEL`
+      # wird hier bewusst nicht gesetzt (siehe apps/reference/CLAUDE.md: der
+      # Channel wird erst beim nativen Build gesetzt, im Web-Bundle spielt er
+      # keine Rolle). Die drei Zips hatten also denselben Inhalt, erzeugt aus
+      # drei identischen Builds. Spart zwei komplette Reference-Builds pro
+      # Deploy, ohne dass sich an den Artefakten etwas ändert.
       - name: Build OTA bundles
         run: |
+          pnpm --filter reference build
           for channel in ios android android-foss; do
-            pnpm --filter reference build
             (cd apps/reference/dist && zip -r "../../../bundle-${channel}-${SHORT_SHA}.zip" .)
           done
         env:
