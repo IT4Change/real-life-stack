@@ -78,4 +78,19 @@ describe("getMembers admin annotation", () => {
     const admins = (await c.getMembers("g4")).filter((m) => m.isAdmin).map((m) => m.id)
     expect(admins).toEqual([DANIEL]) // preserved legacy behavior when no better signal exists
   })
+
+  it("does not admin a departed legacy creator; falls back to first active member", async () => {
+    // Legacy space (no admins), creator has left the group. The adapter's
+    // spaceAdminDids() ignores an inactive createdBy and authorizes the
+    // lexicographically-first active member instead — the UI must match.
+    const DEPARTED = "did:key:z6MkaDepartedCreatorNoLongerAMember00000000000000"
+    const c = connectorWithSpace({
+      id: "g5", type: "shared",
+      members: [DANIEL, ANTON], // DID-sorted actives; DANIEL is lexicographically first
+      createdBy: DEPARTED, admins: [],
+      createdAt: "2026-07-24T00:00:00.000Z",
+    })
+    const admins = (await c.getMembers("g5")).filter((m) => m.isAdmin).map((m) => m.id)
+    expect(admins).toEqual([DANIEL])
+  })
 })

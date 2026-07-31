@@ -1011,17 +1011,22 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   }
 
   /**
-   * Authoritative admin set for a space. Prefers the projected `admins` list,
-   * falls back to the single `createdBy`, and only as a last resort (truly
-   * legacy spaces with neither) to `members[0]`. The member list itself is
-   * DID-sorted, so `members[0]` is NOT a reliable admin signal — it is used
-   * here only to preserve prior behavior where no better data exists.
+   * Authoritative admin set for a space. Mirrors the adapter's `spaceAdminDids()`
+   * so the UI never diverges from what the adapter actually authorizes:
+   *  1. the projected `admins` list (already `_admins ∩ active members`) when present;
+   *  2. the legacy fallback `createdBy ?? members[0]`, but ONLY if that DID is an
+   *     active member (a departed creator does not count);
+   *  3. otherwise the lexicographically-first active member, so a living legacy
+   *     space is never admin-less.
+   * `space.members` is the active member set (DID-sorted by the adapter).
    */
   private resolveSpaceAdminDids(space: SpaceInfo): Set<string> {
     if (space.admins && space.admins.length > 0) return new Set(space.admins)
-    if (space.createdBy) return new Set([space.createdBy])
-    if (space.members.length > 0) return new Set([space.members[0]])
-    return new Set()
+    const members = space.members ?? []
+    const activeSet = new Set(members)
+    const candidate = space.createdBy ?? members[0]
+    if (candidate !== undefined && activeSet.has(candidate)) return new Set([candidate])
+    return members.length > 0 ? new Set([[...members].sort()[0]]) : new Set()
   }
 
   private memberObservables = new Map<string | null, ReactiveObservable<User[]>>()

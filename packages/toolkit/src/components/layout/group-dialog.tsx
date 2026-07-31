@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react"
 import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon } from "lucide-react"
 import type { Group, ContactInfo } from "@real-life-stack/data-interface"
 import { useMembers } from "../../hooks/use-groups"
+import { resolveAdminView } from "../../lib/group-admin-view"
 import {
   Dialog,
   DialogContent,
@@ -77,9 +78,10 @@ export function GroupDialog({
   const { data: members, isLoading: membersLoading } = useMembers(groupId)
   // Admin-gated controls follow the authoritative admin set (member.isAdmin,
   // derived from space.admins/createdBy), NOT list position: space.members is
-  // DID-sorted, so members[0] is an arbitrary member, not the creator.
-  const isCurrentUserAdmin =
-    isEdit && members.some((m) => m.id === currentUserId && m.isAdmin)
+  // DID-sorted, so members[0] is an arbitrary member. Backward-compatible for
+  // connectors that don't annotate (falls back to members[0]) — see resolveAdminView.
+  const { isAdmin: memberIsAdmin, currentUserIsAdmin } = resolveAdminView(members, currentUserId)
+  const isCurrentUserAdmin = isEdit && currentUserIsAdmin
 
   const [name, setName] = useState(() =>
     isEdit ? mode.group.name : ""
@@ -348,7 +350,7 @@ export function GroupDialog({
                 <span className="flex-1 truncate text-sm">
                   {member.displayName ?? shortName(member.id)}
                 </span>
-                {member.isAdmin && (
+                {memberIsAdmin(member) && (
                   <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 bg-muted rounded-full">Admin</span>
                 )}
                 {isCurrentUserAdmin && onRemoveMember && member.id !== currentUserId && (
