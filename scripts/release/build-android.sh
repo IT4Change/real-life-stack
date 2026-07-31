@@ -23,8 +23,10 @@ APP_DIR=apps/reference
 APP_ID=org.reallife.reallifestack
 TAG_PREFIX=app-v                               # RLS taggt app-v0.2.1
 BUILD_SCRIPT=build:android
-GRADLE_TASK=assembleRelease                    # kein Flavor → unsigniert
+GRADLE_TASK=assembleRelease                    # kein Flavor → unsigniertes APK (F-Droid)
+AAB_TASK=bundleRelease                          # unsigniertes AAB (Play, Pipeline signiert)
 APK_OUT="$APP_DIR/android/app/build/outputs/apk/release"
+AAB_OUT="$APP_DIR/android/app/build/outputs/bundle/release"
 UPDATE_SERVER=https://real-life-stack.de
 BUILD_ENV=(
   VITE_BASE_PATH=/
@@ -108,34 +110,40 @@ echo "    ok: WebSocket-Allowlist bestanden"
 echo "    HTTPS-Hosts im Bundle (zur Durchsicht):"
 grep -rhoE "https://[a-zA-Z0-9.-]+" "$d"/*.js | sed 's|https://|      |' | sort -u
 
-echo "==> 6/6 Android-Build"
-rm -rf "$APK_OUT"
-( cd "$APP_DIR/android" && ./gradlew --no-daemon "$GRADLE_TASK" )
+echo "==> 6/6 Android-Build (APK für F-Droid + AAB für Play)"
+rm -rf "$APK_OUT" "$AAB_OUT"
+( cd "$APP_DIR/android" && ./gradlew --no-daemon "$GRADLE_TASK" "$AAB_TASK" )
 
 # APK waehlen — ohne Pipe: unter pipefail bricht sowohl ein leerer grep -v als
 # auch ein leeres ls die Zuweisung ab, bevor Fallback/Fehlermeldung greifen.
 # Bei RLS ist das einzige APK das unsignierte — der Fallback ist der Normalfall.
 shopt -s nullglob
 APKS=("$APK_OUT"/*.apk)
+AABS=("$AAB_OUT"/*.aab)
 shopt -u nullglob
 [ ${#APKS[@]} -gt 0 ] || abort "kein APK in $APK_OUT"
+[ ${#AABS[@]} -gt 0 ] || abort "kein AAB in $AAB_OUT"
 BUILT=""
 for a in "${APKS[@]}"; do
   case "$a" in *-unsigned.apk) continue ;; esac
   BUILT="$a"; break
 done
 [ -n "$BUILT" ] || BUILT="${APKS[0]}"
+AAB="${AABS[0]}"
 
 OUT=out/release
 rm -rf "$OUT" && mkdir -p "$OUT"
 cp "$BUILT" "$OUT/"
+cp "$AAB" "$OUT/"
 COMMIT=$(git rev-parse HEAD)
 # JSON maschinell erzeugen statt per Heredoc: die Java-Versionszeile enthaelt
 # Anfuehrungszeichen, Hand-Escaping hat nachweislich ungueltiges JSON erzeugt.
 # Werte gehen als Env hinein, node uebernimmt das Escaping. Kein Zeitstempel —
 # die Datei soll bei einem Reproduzierbarkeits-Vergleich identisch sein.
 BI_APP="$APP_ID" BI_TAG="$TAG" BI_COMMIT="$COMMIT" \
-BI_VNAME="$VERSION_NAME" BI_VCODE="$VERSION_CODE" BI_TASK="$GRADLE_TASK" \
+BI_VNAME="$VERSION_NAME" BI_VCODE="$VERSION_CODE" \
+BI_TASK="$GRADLE_TASK $AAB_TASK" \
+BI_APK="$(basename "$BUILT")" BI_AAB="$(basename "$AAB")" \
 BI_NODE="$(node --version)" BI_PNPM="$(pnpm --version)" \
 BI_JAVA="$(java -version 2>&1 | head -1)" \
 node -e '
@@ -144,9 +152,10 @@ require("fs").writeFileSync(process.argv[1], JSON.stringify({
   app: e.BI_APP, tag: e.BI_TAG, commit: e.BI_COMMIT,
   versionName: e.BI_VNAME, versionCode: Number(e.BI_VCODE),
   gradleTask: e.BI_TASK, updateChannel: "android-foss",
+  artifacts: { apk: e.BI_APK, aab: e.BI_AAB },
   toolchain: { node: e.BI_NODE, pnpm: e.BI_PNPM, java: e.BI_JAVA },
   signed: false,
-  note: "Unsigniert. Signierung erfolgt getrennt (Schluessel-Verwahrung)."
+  note: "APK (F-Droid) und AAB (Play) unsigniert. Signierung erfolgt getrennt (Schluessel-Verwahrung)."
 }, null, 2) + "\n");
 ' "$OUT/build-info.json"
 node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$OUT/build-info.json"
