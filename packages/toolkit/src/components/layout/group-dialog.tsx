@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react"
 import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon } from "lucide-react"
 import type { Group, ContactInfo } from "@real-life-stack/data-interface"
 import { useMembers } from "../../hooks/use-groups"
+import { resolveAdminView } from "../../lib/group-admin-view"
 import {
   Dialog,
   DialogContent,
@@ -75,7 +76,12 @@ export function GroupDialog({
   const isEdit = mode.type === "edit"
   const groupId = isEdit ? mode.group.id : "__none__"
   const { data: members, isLoading: membersLoading } = useMembers(groupId)
-  const isCreator = isEdit && members.length > 0 && members[0]?.id === currentUserId
+  // Admin-gated controls follow the authoritative admin set (member.isAdmin,
+  // derived from space.admins/createdBy), NOT list position: space.members is
+  // DID-sorted, so members[0] is an arbitrary member. Backward-compatible for
+  // connectors that don't annotate (falls back to members[0]) — see resolveAdminView.
+  const { isAdmin: memberIsAdmin, currentUserIsAdmin } = resolveAdminView(members, currentUserId)
+  const isCurrentUserAdmin = isEdit && currentUserIsAdmin
 
   const [name, setName] = useState(() =>
     isEdit ? mode.group.name : ""
@@ -344,10 +350,10 @@ export function GroupDialog({
                 <span className="flex-1 truncate text-sm">
                   {member.displayName ?? shortName(member.id)}
                 </span>
-                {members[0]?.id === member.id && (
+                {memberIsAdmin(member) && (
                   <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 bg-muted rounded-full">Admin</span>
                 )}
-                {isCreator && onRemoveMember && member.id !== currentUserId && (
+                {isCurrentUserAdmin && onRemoveMember && member.id !== currentUserId && (
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -428,7 +434,7 @@ export function GroupDialog({
           )}
 
           {/* Module Toggles (admin only) */}
-          {isCreator && (
+          {isCurrentUserAdmin && (
             <div className="mt-3 pt-3 border-t border-border/50">
               <Label className="text-xs text-muted-foreground">Module</Label>
               <div className="mt-2 grid grid-cols-2 gap-1">

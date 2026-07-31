@@ -1001,10 +1001,32 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     const space = await this.replication.getSpace(groupId)
     if (!space) return []
 
+    const adminDids = this.resolveSpaceAdminDids(space)
     const users = await Promise.all(
       space.members.map((did: string) => this.getUser(did))
     )
-    return users.filter((u: User | null): u is User => u !== null)
+    return users
+      .filter((u: User | null): u is User => u !== null)
+      .map((u: User) => ({ ...u, isAdmin: adminDids.has(u.id) }))
+  }
+
+  /**
+   * Authoritative admin set for a space. Mirrors the adapter's `spaceAdminDids()`
+   * so the UI never diverges from what the adapter actually authorizes:
+   *  1. the projected `admins` list (already `_admins ∩ active members`) when present;
+   *  2. the legacy fallback `createdBy ?? members[0]`, but ONLY if that DID is an
+   *     active member (a departed creator does not count);
+   *  3. otherwise the lexicographically-first active member, so a living legacy
+   *     space is never admin-less.
+   * `space.members` is the active member set (DID-sorted by the adapter).
+   */
+  private resolveSpaceAdminDids(space: SpaceInfo): Set<string> {
+    if (space.admins && space.admins.length > 0) return new Set(space.admins)
+    const members = space.members ?? []
+    const activeSet = new Set(members)
+    const candidate = space.createdBy ?? members[0]
+    if (candidate !== undefined && activeSet.has(candidate)) return new Set([candidate])
+    return members.length > 0 ? new Set([[...members].sort()[0]]) : new Set()
   }
 
   private memberObservables = new Map<string | null, ReactiveObservable<User[]>>()

@@ -66,6 +66,14 @@ export interface User {
   id: string
   displayName?: string
   avatarUrl?: string
+  /**
+   * True when this user is an admin of the group the member list was fetched for.
+   * Derived from the space's authoritative admin set (`admins`, fallback
+   * `createdBy`), NOT from list position — `space.members` is DID-sorted, so
+   * position says nothing about who created or administers the space. Only set
+   * by per-group member queries; undefined in the personal (all-groups) view.
+   */
+  isAdmin?: boolean
 }
 
 // --- Observable ---
