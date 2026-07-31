@@ -54,9 +54,18 @@ import type {
 import { markerDataUrl } from "../markers/render-marker-svg"
 import { PIN_SIZE } from "../markers/marker-shapes"
 import { iconRegistryVersion } from "../../../lib/icons/icon-registry"
+import {
+  observeColorScheme,
+  resolveColorScheme,
+  type ColorScheme,
+  type ColorSchemePreference,
+} from "../../../lib/color-scheme"
 
-/** Free, key-less vector style (CORS-enabled). Override via MountOptions.tileSource. */
-const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
+/** Free, key-less vector styles (CORS-enabled). Override via MountOptions. */
+const DEFAULT_STYLE_LIGHT = "https://tiles.openfreemap.org/styles/liberty"
+const DEFAULT_STYLE_DARK = "https://tiles.openfreemap.org/styles/dark"
+/** Light is what an unthemed caller (e.g. `prefetchMapLibre()`) still means. */
+const DEFAULT_STYLE = DEFAULT_STYLE_LIGHT
 
 /** Marker color used when a MapMarkerSpec carries no color hint. */
 const DEFAULT_MARKER_COLOR = "#2563eb"
@@ -117,9 +126,13 @@ async function loadMapLibre(): Promise<MapLibreModule> {
  * is created, so it is safe (and cheap) to call once on app idle — the first
  * map open is then noticeably faster. Best-effort; all errors are swallowed.
  */
-export async function prefetchMapLibre(styleUrl: string = DEFAULT_STYLE): Promise<void> {
+export async function prefetchMapLibre(styleUrl?: string): Promise<void> {
   await loadMapLibre().catch(() => {})
-  await fetch(styleUrl, { mode: "cors" }).then((r) => r.ok && r.json()).catch(() => {})
+  // Warm the style the next mount will actually request, so a dark-themed app
+  // does not prefetch the light style and then fetch the dark one anyway.
+  const url =
+    styleUrl ?? (resolveColorScheme() === "dark" ? DEFAULT_STYLE_DARK : DEFAULT_STYLE)
+  await fetch(url, { mode: "cors" }).then((r) => r.ok && r.json()).catch(() => {})
 }
 
 /**
@@ -127,16 +140,19 @@ export async function prefetchMapLibre(styleUrl: string = DEFAULT_STYLE): Promis
  * glow are not baked into the pin image; they become a separate layer). The
  * icon registry version invalidates cached images when an icon is redefined.
  */
-function imageKey(spec: MapMarkerSpec): string {
-  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${iconRegistryVersion()}`
+function imageKey(spec: MapMarkerSpec, scheme: ColorScheme): string {
+  // The scheme is part of the key: light and dark render the pin differently
+  // (rim colour, muted fill), so they must not share a cached atlas image.
+  return `${spec.color ?? ""}|${spec.icon ?? ""}|${spec.shape ?? ""}|${scheme}|${iconRegistryVersion()}`
 }
 
 /** The marker's pin as an SVG `data:` URL (see markerDataUrl — no injection surface). */
-function markerSrc(spec: MapMarkerSpec): string {
+function markerSrc(spec: MapMarkerSpec, scheme: ColorScheme): string {
   return markerDataUrl({
     color: spec.color ?? DEFAULT_MARKER_COLOR,
     icon: spec.icon,
     shape: spec.shape,
+    colorScheme: scheme,
   })
 }
 
@@ -238,6 +254,15 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
   // Current projection — tracked so the cluster-expansion easeTo can compensate
   // for the globe's coarser effective tile zoom (see CLUSTER_EXPANSION_GLOBE_BUFFER).
   private currentProjection: MapProjection = "mercator"
+  // Light/dark styles resolved at mount, plus the scheme currently rendered.
+  // With preference "auto" an observer flips `currentScheme` (and the style)
+  // when the app toggles its `dark` class, so the map re-themes in place
+  // instead of needing a remount.
+  private colorSchemePreference: ColorSchemePreference = "auto"
+  private styleLight: string = DEFAULT_STYLE_LIGHT
+  private styleDark: string = DEFAULT_STYLE_DARK
+  private currentScheme: ColorScheme = "light"
+  private stopColorSchemeObserver: (() => void) | null = null
   private lastMarkers: MapMarkerSpec[] = []
   // Rendered marker id → appearance hash. Lets `setMarkersAsync` push only the
   // delta via `GeoJSONSource.updateData` (add/update/remove) instead of a full
@@ -255,9 +280,20 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     }
     const maplibre = await loadMapLibre()
 
+    // Mount options win when given; otherwise whatever the caller already set
+    // via `setColorScheme()` before mounting survives (the default is "auto").
+    // Overwriting unconditionally silently dropped a pre-mount choice.
+    if (options.colorScheme) this.colorSchemePreference = options.colorScheme
+    this.styleLight = options.tileSource ?? DEFAULT_STYLE_LIGHT
+    // A caller-pinned `tileSource` without a dark counterpart stays in force for
+    // both schemes: swapping in OpenFreeMap-dark would silently discard their
+    // style. Only the *default* light style has a matching dark sibling.
+    this.styleDark = options.tileSourceDark ?? options.tileSource ?? DEFAULT_STYLE_DARK
+    this.currentScheme = resolveColorScheme(this.colorSchemePreference)
+
     const map = new maplibre.Map({
       container,
-      style: options.tileSource ?? DEFAULT_STYLE,
+      style: this.styleForScheme(this.currentScheme),
       center: options.center, // [lng, lat] — GeoJSON order, native to MapLibre
       zoom: options.zoom,
       // Add the attribution ourselves (below) so we can place + compact it.
@@ -342,6 +378,90 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     })
 
     this.mapInstance = map
+    // Observer FIRST, then reconcile. The style was chosen before the initial
+    // load, which we then awaited — a theme toggle inside that window has no
+    // observer to catch it and would leave the map on the old style until the
+    // *next* toggle. Re-resolving here closes that gap; the observer is already
+    // armed, so nothing can slip between the two calls either.
+    this.startColorSchemeObserver()
+    this.applyScheme(resolveColorScheme(this.colorSchemePreference))
+  }
+
+  // --- Colour scheme ---
+
+  private styleForScheme(scheme: ColorScheme): string {
+    return scheme === "dark" ? this.styleDark : this.styleLight
+  }
+
+  /** Watch the app's `dark` class while the preference is `"auto"`. */
+  private startColorSchemeObserver(): void {
+    this.stopColorSchemeObserver?.()
+    this.stopColorSchemeObserver = null
+    if (this.colorSchemePreference !== "auto") return
+    this.stopColorSchemeObserver = observeColorScheme((scheme) => this.applyScheme(scheme))
+  }
+
+  /**
+   * Pin the map to a scheme, or hand it back to the app's `dark` class with
+   * `"auto"`. Maplibre-only (no MapAdapter contract method); callers that want
+   * explicit control hold the concrete adapter.
+   *
+   * Safe before mount — the choice is applied by `mount()` unless that call
+   * passes its own `colorScheme`. It lasts for one mount: `unmount()` returns
+   * the adapter to the documented `"auto"` default, so a later mount is not
+   * silently pinned by an earlier one.
+   */
+  setColorScheme(preference: ColorSchemePreference): void {
+    this.colorSchemePreference = preference
+    this.startColorSchemeObserver()
+    this.applyScheme(resolveColorScheme(preference))
+  }
+
+  /**
+   * Swap the vector style in place. `setStyle` discards every source, layer and
+   * image we added on top of the old style, so the marker bookkeeping is reset
+   * and the whole marker set re-installed once the new style is live. Layer
+   * event handlers survive: `map.on(type, layerId, …)` binds by layer *id*, not
+   * by the layer object, so `markerEventsWired` deliberately stays true.
+   */
+  private applyScheme(scheme: ColorScheme): void {
+    if (scheme === this.currentScheme) return
+    this.currentScheme = scheme
+    const map = this.mapInstance as MlMap | null
+    if (!map) return
+
+    // Two signals, because neither alone is enough. `styledata` fires as soon
+    // as the new style document is set — too early to add sources onto — and
+    // then does NOT reliably fire again once the style finishes. `idle` is
+    // emitted whenever the map settles, so a later one always catches the
+    // finished style. Both stay armed and are only consumed once the style is
+    // genuinely loaded; adding sources to a half-built style would silently
+    // lose them when it completes.
+    const onSettled = () => {
+      if (!map.isStyleLoaded()) return
+      map.off("styledata", onSettled)
+      map.off("idle", onSettled)
+      if (this.mapInstance !== map) return
+
+      // The reset belongs HERE, not before `setStyle`. Marker writes keep
+      // arriving during the ~1s style load (a viewport change re-runs the app's
+      // setMarkers), and those run against the still-current old style. Had the
+      // bookkeeping been cleared up front, such a write would refill
+      // `renderedMarkers` from the old style — and the delta computed below
+      // would come out empty, pushing nothing onto the new, empty source. The
+      // markers would stay gone until the next data change. Clearing at
+      // re-install time makes the delta a full re-add, whatever happened
+      // in between.
+      this.markerLayersReady = false
+      this.addedImages.clear()
+      this.renderedMarkers.clear()
+      // Projection is a style property, so it reset along with the style.
+      map.setProjection({ type: this.currentProjection })
+      this.reapplyMarkersSafely(this.lastMarkers)
+    }
+    map.on("styledata", onSettled)
+    map.on("idle", onSettled)
+    map.setStyle(this.styleForScheme(scheme))
   }
 
   async unmount(): Promise<void> {
@@ -349,9 +469,23 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     if (!map) return
     // Source, layers and atlas images all go away with the map; just drop our
     // bookkeeping so a fresh mount re-creates them.
+    this.stopColorSchemeObserver?.()
+    this.stopColorSchemeObserver = null
+    // Back to the as-constructed scheme state. `mount()` only overwrites the
+    // preference when the caller passes one, so without this reset a
+    // `mount({ colorScheme: "dark" })` would leak into the NEXT, option-less
+    // mount of the same instance — where `MapMountOptions` documents "auto".
+    // A `setColorScheme()` made while mounted is a pin for THAT mount and ends
+    // with it; the pre-mount contract still holds, because that call happens
+    // after this reset.
+    this.colorSchemePreference = "auto"
+    this.currentScheme = "light"
+    this.styleLight = DEFAULT_STYLE_LIGHT
+    this.styleDark = DEFAULT_STYLE_DARK
     this.markerLayersReady = false
     this.markerEventsWired = false
     this.addedImages.clear()
+    this.renderedMarkers.clear()
     this.lastMarkers = []
     map.remove()
     this.mapInstance = null
@@ -414,7 +548,7 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     for (const m of markers) {
       const properties = {
         id: m.id,
-        iconImage: imageKey(m),
+        iconImage: imageKey(m, this.currentScheme),
         label: m.label ?? "",
         selected: m.selected ? 1 : 0,
         glowColor: m.glowColor ?? "",
@@ -678,13 +812,14 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
   private async ensureImages(map: MlMap, markers: MapMarkerSpec[]): Promise<void> {
     const missing = new Map<string, MapMarkerSpec>()
     for (const m of markers) {
-      const key = imageKey(m)
+      const key = imageKey(m, this.currentScheme)
       if (!this.addedImages.has(key) && !map.hasImage(key)) missing.set(key, m)
     }
+    const scheme = this.currentScheme
     await Promise.all(
       [...missing].map(async ([key, spec]) => {
         try {
-          const image = await rasterizePin(markerSrc(spec), PIN_RASTER_SCALE)
+          const image = await rasterizePin(markerSrc(spec, scheme), PIN_RASTER_SCALE)
           if (this.mapInstance === map && !map.hasImage(key)) {
             map.addImage(key, image, { pixelRatio: PIN_RASTER_SCALE })
           }
@@ -698,7 +833,17 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
   }
 
   resize(): void {
-    ;(this.mapInstance as MlMap | null)?.resize()
+    const map = this.mapInstance as MlMap | null
+    if (!map) return
+    map.resize()
+    // `resize()` reallocates the WebGL drawing buffer — which CLEARS it — but
+    // only *schedules* the repaint for the next animation frame. The frame the
+    // browser paints in between is therefore an empty canvas. Once that is a
+    // single dropped frame nobody notices; but the side panel animates the
+    // container width over 300ms and the ResizeObserver fires on every frame of
+    // it, so the map visibly flashed away while the panel opened or closed.
+    // A synchronous redraw refills the buffer before the browser paints.
+    map.redraw()
   }
 
   // --- GlobeCapable ---

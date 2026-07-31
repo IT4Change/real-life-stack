@@ -15,6 +15,13 @@ import { WidgetWrapper } from "./widgets/widget-wrapper"
 import { TitleWidget } from "./widgets/title-widget"
 import { TextWidget } from "./widgets/text-widget"
 import { DateWidget } from "./widgets/date-widget"
+import {
+  dateWidgetPatch,
+  dateWidgetToggles,
+  dateWidgetValue,
+  NO_DATE_TOGGLES,
+  type DateWidgetToggles,
+} from "./date-widget-state"
 import { LocationWidget } from "./widgets/location-widget"
 import type { Geocoder, ReverseGeocoder } from "@/lib/geocode"
 import { MediaWidget } from "./widgets/media-widget"
@@ -343,6 +350,9 @@ export function ContentComposer({
   const [manualWidgets, setManualWidgets] = React.useState<Set<string>>(
     () => widgetsWithValue(initialData),
   )
+  // The date widget's sub-fields (end date, time, recurrence) are UI state: an
+  // opened-but-empty field has no data to be derived from. See date-widget-state.
+  const [dateToggles, setDateToggles] = React.useState<DateWidgetToggles>(NO_DATE_TOGGLES)
   // Imperative handle so the host can patch the open composer without remounting
   // it — e.g. update only `start` when another calendar date is clicked, keeping
   // already-entered content intact.
@@ -659,24 +669,14 @@ export function ContentComposer({
                   )}
                   {widgetId === "date" && (
                     <DateWidget
-                      value={{
-                        start: data.start ?? "",
-                        end: data.end,
-                        rrule: data.rrule,
-                        showEnd: data.end !== undefined,
-                        showTime: typeof data.start === "string" && data.start.includes("T"),
-                        showRecurrence: data.rrule !== undefined,
+                      value={dateWidgetValue(data, dateToggles)}
+                      onChange={(v) => {
+                        // Remember which sub-fields are open *before* writing the
+                        // data: opening "Enddatum" produces no value yet, and a
+                        // purely data-derived toggle would close it again.
+                        setDateToggles(dateWidgetToggles(v))
+                        updateMany(dateWidgetPatch(v))
                       }}
-                      onChange={(v) =>
-                        // Coerce empty strings from cleared inputs to undefined so
-                        // showEnd / showRecurrence stay derived correctly and downstream
-                        // code doesn't have to handle "" alongside undefined.
-                        updateMany({
-                          start: v.start || undefined,
-                          end: v.end || undefined,
-                          rrule: v.rrule || undefined,
-                        })
-                      }
                       label={widgetLabel}
                     />
                   )}

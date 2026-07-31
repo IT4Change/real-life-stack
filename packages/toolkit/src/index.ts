@@ -10,6 +10,12 @@ export {
 } from "./lib/selection-focus"
 export { applyItemListFilter, type ItemListFilter } from "./lib/item-filter"
 export {
+  observeColorScheme,
+  resolveColorScheme,
+  type ColorScheme,
+  type ColorSchemePreference,
+} from "./lib/color-scheme"
+export {
   resolveIcon,
   registerIcon,
   getIcon,

@@ -5,7 +5,7 @@ import {
   ItemPreview,
   ItemTypeBadge,
   ItemScopeBadge,
-  ItemTimeRange,
+  ItemMetaRow,
   ReactionBar,
   useItemsWithDraft,
   useMembers,
@@ -95,6 +95,11 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // Register the calendar's detail config with the host (which owns the panel +
   // read↔edit for the focused item). Memoised so it only re-registers when
   // author resolution changes.
+  // `ItemMetaRow` (date + place), identical to feed/map/collection: the detail
+  // panel is the shared host, so which module opened it must not change what it
+  // shows. `ItemTimeRange` belongs in the calendar's date-grouped LIST, where
+  // the day already comes from the group header — in the panel nothing implies
+  // the date, and a multi-day event read as a bare "Ganztägig".
   const detailConfig = useMemo<DetailConfig>(
     () => ({
       renderRead: (current, actions) => (
@@ -108,7 +113,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
             </>
           }
           actions={actions}
-          metaAdornment={<ItemTimeRange item={current} />}
+          metaAdornment={<ItemMetaRow item={current} />}
           footerAdornment={
             current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
           }

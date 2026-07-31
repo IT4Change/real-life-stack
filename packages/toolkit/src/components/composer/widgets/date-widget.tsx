@@ -78,7 +78,10 @@ export function DateWidget({ value, onChange, label }: DateWidgetProps) {
     if (showRecurrence) {
       onChange({ ...value, showRecurrence: false, rrule: undefined })
     } else {
-      onChange({ ...value, showRecurrence: true, rrule: value.rrule || "none" })
+      // Opening the picker must not invent a rule. "Keine" is the picker's
+      // *display* default (see the `value.rrule || "none"` highlight below);
+      // writing the sentinel back would persist it as if it were a real rule.
+      onChange({ ...value, showRecurrence: true })
     }
   }
 

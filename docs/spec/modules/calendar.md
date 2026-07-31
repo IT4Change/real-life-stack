@@ -119,13 +119,31 @@ Die Wochenansicht zeigt alle sieben Tagesspalten gleichzeitig auf dem Bildschirm
 3. Die vertikale Achse (Scroll durch die Stunden-Slots) bleibt frei; die Gesten-Abgrenzung folgt der Karussell-Konvention (`touch-action: pan-y`, Achsen-Erkennung über die horizontale Dominanz).
 4. Die Pfeil-Navigation (`‹ ›`) bleibt als gleichwertige Alternative erhalten.
 
-## Ganztägige und mehrtägige Events in der Wochenansicht
+## Mehrtägige Termine
 
-Ganztägige Events (Quelle ohne Uhrzeit, bare `YYYY-MM-DD`) und mehrtägige Events liegen im Zeitraster unterhalb des ersten Stunden-Slots und wären dort unsichtbar. Sie werden darum als spannende Leisten über dem Zeitraster gezeigt (Thunderbird-Stil).
+Ein Event mit `data.end` belegt **jeden Tag von Start bis Ende**, nicht nur seinen Starttag. Referenz-Implementierung: `packages/toolkit/src/components/calendar/calendar-layout.ts`.
 
-1. Über dem Stunden-Raster der Woche MUSS eine eigene Ganztags-Zeile stehen, sobald mindestens ein ganztägiges oder mehrtägiges Event die sichtbare Woche überlappt.
-2. Ein Event-Balken MUSS über die Tagesspalten spannen, die es innerhalb der Woche abdeckt (Start- bis End-Spalte, an den Wochenrändern abgeschnitten).
-3. Die Balken nutzen dieselbe `EventPill`-Darstellung und dieselbe Item-Farblogik wie die übrigen Events.
+### Tagesspanne
+
+1. Das Ende eines **ganztägigen** Events (beide Werte bare `YYYY-MM-DD`) ist **inklusiv**: „20.–24.7." belegt auch den 24.
+2. Ein **zeitbehaftetes** Event, das exakt auf lokale Mitternacht endet, belegt den Folgetag NICHT (20:00–00:00 ist ein Abend, kein Zweitagesevent). Läuft es über Mitternacht hinaus (20:00–02:00), belegt es beide Tage.
+3. Fehlt `data.end`, ist es ungültig, oder liegt es vor `data.start`, gilt allein der Starttag.
+4. Die Spanne wird auf 366 Tage begrenzt, damit ein Tippfehler im Jahr die Ansicht nicht sprengt.
+
+### Darstellung
+
+1. Ein mehrtägiges Event MUSS in **jeder** Ansicht auf allen belegten Tagen erscheinen — in der Tages- und Listenansicht, in der Event-Anzahl der Monatszelle und im Perioden-Filter (Überlappung, nicht Startzugehörigkeit).
+2. In Monats- und Wochenansicht MUSS es als **eine durchgehende Leiste** über die abgedeckten Tagesspalten spannen (Thunderbird-Stil), nicht als wiederholte Pill pro Tag.
+3. Eine an der Perioden-Grenze abgeschnittene Leiste MUSS die Fortsetzung kenntlich machen (eckiges Ende plus Richtungs-Marker); eine nicht abgeschnittene Seite bleibt rund.
+4. Eine Leiste zeigt **keine Startuhrzeit** — auf einem Folgetag wäre sie falsch.
+5. Über dem Stunden-Raster der Wochen- und Tagesansicht MUSS eine eigene Ganztags-Zeile stehen, sobald ein ganztägiges oder mehrtägiges Event den sichtbaren Zeitraum überlappt. Diese Events liegen sonst unterhalb des ersten Stunden-Slots und wären unsichtbar. Ein dort als Leiste gezeigtes Event DARF im Stunden-Raster nicht zusätzlich erscheinen.
+6. Die Leisten nutzen dieselbe `EventPill`-Darstellung und dieselbe Item-Farblogik wie die übrigen Events.
+
+### Zeilen-Layout (Lanes)
+
+1. Innerhalb einer Wochenzeile werden alle Events — ein- wie mehrtägige — in **Lanes** gestapelt. Ein Event belegt die niedrigste Lane, deren Spalten alle noch frei sind. Damit liegt nie eine Pill auf einer durchlaufenden Leiste, und nicht überlappende Events teilen sich eine Lane statt eine Treppe zu bilden.
+2. Die Höhe einer Monats-Wochenzeile folgt der Anzahl belegter Lanes, gezählt aus dem Inhalt — nie aus gemessenen Pixeln (sonst rastet das Layout unter Browser-Zoom).
+3. Die Monatsansicht deckelt die Lanes (`MAX_MONTH_LANES`). Was darüber hinausgeht, wird pro Tagesspalte gezählt und als `+N weitere` angeboten, das die vollständige Tagesliste öffnet.
 
 ## Item-Farblogik (modulübergreifend)
 

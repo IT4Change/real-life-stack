@@ -185,6 +185,8 @@ interface MapMountOptions {
   center: [number, number]   // [lng, lat]
   zoom: number
   tileSource?: string         // optional, Adapter darf Default wählen
+  tileSourceDark?: string     // optional, Quelle im Dark Mode
+  colorScheme?: "light" | "dark" | "auto"  // Default "auto"
 }
 
 interface MapMarkerSpec {
@@ -273,6 +275,16 @@ Regeln:
 1. Die Karten-Quelle ist ein **Parameter**, kein im Adapter fest verdrahteter Provider. Beim Raster-Adapter ist das `MapMountOptions.tileSource` (Tile-URL-Template) plus `MapMountOptions.attribution`. Beim Vektor-Adapter ist `tileSource` die **Style-/PMTiles-Quelle** (Style-URL, Style-JSON-URL oder PMTiles-URL).
 2. Fehlt `tileSource`, wählt der Adapter einen sinnvollen Default (Leaflet: OSM-Standard-Tiles). Ein Vektor-Adapter SOLL analog einen Default-Style wählen.
 3. Diese Spec nagelt **keinen Provider normativ fest**. Protomaps/PMTiles, MapTiler und OpenFreeMap sind nur Beispiele möglicher Style-/Tile-Quellen für einen Vektor-Adapter; die konkrete Wahl ist App- oder Space-Konfiguration, nicht Teil des Contracts.
+
+#### Hell/Dunkel-Variante
+
+Die Karte ist die einzige Fläche, deren Erscheinungsbild nicht in CSS steckt: ihr Style ist zur Laufzeit geladenes JSON. Sie MUSS den Dark Mode der App trotzdem mitmachen.
+
+1. `MapMountOptions.colorScheme` wählt die Variante. Default ist `"auto"`: der Adapter folgt dem Dark-Signal der App. Explizit `"light"` / `"dark"` nagelt die Variante fest.
+2. Das Dark-Signal der App ist die `dark`-Klasse auf `document.documentElement` (Tailwind-Konvention, `@custom-variant dark`). Sie ist die **einzige** Quelle — `prefers-color-scheme` wird bewusst nicht als Fallback herangezogen, weil die App-Shell die Klasse nicht daraus ableitet und die Karte sonst dunkel unter heller UI stünde. Gemeinsame Auflösung: `packages/toolkit/src/lib/color-scheme.ts`.
+3. Bei `"auto"` MUSS der Adapter den Wechsel zur Laufzeit nachziehen, ohne Remount und ohne Verlust des Viewports.
+4. Wechselt der Adapter den Style, MUSS er die eigenen Quellen, Layer und Marker danach wieder aufsetzen. Ein Style-Wechsel verwirft alles, was über dem alten Style lag.
+5. `tileSourceDark` benennt die dunkle Quelle. Fehlt sie, gilt: ein vom Aufrufer gesetztes `tileSource` bleibt für **beide** Varianten in Kraft — ein Adapter DARF einen gepinnten Style nicht durch einen eigenen ersetzen. Nur wenn auch `tileSource` fehlt, greift der Dark-Default des Adapters (MapLibre: OpenFreeMap `dark` neben `liberty`).
 
 #### Viewport-State und Events
 
