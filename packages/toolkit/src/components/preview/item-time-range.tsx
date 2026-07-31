@@ -67,10 +67,10 @@ export function ItemTimeRange({ item, locationLabel, className }: ItemTimeRangeP
 }
 
 /**
- * Format start/end as a time-of-day range. All-day events render as
- * "Ganztägig". Same-day timed range becomes "18:00 – 20:00"; without an
- * end, just "18:00". Multi-day ranges fall back to a hint that includes
- * the end date so users don't think the event ends the same day.
+ * Format start/end as a time-of-day range. A single-day all-day event renders
+ * as "Ganztägig". Same-day timed range becomes "18:00 – 20:00"; without an
+ * end, just "18:00". Multi-day ranges always name the end date, so users don't
+ * read them as same-day — "Ganztägig, bis 24. Juli" / "18:00 – 24. Juli".
  *
  * Exported for callers that want the string outside the inline row
  * (e.g. tooltip, list cell).
@@ -79,14 +79,24 @@ export function formatTimeRange(start: string, end?: string): string {
   const startAllDay = isAllDayDate(start)
   const s = parseEventDate(start)
   if (Number.isNaN(s.getTime())) return start
-  if (startAllDay) return "Ganztägig"
 
-  const startTime = s.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+  const startTime = startAllDay
+    ? "Ganztägig"
+    : s.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
 
   if (!end) return startTime
 
   const e = parseEventDate(end)
   if (Number.isNaN(e.getTime())) return startTime
+
+  // An all-day event that spans days must still name its end. Returning a bare
+  // "Ganztägig" here (as this did) told the user nothing about a five-day
+  // festival — the surrounding UI implies the *current* day, never the range.
+  if (startAllDay) {
+    if (s.toDateString() === e.toDateString()) return startTime
+    const endDay = e.toLocaleDateString("de-DE", { day: "numeric", month: "short" })
+    return `Ganztägig, bis ${endDay}`
+  }
 
   if (s.toDateString() === e.toDateString()) {
     if (isAllDayDate(end)) return startTime

@@ -414,28 +414,37 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     const map = this.mapInstance as MlMap | null
     if (!map) return
 
-    this.markerLayersReady = false
-    this.addedImages.clear()
-    this.renderedMarkers.clear()
-
-    // Two signals, whichever lands first. `styledata` fires as soon as the new
-    // style document is set — too early to add sources onto, hence the
-    // `isStyleLoaded()` guard. But it does NOT reliably fire again once the
-    // style finishes, so `idle` (emitted after the swap has settled and
-    // rendered) is the backstop that actually carries the common case.
-    const reinstall = () => {
-      map.off("styledata", onStyleData)
-      map.off("idle", reinstall)
+    // Two signals, because neither alone is enough. `styledata` fires as soon
+    // as the new style document is set — too early to add sources onto — and
+    // then does NOT reliably fire again once the style finishes. `idle` is
+    // emitted whenever the map settles, so a later one always catches the
+    // finished style. Both stay armed and are only consumed once the style is
+    // genuinely loaded; adding sources to a half-built style would silently
+    // lose them when it completes.
+    const onSettled = () => {
+      if (!map.isStyleLoaded()) return
+      map.off("styledata", onSettled)
+      map.off("idle", onSettled)
       if (this.mapInstance !== map) return
+
+      // The reset belongs HERE, not before `setStyle`. Marker writes keep
+      // arriving during the ~1s style load (a viewport change re-runs the app's
+      // setMarkers), and those run against the still-current old style. Had the
+      // bookkeeping been cleared up front, such a write would refill
+      // `renderedMarkers` from the old style — and the delta computed below
+      // would come out empty, pushing nothing onto the new, empty source. The
+      // markers would stay gone until the next data change. Clearing at
+      // re-install time makes the delta a full re-add, whatever happened
+      // in between.
+      this.markerLayersReady = false
+      this.addedImages.clear()
+      this.renderedMarkers.clear()
       // Projection is a style property, so it reset along with the style.
       map.setProjection({ type: this.currentProjection })
       this.reapplyMarkersSafely(this.lastMarkers)
     }
-    const onStyleData = () => {
-      if (map.isStyleLoaded()) reinstall()
-    }
-    map.on("styledata", onStyleData)
-    map.on("idle", reinstall)
+    map.on("styledata", onSettled)
+    map.on("idle", onSettled)
     map.setStyle(this.styleForScheme(scheme))
   }
 
