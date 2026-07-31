@@ -1,0 +1,70 @@
+# Workspace-Tests auf jedem PR. Bewusst OHNE `paths`-Filter: bis hierher lief
+# in CI nur `spec-validation` (nur `data-interface`, nur bei Änderungen an
+# `docs/spec/**` oder `packages/data-interface/**`) — die Suiten von toolkit,
+# wot-connector, local-connector, mock-connector, reference und network liefen
+# ausschliesslich lokal. Siehe Issue #185.
+#
+# `turbo` erledigt Reihenfolge und Abhängigkeiten: `test` und `typecheck` haben
+# `dependsOn: ["^build"]`, die Workspace-Dependencies werden also automatisch
+# gebaut. Ein separater Build-Schritt wäre doppelte Arbeit.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      # Nicht abbrechen, wenn eine Zone fällt — sonst sieht man nur die erste
+      # und weiss nicht, ob es ein Zeitzonen- oder ein echter Fehler ist.
+      fail-fast: false
+      matrix:
+        # Die zweite Achse ist kein Selbstzweck: Kalender-Buckets sind LOKALE
+        # Tage, und Fixtures mit UTC-Datum oder festem Offset kippen westlich
+        # von Greenwich auf den Vortag (CodeRabbit-Finding in #183). UTC allein
+        # hätte das nie gezeigt.
+        #
+        # `TZ` steht darum auch in `turbo.json` unter `test.env`: sonst ist es
+        # nicht Teil des Cache-Keys und ein UTC-Ergebnis würde für Los Angeles
+        # wiederverwendet — die Achse wäre still wirkungslos. Auf getrennten
+        # Runnern fällt das heute nicht auf, mit Remote-Caching sofort.
+        tz: [UTC, America/Los_Angeles]
+    env:
+      TZ: ${{ matrix.tz }}
+    steps:
+      # `persist-credentials: false`: direkt danach laufen `pnpm install`
+      # (Lifecycle-Skripte) und `pnpm test` — also Code aus dem PR. Der
+      # GITHUB_TOKEN hat hier zwar nur `contents: read`, muss diesen Prozessen
+      # aber gar nicht erst über die lokale Git-Konfiguration erreichbar sein.
+      # Der Job pusht nichts, braucht die Credentials also nirgends.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # KEIN version:-Input — packageManager in der package.json entscheidet.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+      - name: Typecheck
+        run: pnpm --filter @real-life-stack/toolkit typecheck
