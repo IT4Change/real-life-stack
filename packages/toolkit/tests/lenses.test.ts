@@ -578,14 +578,17 @@ describe("Map and Calendar lenses", () => {
   })
 
   it("8: month cells keep natural order — a hidden active event opens the day view instead", () => {
+    // No UTC offsets in calendar fixtures: the grid buckets by LOCAL day, so a
+    // fixed `+02:00` instant lands on a different day (and week) in a far-off
+    // runtime zone. Offset-free strings parse as local everywhere.
     const events = ["event-1", "event-2", "event-3", "event-4"].map((id, index) => item(id, "event", {
       title: `Termin ${index + 1}`,
-      start: `2026-07-08T${String(10 + index).padStart(2, "0")}:00:00+02:00`,
+      start: `2026-07-08T${String(10 + index).padStart(2, "0")}:00:00`,
     }))
     const hiddenActiveMarkup = renderToStaticMarkup(createElement(CalendarView, {
       events,
-      initialDate: "2026-07-08T12:00:00+02:00",
-      initialVisibleDate: "2026-07-08T12:00:00+02:00",
+      initialDate: "2026-07-08T12:00:00",
+      initialVisibleDate: "2026-07-08T12:00:00",
       activeItemId: "event-4",
     }))
     // Die Zelle drängt das verdeckte aktive Event NICHT mehr hinein
@@ -593,7 +596,7 @@ describe("Map and Calendar lenses", () => {
     // Tagesansicht — die Entscheidung dazu ist pur getestet:
     expect(hiddenActiveMarkup).not.toContain("Termin 4")
     const byDay = eventsByDayFor(events)
-    const day = new Date("2026-07-08T12:00:00+02:00")
+    const day = new Date("2026-07-08T12:00:00")
     expect(monthShowsActiveEvent(byDay, day, "event-4")).toBe(false)
     expect(monthShowsActiveEvent(byDay, day, "event-2")).toBe(true)
     // `Map` is shadowed by the lucide icon import in this file — build it empty.
@@ -602,8 +605,8 @@ describe("Map and Calendar lenses", () => {
 
     const visibleActiveMarkup = renderToStaticMarkup(createElement(CalendarView, {
       events,
-      initialDate: "2026-07-08T12:00:00+02:00",
-      initialVisibleDate: "2026-07-08T12:00:00+02:00",
+      initialDate: "2026-07-08T12:00:00",
+      initialVisibleDate: "2026-07-08T12:00:00",
       activeItemId: "event-1",
     }))
     expect(visibleActiveMarkup).toContain('aria-current="true"')
@@ -618,17 +621,17 @@ describe("Map and Calendar lenses", () => {
     const week = ["a", "b", "c"].map((id, index) =>
       item(`multi-${id}`, "event", {
         title: `Mehrtägig ${index + 1}`,
-        start: "2026-07-20T10:00:00+02:00",
-        end: "2026-07-24T18:00:00+02:00",
+        start: "2026-07-20T10:00:00",
+        end: "2026-07-24T18:00:00",
       }),
     )
     const short = item("kurz", "event", {
       title: "Kurz am Morgen",
-      start: "2026-07-20T08:00:00+02:00",
-      end: "2026-07-20T09:00:00+02:00",
+      start: "2026-07-20T08:00:00",
+      end: "2026-07-20T09:00:00",
     })
     const byDay = eventsByDayFor([short, ...week])
-    const monday = new Date("2026-07-20T12:00:00+02:00")
+    const monday = new Date("2026-07-20T12:00:00")
 
     // First in the day list (earliest start) …
     expect(byDay.get("2026-07-20")?.[0]?.item.id).toBe("kurz")
@@ -639,8 +642,8 @@ describe("Map and Calendar lenses", () => {
 
     const markup = renderToStaticMarkup(createElement(CalendarView, {
       events: [short, ...week],
-      initialDate: "2026-07-20T12:00:00+02:00",
-      initialVisibleDate: "2026-07-20T12:00:00+02:00",
+      initialDate: "2026-07-20T12:00:00",
+      initialVisibleDate: "2026-07-20T12:00:00",
       activeItemId: "kurz",
     }))
     // The prediction matches what actually renders.

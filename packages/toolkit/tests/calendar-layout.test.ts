@@ -13,10 +13,18 @@ import {
   type DatedEvent,
 } from "../src/components/calendar/calendar-layout"
 
+/**
+ * Local midnight on a `YYYY-MM-DD` day. `new Date("2026-07-25")` would parse as
+ * **UTC** midnight, which is the previous local day west of Greenwich — the
+ * layout compares local calendar days, so every fixture has to be local too.
+ * Mirrors `parseEventDate()`, which anchors all-day values the same way.
+ */
+const localDay = (day: string): Date => new Date(`${day}T00:00:00`)
+
 /** All-day event from inclusive `YYYY-MM-DD` bounds. */
 const allDay = (start: string, end?: string): DatedEvent => ({
-  start: new Date(`${start}T00:00:00`),
-  end: end ? new Date(`${end}T00:00:00`) : undefined,
+  start: localDay(start),
+  end: end ? localDay(end) : undefined,
   allDay: true,
 })
 
@@ -28,7 +36,7 @@ const timed = (start: string, end?: string): DatedEvent => ({
 })
 
 // Monday 2026-07-20 … Sunday 2026-07-26.
-const WEEK = new Date("2026-07-20T00:00:00")
+const WEEK = localDay("2026-07-20")
 
 describe("event day span", () => {
   it("treats an all-day end date as inclusive", () => {
@@ -82,8 +90,8 @@ describe("event day span", () => {
     const event = allDay("2026-07-20", "2026-07-24")
     expect(eventCoversDay(event, new Date("2026-07-22T13:00:00"))).toBe(true)
     expect(eventCoversDay(event, new Date("2026-07-25T00:00:00"))).toBe(false)
-    expect(eventOverlapsRange(event, new Date("2026-07-23"), new Date("2026-07-30"))).toBe(true)
-    expect(eventOverlapsRange(event, new Date("2026-07-25"), new Date("2026-07-30"))).toBe(false)
+    expect(eventOverlapsRange(event, localDay("2026-07-23"), localDay("2026-07-30"))).toBe(true)
+    expect(eventOverlapsRange(event, localDay("2026-07-25"), localDay("2026-07-30"))).toBe(false)
   })
 })
 
