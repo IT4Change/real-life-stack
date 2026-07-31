@@ -81,8 +81,10 @@ export function eventEndDay(event: DatedEvent): Date {
     !event.allDay && end.getTime() === endDay.getTime() ? addDays(endDay, -1) : endDay
   if (lastDay <= startDay) return startDay
 
+  // `span` counts the gap between the two days, so the clip is MAX-1: an event
+  // covering MAX_EVENT_DAYS days spans MAX_EVENT_DAYS-1 days of distance.
   const span = dayDistance(startDay, lastDay)
-  return span > MAX_EVENT_DAYS ? addDays(startDay, MAX_EVENT_DAYS) : lastDay
+  return span > MAX_EVENT_DAYS - 1 ? addDays(startDay, MAX_EVENT_DAYS - 1) : lastDay
 }
 
 /** How many day columns the event covers (1 for a single-day event). */

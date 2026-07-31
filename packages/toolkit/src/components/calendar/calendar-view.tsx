@@ -198,6 +198,26 @@ function compareEvents(a: CalendarEvent, b: CalendarEvent): number {
   return a.start.getTime() - b.start.getTime() || a.title.localeCompare(b.title)
 }
 
+/** Items → calendar events, in the view's canonical order. */
+export function toCalendarEvents(items: readonly Item[]): CalendarEvent[] {
+  return items
+    .map(toCalendarEvent)
+    .filter((event): event is CalendarEvent => event !== null)
+    .sort(compareEvents)
+}
+
+/**
+ * The day buckets every view reads from — keyed by EVERY day an event covers,
+ * not just its start, so a multi-day event shows up on each of its days.
+ * Exported alongside {@link toCalendarEvents} so the focus prediction can be
+ * checked against the very pipeline the grid renders from.
+ */
+export function calendarEventsByDay(
+  events: readonly CalendarEvent[],
+): Map<string, CalendarEvent[]> {
+  return buildEventsByDay(events, compareEvents)
+}
+
 function buildCalendarDays(
   year: number,
   month: number,
@@ -375,10 +395,7 @@ export function CalendarView({
   const eventsAfterBar = useFilterableItems(calendarItems, filterBarValue)
 
   const calendarEvents = useMemo(
-    () => eventsAfterBar
-      .map(toCalendarEvent)
-      .filter((event): event is CalendarEvent => event !== null)
-      .sort(compareEvents),
+    () => toCalendarEvents(eventsAfterBar),
     [eventsAfterBar],
   )
 
@@ -409,6 +426,16 @@ export function CalendarView({
     })
   }, [calendarEvents, currentUserId, locationFilter, myEventsOnly, searchText])
 
+  // Keyed by EVERY day an event covers, not just its start — otherwise a
+  // multi-day event vanishes from the day view and the month cell counts on
+  // every day but the first.
+  const eventsByDay = useMemo(
+    () => calendarEventsByDay(filteredEvents),
+    [filteredEvents],
+  )
+
+  // Declared after `eventsByDay` on purpose: the focus decision reads the same
+  // day buckets the month grid renders from.
   useEffect(() => {
     lastFocusedItemIdRef.current = focusCalendarItemOnce(
       lastFocusedItemIdRef.current,
@@ -417,27 +444,16 @@ export function CalendarView({
       (date) => {
         setVisibleDate(date)
         setSelectedDate(date)
-        // Linsen-Vertrag: Ist der Tag so voll, dass die Monatszelle das
-        // aktive Event nicht zeigt (Limit 3 Desktop / 2 Mobil), öffnet
-        // die Tagesansicht — statt die Zell-Reihenfolge zu verbiegen.
+        // Linsen-Vertrag: Versteckt die Wochenzeile das aktive Event hinter
+        // „+N weitere", öffnet die Tagesansicht — statt die Reihenfolge zu
+        // verbiegen. Gefragt wird dasselbe Lane-Layout, das die Zeile rendert.
         if (viewMode !== "month") return
-        const dayEvents = filteredEvents
-          .filter((event) => eventCoversDay(event, date))
-          .sort(compareEvents)
-        if (!monthCellShowsActiveEvent(dayEvents, activeItemId, MAX_MONTH_LANES)) {
+        if (!monthShowsActiveEvent(eventsByDay, date, activeItemId)) {
           setViewMode("day")
         }
       },
     )
-  }, [activeItemId, filteredEvents, viewMode])
-
-  // Keyed by EVERY day an event covers, not just its start — otherwise a
-  // multi-day event vanishes from the day view and the month cell counts on
-  // every day but the first.
-  const eventsByDay = useMemo(
-    () => buildEventsByDay(filteredEvents, compareEvents),
-    [filteredEvents],
-  )
+  }, [activeItemId, eventsByDay, filteredEvents, viewMode])
 
   function movePeriod(direction: -1 | 1) {
     setVisibleDate((date) => {
@@ -854,11 +870,11 @@ function MonthCalendar({
         // Events are read off the row's own day buckets, so the layout sees the
         // same set the cells count. `buildEventsByDay` lists an event under each
         // covered day, hence the dedupe by item id.
-        layout: layoutWeekBars(dedupeEvents(rowDays), rowDays[0].date, MAX_MONTH_LANES),
+        layout: monthWeekLayout(eventsByDay, rowDays[0].date),
       })
     }
     return rows
-  }, [days])
+  }, [days, eventsByDay])
 
   return (
     <div>
@@ -973,15 +989,29 @@ function MonthCalendar({
 
 type WeekLayout = ReturnType<typeof layoutWeekBars<CalendarEvent>>
 
-/** The row's distinct events. Day buckets repeat a multi-day event per day. */
-function dedupeEvents(days: readonly CalendarDay[]): CalendarEvent[] {
+/**
+ * Lane layout of one month week-row — the SINGLE source of truth for what the
+ * month grid draws. The renderer takes its bars from here, and the focus path
+ * asks it whether the active event actually got one.
+ *
+ * Deriving that a second way does not work: lane packing reorders (longest bar
+ * first within a start column), so an event's position in the day list says
+ * nothing about the lane it lands in.
+ *
+ * The day buckets repeat a multi-day event once per covered day, hence the
+ * dedupe by item id.
+ */
+export function monthWeekLayout(
+  eventsByDay: Map<string, CalendarEvent[]>,
+  weekStart: Date,
+): WeekLayout {
   const seen = new Map<string, CalendarEvent>()
-  for (const day of days) {
-    for (const event of day.events) {
+  for (let index = 0; index < 7; index += 1) {
+    for (const event of eventsByDay.get(toDateKey(addDays(weekStart, index))) ?? []) {
       if (!seen.has(event.item.id)) seen.set(event.item.id, event)
     }
   }
-  return [...seen.values()]
+  return layoutWeekBars([...seen.values()], weekStart, MAX_MONTH_LANES)
 }
 
 /**
@@ -1030,16 +1060,26 @@ function DayEventsMenu({
   )
 }
 
-/** Month cells keep natural order; an active event beyond the cell limit
- *  cannot be shown there — the focus path opens the day view instead. */
-export function monthCellShowsActiveEvent(
-  dayEvents: readonly CalendarEvent[],
+/**
+ * Whether the month grid actually draws the active event, i.e. it survived the
+ * week's lane cap instead of being folded into „+N weitere". Answered from the
+ * same layout the grid renders, so the two can never disagree.
+ *
+ * An event outside the week counts as "shown" — the month view isn't hiding it,
+ * so there is nothing for the focus path to escalate.
+ */
+export function monthShowsActiveEvent(
+  eventsByDay: Map<string, CalendarEvent[]>,
+  date: Date,
   activeItemId: string | null | undefined,
-  limit: number,
 ): boolean {
   if (!activeItemId) return true
-  const index = dayEvents.findIndex(({ item }) => item.id === activeItemId)
-  return index === -1 || index < limit
+  const layout = monthWeekLayout(eventsByDay, startOfWeek(date))
+  const inWeek = layout.eventsByCol.some((column) =>
+    column.some(({ item }) => item.id === activeItemId),
+  )
+  if (!inWeek) return true
+  return layout.bars.some(({ event }) => event.item.id === activeItemId)
 }
 
 interface WeekCalendarProps {

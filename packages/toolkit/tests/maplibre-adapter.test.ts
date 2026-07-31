@@ -53,7 +53,9 @@ class FakeMap {
     for (const cb of [...(this.listeners.get(type) ?? [])]) cb({})
   }
 
-  loaded() { return true }
+  /** When false, `mount()` awaits a "load" event — the initial-load window. */
+  initiallyLoaded = true
+  loaded() { return this.initiallyLoaded }
   isStyleLoaded() { return this.styleLoaded }
 
   addControl() {}
@@ -123,12 +125,15 @@ class FakeMap {
 }
 
 let lastMap: FakeMap | null = null
+/** Set false to hold the next map in its initial-load window. */
+let nextMapInitiallyLoaded = true
 
 vi.mock("maplibre-gl", () => ({
   default: {
     Map: class {
       constructor(options: { style: string }) {
         lastMap = new FakeMap(options)
+        lastMap.initiallyLoaded = nextMapInitiallyLoaded
         return lastMap as unknown as object
       }
     },
@@ -163,6 +168,7 @@ describe("MapLibre light/dark style swap", () => {
 
   beforeEach(async () => {
     document.documentElement.classList.remove("dark")
+    nextMapInitiallyLoaded = true
     lastMap = null
     adapter = new MapLibreMapAdapter()
     await adapter.mount(document.createElement("div"), { center: [0, 0], zoom: 5 })
@@ -263,6 +269,55 @@ describe("MapLibre light/dark style swap", () => {
     adapter.resize()
     expect(lastMap!.resizeCalls).toBe(1)
     expect(lastMap!.redrawCalls).toBe(1)
+  })
+
+  it("catches a theme change that happens while the initial style is still loading", async () => {
+    // Regression (#183 review): the scheme is resolved BEFORE the map is built,
+    // and the observer was only installed after the initial load was awaited.
+    // A toggle inside that window had nothing watching it, so the map stayed on
+    // the light style until the *next* toggle.
+    nextMapInitiallyLoaded = false
+    const late = new MapLibreMapAdapter()
+    const mounting = late.mount(document.createElement("div"), { center: [0, 0], zoom: 5 })
+    await settle()
+    const map = lastMap!
+    expect(map.style).toContain("liberty")
+
+    document.documentElement.classList.add("dark")
+    map.emit("load") // initial load finishes only now
+    await mounting
+    await settle()
+
+    expect(map.style).toContain("/dark")
+    await late.unmount()
+  })
+
+  it("honours a colour scheme chosen before mount", async () => {
+    // `setColorScheme()` documents itself as safe pre-mount; `mount()` used to
+    // overwrite the preference unconditionally and drop it.
+    const pinned = new MapLibreMapAdapter()
+    pinned.setColorScheme("dark")
+    await pinned.mount(document.createElement("div"), { center: [0, 0], zoom: 5 })
+
+    expect(lastMap!.style).toContain("/dark")
+    // Pinned means pinned: the app's class must not move it.
+    document.documentElement.classList.remove("dark")
+    await settle()
+    expect(lastMap!.style).toContain("/dark")
+    await pinned.unmount()
+  })
+
+  it("lets mount options override a pre-mount preference", async () => {
+    const pinned = new MapLibreMapAdapter()
+    pinned.setColorScheme("dark")
+    await pinned.mount(document.createElement("div"), {
+      center: [0, 0],
+      zoom: 5,
+      colorScheme: "light",
+    })
+
+    expect(lastMap!.style).toContain("liberty")
+    await pinned.unmount()
   })
 
   it("keeps a caller-pinned style across both schemes", async () => {

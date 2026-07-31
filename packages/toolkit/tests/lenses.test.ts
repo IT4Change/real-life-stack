@@ -7,9 +7,11 @@ import { KanbanBoard } from "../src/components/kanban/kanban-board"
 import { kanbanItemsByColumn, defaultColumns } from "../src/components/kanban/kanban-board"
 import {
   CalendarView,
+  calendarEventsByDay,
   calendarFilterItems,
   focusCalendarItemOnce,
-  monthCellShowsActiveEvent,
+  monthShowsActiveEvent,
+  toCalendarEvents,
   type CalendarFocusTarget,
 } from "../src/components/calendar/calendar-view"
 import { LeafletMapAdapter } from "../src/components/map/adapters/leaflet"
@@ -41,6 +43,11 @@ import { GridView } from "../src/components/lens/grid-view"
 import { ListView } from "../src/components/lens/list-view"
 import { CollectionView, collectionFocusGateKey } from "../src/components/lens/collection-view"
 import { GRID_LANE_GAP, gridLaneLayout, gridLaneRange } from "../src/components/lens/grid-lane-layout"
+
+/** Items → the exact day buckets the calendar grid renders from. */
+function eventsByDayFor(items: readonly Item[]) {
+  return calendarEventsByDay(toCalendarEvents(items))
+}
 
 function item(id: string, type: string, data: Record<string, unknown>, createdAt = "2026-07-08T10:00:00.000Z"): Item {
   return { id, type, createdAt, createdBy: "seed", data }
@@ -585,12 +592,13 @@ describe("Map and Calendar lenses", () => {
     // (natürliche Ordnung); der Client-Fokus-Pfad öffnet stattdessen die
     // Tagesansicht — die Entscheidung dazu ist pur getestet:
     expect(hiddenActiveMarkup).not.toContain("Termin 4")
-    const dayEvents = events.map((event) => ({ item: event })) as never[]
-    expect(monthCellShowsActiveEvent(dayEvents, "event-4", 3)).toBe(false)
-    expect(monthCellShowsActiveEvent(dayEvents, "event-2", 3)).toBe(true)
-    expect(monthCellShowsActiveEvent(dayEvents, "event-4", 2)).toBe(false)
-    expect(monthCellShowsActiveEvent([], "event-4", 2)).toBe(true)
-    expect(monthCellShowsActiveEvent(dayEvents, null, 2)).toBe(true)
+    const byDay = eventsByDayFor(events)
+    const day = new Date("2026-07-08T12:00:00+02:00")
+    expect(monthShowsActiveEvent(byDay, day, "event-4")).toBe(false)
+    expect(monthShowsActiveEvent(byDay, day, "event-2")).toBe(true)
+    // `Map` is shadowed by the lucide icon import in this file — build it empty.
+    expect(monthShowsActiveEvent(eventsByDayFor([]), day, "event-4")).toBe(true)
+    expect(monthShowsActiveEvent(byDay, day, null)).toBe(true)
 
     const visibleActiveMarkup = renderToStaticMarkup(createElement(CalendarView, {
       events,
@@ -599,6 +607,45 @@ describe("Map and Calendar lenses", () => {
       activeItemId: "event-1",
     }))
     expect(visibleActiveMarkup).toContain('aria-current="true"')
+  })
+
+  it("8: lane packing, not list position, decides whether the month shows the active event", () => {
+    // Counter-example from the #183 review: three multi-day events start on the
+    // Monday and take lanes 0-2 (longest-first within a start column). A short
+    // event at 08:00 the same day is FIRST in the day list — but lands in lane 3
+    // and is folded into „+N weitere". A list-index check called it visible and
+    // never escalated to the day view.
+    const week = ["a", "b", "c"].map((id, index) =>
+      item(`multi-${id}`, "event", {
+        title: `Mehrtägig ${index + 1}`,
+        start: "2026-07-20T10:00:00+02:00",
+        end: "2026-07-24T18:00:00+02:00",
+      }),
+    )
+    const short = item("kurz", "event", {
+      title: "Kurz am Morgen",
+      start: "2026-07-20T08:00:00+02:00",
+      end: "2026-07-20T09:00:00+02:00",
+    })
+    const byDay = eventsByDayFor([short, ...week])
+    const monday = new Date("2026-07-20T12:00:00+02:00")
+
+    // First in the day list (earliest start) …
+    expect(byDay.get("2026-07-20")?.[0]?.item.id).toBe("kurz")
+    // … but pushed past the lane cap, so the month does NOT show it.
+    expect(monthShowsActiveEvent(byDay, monday, "kurz")).toBe(false)
+    // The three bars that took the lanes are shown.
+    expect(monthShowsActiveEvent(byDay, monday, "multi-a")).toBe(true)
+
+    const markup = renderToStaticMarkup(createElement(CalendarView, {
+      events: [short, ...week],
+      initialDate: "2026-07-20T12:00:00+02:00",
+      initialVisibleDate: "2026-07-20T12:00:00+02:00",
+      activeItemId: "kurz",
+    }))
+    // The prediction matches what actually renders.
+    expect(markup).not.toContain("Kurz am Morgen")
+    expect(markup).toContain("weitere")
   })
 
   it("compact BottomNav keeps every destination reachable through its existing overflow menu", () => {

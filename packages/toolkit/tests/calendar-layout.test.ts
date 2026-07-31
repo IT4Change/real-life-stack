@@ -59,8 +59,14 @@ describe("event day span", () => {
     ).toBe(1)
   })
 
-  it("clips an absurd span (mistyped year) instead of expanding it", () => {
-    expect(eventDayCount(allDay("2026-07-20", "2260-07-20"))).toBe(367)
+  it("clips an absurd span (mistyped year) to the documented maximum", () => {
+    // Spec: docs/spec/modules/calendar.md → höchstens 366 belegte Tage.
+    expect(eventDayCount(allDay("2026-07-20", "2260-07-20"))).toBe(366)
+  })
+
+  it("leaves a span exactly at the maximum untouched", () => {
+    // 2028 is a leap year: 2027-07-20 … 2028-07-19 inclusive is 366 days.
+    expect(eventDayCount(allDay("2027-07-20", "2028-07-19"))).toBe(366)
   })
 
   it("lists every covered day", () => {

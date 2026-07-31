@@ -280,7 +280,10 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     }
     const maplibre = await loadMapLibre()
 
-    this.colorSchemePreference = options.colorScheme ?? "auto"
+    // Mount options win when given; otherwise whatever the caller already set
+    // via `setColorScheme()` before mounting survives (the default is "auto").
+    // Overwriting unconditionally silently dropped a pre-mount choice.
+    if (options.colorScheme) this.colorSchemePreference = options.colorScheme
     this.styleLight = options.tileSource ?? DEFAULT_STYLE_LIGHT
     // A caller-pinned `tileSource` without a dark counterpart stays in force for
     // both schemes: swapping in OpenFreeMap-dark would silently discard their
@@ -375,7 +378,13 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     })
 
     this.mapInstance = map
+    // Observer FIRST, then reconcile. The style was chosen before the initial
+    // load, which we then awaited — a theme toggle inside that window has no
+    // observer to catch it and would leave the map on the old style until the
+    // *next* toggle. Re-resolving here closes that gap; the observer is already
+    // armed, so nothing can slip between the two calls either.
     this.startColorSchemeObserver()
+    this.applyScheme(resolveColorScheme(this.colorSchemePreference))
   }
 
   // --- Colour scheme ---
