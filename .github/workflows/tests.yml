@@ -43,7 +43,14 @@ jobs:
     env:
       TZ: ${{ matrix.tz }}
     steps:
+      # `persist-credentials: false`: direkt danach laufen `pnpm install`
+      # (Lifecycle-Skripte) und `pnpm test` — also Code aus dem PR. Der
+      # GITHUB_TOKEN hat hier zwar nur `contents: read`, muss diesen Prozessen
+      # aber gar nicht erst über die lokale Git-Konfiguration erreichbar sein.
+      # Der Job pusht nichts, braucht die Credentials also nirgends.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # KEIN version:-Input — packageManager in der package.json entscheidet.
       - uses: pnpm/action-setup@v4
