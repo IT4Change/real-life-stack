@@ -16,10 +16,11 @@ on:
         required: false
         type: string
 
+# Nur der Grundstock. `pages: write` und `id-token: write` braucht allein der
+# `deploy`-Job und stehen darum dort — sonst erbt sie auch `build`, der
+# `pnpm install` mit Lifecycle-Skripten und die Builds fährt.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -28,11 +29,16 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # `contents: write` nur für `gh release create` (OTA-Bundles). Das läuft
+    # über `GH_TOKEN` als Env, nicht über die Git-Konfiguration — daher unten
+    # `persist-credentials: false`.
     permissions:
       contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -126,11 +132,15 @@ jobs:
 
       - name: Generate latest.json (rollback)
         if: inputs.rollback_tag != ''
+        # inputs.rollback_tag NIE direkt in run: interpolieren — das waere
+        # Script-Injection. Ueber env ist der Wert ein inertes Datum, das
+        # Skript quotet ihn. Gleiche Regel wie in build-on-tag.yml.
         env:
           GH_TOKEN: ${{ github.token }}
+          ROLLBACK_TAG: ${{ inputs.rollback_tag }}
         run: |
           REPO="${{ github.repository }}"
-          TAG="${{ inputs.rollback_tag }}"
+          TAG="$ROLLBACK_TAG"
           BUNDLE_ID="${TAG#ota-}"
           for channel in ios android android-foss; do
             mkdir -p gh-pages-ota/updates/${channel}
@@ -163,6 +173,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    # `actions/deploy-pages` braucht genau diese beiden; der Job checkt nichts
+    # aus und führt keinen Projektcode aus.
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
