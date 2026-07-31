@@ -809,7 +809,17 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
   }
 
   resize(): void {
-    ;(this.mapInstance as MlMap | null)?.resize()
+    const map = this.mapInstance as MlMap | null
+    if (!map) return
+    map.resize()
+    // `resize()` reallocates the WebGL drawing buffer — which CLEARS it — but
+    // only *schedules* the repaint for the next animation frame. The frame the
+    // browser paints in between is therefore an empty canvas. Once that is a
+    // single dropped frame nobody notices; but the side panel animates the
+    // container width over 300ms and the ResizeObserver fires on every frame of
+    // it, so the map visibly flashed away while the panel opened or closed.
+    // A synchronous redraw refills the buffer before the browser paints.
+    map.redraw()
   }
 
   // --- GlobeCapable ---

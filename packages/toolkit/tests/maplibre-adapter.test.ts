@@ -96,7 +96,10 @@ class FakeMap {
   }
   jumpTo() {}
   remove() {}
-  resize() {}
+  resizeCalls = 0
+  redrawCalls = 0
+  resize() { this.resizeCalls += 1 }
+  redraw() { this.redrawCalls += 1 }
 
   /**
    * Ask for a new style. Mirrors MapLibre: the swap is asynchronous, so the OLD
@@ -249,6 +252,17 @@ describe("MapLibre light/dark style swap", () => {
     document.documentElement.classList.add("dark")
     await settle()
     expect(lastMap!.style).toContain("/dark")
+  })
+
+  it("redraws synchronously on resize so no blank frame is presented", async () => {
+    // `map.resize()` reallocates (and clears) the GL drawing buffer but only
+    // schedules the repaint for the next frame. The side panel animates the
+    // container width, so the ResizeObserver fires on every frame of it — each
+    // one leaving a cleared canvas for the browser to paint. Measured on the
+    // real app: 41 of 106 captured frames were blank without the redraw, 0 with.
+    adapter.resize()
+    expect(lastMap!.resizeCalls).toBe(1)
+    expect(lastMap!.redrawCalls).toBe(1)
   })
 
   it("keeps a caller-pinned style across both schemes", async () => {
