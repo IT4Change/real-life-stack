@@ -8,8 +8,13 @@ import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
 /**
  * `ItemMetaRow` — small inline meta row showing the temporal and
  * spatial cues for an item. Belongs in the `metaAdornment` slot of
- * `ItemPreview`. Renders nothing if neither `data.start` nor
- * `data.address` is present, so callers can drop it in unconditionally.
+ * `ItemPreview`. Renders nothing if the item has neither a `data.start`
+ * nor a place, so callers can drop it in unconditionally.
+ *
+ * This is the meta row for the shared **detail panel** — every module
+ * registers it, so the panel looks the same whichever one opened it.
+ * `ItemTimeRange` is the sibling for date-grouped lists, where the day is
+ * already implied by the group header and only the time-of-day is needed.
  *
  * Spec: `docs/spec/modules/shared-components.md` → `ItemMetaRow`.
  *
@@ -29,9 +34,15 @@ export function ItemMetaRow({ item, className }: ItemMetaRowProps) {
   const data = item.data as Record<string, unknown>
   const start = typeof data.start === "string" ? data.start : undefined
   const end = typeof data.end === "string" ? data.end : undefined
-  const address = typeof data.address === "string" ? data.address : undefined
+  // Same resolution as ItemTimeRange and the calendar's `toCalendarEvent()`:
+  // the human name of a place beats its postal address, and an item that only
+  // carries a `locationName` still shows where it happens.
+  const place =
+    (typeof data.locationName === "string" && data.locationName) ||
+    (typeof data.address === "string" && data.address) ||
+    undefined
 
-  if (!start && !address) return null
+  if (!start && !place) return null
 
   return (
     <div className={cn("flex flex-wrap gap-3 text-xs text-muted-foreground", className)}>
@@ -41,10 +52,10 @@ export function ItemMetaRow({ item, className }: ItemMetaRowProps) {
           {formatEventRange(start, end)}
         </span>
       )}
-      {address && (
+      {place && (
         <span className="inline-flex items-center gap-1">
           <MapPin className="h-3 w-3" />
-          {address}
+          {place}
         </span>
       )}
     </div>
