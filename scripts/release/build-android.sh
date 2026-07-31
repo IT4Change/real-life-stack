@@ -179,18 +179,14 @@ shopt -s nullglob
 APKS=("$APK_OUT"/*.apk)
 shopt -u nullglob
 [ ${#APKS[@]} -gt 0 ] || abort "kein APK in $APK_OUT"
-# F-Droid erwartet das UNSIGNIERTE APK — die Pipeline signiert es. Deterministisch:
-# genau ein *-unsigned.apk (flavorlos, ohne signingConfig), sonst genau ein APK.
-# Alles andere ist mehrdeutig und koennte das falsche Artefakt attestieren.
+# F-Droid erwartet das UNSIGNIERTE APK — die Pipeline signiert es. STRIKT: genau
+# ein *-unsigned.apk (flavorlos ohne signingConfig erzeugt genau das). KEIN
+# Fallback auf "irgendein einzelnes APK" — ein versehentlich signiertes Artefakt
+# darf nie durchrutschen und als unsigniert attestiert werden (#182).
 UNSIGNED=()
 for a in "${APKS[@]}"; do case "$a" in *-unsigned.apk) UNSIGNED+=("$a") ;; esac; done
-if [ ${#UNSIGNED[@]} -eq 1 ]; then
-  BUILT="${UNSIGNED[0]}"
-elif [ ${#APKS[@]} -eq 1 ]; then
-  BUILT="${APKS[0]}"
-else
-  abort "APK-Auswahl mehrdeutig (erwarte genau ein unsigniertes APK): ${APKS[*]}"
-fi
+[ ${#UNSIGNED[@]} -eq 1 ] || abort "erwarte genau ein *-unsigned.apk (flavorlos, ohne signingConfig), fand: ${APKS[*]:-keins}"
+BUILT="${UNSIGNED[0]}"
 cp "$BUILT" "$OUT/"
 
 echo "==> 5/6 Play: Web-Build (OTA aus) → unsigniertes AAB"
