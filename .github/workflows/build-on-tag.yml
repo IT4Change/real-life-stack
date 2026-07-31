@@ -23,9 +23,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # `persist-credentials: false`: danach laufen `pnpm install` (Lifecycle-
+      # Skripte von Dependencies) und das Release-Skript. Der Job pusht nichts
+      # per Git — `build-android.sh` nutzt git nur lesend (`git tag
+      # --points-at`) —, der Token muss also nicht in der Git-Konfiguration
+      # liegen bleiben.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          persist-credentials: false
 
       # KEIN version:-Input — packageManager in der package.json entscheidet.
       # v4 bricht sonst mit "Multiple versions of pnpm specified" ab.
