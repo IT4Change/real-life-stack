@@ -1001,10 +1001,27 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     const space = await this.replication.getSpace(groupId)
     if (!space) return []
 
+    const adminDids = this.resolveSpaceAdminDids(space)
     const users = await Promise.all(
       space.members.map((did: string) => this.getUser(did))
     )
-    return users.filter((u: User | null): u is User => u !== null)
+    return users
+      .filter((u: User | null): u is User => u !== null)
+      .map((u: User) => ({ ...u, isAdmin: adminDids.has(u.id) }))
+  }
+
+  /**
+   * Authoritative admin set for a space. Prefers the projected `admins` list,
+   * falls back to the single `createdBy`, and only as a last resort (truly
+   * legacy spaces with neither) to `members[0]`. The member list itself is
+   * DID-sorted, so `members[0]` is NOT a reliable admin signal — it is used
+   * here only to preserve prior behavior where no better data exists.
+   */
+  private resolveSpaceAdminDids(space: SpaceInfo): Set<string> {
+    if (space.admins && space.admins.length > 0) return new Set(space.admins)
+    if (space.createdBy) return new Set([space.createdBy])
+    if (space.members.length > 0) return new Set([space.members[0]])
+    return new Set()
   }
 
   private memberObservables = new Map<string | null, ReactiveObservable<User[]>>()
