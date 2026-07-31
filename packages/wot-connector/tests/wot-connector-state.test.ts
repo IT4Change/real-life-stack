@@ -18,6 +18,7 @@ import {
   type User,
 } from "@real-life-stack/data-interface"
 import type { SpaceInfo } from "@real-life/wot-core"
+import { derivePrivateSpaceGenesis } from "@real-life/wot-core/protocol"
 
 import { WotConnector } from "../src/wot-connector.js"
 import type { RlsSpaceDoc, SerializedItem, WotSyncState } from "../src/types.js"
@@ -77,7 +78,8 @@ vi.mock("@real-life/wot-core", () => {
   }
 })
 
-vi.mock("@real-life/wot-core/protocol", () => ({
+vi.mock("@real-life/wot-core/protocol", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@real-life/wot-core/protocol")>(),
   x25519MultibaseToPublicKeyBytes: vi.fn(() => new Uint8Array()),
   // Verhaltensgleich zum Core: Marker wird NUR aus dem VC-Typ-Array abgeleitet.
   isVerificationAttestation: (payload: { type?: unknown }) =>
@@ -1025,6 +1027,33 @@ function createFakePrivateSpaceConnector(spaces: SpaceInfo[], docs: Record<strin
   return fake
 }
 
+/** Deterministic fake derivation: bytes derived from the info string only. */
+const fakeDerive = async (info: string, length: number): Promise<Uint8Array> => {
+  const bytes = new Uint8Array(length)
+  for (let i = 0; i < length; i += 1) bytes[i] = (info.length * 31 + i * 7) % 256
+  return bytes
+}
+
+/** Upgrade a fake connector to a deterministic-genesis-capable adapter (PR 2). */
+function makeDeterministicCapable(
+  fake: ReturnType<typeof createFakePrivateSpaceConnector>,
+  spaces: SpaceInfo[],
+  docs: Record<string, RlsSpaceDoc>,
+  deterministicId: string,
+) {
+  ;(fake as any).identity = { deriveFrameworkKey: fakeDerive }
+  ;(fake as any).deterministicPrivateSpaceId = null
+  ;(fake.replication as any).openOrCreateDeterministicPrivateSpace = vi.fn(
+    async (initialDoc: RlsSpaceDoc, metadata: Partial<SpaceInfo>) => {
+      const existing = spaces.find((space) => space.id === deterministicId)
+      if (existing) return existing
+      spaces.push(createSpaceInfo(deterministicId, metadata.appTag ?? "rls-private"))
+      docs[deterministicId] = initialDoc
+      return spaces[spaces.length - 1]
+    },
+  )
+}
+
 describe("WotConnector private space reconciliation", () => {
   it("does not notify observers when createIfMissing is false and no private space exists", async () => {
     const fake = createFakePrivateSpaceConnector([], {})
@@ -1151,6 +1180,136 @@ describe("WotConnector private space reconciliation", () => {
     expect(spaces.filter((space) => space.appTag === "rls-private")).toHaveLength(1)
     expect(reloaded.privateSpaceId).toBe("private-a")
     expect(reloaded.replication.leaveSpace).not.toHaveBeenCalled()
+  })
+
+  it("uses the deterministic private space as canonical and migrates legacy spaces into it", async () => {
+    // PR 2: with a deterministic-genesis-capable adapter, createIfMissing:true
+    // must open-or-create the DERIVED space (idempotent, no random id) and
+    // actively migrate every legacy random-id private space into it.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const spaces = [createSpaceInfo("legacy-a")]
+    const docs: Record<string, RlsSpaceDoc> = {
+      "legacy-a": { _type: "rls", items: { keep: createSerializedItem("keep", "Keep") } } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+
+    expect((fake.replication as any).openOrCreateDeterministicPrivateSpace).toHaveBeenCalled()
+    expect(fake.replication.createSpace).not.toHaveBeenCalled() // never the random path
+    expect(fake.privateSpaceId).toBe(detId)
+    expect(docs[detId].items.keep.data.title).toBe("Keep") // legacy content migrated in
+    expect(fake.replication.leaveSpace).toHaveBeenCalledWith("legacy-a")
+    expect(spaces.filter((space) => space.appTag === "rls-private").map((s) => s.id)).toEqual([detId])
+  })
+
+  it("prefers the deterministic space as canonical on non-creating paths — never migrates backwards", async () => {
+    // Guard: the lowest-id heuristic must NOT pick a legacy space over the
+    // deterministic one. "aaaa..." sorts BEFORE the derived id, so without the
+    // preference the deterministic space would be merged into legacy and torn down.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const legacyId = "aaaaaaaa-0000-4000-8000-000000000000"
+    expect(legacyId < detId).toBe(true) // precondition of the repro
+    const spaces = [createSpaceInfo(legacyId), createSpaceInfo(detId)]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [legacyId]: { _type: "rls", items: { m: createSerializedItem("m", "Move me") } } as RlsSpaceDoc,
+      [detId]: { _type: "rls", items: {} } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: false })
+
+    expect(fake.privateSpaceId).toBe(detId)
+    expect(fake.replication.leaveSpace).toHaveBeenCalledWith(legacyId)
+    expect(docs[detId].items.m.data.title).toBe("Move me")
+    expect(spaces.map((s) => s.id)).toEqual([detId]) // deterministic survived, legacy gone
+  })
+
+  it("retries the migration idempotently after a crash between target write and source cleanup", async () => {
+    // Crash contract: run 1 migrated the item into the target but died before the
+    // source cleanup. The retry must recognize the migrated copy (content-inclusive
+    // identity) and create NO duplicate.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const migrated = createSerializedItem("solo", "Solo")
+    const spaces = [createSpaceInfo(detId), createSpaceInfo("legacy-b")]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: { solo: JSON.parse(JSON.stringify(migrated)) } } as RlsSpaceDoc,
+      "legacy-b": { _type: "rls", items: { solo: migrated } } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+
+    const ids = Object.keys(docs[detId].items)
+    expect(ids).toEqual(["solo"]) // no remap duplicate
+    expect(fake.replication.leaveSpace).toHaveBeenCalledWith("legacy-b")
+  })
+
+  it("remaps colliding items deterministically from (legacySpaceId, itemId)", async () => {
+    // Two devices migrating the same legacy space concurrently must produce the
+    // SAME target key so the CRDT merge deduplicates — no random remap ids.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const legacyId = "bbbbbbbb-0000-4000-8000-000000000000"
+    const canonicalItem = createSerializedItem("clash", "Canonical")
+    const legacyItem = createSerializedItem("clash", "Legacy version")
+    legacyItem.createdBy = "did:key:other" // a genuinely different item
+    const spaces = [createSpaceInfo(detId), createSpaceInfo(legacyId)]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: { clash: canonicalItem } } as RlsSpaceDoc,
+      [legacyId]: { _type: "rls", items: { clash: legacyItem } } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+
+    expect(docs[detId].items.clash.data.title).toBe("Canonical") // untouched
+    expect(docs[detId].items[`clash-private-${legacyId}`].data.title).toBe("Legacy version")
+  })
+
+  it("does not tear the legacy space down when the target write cannot be proven durable", async () => {
+    // Durability gate: the legacy teardown runs ONLY after the target append is
+    // provably in the durable log. A failing gate aborts the migration — the
+    // legacy space (and its items) survive for the next reconcile.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const spaces = [createSpaceInfo(detId), createSpaceInfo("legacy-c")]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: {} } as RlsSpaceDoc,
+      "legacy-c": { _type: "rls", items: { m: createSerializedItem("m", "Precious") } } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+    ;(fake as any).awaitDurableSpaceAppend = vi.fn(async () => {
+      throw new Error("target write not durably logged")
+    })
+
+    await expect(
+      (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true }),
+    ).rejects.toThrow(/not durably logged/)
+
+    expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
+    expect(docs["legacy-c"].items.m.data.title).toBe("Precious") // source untouched
+  })
+
+  it("proves durability via the device's advancing log head and times out otherwise", async () => {
+    const fake = createFakePrivateSpaceConnector([], {})
+    let seq = 0
+    ;(fake as any).docLogStore = {
+      resolveConnectDeviceId: async () => "device-1",
+      getKnownHeads: async () => ({ "device-1": seq }),
+    }
+    // Head advances → resolves.
+    const gate = (WotConnector.prototype as any).awaitDurableSpaceAppend.call(fake, "space-x", 0, 1_000)
+    seq = 1
+    await expect(gate).resolves.toBeUndefined()
+    // Head never advances → times out (short budget for the test).
+    seq = 0
+    await expect(
+      (WotConnector.prototype as any).awaitDurableSpaceAppend.call(fake, "space-x", 0, 120),
+    ).rejects.toThrow(/not durably logged/)
   })
 
   it("keeps a non-empty duplicate when its migration fails", async () => {

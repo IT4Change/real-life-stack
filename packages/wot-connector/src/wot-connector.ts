@@ -72,6 +72,7 @@ import {
   isDidcommMessage,
   parseQrChallenge,
   x25519MultibaseToPublicKeyBytes,
+  derivePrivateSpaceGenesis,
 } from "@real-life/wot-core/protocol"
 import type {
   Attestation,
@@ -92,6 +93,7 @@ import type {
   SpaceHandle,
   WireMessage,
 } from "@real-life/wot-core/ports"
+import { hasDeterministicPrivateSpace } from "@real-life/wot-core/ports"
 import {
   YjsReplicationAdapter,
   YjsStorageAdapter,
@@ -281,8 +283,8 @@ class WorkflowBackedIdentity implements PublicIdentitySession {
     return this.session().signEd25519(data)
   }
 
-  deriveFrameworkKey(info: string): Promise<Uint8Array> {
-    return this.session().deriveFrameworkKey(info)
+  deriveFrameworkKey(info: string, length?: number): Promise<Uint8Array> {
+    return this.session().deriveFrameworkKey(info, length)
   }
 
   getPublicKeyMultibase(): Promise<string> {
@@ -486,6 +488,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.activityReconciliations.clear()
     this.crossGroupIndex = null
     this.privateSpaceId = null
+    this.deterministicPrivateSpaceId = null
     this.spacesSubscriptionUnsub?.()
     this.personalDocUnsub?.()
     this.contactsUnsub?.()
@@ -637,6 +640,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.crossGroupIndex?.stop()
     this.crossGroupIndex = null
     this.privateSpaceId = null
+    this.deterministicPrivateSpaceId = null
     this.spacesSubscriptionUnsub?.()
     this.personalDocUnsub?.()
     this.inboxAttestationUnsub?.()
@@ -2136,6 +2140,23 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     }
   }
 
+  /**
+   * Cached derivation of the deterministic private-space id (Sync 001). Identity-
+   * bound: reset on disconnect/logout. `null` = not derived yet or adapter not
+   * capable. Knowing the id WITHOUT creating lets the createIfMissing:false paths
+   * pick the deterministic space as canonical — otherwise the lowest-id heuristic
+   * could later select a legacy space and migrate BACKWARDS out of it.
+   */
+  private deterministicPrivateSpaceId: Promise<string | null> | null = null
+
+  private resolveDeterministicPrivateSpaceId(): Promise<string | null> {
+    if (!this.replication || !hasDeterministicPrivateSpace(this.replication)) return Promise.resolve(null)
+    this.deterministicPrivateSpaceId ??= derivePrivateSpaceGenesis(
+      (info, length) => this.identity.deriveFrameworkKey(info, length),
+    ).then((genesis) => genesis.spaceId, () => null)
+    return this.deterministicPrivateSpaceId
+  }
+
   private queuePrivateSpaceReconcile(options: { createIfMissing: boolean }): Promise<void> {
     this.privateSpaceReconcile = this.privateSpaceReconcile
       .catch(() => {})
@@ -2144,10 +2165,40 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   }
 
   private async reconcilePrivateSpaces(options: { createIfMissing: boolean }): Promise<void> {
-    if (!this.replication) return
+    const replication = this.replication
+    if (!replication) return
 
-    const spaces = this.replication.watchSpaces().getValue()
+    const spaces = replication.watchSpaces().getValue()
     const privateSpaces = this.getPrivateSpaces(spaces)
+    const deterministicId = await this.resolveDeterministicPrivateSpaceId()
+
+    // Deterministic-genesis path (Sync 001): the derived space is ALWAYS the
+    // canonical private space. openOrCreate is idempotent across devices,
+    // recovery and restarts — no random-id discovery race, no throwaway
+    // duplicate. Any remaining random-id private space is legacy and gets
+    // actively migrated INTO the deterministic one.
+    if (options.createIfMissing && deterministicId !== null && hasDeterministicPrivateSpace(replication)) {
+      const previousPrivateSpaceId = this.privateSpaceId
+      const wasLoaded = privateSpaces.some((space) => space.id === deterministicId)
+      const initialDoc = { _type: RLS_SPACE_TYPE, items: {} } as RlsSpaceDoc
+      const canonical = await replication.openOrCreateDeterministicPrivateSpace(initialDoc, {
+        name: "Privat",
+        appTag: "rls-private",
+        modules: DEFAULT_MODULES,
+      })
+      this.privateSpaceId = canonical.id
+      if (!wasLoaded) this.crossGroupIndex?.reindexGroup(canonical.id)
+
+      const legacyIds = privateSpaces.map((space) => space.id).filter((id) => id !== canonical.id)
+      if (legacyIds.length > 0) {
+        await this.migratePrivateSpaceDuplicates(canonical.id, legacyIds)
+        return
+      }
+      if (previousPrivateSpaceId !== canonical.id && this.currentGroupId === null) {
+        this.notifyAllObservers()
+      }
+      return
+    }
 
     if (privateSpaces.length === 0) {
       if (!options.createIfMissing) {
@@ -2156,7 +2207,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       }
 
       const initialDoc = { _type: RLS_SPACE_TYPE, items: {} } as RlsSpaceDoc
-      const created = await this.replication.createSpace("shared", initialDoc, {
+      const created = await replication.createSpace("shared", initialDoc, {
         name: "Privat",
         appTag: "rls-private",
         modules: DEFAULT_MODULES,
@@ -2166,7 +2217,13 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       return
     }
 
-    const canonical = this.selectCanonicalPrivateSpace(privateSpaces)
+    // Prefer the deterministic space as canonical when it is already loaded —
+    // even on the non-creating paths. The lowest-id fallback must never pick a
+    // legacy space over it: that would migrate BACKWARDS out of the
+    // deterministic space and tear it down.
+    const canonical = (deterministicId !== null
+      ? privateSpaces.find((space) => space.id === deterministicId)
+      : undefined) ?? this.selectCanonicalPrivateSpace(privateSpaces)
     if (!canonical) return
 
     const previousPrivateSpaceId = this.privateSpaceId
@@ -2212,6 +2269,8 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       const sourceItems = sourceDocSnapshot.items ?? {}
       const entries = Object.entries(sourceItems) as Array<[string, SerializedItem]>
       // A duplicate can be item-empty but still carry history of deleted items.
+      let wroteToTarget = false
+      const headsBeforeMerge = await this.readOwnSpaceLogSeq(canonicalId)
       if (entries.length > 0 || Object.keys(sourceDocSnapshot.activity ?? {}).length > 0) {
         const migratedIds = new Set<string>()
         targetHandle.transact((targetDoc: RlsSpaceDoc) => {
@@ -2219,15 +2278,37 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
           const idRemap = new Map<string, string>()
 
           for (const [itemId, serialized] of entries) {
-            const targetItemId = targetDoc.items[itemId]
-              ? `${itemId}-private-${crypto.randomUUID()}`
-              : itemId
-            idRemap.set(itemId, targetItemId)
+            // DETERMINISTIC remap id (crash/multi-device contract): derived from
+            // (legacySpaceId, itemId), NOT random — two devices migrating the same
+            // legacy space concurrently produce the SAME target key, so the CRDT
+            // merge deduplicates instead of forking two copies. Idempotent across
+            // retries: an already-migrated item is recognized and skipped.
+            const remapId = `${itemId}-private-${duplicateId}`
+            const existing = targetDoc.items[itemId]
+            if (targetDoc.items[remapId]) {
+              // Already migrated under the remap id by an earlier run/device.
+              idRemap.set(itemId, remapId)
+              continue
+            }
+            if (existing && this.sameMigratedItem(existing, serialized)) {
+              // Already migrated under its own id (a retry after the source
+              // cleanup crashed). createdAt/createdBy alone are NOT unique
+              // (batch-created items share them), so content is part of the
+              // identity — a target edit between crash and retry degrades to a
+              // remapId duplicate, never to data loss.
+              idRemap.set(itemId, itemId)
+              continue
+            }
+            idRemap.set(itemId, existing ? remapId : itemId)
           }
 
           for (const [itemId, serialized] of entries) {
             const targetItemId = idRemap.get(itemId)!
-            targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId, idRemap)
+            const already = targetDoc.items[targetItemId]
+            if (!(already && this.sameMigratedItem(already, serialized))) {
+              targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId, idRemap)
+              wroteToTarget = true
+            }
             migratedIds.add(itemId)
           }
 
@@ -2249,6 +2330,15 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
             }
           }
         })
+
+        // DURABILITY GATE (crash contract): SpaceHandle.transact() has no
+        // durability ack — tearing the legacy space down before the target write
+        // is safely in the local log could lose the items to a crash. The
+        // connector owns the doc-log store, so it can PROVE the append: wait for
+        // this device's log head of the target space to advance. On timeout the
+        // migration aborts WITHOUT teardown — the next reconcile retries
+        // idempotently (deterministic remap ids make the re-merge a no-op).
+        if (wroteToTarget) await this.awaitDurableSpaceAppend(canonicalId, headsBeforeMerge)
 
         sourceHandle.transact((sourceDoc: RlsSpaceDoc) => {
           for (const itemId of migratedIds) {
@@ -2272,6 +2362,51 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
     this.crossGroupIndex?.reindexGroup(canonicalId)
     this.notifyAllObservers(true)
+  }
+
+  /**
+   * Migration identity: is the target item the migrated copy of the source item?
+   * Immutable fields plus data content — relations are excluded because the
+   * migrated copy carries remapped relation targets.
+   */
+  private sameMigratedItem(target: SerializedItem, source: SerializedItem): boolean {
+    return target.createdAt === source.createdAt
+      && target.createdBy === source.createdBy
+      && target.type === source.type
+      && JSON.stringify(target.data) === JSON.stringify(source.data)
+  }
+
+  /** This device's durable log seq for a space, or null when no log store is wired (test setups). */
+  private async readOwnSpaceLogSeq(spaceId: string): Promise<number | null> {
+    if (!this.docLogStore) return null
+    try {
+      const deviceId = await this.docLogStore.resolveConnectDeviceId()
+      const heads = await this.docLogStore.getKnownHeads(spaceId)
+      return heads[deviceId] ?? 0
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Proof of durability for the private-space migration: wait until this device's
+   * log head for the target space advanced past the pre-merge snapshot — i.e. the
+   * merge transact's log entry hit the durable store. Without a log store
+   * (unit-test setups) there is no durable boundary to confirm; the gate is a
+   * no-op there and the durable contract is carried by the log-sync production
+   * wiring. Throws on timeout so the caller aborts BEFORE the legacy teardown.
+   */
+  private async awaitDurableSpaceAppend(spaceId: string, seqBefore: number | null, timeoutMs = 15_000): Promise<void> {
+    if (seqBefore === null || !this.docLogStore) return
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const seq = await this.readOwnSpaceLogSeq(spaceId)
+      if (seq !== null && seq > seqBefore) return
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    }
+    throw new Error(
+      `[WotConnector] private-space migration: target ${spaceId} write not durably logged within ${timeoutMs}ms — keeping the legacy space for a retry`,
+    )
   }
 
   private cloneSerializedItem(
