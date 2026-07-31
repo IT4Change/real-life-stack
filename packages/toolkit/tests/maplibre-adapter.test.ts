@@ -320,6 +320,42 @@ describe("MapLibre light/dark style swap", () => {
     await pinned.unmount()
   })
 
+  it("does not leak a mount option into the next mount of the same instance", async () => {
+    // Regression (#184): `mount()` writes an explicit option into the instance
+    // and `unmount()` left it there, so the next option-less mount stayed dark
+    // although MapMountOptions documents "auto" for it.
+    const reused = new MapLibreMapAdapter()
+    await reused.mount(document.createElement("div"), {
+      center: [0, 0],
+      zoom: 5,
+      colorScheme: "dark",
+    })
+    expect(lastMap!.style).toContain("/dark")
+    await reused.unmount()
+
+    await reused.mount(document.createElement("div"), { center: [0, 0], zoom: 5 })
+    expect(lastMap!.style).toContain("liberty")
+    // And it really is back on "auto", not merely light by accident.
+    document.documentElement.classList.add("dark")
+    await settle()
+    expect(lastMap!.style).toContain("/dark")
+    await reused.unmount()
+  })
+
+  it("does not leak a pinned tileSource into the next mount", async () => {
+    const reused = new MapLibreMapAdapter()
+    await reused.mount(document.createElement("div"), {
+      center: [0, 0],
+      zoom: 5,
+      tileSource: "https://example.test/custom-style",
+    })
+    await reused.unmount()
+
+    await reused.mount(document.createElement("div"), { center: [0, 0], zoom: 5 })
+    expect(lastMap!.style).toContain("liberty")
+    await reused.unmount()
+  })
+
   it("keeps a caller-pinned style across both schemes", async () => {
     const pinned = new MapLibreMapAdapter()
     await pinned.mount(document.createElement("div"), {

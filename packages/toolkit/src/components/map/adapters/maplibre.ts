@@ -404,8 +404,12 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
   /**
    * Pin the map to a scheme, or hand it back to the app's `dark` class with
    * `"auto"`. Maplibre-only (no MapAdapter contract method); callers that want
-   * explicit control hold the concrete adapter. Safe before mount — the choice
-   * is then applied by `mount()`.
+   * explicit control hold the concrete adapter.
+   *
+   * Safe before mount — the choice is applied by `mount()` unless that call
+   * passes its own `colorScheme`. It lasts for one mount: `unmount()` returns
+   * the adapter to the documented `"auto"` default, so a later mount is not
+   * silently pinned by an earlier one.
    */
   setColorScheme(preference: ColorSchemePreference): void {
     this.colorSchemePreference = preference
@@ -467,6 +471,17 @@ export class MapLibreMapAdapter implements MapAdapter, GlobeCapable, ClusterCapa
     // bookkeeping so a fresh mount re-creates them.
     this.stopColorSchemeObserver?.()
     this.stopColorSchemeObserver = null
+    // Back to the as-constructed scheme state. `mount()` only overwrites the
+    // preference when the caller passes one, so without this reset a
+    // `mount({ colorScheme: "dark" })` would leak into the NEXT, option-less
+    // mount of the same instance — where `MapMountOptions` documents "auto".
+    // A `setColorScheme()` made while mounted is a pin for THAT mount and ends
+    // with it; the pre-mount contract still holds, because that call happens
+    // after this reset.
+    this.colorSchemePreference = "auto"
+    this.currentScheme = "light"
+    this.styleLight = DEFAULT_STYLE_LIGHT
+    this.styleDark = DEFAULT_STYLE_DARK
     this.markerLayersReady = false
     this.markerEventsWired = false
     this.addedImages.clear()
