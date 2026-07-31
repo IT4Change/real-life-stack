@@ -60,11 +60,17 @@ PLAY_ENV=(
   "${COMMON_ENV[@]}"
   VITE_UPDATE_CHANNEL=__local__
 )
-# Zwei Marker, weil RLS OTA zur LAUFZEIT abschaltet (Kanal __local__), nicht zur
-# Compile-Zeit — der OTA-Code bleibt im Bundle, also beweist blosse Abwesenheit
-# nichts. Der eingebackene Kanal ist der Beweis:
-OTA_ON_MARKER=android-foss                      # nur im F-Droid-Bundle
-OTA_OFF_MARKER=__local__                         # RLS-Abschalter, nur im Play-Bundle
+# Sentinel wie bei WoT: der OTA-Kanal-String 'android-foss' kommt NUR ueber
+# VITE_UPDATE_CHANNEL=android-foss ins Bundle. Er MUSS im F-Droid-Bundle stehen
+# und DARF NICHT im Play-Bundle — das faengt zuverlaessig den eigentlichen Fehler
+# (F-Droid-Bundle versehentlich nach Play).
+# NICHT nach '__local__' pruefen: der Play-Abschalter wird zwar korrekt gesetzt
+# (PLAY_ENV), aber der Minifier faltet ihn weg — channel='__local__' ist konstant,
+# der Vergleich '__local__'==='__local__' wird zu true, der Reset laeuft unbedingt
+# und beide String-Literale werden als toter Code eliminiert. Das OTA-VERHALTEN
+# ist korrekt (kein Self-Update), der String steht nur nicht mehr im Bundle. Der
+# Abschalt-Garant ist PLAY_ENV + RLS' __local__-Behandlung, nicht der Bundle-String.
+OTA_SENTINEL=android-foss
 
 # Workspace-Pakete, die vor dem App-Build gebaut sein muessen. Reihenfolge und
 # Auswahl gespiegelt aus deploy-prototypes.yml (dort bewaehrt).
@@ -139,22 +145,16 @@ verify_bundle() {
     printf '  %s\n' $unexpected >&2
     exit 1
   fi
-  # OTA-Sentinel: erzwingt die Kanal-Trennung, statt sie nur zu meinen. Fuer den
-  # F-Droid-Build muss android-foss da sein und __local__ fehlen; fuer Play
-  # umgekehrt. So kann ein Self-Updater nie ins Play-AAB geraten (Policy-Verstoss),
-  # und ein Play-Build, dem der Abschalt-Kanal fehlt (→ self-update ueber Default
-  # 'android'), faellt ebenfalls auf.
-  local has_on has_off
-  if grep -rlq "$OTA_ON_MARKER"  "$d"/*.js; then has_on=1;  else has_on=0;  fi
-  if grep -rlq "$OTA_OFF_MARKER" "$d"/*.js; then has_off=1; else has_off=0; fi
-  if [ "$ota" = "on" ]; then
-    [ "$has_on"  = 1 ] || abort "$label: OTA-Kanal '$OTA_ON_MARKER' fehlt — F-Droid-OTA wuerde nicht funktionieren."
-    [ "$has_off" = 0 ] || abort "$label: Abschalt-Kanal '$OTA_OFF_MARKER' im F-Droid-Bundle — OTA waere aus."
+  # OTA-Sentinel: der Kanal-String 'android-foss' darf NUR im F-Droid-Bundle
+  # stehen. So kann der OTA-Self-Updater nie ins Play-AAB geraten (Policy-Verstoss),
+  # und ein F-Droid-Build ohne OTA faellt sofort auf. Siehe OTA_SENTINEL oben,
+  # warum NICHT nach dem (wegoptimierten) __local__ geprueft wird.
+  if grep -rlq "$OTA_SENTINEL" "$d"/*.js; then
+    [ "$ota" = "on" ]  || abort "$label-Bundle enthaelt OTA-Kanal '$OTA_SENTINEL' — Play verbietet Self-Updates."
   else
-    [ "$has_on"  = 0 ] || abort "$label-Bundle enthaelt OTA-Kanal '$OTA_ON_MARKER' — Play verbietet Self-Updates."
-    [ "$has_off" = 1 ] || abort "$label-Bundle: Abschalt-Kanal '$OTA_OFF_MARKER' fehlt — App wuerde ueber Default-Kanal self-updaten."
+    [ "$ota" = "off" ] || abort "$label: OTA-Kanal '$OTA_SENTINEL' fehlt — F-Droid-OTA wuerde nicht funktionieren."
   fi
-  echo "    ok: $label — Allowlist bestanden, OTA $ota bestaetigt (on=$has_on off=$has_off)"
+  echo "    ok: $label — Allowlist bestanden, OTA $ota bestaetigt (Sentinel '$OTA_SENTINEL')"
   echo "    HTTPS-Hosts im $label-Bundle (zur Durchsicht):"
   grep -rhoE "https://[a-zA-Z0-9.-]+" "$d"/*.js | sed 's|https://|      |' | sort -u
 }
