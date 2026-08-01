@@ -53,15 +53,20 @@ adb shell am start -n org.reallife.reallifestack/.MainActivity
 
 Ermöglicht Web-Bundle-Updates ohne neuen App-Store-Release via `@capawesome/capacitor-live-update`.
 
-### Channels (3 Targets)
+### Channels (3 OTA-Kanäle)
 
-| Channel | Target |
+| Channel | Wer holt ihn |
 |---|---|
-| `ios` | Apple App Store |
-| `android` | Google Play Store |
-| `android-foss` | F-Droid / ohne Google Services |
+| `ios` | iOS-App |
+| `android` | Android-Builds **ohne** gesetzten Kanal — Plattform-Fallback, z.B. ein lokal gebautes APK (`scripts/build-fdroid-apk.sh` ohne `VITE_UPDATE_CHANNEL`) |
+| `android-foss` | F-Droid (`scripts/release/build-android.sh` setzt ihn ausdrücklich) |
 
-Jeder Channel hat eine eigene `latest.json` **und ein eigenes Web-Bundle**: das Bundle wird mit
+**Play hat keinen OTA-Kanal.** Das Play-AAB wird mit `VITE_UPDATE_CHANNEL=__local__` gebaut;
+`live-update.ts` ruft dann `LiveUpdate.reset()` und holt nie ein Bundle. Google verbietet
+Self-Updates, siehe `scripts/release/build-android.sh`. `android` ist also **nicht** der
+Play-Kanal — der Name kommt vom Plattform-Fallback `Capacitor.getPlatform()`, nicht vom Store.
+
+Jeder Kanal hat eine eigene `latest.json` **und ein eigenes Web-Bundle**: das Bundle wird mit
 `VITE_UPDATE_CHANNEL=<channel>` gebaut und trägt seinen Kanal damit selbst. Das ist nötig, weil
 nach einem OTA-Reload das heruntergeladene Bundle läuft — siehe unten und #193.
 
