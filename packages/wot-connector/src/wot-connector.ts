@@ -93,7 +93,7 @@ import type {
   SpaceHandle,
   WireMessage,
 } from "@real-life/wot-core/ports"
-import { hasDeterministicPrivateSpace } from "@real-life/wot-core/ports"
+import { hasDeterministicPrivateSpace, hasDurableTransact } from "@real-life/wot-core/ports"
 import {
   YjsReplicationAdapter,
   YjsStorageAdapter,
@@ -2261,6 +2261,15 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     if (!this.replication) return
 
     const targetHandle = await this.replication.openSpace<RlsSpaceDoc>(canonicalId)
+    // The migration's teardown contract REQUIRES the transaction-bound durability
+    // ack (adapter-yjs >= 0.2.2): transactDurable resolves only after the log
+    // entry of exactly this merge is durably persisted, and rejects otherwise.
+    // No fire-and-forget fallback — without the capability we must not migrate.
+    if (!hasDurableTransact<RlsSpaceDoc>(targetHandle)) {
+      throw new Error(
+        "[WotConnector] private-space migration requires a durability-acknowledging adapter (SpaceHandle.transactDurable)",
+      )
+    }
     let changed = false
 
     for (const duplicateId of duplicateIds) {
@@ -2268,55 +2277,50 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       const sourceDocSnapshot = sourceHandle.getDoc()
       const sourceItems = sourceDocSnapshot.items ?? {}
       const entries = Object.entries(sourceItems) as Array<[string, SerializedItem]>
+      const sourceActivity = sourceHandle.getDoc().activity ?? {}
       // A duplicate can be item-empty but still carry history of deleted items.
-      let wroteToTarget = false
-      const headsBeforeMerge = await this.readOwnSpaceLogSeq(canonicalId)
-      if (entries.length > 0 || Object.keys(sourceDocSnapshot.activity ?? {}).length > 0) {
-        const migratedIds = new Set<string>()
-        targetHandle.transact((targetDoc: RlsSpaceDoc) => {
-          if (!targetDoc.items) targetDoc.items = {}
-          const idRemap = new Map<string, string>()
-
-          for (const [itemId, serialized] of entries) {
-            // DETERMINISTIC remap id (crash/multi-device contract): derived from
-            // (legacySpaceId, itemId), NOT random — two devices migrating the same
-            // legacy space concurrently produce the SAME target key, so the CRDT
-            // merge deduplicates instead of forking two copies. Idempotent across
-            // retries: an already-migrated item is recognized and skipped.
-            const remapId = `${itemId}-private-${duplicateId}`
-            const existing = targetDoc.items[itemId]
-            if (targetDoc.items[remapId]) {
-              // Already migrated under the remap id by an earlier run/device.
-              idRemap.set(itemId, remapId)
-              continue
-            }
-            if (existing && this.sameMigratedItem(existing, serialized)) {
-              // Already migrated under its own id (a retry after the source
-              // cleanup crashed). createdAt/createdBy alone are NOT unique
-              // (batch-created items share them), so content is part of the
-              // identity — a target edit between crash and retry degrades to a
-              // remapId duplicate, never to data loss.
-              idRemap.set(itemId, itemId)
-              continue
-            }
-            idRemap.set(itemId, existing ? remapId : itemId)
+      // A fully EMPTY source needs no durable merge: if a previous run emptied it,
+      // that run had already confirmed the target commit BEFORE its source
+      // cleanup (see ordering below), so teardown is safe.
+      if (entries.length > 0 || Object.keys(sourceActivity).length > 0) {
+        // Plan the target slot per item — fail-closed on true second collisions.
+        const targetBefore = targetHandle.getDoc()
+        const idRemap = new Map<string, string>()
+        for (const [itemId, serialized] of entries) {
+          // DETERMINISTIC remap id from (legacySpaceId, itemId): concurrent
+          // devices produce the SAME target key, the CRDT merge deduplicates.
+          const remapId = `${itemId}-private-${duplicateId}`
+          const existing = targetBefore.items?.[itemId]
+          if (!existing || this.sameMigratedItem(existing, serialized)) {
+            idRemap.set(itemId, itemId)
+            continue
           }
+          const remapSlot = targetBefore.items?.[remapId]
+          if (remapSlot && !this.sameMigratedItem(remapSlot, serialized)) {
+            // The deterministic slot is occupied by a DIFFERENT canonical item —
+            // overwriting would be a data-loss path. Abort with the source intact.
+            throw new Error(
+              `[WotConnector] private-space migration: remap slot ${remapId} is occupied by a different item — aborting without teardown`,
+            )
+          }
+          idRemap.set(itemId, remapId)
+        }
 
+        const migratedIds = new Set<string>(entries.map(([itemId]) => itemId))
+        // ONE durable commit covers items AND activity. Every planned slot is
+        // written unconditionally — also when the copy is already visible from a
+        // crashed earlier run: that same-bytes re-set is what produces a FRESH
+        // confirmed append, so a retry never tears down on an unproven copy.
+        await targetHandle.transactDurable((targetDoc: RlsSpaceDoc) => {
+          if (!targetDoc.items) targetDoc.items = {}
           for (const [itemId, serialized] of entries) {
             const targetItemId = idRemap.get(itemId)!
-            const already = targetDoc.items[targetItemId]
-            if (!(already && this.sameMigratedItem(already, serialized))) {
-              targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId, idRemap)
-              wroteToTarget = true
-            }
-            migratedIds.add(itemId)
+            targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId, idRemap)
           }
-
           // The ENTIRE activity history migrates (also entries whose items are
           // already deleted — Regel 7 keeps those readable); only targetIds of
           // migrated items get remapped. The merged map is pruned to the
-          // normative 500 cap in the SAME transact (Regel 4).
-          const sourceActivity = sourceHandle.getDoc().activity ?? {}
+          // normative 500 cap in the SAME durable commit (Regel 4).
           for (const [entryId, entry] of Object.entries(sourceActivity)) {
             if (targetDoc.activity?.[entryId]) continue
             const activity = targetDoc.activity ?? (targetDoc.activity = {})
@@ -2330,16 +2334,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
             }
           }
         })
-
-        // DURABILITY GATE (crash contract): SpaceHandle.transact() has no
-        // durability ack — tearing the legacy space down before the target write
-        // is safely in the local log could lose the items to a crash. The
-        // connector owns the doc-log store, so it can PROVE the append: wait for
-        // this device's log head of the target space to advance. On timeout the
-        // migration aborts WITHOUT teardown — the next reconcile retries
-        // idempotently (deterministic remap ids make the re-merge a no-op).
-        if (wroteToTarget) await this.awaitDurableSpaceAppend(canonicalId, headsBeforeMerge)
-
+        // transactDurable resolved → the merge entry is durably logged. Only now
+        // may the source be emptied; a crash before this point leaves the source
+        // intact and the next reconcile retries idempotently.
         sourceHandle.transact((sourceDoc: RlsSpaceDoc) => {
           for (const itemId of migratedIds) {
             delete sourceDoc.items[itemId]
@@ -2353,7 +2350,8 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
       // `leaveSpace()` is the replication layer's public local teardown path.
       // It removes this replica and its metadata; it neither removes members nor
-      // rotates keys. For non-empty duplicates it runs only after both writes above.
+      // rotates keys. For non-empty duplicates it runs only after the CONFIRMED
+      // durable target commit and the source cleanup above.
       await this.replication.leaveSpace(duplicateId)
       changed = true
     }
@@ -2374,39 +2372,6 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       && target.createdBy === source.createdBy
       && target.type === source.type
       && JSON.stringify(target.data) === JSON.stringify(source.data)
-  }
-
-  /** This device's durable log seq for a space, or null when no log store is wired (test setups). */
-  private async readOwnSpaceLogSeq(spaceId: string): Promise<number | null> {
-    if (!this.docLogStore) return null
-    try {
-      const deviceId = await this.docLogStore.resolveConnectDeviceId()
-      const heads = await this.docLogStore.getKnownHeads(spaceId)
-      return heads[deviceId] ?? 0
-    } catch {
-      return null
-    }
-  }
-
-  /**
-   * Proof of durability for the private-space migration: wait until this device's
-   * log head for the target space advanced past the pre-merge snapshot — i.e. the
-   * merge transact's log entry hit the durable store. Without a log store
-   * (unit-test setups) there is no durable boundary to confirm; the gate is a
-   * no-op there and the durable contract is carried by the log-sync production
-   * wiring. Throws on timeout so the caller aborts BEFORE the legacy teardown.
-   */
-  private async awaitDurableSpaceAppend(spaceId: string, seqBefore: number | null, timeoutMs = 15_000): Promise<void> {
-    if (seqBefore === null || !this.docLogStore) return
-    const deadline = Date.now() + timeoutMs
-    while (Date.now() < deadline) {
-      const seq = await this.readOwnSpaceLogSeq(spaceId)
-      if (seq !== null && seq > seqBefore) return
-      await new Promise((resolve) => setTimeout(resolve, 25))
-    }
-    throw new Error(
-      `[WotConnector] private-space migration: target ${spaceId} write not durably logged within ${timeoutMs}ms — keeping the legacy space for a retry`,
-    )
   }
 
   private cloneSerializedItem(

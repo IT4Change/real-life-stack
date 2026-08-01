@@ -962,10 +962,16 @@ function createSpaceInfo(id: string, appTag = "rls-private"): SpaceInfo {
   }
 }
 
-function createSpaceHandle(doc: RlsSpaceDoc) {
+function createSpaceHandle(doc: RlsSpaceDoc, opts?: { durableTransact?: (fn: (spaceDoc: RlsSpaceDoc) => void, doc: RlsSpaceDoc) => Promise<void> }) {
   return {
     getDoc: () => doc,
     transact: (fn: (spaceDoc: RlsSpaceDoc) => void) => fn(doc),
+    // Production adapters (adapter-yjs >= 0.2.2) resolve only after the durable
+    // append of exactly this transaction; the default fake applies + resolves.
+    transactDurable: vi.fn(async (fn: (spaceDoc: RlsSpaceDoc) => void) => {
+      if (opts?.durableTransact) return opts.durableTransact(fn, doc)
+      fn(doc)
+    }),
     close: vi.fn(),
     onRemoteUpdate: vi.fn(() => () => {}),
   }
@@ -1282,9 +1288,13 @@ describe("WotConnector private space reconciliation", () => {
     }
     const fake = createFakePrivateSpaceConnector(spaces, docs)
     makeDeterministicCapable(fake, spaces, docs, detId)
-    ;(fake as any).awaitDurableSpaceAppend = vi.fn(async () => {
-      throw new Error("target write not durably logged")
-    })
+    // The production contract: transactDurable rejects when the merge append
+    // cannot be durably confirmed (adapter-side, transaction-bound).
+    fake.replication.openSpace = vi.fn(async (id: string) =>
+      id === detId
+        ? createSpaceHandle(docs[id], { durableTransact: async () => { throw new Error("target write not durably logged") } })
+        : createSpaceHandle(docs[id]),
+    ) as any
 
     await expect(
       (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true }),
@@ -1294,22 +1304,77 @@ describe("WotConnector private space reconciliation", () => {
     expect(docs["legacy-c"].items.m.data.title).toBe("Precious") // source untouched
   })
 
-  it("proves durability via the device's advancing log head and times out otherwise", async () => {
-    const fake = createFakePrivateSpaceConnector([], {})
-    let seq = 0
-    ;(fake as any).docLogStore = {
-      resolveConnectDeviceId: async () => "device-1",
-      getKnownHeads: async () => ({ "device-1": seq }),
+  it("re-commits durably on retry even when the target copy is already visible", async () => {
+    // Review blocker 3: run 1 merged into the target but its append FAILED; the
+    // copy is locally visible. The retry must still produce a confirmed durable
+    // commit (same-bytes re-set through transactDurable), never skip the gate.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const migrated = createSerializedItem("solo", "Solo")
+    const spaces = [createSpaceInfo(detId), createSpaceInfo("legacy-r")]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: { solo: JSON.parse(JSON.stringify(migrated)) } } as RlsSpaceDoc,
+      "legacy-r": { _type: "rls", items: { solo: migrated } } as RlsSpaceDoc,
     }
-    // Head advances → resolves.
-    const gate = (WotConnector.prototype as any).awaitDurableSpaceAppend.call(fake, "space-x", 0, 1_000)
-    seq = 1
-    await expect(gate).resolves.toBeUndefined()
-    // Head never advances → times out (short budget for the test).
-    seq = 0
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+    const targetHandle = createSpaceHandle(docs[detId])
+    fake.replication.openSpace = vi.fn(async (id: string) => (id === detId ? targetHandle : createSpaceHandle(docs[id]))) as any
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+
+    expect(targetHandle.transactDurable).toHaveBeenCalledTimes(1) // the confirmed re-commit
+    expect(Object.keys(docs[detId].items)).toEqual(["solo"]) // still no duplicate
+    expect(fake.replication.leaveSpace).toHaveBeenCalledWith("legacy-r")
+  })
+
+  it("migrates an activity-only legacy space through the durable commit", async () => {
+    // Review blocker 4: an item-empty source with surviving activity must go
+    // through the SAME durable gate — teardown only after the confirmed commit.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const spaces = [createSpaceInfo(detId), createSpaceInfo("legacy-act")]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: {} } as RlsSpaceDoc,
+      "legacy-act": {
+        _type: "rls", items: {},
+        activity: { a1: { id: "a1", action: "delete", targetId: "gone", targetType: "task", actor: "did:key:alice", summary: "Deleted", timestamp: "2026-07-01T00:00:00.000Z" } },
+      } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+    const targetHandle = createSpaceHandle(docs[detId])
+    fake.replication.openSpace = vi.fn(async (id: string) => (id === detId ? targetHandle : createSpaceHandle(docs[id]))) as any
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+
+    expect(targetHandle.transactDurable).toHaveBeenCalledTimes(1)
+    expect(docs[detId].activity?.a1?.summary).toBe("Deleted")
+    expect(fake.replication.leaveSpace).toHaveBeenCalledWith("legacy-act")
+  })
+
+  it("fails closed when the deterministic remap slot holds a DIFFERENT item", async () => {
+    // Review should-fix: a occupied remap slot must never be overwritten.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const legacyId = "cccccccc-0000-4000-8000-000000000000"
+    const canonicalItem = createSerializedItem("clash", "Canonical")
+    const legacyItem = createSerializedItem("clash", "Legacy version")
+    legacyItem.createdBy = "did:key:other"
+    const occupant = createSerializedItem(`clash-private-${legacyId}`, "Innocent bystander")
+    occupant.createdBy = "did:key:third"
+    const spaces = [createSpaceInfo(detId), createSpaceInfo(legacyId)]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: { clash: canonicalItem, [`clash-private-${legacyId}`]: occupant } } as RlsSpaceDoc,
+      [legacyId]: { _type: "rls", items: { clash: legacyItem } } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+
     await expect(
-      (WotConnector.prototype as any).awaitDurableSpaceAppend.call(fake, "space-x", 0, 120),
-    ).rejects.toThrow(/not durably logged/)
+      (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true }),
+    ).rejects.toThrow(/occupied by a different item/)
+
+    expect(docs[detId].items[`clash-private-${legacyId}`].data.title).toBe("Innocent bystander") // untouched
+    expect(docs[legacyId].items.clash.data.title).toBe("Legacy version") // source intact
+    expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
   })
 
   it("keeps a non-empty duplicate when its migration fails", async () => {
@@ -1322,8 +1387,10 @@ describe("WotConnector private space reconciliation", () => {
       } as RlsSpaceDoc,
     }
     const fake = createFakePrivateSpaceConnector(spaces, docs)
-    const canonicalHandle = createSpaceHandle(docs["private-a"])
-    canonicalHandle.transact = vi.fn(() => { throw new Error("target write failed") })
+    // The migration merges through transactDurable — inject the failure there.
+    const canonicalHandle = createSpaceHandle(docs["private-a"], {
+      durableTransact: async () => { throw new Error("target write failed") },
+    })
     fake.replication.openSpace.mockImplementation(async (id: string) =>
       id === "private-a" ? canonicalHandle : createSpaceHandle(docs[id]),
     )
