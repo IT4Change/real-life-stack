@@ -1336,7 +1336,7 @@ describe("WotConnector private space reconciliation", () => {
       [detId]: { _type: "rls", items: {} } as RlsSpaceDoc,
       "legacy-act": {
         _type: "rls", items: {},
-        activity: { a1: { id: "a1", action: "delete", targetId: "gone", targetType: "task", actor: "did:key:alice", summary: "Deleted", timestamp: "2026-07-01T00:00:00.000Z" } },
+        activity: { a1: { id: "a1", action: "delete", targetId: "gone", targetType: "task", actor: "did:key:alice", summary: "Deleted", ts: "2026-07-01T00:00:00.000Z" } },
       } as RlsSpaceDoc,
     }
     const fake = createFakePrivateSpaceConnector(spaces, docs)
@@ -1420,7 +1420,7 @@ describe("WotConnector private space reconciliation", () => {
       [legacyId]: {
         _type: "rls",
         items: { old: createSerializedItem("old", "Old") },
-        activity: { a0: { id: "a0", action: "create", targetId: "old", targetType: "task", actor: "did:key:alice", summary: "Old", timestamp: "2026-07-01T00:00:00.000Z" } },
+        activity: { a0: { id: "a0", action: "create", targetId: "old", targetType: "task", actor: "did:key:alice", summary: "Old", ts: "2026-07-01T00:00:00.000Z" } },
       } as RlsSpaceDoc,
     }
     const fake = createFakePrivateSpaceConnector(spaces, docs)
@@ -1430,7 +1430,7 @@ describe("WotConnector private space reconciliation", () => {
       durableTransact: async (fn, doc) => {
         fn(doc)
         docs[legacyId].items.fresh = createSerializedItem("fresh", "Arrived mid-flight")
-        docs[legacyId].activity!.a1 = { id: "a1", action: "create", targetId: "fresh", targetType: "task", actor: "did:key:alice", summary: "Fresh", timestamp: "2026-07-02T00:00:00.000Z" }
+        docs[legacyId].activity!.a1 = { id: "a1", action: "create", targetId: "fresh", targetType: "task", actor: "did:key:alice", summary: "Fresh", ts: "2026-07-02T00:00:00.000Z" }
       },
     })
     fake.replication.openSpace = vi.fn(async (id: string) => (id === detId ? targetHandle : createSpaceHandle(docs[id]))) as any
@@ -1475,6 +1475,124 @@ describe("WotConnector private space reconciliation", () => {
     // …the edited version SURVIVES in the source, and no teardown ran.
     expect(docs[legacyId].items.old.data.title).toBe("Version 2 — edited mid-flight")
     expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
+  })
+
+  it("a regular mid-flight deletion converges: the item ends up in NEITHER space", async () => {
+    // Review round 5 repro: while the durable commit is gated, another device
+    // regularly deletes the snapshotted item (item removed + delete-activity).
+    // The migrated copy must not resurrect it; after full convergence (two
+    // reconcile rounds) the item exists nowhere and the legacy space is gone.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const legacyId = "ffffffff-0000-4000-8000-000000000000"
+    const spaces = [createSpaceInfo(detId), createSpaceInfo(legacyId)]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: {} } as RlsSpaceDoc,
+      [legacyId]: { _type: "rls", items: { old: createSerializedItem("old", "Version A") } } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+    let deleteOnce = true
+    const targetHandle = createSpaceHandle(docs[detId], {
+      durableTransact: async (fn, doc) => {
+        fn(doc)
+        if (deleteOnce) {
+          deleteOnce = false
+          delete docs[legacyId].items.old
+          docs[legacyId].activity = { d1: { id: "d1", action: "delete", targetId: "old", targetType: "task", actor: "did:key:bob", summary: "Deleted elsewhere", ts: "2026-07-03T00:00:00.000Z" } }
+        }
+      },
+    })
+    fake.replication.openSpace = vi.fn(async (id: string) => (id === detId ? targetHandle : createSpaceHandle(docs[id]))) as any
+
+    // Round 1: merge is confirmed, the mid-flight deletion is applied durably to
+    // the canonical copy; the delete-activity keeps the source as residual.
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+    expect(docs[detId].items.old).toBeUndefined()
+    expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
+
+    // Round 2: the activity migrates as history (tombstone is a no-op), the
+    // source empties, the legacy space is torn down. Full convergence.
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+    expect(docs[detId].items.old).toBeUndefined()
+    expect(docs[detId].activity?.d1?.summary).toBe("Deleted elsewhere")
+    expect(fake.replication.leaveSpace).toHaveBeenCalledWith(legacyId)
+  })
+
+  it("a raw CRDT mid-flight deletion (no activity) converges in the same round", async () => {
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const legacyId = "abababab-0000-4000-8000-000000000000"
+    const spaces = [createSpaceInfo(detId), createSpaceInfo(legacyId)]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: {} } as RlsSpaceDoc,
+      [legacyId]: { _type: "rls", items: { old: createSerializedItem("old", "Version A") } } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+    const targetHandle = createSpaceHandle(docs[detId], {
+      durableTransact: async (fn, doc) => { fn(doc); delete docs[legacyId].items.old },
+    })
+    fake.replication.openSpace = vi.fn(async (id: string) => (id === detId ? targetHandle : createSpaceHandle(docs[id]))) as any
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+
+    expect(docs[detId].items.old).toBeUndefined() // not resurrected
+    expect(fake.replication.leaveSpace).toHaveBeenCalledWith(legacyId) // same-round teardown
+  })
+
+  it("applies a migrated delete-activity as a tombstone on an earlier-round copy", async () => {
+    // Crash window between the merge ack and the deletion commit: the canonical
+    // already holds the migrated copy from an earlier round; the source retains
+    // ONLY the delete-activity. Copying it as history must also APPLY it.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const legacyId = "cdcdcdcd-0000-4000-8000-000000000000"
+    const migrated = createSerializedItem("old", "Version A") // createdAt < delete ts
+    const spaces = [createSpaceInfo(detId), createSpaceInfo(legacyId)]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: { old: migrated } } as RlsSpaceDoc,
+      [legacyId]: {
+        _type: "rls", items: {},
+        activity: { d1: { id: "d1", action: "delete", targetId: "old", targetType: "task", actor: "did:key:bob", summary: "Deleted", ts: "2099-01-01T00:00:00.000Z" } },
+      } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+
+    expect(docs[detId].items.old).toBeUndefined() // tombstone applied
+    expect(docs[detId].activity?.d1?.summary).toBe("Deleted") // history kept
+    expect(fake.replication.leaveSpace).toHaveBeenCalledWith(legacyId)
+  })
+
+  it("a canonical edit wins over a stale mid-flight deletion", async () => {
+    // Guard: the durable removal only applies while the canonical copy still
+    // equals the migrated snapshot — an edit made in the canonical concurrently
+    // must not be destroyed by the stale deletion.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const legacyId = "efefefef-0000-4000-8000-000000000000"
+    const spaces = [createSpaceInfo(detId), createSpaceInfo(legacyId)]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: {} } as RlsSpaceDoc,
+      [legacyId]: { _type: "rls", items: { old: createSerializedItem("old", "Version A") } } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+    let first = true
+    const targetHandle = createSpaceHandle(docs[detId], {
+      durableTransact: async (fn, doc) => {
+        fn(doc)
+        if (first) {
+          first = false
+          delete docs[legacyId].items.old // concurrent source deletion…
+          doc.items.old = createSerializedItem("old", "Edited in canonical") // …but the canonical copy was edited too
+        }
+      },
+    })
+    fake.replication.openSpace = vi.fn(async (id: string) => (id === detId ? targetHandle : createSpaceHandle(docs[id]))) as any
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+
+    expect(docs[detId].items.old.data.title).toBe("Edited in canonical") // edit wins
   })
 
   it("keeps a non-empty duplicate when its migration fails", async () => {

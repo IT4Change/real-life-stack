@@ -2342,6 +2342,15 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
             const activity = targetDoc.activity ?? (targetDoc.activity = {})
             const remapped = idRemap.get(entry.targetId)
             activity[entryId] = remapped ? { ...entry, targetId: remapped } : { ...entry }
+            // TOMBSTONE (review round 5): a migrated delete-activity must be
+            // APPLIED, not only copied as history — otherwise a copy migrated in
+            // an earlier round resurrects the deleted item. The createdAt guard
+            // keeps items that were (re-)created AFTER the deletion.
+            if (entry.action === "delete") {
+              const slot = remapped ?? entry.targetId
+              const existing = targetDoc.items?.[slot]
+              if (existing && existing.createdAt <= entry.ts) delete targetDoc.items[slot]
+            }
           }
           const merged = targetDoc.activity
           if (merged) {
@@ -2350,6 +2359,25 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
             }
           }
         })
+        // MID-FLIGHT DELETIONS (review round 5): a snapshot item that VANISHED
+        // from the source during the durable await was deleted concurrently. The
+        // durably migrated copy must not resurrect it — remove the target copy in
+        // a second transaction-bound durable commit, guarded to the still-unedited
+        // migrated version (a canonical edit wins over the stale deletion).
+        const sourceAfterAck = sourceHandle.getDoc().items ?? {}
+        const deletedMidFlight = entries.filter(([itemId]) => sourceAfterAck[itemId] === undefined)
+        if (deletedMidFlight.length > 0) {
+          await targetHandle.transactDurable((targetDoc: RlsSpaceDoc) => {
+            for (const [itemId, snapshotItem] of deletedMidFlight) {
+              const slot = idRemap.get(itemId)!
+              const migrated = targetDoc.items?.[slot]
+              if (migrated && this.sameMigratedItem(migrated, snapshotItem)) {
+                delete targetDoc.items[slot]
+              }
+            }
+          })
+        }
+
         // transactDurable resolved → the merge entry is durably logged. Only now
         // may the source be emptied; a crash before this point leaves the source
         // intact and the next reconcile retries idempotently.
