@@ -1445,6 +1445,38 @@ describe("WotConnector private space reconciliation", () => {
     expect(docs[legacyId].activity?.a1?.summary).toBe("Fresh")
   })
 
+  it("keeps an item EDITED under the same id during the durable await — cleanup only deletes the snapshotted version", async () => {
+    // Review round 4: the cleanup deleted snapshot ids blindly. An edit to an
+    // EXISTING id during the durable await was wiped although only the OLD
+    // version was durably migrated. Delete-if-unchanged must keep it.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const legacyId = "eeeeeeee-0000-4000-8000-000000000000"
+    const spaces = [createSpaceInfo(detId), createSpaceInfo(legacyId)]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: {} } as RlsSpaceDoc,
+      [legacyId]: { _type: "rls", items: { old: createSerializedItem("old", "Version 1") } } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+    // While the durable commit is pending, the SAME id gets a new version.
+    const targetHandle = createSpaceHandle(docs[detId], {
+      durableTransact: async (fn, doc) => {
+        fn(doc)
+        const edited = createSerializedItem("old", "Version 2 — edited mid-flight")
+        docs[legacyId].items.old = edited
+      },
+    })
+    fake.replication.openSpace = vi.fn(async (id: string) => (id === detId ? targetHandle : createSpaceHandle(docs[id]))) as any
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+
+    // The snapshotted version was durably migrated…
+    expect(docs[detId].items.old.data.title).toBe("Version 1")
+    // …the edited version SURVIVES in the source, and no teardown ran.
+    expect(docs[legacyId].items.old.data.title).toBe("Version 2 — edited mid-flight")
+    expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
+  })
+
   it("keeps a non-empty duplicate when its migration fails", async () => {
     const spaces = [createSpaceInfo("private-a"), createSpaceInfo("private-b")]
     const docs = {

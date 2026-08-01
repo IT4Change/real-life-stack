@@ -2286,7 +2286,10 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     for (const duplicateId of duplicateIds) {
       const sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(duplicateId)
       const sourceDocSnapshot = sourceHandle.getDoc()
-      const sourceItems = sourceDocSnapshot.items ?? {}
+      // Deep-materialized item SNAPSHOT: the cleanup below compares against it to
+      // delete only what was actually migrated — a live reference would compare
+      // a mid-flight edit against itself and wrongly qualify it for deletion.
+      const sourceItems = JSON.parse(JSON.stringify(sourceDocSnapshot.items ?? {})) as Record<string, SerializedItem>
       const entries = Object.entries(sourceItems) as Array<[string, SerializedItem]>
       // Materialized SNAPSHOT of the activity keys — getDoc() may hand out a live
       // reference (engine-dependent); the cleanup below must only ever delete
@@ -2320,7 +2323,6 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
           idRemap.set(itemId, remapId)
         }
 
-        const migratedIds = new Set<string>(entries.map(([itemId]) => itemId))
         // ONE durable commit covers items AND activity. Every planned slot is
         // written unconditionally — also when the copy is already visible from a
         // crashed earlier run: that same-bytes re-set is what produces a FRESH
@@ -2352,8 +2354,18 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
         // may the source be emptied; a crash before this point leaves the source
         // intact and the next reconcile retries idempotently.
         sourceHandle.transact((sourceDoc: RlsSpaceDoc) => {
-          for (const itemId of migratedIds) {
-            delete sourceDoc.items[itemId]
+          for (const [itemId, snapshotItem] of entries) {
+            // DELETE-IF-UNCHANGED: only the exact snapshotted version was part of
+            // the confirmed durable commit. If the item was EDITED under the same
+            // id during the durable await, deleting it would destroy the only
+            // copy of the new version — keep it; the residual guard below blocks
+            // the teardown and the next reconcile migrates the edited version
+            // (content-inclusive identity routes it to the deterministic remap
+            // slot — a duplicate at worst, never data loss).
+            const current = sourceDoc.items[itemId]
+            if (current && JSON.stringify(current) === JSON.stringify(snapshotItem)) {
+              delete sourceDoc.items[itemId]
+            }
           }
           // Delete ONLY the snapshotted history entries — activity that arrived
           // while we awaited the durable ack was never part of the confirmed
