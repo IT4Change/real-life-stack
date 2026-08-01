@@ -106,6 +106,12 @@ jobs:
       # wertlos. Ausserdem faltet der Minifier den Fallback weg, sobald der
       # Kanal konstant ist — greppbar bleibt zuverlässig nur der Kanalname
       # selbst.
+      #
+      # Geprüft wird ausschliesslich `assets/*.js`, exakt wie `verify_bundle()`
+      # im Release-Skript (`grep -rlq "$OTA_SENTINEL" "$d"/*.js`). Über das
+      # ganze Archiv zu greppen würde eine statische HTML-, JSON- oder
+      # SVG-Datei mit demselben String genügen lassen — der Kanal muss aber im
+      # ausführbaren JS stehen, sonst nützt er zur Laufzeit nichts.
       - name: Verify OTA channel sentinel
         run: |
           set -euo pipefail
@@ -113,7 +119,9 @@ jobs:
             zip="bundle-${channel}-${SHORT_SHA}.zip"
             rm -rf /tmp/sentinel && mkdir -p /tmp/sentinel
             unzip -q "$zip" -d /tmp/sentinel
-            if grep -rqF 'android-foss' /tmp/sentinel; then found=yes; else found=no; fi
+            ls /tmp/sentinel/assets/*.js >/dev/null 2>&1 \
+              || { echo "FEHLER: $zip enthaelt kein assets/*.js" >&2; exit 1; }
+            if grep -lqF 'android-foss' /tmp/sentinel/assets/*.js; then found=yes; else found=no; fi
             if [ "$channel" = android-foss ] && [ "$found" != yes ]; then
               echo "FEHLER: $zip enthaelt seinen Kanal 'android-foss' nicht (#193)" >&2
               exit 1
