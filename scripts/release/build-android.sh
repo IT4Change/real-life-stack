@@ -107,11 +107,19 @@ fi
 WANT="${TAG#"$TAG_PREFIX"}"
 VERSION_FILE="$APP_DIR/android/version.properties"
 VERSION_NAME=$(grep VERSION_NAME "$VERSION_FILE" | cut -d= -f2)
-VERSION_CODE=$(grep VERSION_CODE "$VERSION_FILE" | cut -d= -f2)
 if [ "$VERSION_NAME" != "$WANT" ]; then
   abort "Tag sagt $WANT, version.properties sagt $VERSION_NAME."
 fi
-echo "    ok: $TAG == version.properties ($VERSION_NAME, Code $VERSION_CODE)"
+# versionCode deterministisch aus dem NAMEN ableiten — dieselbe Formel wie in
+# build.gradle (major*10000 + minor*100 + patch). version.properties fuehrt kein
+# VERSION_CODE mehr; release-please bumpt nur den Namen. Siehe docs/RELEASING.md.
+case "$VERSION_NAME" in
+  [0-9]*.[0-9]*.[0-9]*) ;;
+  *) abort "VERSION_NAME '$VERSION_NAME' ist kein major.minor.patch." ;;
+esac
+IFS=. read -r _MJ _MN _PT <<<"$VERSION_NAME"
+VERSION_CODE=$(( _MJ * 10000 + _MN * 100 + _PT ))
+echo "    ok: $TAG == version.properties ($VERSION_NAME → Code $VERSION_CODE abgeleitet)"
 
 echo "==> 2/6 Dependencies (frozen lockfile)"
 pnpm install --frozen-lockfile

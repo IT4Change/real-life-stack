@@ -1,0 +1,54 @@
+# release-please fuer die RLS Reference App. Aktuell app-fokussiert — die
+# npm-Pakete (data-interface, toolkit, connectors) sind noch NICHT hier
+# eingehaengt; sie kaemen als weitere Komponenten in dieselbe Config (dann
+# strukturgleich zu web-of-trust). Siehe docs/RELEASING.md.
+name: Release Please
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      # Die App ist eine release-please-Komponente (component "app") → Tag
+      # app-vX.Y.Z. Der loest build-on-tag NICHT von selbst aus (GITHUB_TOKEN-
+      # Tags triggern keine Workflows) — deshalb der Dispatch-Job unten.
+      app_released: ${{ steps.release.outputs['apps/reference--release_created'] }}
+      app_tag: ${{ steps.release.outputs['apps/reference--tag_name'] }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          manifest-file: .release-please-manifest.json
+          config-file: release-please-config.json
+
+  # Wurde die App released (Tag app-vX.Y.Z), den nativen Build anstossen.
+  # workflow_dispatch ist von der GITHUB_TOKEN-Sperre ausgenommen. build-on-tag
+  # checkt inputs.tag aus, also traegt build-info.commit den Tag-Commit — genau
+  # worauf die Signier-Pipeline (verify_attested_artifact) bindet. Signiert/
+  # deployt wird danach auf dem Server: docker compose run --rm signer|play-publish.
+  trigger-app-build:
+    needs: release-please
+    if: needs.release-please.outputs.app_released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: build-on-tag fuer den App-Tag anstossen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_TAG: ${{ needs.release-please.outputs.app_tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "$APP_TAG" ]; then
+            echo "ABBRUCH: app_released=true, aber kein app_tag-Output (Schema-Aenderung?)." >&2
+            exit 1
+          fi
+          echo "starte build-on-tag fuer $APP_TAG"
+          gh workflow run build-on-tag.yml --repo "$GITHUB_REPOSITORY" -f tag="$APP_TAG"
