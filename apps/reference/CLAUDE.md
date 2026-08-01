@@ -61,7 +61,9 @@ Ermöglicht Web-Bundle-Updates ohne neuen App-Store-Release via `@capawesome/cap
 | `android` | Google Play Store |
 | `android-foss` | F-Droid / ohne Google Services |
 
-Jeder Channel hat eine eigene `latest.json`, wird aber mit demselben Web-Bundle gebaut (sofern keine FOSS-spezifischen Env-Vars nötig sind).
+Jeder Channel hat eine eigene `latest.json` **und ein eigenes Web-Bundle**: das Bundle wird mit
+`VITE_UPDATE_CHANNEL=<channel>` gebaut und trägt seinen Kanal damit selbst. Das ist nötig, weil
+nach einem OTA-Reload das heruntergeladene Bundle läuft — siehe unten und #193.
 
 ### Einrichtung Update-Server
 
