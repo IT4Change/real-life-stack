@@ -73,13 +73,20 @@ jobs:
       # (the web deployment base) makes every asset 404 after an OTA
       # reload — a blank screen. The web-of-trust demo gets this right.
       #
-      # EINMAL bauen, dreimal zippen. Der Build war je Channel identisch —
-      # `$channel` kam im Build-Kommando nicht vor und `VITE_UPDATE_CHANNEL`
-      # wird hier bewusst nicht gesetzt (siehe apps/reference/CLAUDE.md: der
-      # Channel wird erst beim nativen Build gesetzt, im Web-Bundle spielt er
-      # keine Rolle). Die drei Zips hatten also denselben Inhalt, erzeugt aus
-      # drei identischen Builds. Spart zwei komplette Reference-Builds pro
-      # Deploy, ohne dass sich an den Artefakten etwas ändert.
+      # Vorher stand der Reference-Build INNERHALB der Schleife, obwohl
+      # `$channel` im Build-Kommando gar nicht vorkam: drei identische Builds
+      # für drei inhaltsgleiche Archive. Jetzt einmal bauen und dasselbe
+      # Ergebnis dreimal zippen — spart zwei komplette Reference-Builds pro
+      # Deploy, an den Artefakten ändert sich nichts.
+      #
+      # Dass die drei Archive gleich sind, ist allerdings KEINE Zusicherung,
+      # sondern ein Defekt — siehe #193: `live-update.ts` liest
+      # `VITE_UPDATE_CHANNEL` zur Build-Zeit ins Bundle, und ohne den Wert
+      # fällt der Kanal zur Laufzeit auf `Capacitor.getPlatform()` zurück.
+      # Die F-Droid-App prüft nach einem OTA-Reload dadurch den Play-Kanal.
+      # Wird #193 über kanalabhängige Bundles gelöst, gehört der Build wieder
+      # in die Schleife — dann mit `VITE_UPDATE_CHANNEL: ${channel}` als
+      # echtem Unterschied.
       - name: Build OTA bundles
         run: |
           pnpm --filter reference build
