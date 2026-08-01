@@ -79,10 +79,22 @@ Statische Dateien auf GitHub Pages (`real-life-stack.de`), Zips in GitHub Releas
 
 ### Bundle erstellen & deployen
 
-Über GitHub Actions: **Actions → "OTA Release" → "Run workflow"** → Version + Channels eingeben.
+Automatisch: jeder Push auf `master`, der `apps/**`, `packages/**`, `pnpm-workspace.yaml` oder
+den Workflow selbst berührt, startet **Actions → "Deploy"** (`.github/workflows/deploy-prototypes.yml`).
+Einen eigenen „OTA Release"-Workflow gibt es nicht.
 
-Der Workflow baut das Bundle pro Channel, erstellt einen GitHub Release mit den Zips und
-committed die `latest.json` Dateien automatisch in den `gh-pages` Branch.
+Der Job baut je Kanal ein Bundle, prüft den Kanal-Sentinel, legt einen GitHub Release
+`ota-<short-sha>` mit den drei Zips an und schreibt die `latest.json`-Dateien in das
+Pages-Artefakt. Veröffentlicht wird über `upload-pages-artifact` + `deploy-pages` — es wird
+**nichts** in einen Branch committet. Der vorhandene `gh-pages`-Branch ist eine Altlast vom
+06.04.2026 und enthält kein `updates/`; Pages steht auf `build_type=workflow`.
+
+### OTA-Rollback
+
+Der einzige manuelle Eingriff. **Actions → "Deploy" → "Run workflow"** und bei `rollback_tag`
+den Ziel-Release eintragen (z.B. `ota-a3f9c12`). Dann wird kein neuer Release erzeugt; die
+`latest.json` zeigen stattdessen auf die Bundles dieses Tags, deren Hashes der Job frisch
+nachrechnet.
 
 ### Wie es funktioniert
 
