@@ -73,29 +73,65 @@ jobs:
       # (the web deployment base) makes every asset 404 after an OTA
       # reload — a blank screen. The web-of-trust demo gets this right.
       #
-      # Vorher stand der Reference-Build INNERHALB der Schleife, obwohl
-      # `$channel` im Build-Kommando gar nicht vorkam: drei identische Builds
-      # für drei inhaltsgleiche Archive. Jetzt einmal bauen und dasselbe
-      # Ergebnis dreimal zippen — spart zwei komplette Reference-Builds pro
-      # Deploy, an den Artefakten ändert sich nichts.
+      # Ein Build JE KANAL — das ist der Fix für #193 und der Grund, warum hier
+      # bewusst dreimal gebaut wird.
       #
-      # Dass die drei Archive gleich sind, ist allerdings KEINE Zusicherung,
-      # sondern ein Defekt — siehe #193: `live-update.ts` liest
-      # `VITE_UPDATE_CHANNEL` zur Build-Zeit ins Bundle, und ohne den Wert
-      # fällt der Kanal zur Laufzeit auf `Capacitor.getPlatform()` zurück.
-      # Die F-Droid-App prüft nach einem OTA-Reload dadurch den Play-Kanal.
-      # Wird #193 über kanalabhängige Bundles gelöst, gehört der Build wieder
-      # in die Schleife — dann mit `VITE_UPDATE_CHANNEL: ${channel}` als
-      # echtem Unterschied.
+      # `live-update.ts` liest `VITE_UPDATE_CHANNEL` zur Build-Zeit ins Bundle.
+      # Nach einem OTA-Reload läuft das HERUNTERGELADENE Bundle, nicht das
+      # eingebaute — es kennt seinen Kanal also nur, wenn er beim Bau gesetzt
+      # war. Ohne ihn greift der Fallback `Capacitor.getPlatform()`.
+      #
+      # Der ist für zwei von drei Kanälen zufällig richtig, weil `ios` und
+      # `android` wie ihre Plattform heissen. `android-foss` nicht: eine
+      # F-Droid-Installation landete damit auf dem Play-Kanal. Deshalb
+      # bekommt jeder Kanal seinen eigenen Build statt sich auf die
+      # Namensgleichheit zu verlassen.
       - name: Build OTA bundles
         run: |
-          pnpm --filter reference build
           for channel in ios android android-foss; do
+            VITE_UPDATE_CHANNEL="$channel" pnpm --filter reference build
             (cd apps/reference/dist && zip -r "../../../bundle-${channel}-${SHORT_SHA}.zip" .)
           done
         env:
           VITE_BASE_PATH: /
           VITE_UPDATE_SERVER_URL: https://real-life-stack.de
+
+      # Sentinel wie in scripts/release/build-android.sh: der String
+      # 'android-foss' kommt NUR über VITE_UPDATE_CHANNEL ins Bundle. Er MUSS
+      # im foss-Archiv stehen und DARF NICHT in den beiden anderen — das fängt
+      # sowohl den verlorenen Kanal (#193) als auch vertauschte Archive.
+      #
+      # Nur dieser eine String wird geprüft: 'ios' und 'android' sind zu kurz
+      # und kommen auch sonst im Bundle vor, eine Positiv-Prüfung darauf wäre
+      # wertlos. Ausserdem faltet der Minifier den Fallback weg, sobald der
+      # Kanal konstant ist — greppbar bleibt zuverlässig nur der Kanalname
+      # selbst.
+      #
+      # Geprüft wird ausschliesslich `assets/*.js`, exakt wie `verify_bundle()`
+      # im Release-Skript (`grep -rlq "$OTA_SENTINEL" "$d"/*.js`). Über das
+      # ganze Archiv zu greppen würde eine statische HTML-, JSON- oder
+      # SVG-Datei mit demselben String genügen lassen — der Kanal muss aber im
+      # ausführbaren JS stehen, sonst nützt er zur Laufzeit nichts.
+      - name: Verify OTA channel sentinel
+        run: |
+          set -euo pipefail
+          for channel in ios android android-foss; do
+            zip="bundle-${channel}-${SHORT_SHA}.zip"
+            rm -rf /tmp/sentinel && mkdir -p /tmp/sentinel
+            unzip -q "$zip" -d /tmp/sentinel
+            ls /tmp/sentinel/assets/*.js >/dev/null 2>&1 \
+              || { echo "FEHLER: $zip enthaelt kein assets/*.js" >&2; exit 1; }
+            if grep -lqF 'android-foss' /tmp/sentinel/assets/*.js; then found=yes; else found=no; fi
+            if [ "$channel" = android-foss ] && [ "$found" != yes ]; then
+              echo "FEHLER: $zip enthaelt seinen Kanal 'android-foss' nicht (#193)" >&2
+              exit 1
+            fi
+            if [ "$channel" != android-foss ] && [ "$found" = yes ]; then
+              echo "FEHLER: $zip enthaelt 'android-foss' — vertauschtes Archiv?" >&2
+              exit 1
+            fi
+            echo "ok: $zip"
+          done
 
       # The Pages build is served at real-life-stack.de/app/, so it
       # keeps base "/app/".

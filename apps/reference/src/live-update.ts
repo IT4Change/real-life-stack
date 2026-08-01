@@ -1,6 +1,31 @@
 import { Capacitor } from "@capacitor/core"
 import { LiveUpdate } from "@capawesome/capacitor-live-update"
 
+/** Sentinel channel for builds that must never self-update (Play Store). */
+export const NO_UPDATE_CHANNEL = '__local__'
+
+/**
+ * Which update channel this bundle belongs to.
+ *
+ * `buildChannel` is `VITE_UPDATE_CHANNEL`, baked in at build time — so it is a
+ * property of the *running bundle*, not of the installed app. After an OTA
+ * reload the running bundle is the DOWNLOADED one, and it only knows its
+ * channel if it was built with the variable set.
+ *
+ * The platform fallback is a last resort and silently correct for two of three
+ * channels: `ios` and `android` happen to be spelled like their platform.
+ * `android-foss` is not — an F-Droid install whose bundle lacks the variable
+ * resolves to `android` and starts polling the Play channel. That was #193;
+ * the fix is that every OTA bundle is built with its own channel, see
+ * `.github/workflows/deploy-prototypes.yml`.
+ */
+export function resolveUpdateChannel(
+  buildChannel: string | undefined,
+  platform: string,
+): string {
+  return buildChannel || platform
+}
+
 /**
  * Checks for OTA updates on app startup.
  * Only runs on native platforms (iOS/Android), no-op in browser.
@@ -9,15 +34,16 @@ import { LiveUpdate } from "@capawesome/capacitor-live-update"
  *   https://real-life-stack.de/updates/ios/latest.json
  *   https://real-life-stack.de/updates/android/latest.json
  *   https://real-life-stack.de/updates/android-foss/latest.json
- *
- * Falls back to platform name if VITE_UPDATE_CHANNEL is not set.
  */
 export async function checkForLiveUpdate(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return
 
-  const channel = import.meta.env.VITE_UPDATE_CHANNEL || Capacitor.getPlatform()
+  const channel = resolveUpdateChannel(
+    import.meta.env.VITE_UPDATE_CHANNEL,
+    Capacitor.getPlatform(),
+  )
 
-  if (channel === '__local__') {
+  if (channel === NO_UPDATE_CHANNEL) {
     await LiveUpdate.reset().catch(() => {})
     return
   }
