@@ -93,7 +93,7 @@ import type {
   SpaceHandle,
   WireMessage,
 } from "@real-life/wot-core/ports"
-import { hasDeterministicPrivateSpace, hasDurableTransact } from "@real-life/wot-core/ports"
+import { hasDeterministicPrivateSpace } from "@real-life/wot-core/ports"
 import {
   YjsReplicationAdapter,
   YjsStorageAdapter,
@@ -2202,7 +2202,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
       const legacyIds = privateSpaces.map((space) => space.id).filter((id) => id !== canonical.id)
       if (legacyIds.length > 0) {
-        await this.migratePrivateSpaceDuplicates(canonical.id, legacyIds)
+        // Deterministic regime: additively copy — NO destructive teardown until
+        // the durable migration phase machine lands (follow-up PR).
+        await this.copyLegacyPrivateSpaceData(canonical.id, legacyIds)
         return
       }
       if (previousPrivateSpaceId !== canonical.id && this.currentGroupId === null) {
@@ -2245,6 +2247,12 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       .filter((id) => id !== canonical.id)
 
     if (duplicateIds.length > 0) {
+      if (deterministicId !== null && canonical.id === deterministicId) {
+        // Deterministic regime (non-creating path): additive copy only.
+        await this.copyLegacyPrivateSpaceData(canonical.id, duplicateIds)
+        return
+      }
+      // Legacy regime (non-capable adapter): unchanged behaviour since #170.
       await this.migratePrivateSpaceDuplicates(canonical.id, duplicateIds)
       return
     }
@@ -2272,85 +2280,43 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     if (!this.replication) return
 
     const targetHandle = await this.replication.openSpace<RlsSpaceDoc>(canonicalId)
-    // The migration's teardown contract REQUIRES the transaction-bound durability
-    // ack (adapter-yjs >= 0.2.2): transactDurable resolves only after the log
-    // entry of exactly this merge is durably persisted, and rejects otherwise.
-    // No fire-and-forget fallback — without the capability we must not migrate.
-    if (!hasDurableTransact<RlsSpaceDoc>(targetHandle)) {
-      throw new Error(
-        "[WotConnector] private-space migration requires a durability-acknowledging adapter (SpaceHandle.transactDurable)",
-      )
-    }
     let changed = false
 
     for (const duplicateId of duplicateIds) {
       const sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(duplicateId)
       const sourceDocSnapshot = sourceHandle.getDoc()
-      // Deep-materialized item SNAPSHOT: the cleanup below compares against it to
-      // delete only what was actually migrated — a live reference would compare
-      // a mid-flight edit against itself and wrongly qualify it for deletion.
-      const sourceItems = JSON.parse(JSON.stringify(sourceDocSnapshot.items ?? {})) as Record<string, SerializedItem>
+      const sourceItems = sourceDocSnapshot.items ?? {}
       const entries = Object.entries(sourceItems) as Array<[string, SerializedItem]>
-      // Materialized SNAPSHOT of the activity keys — getDoc() may hand out a live
-      // reference (engine-dependent); the cleanup below must only ever delete
-      // what was part of this snapshot, never keys that arrived mid-flight.
-      const sourceActivity = { ...(sourceHandle.getDoc().activity ?? {}) }
       // A duplicate can be item-empty but still carry history of deleted items.
-      // A fully EMPTY source needs no durable merge: if a previous run emptied it,
-      // that run had already confirmed the target commit BEFORE its source
-      // cleanup (see ordering below), so teardown is safe.
-      if (entries.length > 0 || Object.keys(sourceActivity).length > 0) {
-        // Plan the target slot per item — fail-closed on true second collisions.
-        const targetBefore = targetHandle.getDoc()
-        const idRemap = new Map<string, string>()
-        for (const [itemId, serialized] of entries) {
-          // DETERMINISTIC remap id from (legacySpaceId, itemId): concurrent
-          // devices produce the SAME target key, the CRDT merge deduplicates.
-          const remapId = `${itemId}-private-${duplicateId}`
-          const existing = targetBefore.items?.[itemId]
-          if (!existing || this.sameMigratedItem(existing, serialized)) {
-            idRemap.set(itemId, itemId)
-            continue
-          }
-          const remapSlot = targetBefore.items?.[remapId]
-          if (remapSlot && !this.sameMigratedItem(remapSlot, serialized)) {
-            // The deterministic slot is occupied by a DIFFERENT canonical item —
-            // overwriting would be a data-loss path. Abort with the source intact.
-            throw new Error(
-              `[WotConnector] private-space migration: remap slot ${remapId} is occupied by a different item — aborting without teardown`,
-            )
-          }
-          idRemap.set(itemId, remapId)
-        }
-
-        // ONE durable commit covers items AND activity. Every planned slot is
-        // written unconditionally — also when the copy is already visible from a
-        // crashed earlier run: that same-bytes re-set is what produces a FRESH
-        // confirmed append, so a retry never tears down on an unproven copy.
-        await targetHandle.transactDurable((targetDoc: RlsSpaceDoc) => {
+      if (entries.length > 0 || Object.keys(sourceDocSnapshot.activity ?? {}).length > 0) {
+        const migratedIds = new Set<string>()
+        targetHandle.transact((targetDoc: RlsSpaceDoc) => {
           if (!targetDoc.items) targetDoc.items = {}
+          const idRemap = new Map<string, string>()
+
+          for (const [itemId, serialized] of entries) {
+            const targetItemId = targetDoc.items[itemId]
+              ? `${itemId}-private-${crypto.randomUUID()}`
+              : itemId
+            idRemap.set(itemId, targetItemId)
+          }
+
           for (const [itemId, serialized] of entries) {
             const targetItemId = idRemap.get(itemId)!
             targetDoc.items[targetItemId] = this.cloneSerializedItem(serialized, targetItemId, idRemap)
+            migratedIds.add(itemId)
           }
+
           // The ENTIRE activity history migrates (also entries whose items are
           // already deleted — Regel 7 keeps those readable); only targetIds of
           // migrated items get remapped. The merged map is pruned to the
-          // normative 500 cap in the SAME durable commit (Regel 4).
+          // normative 500 cap in the SAME transact (Regel 4).
+          const sourceActivity = sourceHandle.getDoc().activity ?? {}
           for (const [entryId, entry] of Object.entries(sourceActivity)) {
             if (targetDoc.activity?.[entryId]) continue
             const activity = targetDoc.activity ?? (targetDoc.activity = {})
             const remapped = idRemap.get(entry.targetId)
             activity[entryId] = remapped ? { ...entry, targetId: remapped } : { ...entry }
-            // TOMBSTONE (review round 5): a migrated delete-activity must be
-            // APPLIED, not only copied as history — otherwise a copy migrated in
-            // an earlier round resurrects the deleted item. The createdAt guard
-            // keeps items that were (re-)created AFTER the deletion.
-            if (entry.action === "delete") {
-              const slot = remapped ?? entry.targetId
-              const existing = targetDoc.items?.[slot]
-              if (existing && existing.createdAt <= entry.ts) delete targetDoc.items[slot]
-            }
           }
           const merged = targetDoc.activity
           if (merged) {
@@ -2359,72 +2325,114 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
             }
           }
         })
-        // MID-FLIGHT DELETIONS (review round 5): a snapshot item that VANISHED
-        // from the source during the durable await was deleted concurrently. The
-        // durably migrated copy must not resurrect it — remove the target copy in
-        // a second transaction-bound durable commit, guarded to the still-unedited
-        // migrated version (a canonical edit wins over the stale deletion).
-        const sourceAfterAck = sourceHandle.getDoc().items ?? {}
-        const deletedMidFlight = entries.filter(([itemId]) => sourceAfterAck[itemId] === undefined)
-        if (deletedMidFlight.length > 0) {
-          await targetHandle.transactDurable((targetDoc: RlsSpaceDoc) => {
-            for (const [itemId, snapshotItem] of deletedMidFlight) {
-              const slot = idRemap.get(itemId)!
-              const migrated = targetDoc.items?.[slot]
-              if (migrated && this.sameMigratedItem(migrated, snapshotItem)) {
-                delete targetDoc.items[slot]
-              }
-            }
-          })
-        }
 
-        // transactDurable resolved → the merge entry is durably logged. Only now
-        // may the source be emptied; a crash before this point leaves the source
-        // intact and the next reconcile retries idempotently.
         sourceHandle.transact((sourceDoc: RlsSpaceDoc) => {
-          for (const [itemId, snapshotItem] of entries) {
-            // DELETE-IF-UNCHANGED: only the exact snapshotted version was part of
-            // the confirmed durable commit. If the item was EDITED under the same
-            // id during the durable await, deleting it would destroy the only
-            // copy of the new version — keep it; the residual guard below blocks
-            // the teardown and the next reconcile migrates the edited version
-            // (content-inclusive identity routes it to the deterministic remap
-            // slot — a duplicate at worst, never data loss).
-            const current = sourceDoc.items[itemId]
-            if (current && JSON.stringify(current) === JSON.stringify(snapshotItem)) {
-              delete sourceDoc.items[itemId]
-            }
+          for (const itemId of migratedIds) {
+            delete sourceDoc.items[itemId]
           }
-          // Delete ONLY the snapshotted history entries — activity that arrived
-          // while we awaited the durable ack was never part of the confirmed
-          // commit and must survive for the next migration round.
+          // The whole history moved to the canonical space.
           if (sourceDoc.activity) {
-            for (const entryId of Object.keys(sourceActivity)) delete sourceDoc.activity[entryId]
+            for (const entryId of Object.keys(sourceDoc.activity)) delete sourceDoc.activity[entryId]
           }
         })
       }
 
-      // SOURCE-CHANGE GUARD: anything that landed in the legacy space between
-      // the snapshot and this point (local edit or remote apply during the
-      // durable await) is NOT in the confirmed target commit. leaveSpace() would
-      // discard it — so teardown only runs on a provably empty source; a
-      // residual source stays fully intact for the next reconcile round.
-      const residual = sourceHandle.getDoc()
-      if (Object.keys(residual.items ?? {}).length > 0 || Object.keys(residual.activity ?? {}).length > 0) {
-        changed = true // the canonical space did change above
-        continue
-      }
-
       // `leaveSpace()` is the replication layer's public local teardown path.
       // It removes this replica and its metadata; it neither removes members nor
-      // rotates keys. For non-empty duplicates it runs only after the CONFIRMED
-      // durable target commit and the source cleanup above.
+      // rotates keys. For non-empty duplicates it runs only after both writes above.
       await this.replication.leaveSpace(duplicateId)
       changed = true
     }
 
     if (!changed) return
 
+    this.crossGroupIndex?.reindexGroup(canonicalId)
+    this.notifyAllObservers(true)
+  }
+
+  /**
+   * NON-DESTRUCTIVE legacy copy for the deterministic-genesis regime (reduced
+   * #192 scope): additively converge legacy private-space data into the
+   * canonical space so nothing is invisible to the user — but NEVER tear the
+   * legacy space down. The destructive migration (source cleanup + leaveSpace)
+   * needs a durable phase machine with a persisted per-(identity, legacy,
+   * canonical) record — phase, id mapping, fingerprints, tombstones, confirmed
+   * commits, cleanup progress — and follows in its own PR. Until then legacy
+   * duplicates stay temporarily, but SAFELY.
+   *
+   * Convergence contract: pure copy, idempotent, re-run on every reconcile. A
+   * fully copied source produces an empty plan and no write at all (no log
+   * bloat). Slot routing is deterministic ((legacySpaceId, itemId) remap); a
+   * pathological second collision skips the item with a warning — the data
+   * stays visible-safe in the source until the phase machine resolves it.
+   */
+  private async copyLegacyPrivateSpaceData(canonicalId: string, legacyIds: string[]): Promise<void> {
+    if (!this.replication) return
+    const targetHandle = await this.replication.openSpace<RlsSpaceDoc>(canonicalId)
+    let copiedAnything = false
+
+    for (const legacyId of legacyIds) {
+      const sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(legacyId)
+      const sourceDoc = sourceHandle.getDoc()
+      const sourceItems = JSON.parse(JSON.stringify(sourceDoc.items ?? {})) as Record<string, SerializedItem>
+      const sourceActivity = { ...(sourceDoc.activity ?? {}) }
+      const targetDocBefore = targetHandle.getDoc()
+
+      // Plan first — copy only what the canonical space does not already hold.
+      const idRemap = new Map<string, string>()
+      const toCopy: Array<[string, SerializedItem]> = []
+      for (const [itemId, serialized] of Object.entries(sourceItems)) {
+        const existing = targetDocBefore.items?.[itemId]
+        if (!existing) {
+          idRemap.set(itemId, itemId)
+          toCopy.push([itemId, serialized])
+          continue
+        }
+        if (this.sameMigratedItem(existing, serialized)) {
+          idRemap.set(itemId, itemId) // already copied — relations may still point here
+          continue
+        }
+        const remapId = `${itemId}-private-${legacyId}`
+        const remapSlot = targetDocBefore.items?.[remapId]
+        if (!remapSlot) {
+          idRemap.set(itemId, remapId)
+          toCopy.push([itemId, serialized])
+          continue
+        }
+        if (this.sameMigratedItem(remapSlot, serialized)) {
+          idRemap.set(itemId, remapId) // already copied under the remap slot
+          continue
+        }
+        // Pathological second collision: skip non-destructively — the item stays
+        // in the (still existing) legacy space; the phase machine will resolve it.
+        console.warn(`[WotConnector] private-space copy: remap slot ${remapId} occupied by a different item — skipping (legacy space is kept)`)
+      }
+      const activityToCopy = Object.entries(sourceActivity)
+        .filter(([entryId]) => !(targetDocBefore.activity?.[entryId]))
+      if (toCopy.length === 0 && activityToCopy.length === 0) continue
+
+      targetHandle.transact((targetDoc: RlsSpaceDoc) => {
+        if (!targetDoc.items) targetDoc.items = {}
+        for (const [itemId, serialized] of toCopy) {
+          const slot = idRemap.get(itemId)!
+          targetDoc.items[slot] = this.cloneSerializedItem(serialized, slot, idRemap)
+        }
+        for (const [entryId, entry] of activityToCopy) {
+          const activity = targetDoc.activity ?? (targetDoc.activity = {})
+          const remapped = idRemap.get(entry.targetId)
+          activity[entryId] = remapped ? { ...entry, targetId: remapped } : { ...entry }
+        }
+        const merged = targetDoc.activity
+        if (merged) {
+          for (const oldest of Object.values(merged).sort(compareActivity).slice(500)) {
+            delete merged[oldest.id]
+          }
+        }
+      })
+      copiedAnything = true
+    }
+
+    if (!copiedAnything) return
     this.crossGroupIndex?.reindexGroup(canonicalId)
     this.notifyAllObservers(true)
   }
