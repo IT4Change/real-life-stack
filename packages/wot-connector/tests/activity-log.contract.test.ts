@@ -54,6 +54,12 @@ function handle(value = doc()) {
       fn(value)
       snapshots.push(structuredClone(value))
     }),
+    // Production adapters (adapter-yjs >= 0.2.2) resolve only after the durable
+    // append of exactly this transaction; the contract fake applies + resolves.
+    transactDurable: vi.fn(async (fn: (next: RlsSpaceDoc) => void) => {
+      fn(value)
+      snapshots.push(structuredClone(value))
+    }),
     onRemoteUpdate: (cb: () => void) => { remote.add(cb); return () => remote.delete(cb) },
     close: vi.fn(),
   }

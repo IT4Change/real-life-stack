@@ -18,6 +18,7 @@ import {
   type User,
 } from "@real-life-stack/data-interface"
 import type { SpaceInfo } from "@real-life/wot-core"
+import { derivePrivateSpaceGenesis } from "@real-life/wot-core/protocol"
 
 import { WotConnector } from "../src/wot-connector.js"
 import type { RlsSpaceDoc, SerializedItem, WotSyncState } from "../src/types.js"
@@ -77,7 +78,8 @@ vi.mock("@real-life/wot-core", () => {
   }
 })
 
-vi.mock("@real-life/wot-core/protocol", () => ({
+vi.mock("@real-life/wot-core/protocol", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@real-life/wot-core/protocol")>(),
   x25519MultibaseToPublicKeyBytes: vi.fn(() => new Uint8Array()),
   // Verhaltensgleich zum Core: Marker wird NUR aus dem VC-Typ-Array abgeleitet.
   isVerificationAttestation: (payload: { type?: unknown }) =>
@@ -960,10 +962,16 @@ function createSpaceInfo(id: string, appTag = "rls-private"): SpaceInfo {
   }
 }
 
-function createSpaceHandle(doc: RlsSpaceDoc) {
+function createSpaceHandle(doc: RlsSpaceDoc, opts?: { durableTransact?: (fn: (spaceDoc: RlsSpaceDoc) => void, doc: RlsSpaceDoc) => Promise<void> }) {
   return {
     getDoc: () => doc,
     transact: (fn: (spaceDoc: RlsSpaceDoc) => void) => fn(doc),
+    // Production adapters (adapter-yjs >= 0.2.2) resolve only after the durable
+    // append of exactly this transaction; the default fake applies + resolves.
+    transactDurable: vi.fn(async (fn: (spaceDoc: RlsSpaceDoc) => void) => {
+      if (opts?.durableTransact) return opts.durableTransact(fn, doc)
+      fn(doc)
+    }),
     close: vi.fn(),
     onRemoteUpdate: vi.fn(() => () => {}),
   }
@@ -1023,6 +1031,33 @@ function createFakePrivateSpaceConnector(spaces: SpaceInfo[], docs: Record<strin
   }
   Object.setPrototypeOf(fake, WotConnector.prototype)
   return fake
+}
+
+/** Deterministic fake derivation: bytes derived from the info string only. */
+const fakeDerive = async (info: string, length: number): Promise<Uint8Array> => {
+  const bytes = new Uint8Array(length)
+  for (let i = 0; i < length; i += 1) bytes[i] = (info.length * 31 + i * 7) % 256
+  return bytes
+}
+
+/** Upgrade a fake connector to a deterministic-genesis-capable adapter (PR 2). */
+function makeDeterministicCapable(
+  fake: ReturnType<typeof createFakePrivateSpaceConnector>,
+  spaces: SpaceInfo[],
+  docs: Record<string, RlsSpaceDoc>,
+  deterministicId: string,
+) {
+  ;(fake as any).identity = { getDid: () => "did:key:fake-owner", deriveFrameworkKey: fakeDerive }
+  ;(fake as any).deterministicPrivateSpaceId = null
+  ;(fake.replication as any).openOrCreateDeterministicPrivateSpace = vi.fn(
+    async (initialDoc: RlsSpaceDoc, metadata: Partial<SpaceInfo>) => {
+      const existing = spaces.find((space) => space.id === deterministicId)
+      if (existing) return existing
+      spaces.push(createSpaceInfo(deterministicId, metadata.appTag ?? "rls-private"))
+      docs[deterministicId] = initialDoc
+      return spaces[spaces.length - 1]
+    },
+  )
 }
 
 describe("WotConnector private space reconciliation", () => {
@@ -1151,6 +1186,111 @@ describe("WotConnector private space reconciliation", () => {
     expect(spaces.filter((space) => space.appTag === "rls-private")).toHaveLength(1)
     expect(reloaded.privateSpaceId).toBe("private-a")
     expect(reloaded.replication.leaveSpace).not.toHaveBeenCalled()
+  })
+
+  it("uses the deterministic private space as canonical and leaves legacy spaces completely untouched", async () => {
+    // Reduced #192 scope: no random space is ever minted, and legacy duplicates
+    // are NEITHER copied NOR torn down (they stay indexed and visible through
+    // the cross-group read model). The real migration is #198.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const spaces = [createSpaceInfo("legacy-a")]
+    const docs: Record<string, RlsSpaceDoc> = {
+      "legacy-a": { _type: "rls", items: { keep: createSerializedItem("keep", "Keep") } } as RlsSpaceDoc,
+    }
+    const legacyBefore = JSON.stringify(docs["legacy-a"])
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+
+    expect((fake.replication as any).openOrCreateDeterministicPrivateSpace).toHaveBeenCalled()
+    expect(fake.replication.createSpace).not.toHaveBeenCalled() // never the random path
+    expect(fake.privateSpaceId).toBe(detId)
+    expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
+    expect(fake.replication.openSpace).not.toHaveBeenCalled() // no copy, no write at all
+    expect(JSON.stringify(docs["legacy-a"])).toBe(legacyBefore) // byte-identical
+  })
+  it("prefers the deterministic space as canonical on non-creating paths — never migrates backwards", async () => {
+    // Guard: the lowest-id heuristic must NOT pick a legacy space over the
+    // deterministic one. "aaaa..." sorts BEFORE the derived id, so without the
+    // preference the deterministic space would be merged into legacy and torn down.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const legacyId = "aaaaaaaa-0000-4000-8000-000000000000"
+    expect(legacyId < detId).toBe(true) // precondition of the repro
+    const spaces = [createSpaceInfo(legacyId), createSpaceInfo(detId)]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [legacyId]: { _type: "rls", items: { m: createSerializedItem("m", "Move me") } } as RlsSpaceDoc,
+      [detId]: { _type: "rls", items: {} } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: false })
+
+    expect(fake.privateSpaceId).toBe(detId)
+    expect(fake.replication.leaveSpace).not.toHaveBeenCalled() // untouched regime
+    expect(docs[detId].items.m).toBeUndefined() // nothing copied (that is #198)
+    expect(docs[legacyId].items.m.data.title).toBe("Move me") // source intact
+  })
+
+  it("a transient derivation failure never falls back to a random space and heals on retry", async () => {
+    // Review blocker 2: a derivation error was cached as null for the whole
+    // session and routed the capable adapter onto the legacy random-create path.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const spaces: SpaceInfo[] = []
+    const docs: Record<string, RlsSpaceDoc> = {}
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+    let failFirst = true
+    ;(fake as any).identity = {
+      getDid: () => "did:key:fake-owner",
+      deriveFrameworkKey: async (info: string, length?: number) => {
+        if (failFirst) { failFirst = false; throw new Error("transient key failure") }
+        return fakeDerive(info, length ?? 32)
+      },
+    }
+
+    // First reconcile: fail-closed — NO random space is minted.
+    await expect(
+      (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true }),
+    ).rejects.toThrow(/transient key failure/)
+    expect(fake.replication.createSpace).not.toHaveBeenCalled()
+    expect(spaces).toHaveLength(0)
+
+    // Second reconcile: the failed flight was evicted — derivation retries and
+    // opens ONLY the deterministic space.
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+    expect(fake.replication.createSpace).not.toHaveBeenCalled()
+    expect((fake.replication as any).openOrCreateDeterministicPrivateSpace).toHaveBeenCalled()
+    expect(spaces.map((s) => s.id)).toEqual([detId])
+  })
+
+  it("re-derives the private-space id when the identity changes — no cross-identity cache leak", async () => {
+    // Review blocker: the derived-id cache survived an identity switch that
+    // bypasses the teardown paths — identity B inherited A's private-space id.
+    // The cache is now BOUND to the identity DID.
+    const fakeDeriveB = async (info: string, length: number): Promise<Uint8Array> => {
+      const bytes = new Uint8Array(length)
+      for (let i = 0; i < length; i += 1) bytes[i] = (info.length * 13 + i * 3 + 7) % 256
+      return bytes
+    }
+    const idA = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const idB = (await derivePrivateSpaceGenesis(fakeDeriveB)).spaceId
+    expect(idB).not.toBe(idA) // precondition
+
+    const spaces: SpaceInfo[] = []
+    const docs: Record<string, RlsSpaceDoc> = {}
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, idA)
+    ;(fake as any).identity = { getDid: () => "did:key:alice", deriveFrameworkKey: fakeDerive }
+
+    const first = await (WotConnector.prototype as any).resolveDeterministicPrivateSpaceId.call(fake)
+    expect(first).toBe(idA)
+
+    // Identity switch WITHOUT any teardown/reset call:
+    ;(fake as any).identity = { getDid: () => "did:key:bob", deriveFrameworkKey: fakeDeriveB }
+    const second = await (WotConnector.prototype as any).resolveDeterministicPrivateSpaceId.call(fake)
+    expect(second).toBe(idB) // NOT A's cached id
   })
 
   it("keeps a non-empty duplicate when its migration fails", async () => {
