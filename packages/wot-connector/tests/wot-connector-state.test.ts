@@ -1047,7 +1047,7 @@ function makeDeterministicCapable(
   docs: Record<string, RlsSpaceDoc>,
   deterministicId: string,
 ) {
-  ;(fake as any).identity = { deriveFrameworkKey: fakeDerive }
+  ;(fake as any).identity = { getDid: () => "did:key:fake-owner", deriveFrameworkKey: fakeDerive }
   ;(fake as any).deterministicPrivateSpaceId = null
   ;(fake.replication as any).openOrCreateDeterministicPrivateSpace = vi.fn(
     async (initialDoc: RlsSpaceDoc, metadata: Partial<SpaceInfo>) => {
@@ -1188,15 +1188,16 @@ describe("WotConnector private space reconciliation", () => {
     expect(reloaded.replication.leaveSpace).not.toHaveBeenCalled()
   })
 
-  it("uses the deterministic private space as canonical and migrates legacy spaces into it", async () => {
-    // PR 2: with a deterministic-genesis-capable adapter, createIfMissing:true
-    // must open-or-create the DERIVED space (idempotent, no random id) and
-    // actively migrate every legacy random-id private space into it.
+  it("uses the deterministic private space as canonical and leaves legacy spaces completely untouched", async () => {
+    // Reduced #192 scope: no random space is ever minted, and legacy duplicates
+    // are NEITHER copied NOR torn down (they stay indexed and visible through
+    // the cross-group read model). The real migration is #198.
     const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
     const spaces = [createSpaceInfo("legacy-a")]
     const docs: Record<string, RlsSpaceDoc> = {
       "legacy-a": { _type: "rls", items: { keep: createSerializedItem("keep", "Keep") } } as RlsSpaceDoc,
     }
+    const legacyBefore = JSON.stringify(docs["legacy-a"])
     const fake = createFakePrivateSpaceConnector(spaces, docs)
     makeDeterministicCapable(fake, spaces, docs, detId)
 
@@ -1205,13 +1206,10 @@ describe("WotConnector private space reconciliation", () => {
     expect((fake.replication as any).openOrCreateDeterministicPrivateSpace).toHaveBeenCalled()
     expect(fake.replication.createSpace).not.toHaveBeenCalled() // never the random path
     expect(fake.privateSpaceId).toBe(detId)
-    expect(docs[detId].items.keep.data.title).toBe("Keep") // legacy content copied in
-    // Reduced scope: the copy is NON-destructive — no teardown until the durable
-    // migration phase machine lands. The legacy space and its data stay intact.
     expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
-    expect(docs["legacy-a"].items.keep.data.title).toBe("Keep")
+    expect(fake.replication.openSpace).not.toHaveBeenCalled() // no copy, no write at all
+    expect(JSON.stringify(docs["legacy-a"])).toBe(legacyBefore) // byte-identical
   })
-
   it("prefers the deterministic space as canonical on non-creating paths — never migrates backwards", async () => {
     // Guard: the lowest-id heuristic must NOT pick a legacy space over the
     // deterministic one. "aaaa..." sorts BEFORE the derived id, so without the
@@ -1230,75 +1228,11 @@ describe("WotConnector private space reconciliation", () => {
     await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: false })
 
     expect(fake.privateSpaceId).toBe(detId)
-    expect(docs[detId].items.m.data.title).toBe("Move me") // copied in
-    expect(fake.replication.leaveSpace).not.toHaveBeenCalled() // non-destructive
+    expect(fake.replication.leaveSpace).not.toHaveBeenCalled() // untouched regime
+    expect(docs[detId].items.m).toBeUndefined() // nothing copied (that is #198)
     expect(docs[legacyId].items.m.data.title).toBe("Move me") // source intact
   })
 
-  it("remaps colliding items deterministically from (legacySpaceId, itemId)", async () => {
-    // Two devices migrating the same legacy space concurrently must produce the
-    // SAME target key so the CRDT merge deduplicates — no random remap ids.
-    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
-    const legacyId = "bbbbbbbb-0000-4000-8000-000000000000"
-    const canonicalItem = createSerializedItem("clash", "Canonical")
-    const legacyItem = createSerializedItem("clash", "Legacy version")
-    legacyItem.createdBy = "did:key:other" // a genuinely different item
-    const spaces = [createSpaceInfo(detId), createSpaceInfo(legacyId)]
-    const docs: Record<string, RlsSpaceDoc> = {
-      [detId]: { _type: "rls", items: { clash: canonicalItem } } as RlsSpaceDoc,
-      [legacyId]: { _type: "rls", items: { clash: legacyItem } } as RlsSpaceDoc,
-    }
-    const fake = createFakePrivateSpaceConnector(spaces, docs)
-    makeDeterministicCapable(fake, spaces, docs, detId)
-
-    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
-
-    expect(docs[detId].items.clash.data.title).toBe("Canonical") // untouched
-    expect(docs[detId].items[`clash-private-${legacyId}`].data.title).toBe("Legacy version")
-  })
-
-  it("re-running the copy is a no-op: nothing is written once the canonical holds everything", async () => {
-    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
-    const migrated = createSerializedItem("solo", "Solo")
-    const spaces = [createSpaceInfo(detId), createSpaceInfo("legacy-r")]
-    const docs: Record<string, RlsSpaceDoc> = {
-      [detId]: { _type: "rls", items: { solo: JSON.parse(JSON.stringify(migrated)) } } as RlsSpaceDoc,
-      "legacy-r": { _type: "rls", items: { solo: migrated } } as RlsSpaceDoc,
-    }
-    const fake = createFakePrivateSpaceConnector(spaces, docs)
-    makeDeterministicCapable(fake, spaces, docs, detId)
-    const targetHandle = createSpaceHandle(docs[detId])
-    const writeSpy = vi.spyOn(targetHandle, "transact")
-    fake.replication.openSpace = vi.fn(async (id: string) => (id === detId ? targetHandle : createSpaceHandle(docs[id]))) as any
-
-    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
-
-    expect(writeSpy).not.toHaveBeenCalled() // empty plan → no write, no log bloat
-    expect(Object.keys(docs[detId].items)).toEqual(["solo"]) // no duplicate
-    expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
-  })
-  it("skips an item whose deterministic remap slot holds a DIFFERENT item — non-destructively", async () => {
-    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
-    const legacyId = "cccccccc-0000-4000-8000-000000000000"
-    const canonicalItem = createSerializedItem("clash", "Canonical")
-    const legacyItem = createSerializedItem("clash", "Legacy version")
-    legacyItem.createdBy = "did:key:other"
-    const occupant = createSerializedItem(`clash-private-${legacyId}`, "Innocent bystander")
-    occupant.createdBy = "did:key:third"
-    const spaces = [createSpaceInfo(detId), createSpaceInfo(legacyId)]
-    const docs: Record<string, RlsSpaceDoc> = {
-      [detId]: { _type: "rls", items: { clash: canonicalItem, [`clash-private-${legacyId}`]: occupant } } as RlsSpaceDoc,
-      [legacyId]: { _type: "rls", items: { clash: legacyItem } } as RlsSpaceDoc,
-    }
-    const fake = createFakePrivateSpaceConnector(spaces, docs)
-    makeDeterministicCapable(fake, spaces, docs, detId)
-
-    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
-
-    expect(docs[detId].items[`clash-private-${legacyId}`].data.title).toBe("Innocent bystander") // untouched
-    expect(docs[legacyId].items.clash.data.title).toBe("Legacy version") // stays safely in the source
-    expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
-  })
   it("a transient derivation failure never falls back to a random space and heals on retry", async () => {
     // Review blocker 2: a derivation error was cached as null for the whole
     // session and routed the capable adapter onto the legacy random-create path.
@@ -1309,6 +1243,7 @@ describe("WotConnector private space reconciliation", () => {
     makeDeterministicCapable(fake, spaces, docs, detId)
     let failFirst = true
     ;(fake as any).identity = {
+      getDid: () => "did:key:fake-owner",
       deriveFrameworkKey: async (info: string, length?: number) => {
         if (failFirst) { failFirst = false; throw new Error("transient key failure") }
         return fakeDerive(info, length ?? 32)
@@ -1328,6 +1263,34 @@ describe("WotConnector private space reconciliation", () => {
     expect(fake.replication.createSpace).not.toHaveBeenCalled()
     expect((fake.replication as any).openOrCreateDeterministicPrivateSpace).toHaveBeenCalled()
     expect(spaces.map((s) => s.id)).toEqual([detId])
+  })
+
+  it("re-derives the private-space id when the identity changes — no cross-identity cache leak", async () => {
+    // Review blocker: the derived-id cache survived an identity switch that
+    // bypasses the teardown paths — identity B inherited A's private-space id.
+    // The cache is now BOUND to the identity DID.
+    const fakeDeriveB = async (info: string, length: number): Promise<Uint8Array> => {
+      const bytes = new Uint8Array(length)
+      for (let i = 0; i < length; i += 1) bytes[i] = (info.length * 13 + i * 3 + 7) % 256
+      return bytes
+    }
+    const idA = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const idB = (await derivePrivateSpaceGenesis(fakeDeriveB)).spaceId
+    expect(idB).not.toBe(idA) // precondition
+
+    const spaces: SpaceInfo[] = []
+    const docs: Record<string, RlsSpaceDoc> = {}
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, idA)
+    ;(fake as any).identity = { getDid: () => "did:key:alice", deriveFrameworkKey: fakeDerive }
+
+    const first = await (WotConnector.prototype as any).resolveDeterministicPrivateSpaceId.call(fake)
+    expect(first).toBe(idA)
+
+    // Identity switch WITHOUT any teardown/reset call:
+    ;(fake as any).identity = { getDid: () => "did:key:bob", deriveFrameworkKey: fakeDeriveB }
+    const second = await (WotConnector.prototype as any).resolveDeterministicPrivateSpaceId.call(fake)
+    expect(second).toBe(idB) // NOT A's cached id
   })
 
   it("keeps a non-empty duplicate when its migration fails", async () => {

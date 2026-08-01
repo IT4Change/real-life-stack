@@ -2147,11 +2147,15 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
    * pick the deterministic space as canonical — otherwise the lowest-id heuristic
    * could later select a legacy space and migrate BACKWARDS out of it.
    */
-  private deterministicPrivateSpaceId: Promise<string | null> | null = null
+  private deterministicPrivateSpaceId: { did: string; flight: Promise<string> } | null = null
 
   private resolveDeterministicPrivateSpaceId(): Promise<string | null> {
     if (!this.replication || !hasDeterministicPrivateSpace(this.replication)) return Promise.resolve(null)
-    if (!this.deterministicPrivateSpaceId) {
+    // The cache is BOUND TO THE IDENTITY DID, not merely cleared on lifecycle
+    // teardown: an identity switch that bypasses a teardown path must never let
+    // identity B inherit identity A's derived private-space id.
+    const did = this.identity.getDid()
+    if (!this.deterministicPrivateSpaceId || this.deterministicPrivateSpaceId.did !== did) {
       // `null` means ONLY "adapter not capable". A derivation failure must
       // PROPAGATE fail-closed: swallowing it to null would route a capable
       // adapter onto the legacy random-create path — minting exactly the
@@ -2160,12 +2164,13 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       const flight = derivePrivateSpaceGenesis(
         (info, length) => this.identity.deriveFrameworkKey(info, length),
       ).then((genesis) => genesis.spaceId)
+      const entry = { did, flight }
       flight.catch(() => {
-        if (this.deterministicPrivateSpaceId === flight) this.deterministicPrivateSpaceId = null
+        if (this.deterministicPrivateSpaceId === entry) this.deterministicPrivateSpaceId = null
       })
-      this.deterministicPrivateSpaceId = flight
+      this.deterministicPrivateSpaceId = entry
     }
-    return this.deterministicPrivateSpaceId
+    return this.deterministicPrivateSpaceId.flight
   }
 
   private queuePrivateSpaceReconcile(options: { createIfMissing: boolean }): Promise<void> {
@@ -2200,13 +2205,12 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       this.privateSpaceId = canonical.id
       if (!wasLoaded) this.crossGroupIndex?.reindexGroup(canonical.id)
 
-      const legacyIds = privateSpaces.map((space) => space.id).filter((id) => id !== canonical.id)
-      if (legacyIds.length > 0) {
-        // Deterministic regime: additively copy — NO destructive teardown until
-        // the durable migration phase machine lands (follow-up PR).
-        await this.copyLegacyPrivateSpaceData(canonical.id, legacyIds)
-        return
-      }
+      // Reduced #192 scope: legacy duplicates are left COMPLETELY untouched —
+      // neither copied nor torn down. They remain indexed (their items and
+      // activity stay visible through the cross-group read model); copying them
+      // additively while the source lives would make identical item ids vanish
+      // from the overview and duplicate activity entries. The real migration is
+      // the durable phase machine (#198).
       if (previousPrivateSpaceId !== canonical.id && this.currentGroupId === null) {
         this.notifyAllObservers()
       }
@@ -2248,8 +2252,11 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
     if (duplicateIds.length > 0) {
       if (deterministicId !== null && canonical.id === deterministicId) {
-        // Deterministic regime (non-creating path): additive copy only.
-        await this.copyLegacyPrivateSpaceData(canonical.id, duplicateIds)
+        // Deterministic regime: leave legacy duplicates completely untouched
+        // (see the createIfMissing path above); migration is #198.
+        if (previousPrivateSpaceId !== canonical.id && this.currentGroupId === null) {
+          this.notifyAllObservers()
+        }
         return
       }
       // Legacy regime (non-capable adapter): unchanged behaviour since #170.
@@ -2346,93 +2353,6 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
     if (!changed) return
 
-    this.crossGroupIndex?.reindexGroup(canonicalId)
-    this.notifyAllObservers(true)
-  }
-
-  /**
-   * NON-DESTRUCTIVE legacy copy for the deterministic-genesis regime (reduced
-   * #192 scope): additively converge legacy private-space data into the
-   * canonical space so nothing is invisible to the user — but NEVER tear the
-   * legacy space down. The destructive migration (source cleanup + leaveSpace)
-   * needs a durable phase machine with a persisted per-(identity, legacy,
-   * canonical) record — phase, id mapping, fingerprints, tombstones, confirmed
-   * commits, cleanup progress — and follows in its own PR. Until then legacy
-   * duplicates stay temporarily, but SAFELY.
-   *
-   * Convergence contract: pure copy, idempotent, re-run on every reconcile. A
-   * fully copied source produces an empty plan and no write at all (no log
-   * bloat). Slot routing is deterministic ((legacySpaceId, itemId) remap); a
-   * pathological second collision skips the item with a warning — the data
-   * stays visible-safe in the source until the phase machine resolves it.
-   */
-  private async copyLegacyPrivateSpaceData(canonicalId: string, legacyIds: string[]): Promise<void> {
-    if (!this.replication) return
-    const targetHandle = await this.replication.openSpace<RlsSpaceDoc>(canonicalId)
-    let copiedAnything = false
-
-    for (const legacyId of legacyIds) {
-      const sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(legacyId)
-      const sourceDoc = sourceHandle.getDoc()
-      const sourceItems = JSON.parse(JSON.stringify(sourceDoc.items ?? {})) as Record<string, SerializedItem>
-      const sourceActivity = { ...(sourceDoc.activity ?? {}) }
-      const targetDocBefore = targetHandle.getDoc()
-
-      // Plan first — copy only what the canonical space does not already hold.
-      const idRemap = new Map<string, string>()
-      const toCopy: Array<[string, SerializedItem]> = []
-      for (const [itemId, serialized] of Object.entries(sourceItems)) {
-        const existing = targetDocBefore.items?.[itemId]
-        if (!existing) {
-          idRemap.set(itemId, itemId)
-          toCopy.push([itemId, serialized])
-          continue
-        }
-        if (this.sameMigratedItem(existing, serialized)) {
-          idRemap.set(itemId, itemId) // already copied — relations may still point here
-          continue
-        }
-        const remapId = `${itemId}-private-${legacyId}`
-        const remapSlot = targetDocBefore.items?.[remapId]
-        if (!remapSlot) {
-          idRemap.set(itemId, remapId)
-          toCopy.push([itemId, serialized])
-          continue
-        }
-        if (this.sameMigratedItem(remapSlot, serialized)) {
-          idRemap.set(itemId, remapId) // already copied under the remap slot
-          continue
-        }
-        // Pathological second collision: skip non-destructively — the item stays
-        // in the (still existing) legacy space; the phase machine will resolve it.
-        console.warn(`[WotConnector] private-space copy: remap slot ${remapId} occupied by a different item — skipping (legacy space is kept)`)
-      }
-      const activityToCopy = Object.entries(sourceActivity)
-        .filter(([entryId]) => !(targetDocBefore.activity?.[entryId]))
-      if (toCopy.length === 0 && activityToCopy.length === 0) continue
-
-      targetHandle.transact((targetDoc: RlsSpaceDoc) => {
-        if (!targetDoc.items) targetDoc.items = {}
-        for (const [itemId, serialized] of toCopy) {
-          const slot = idRemap.get(itemId)!
-          targetDoc.items[slot] = this.cloneSerializedItem(serialized, slot, idRemap)
-        }
-        for (const [entryId, entry] of activityToCopy) {
-          const activity = targetDoc.activity ?? (targetDoc.activity = {})
-          const remapped = idRemap.get(entry.targetId)
-          activity[entryId] = remapped ? { ...entry, targetId: remapped } : { ...entry }
-        }
-        const merged = targetDoc.activity
-        if (merged) {
-          for (const oldest of Object.values(merged).sort(compareActivity).slice(500)) {
-            delete merged[oldest.id]
-          }
-        }
-      })
-      copiedAnything = true
-    }
-
-    if (!copiedAnything) return
     this.crossGroupIndex?.reindexGroup(canonicalId)
     this.notifyAllObservers(true)
   }
