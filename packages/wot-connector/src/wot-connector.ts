@@ -2151,9 +2151,20 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
   private resolveDeterministicPrivateSpaceId(): Promise<string | null> {
     if (!this.replication || !hasDeterministicPrivateSpace(this.replication)) return Promise.resolve(null)
-    this.deterministicPrivateSpaceId ??= derivePrivateSpaceGenesis(
-      (info, length) => this.identity.deriveFrameworkKey(info, length),
-    ).then((genesis) => genesis.spaceId, () => null)
+    if (!this.deterministicPrivateSpaceId) {
+      // `null` means ONLY "adapter not capable". A derivation failure must
+      // PROPAGATE fail-closed: swallowing it to null would route a capable
+      // adapter onto the legacy random-create path — minting exactly the
+      // random duplicate this cut abolishes. The failed flight is evicted so
+      // the next reconcile re-derives instead of being stuck on a cached error.
+      const flight = derivePrivateSpaceGenesis(
+        (info, length) => this.identity.deriveFrameworkKey(info, length),
+      ).then((genesis) => genesis.spaceId)
+      flight.catch(() => {
+        if (this.deterministicPrivateSpaceId === flight) this.deterministicPrivateSpaceId = null
+      })
+      this.deterministicPrivateSpaceId = flight
+    }
     return this.deterministicPrivateSpaceId
   }
 
@@ -2277,7 +2288,10 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       const sourceDocSnapshot = sourceHandle.getDoc()
       const sourceItems = sourceDocSnapshot.items ?? {}
       const entries = Object.entries(sourceItems) as Array<[string, SerializedItem]>
-      const sourceActivity = sourceHandle.getDoc().activity ?? {}
+      // Materialized SNAPSHOT of the activity keys — getDoc() may hand out a live
+      // reference (engine-dependent); the cleanup below must only ever delete
+      // what was part of this snapshot, never keys that arrived mid-flight.
+      const sourceActivity = { ...(sourceHandle.getDoc().activity ?? {}) }
       // A duplicate can be item-empty but still carry history of deleted items.
       // A fully EMPTY source needs no durable merge: if a previous run emptied it,
       // that run had already confirmed the target commit BEFORE its source
@@ -2341,11 +2355,24 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
           for (const itemId of migratedIds) {
             delete sourceDoc.items[itemId]
           }
-          // The whole history moved to the canonical space.
+          // Delete ONLY the snapshotted history entries — activity that arrived
+          // while we awaited the durable ack was never part of the confirmed
+          // commit and must survive for the next migration round.
           if (sourceDoc.activity) {
-            for (const entryId of Object.keys(sourceDoc.activity)) delete sourceDoc.activity[entryId]
+            for (const entryId of Object.keys(sourceActivity)) delete sourceDoc.activity[entryId]
           }
         })
+      }
+
+      // SOURCE-CHANGE GUARD: anything that landed in the legacy space between
+      // the snapshot and this point (local edit or remote apply during the
+      // durable await) is NOT in the confirmed target commit. leaveSpace() would
+      // discard it — so teardown only runs on a provably empty source; a
+      // residual source stays fully intact for the next reconcile round.
+      const residual = sourceHandle.getDoc()
+      if (Object.keys(residual.items ?? {}).length > 0 || Object.keys(residual.activity ?? {}).length > 0) {
+        changed = true // the canonical space did change above
+        continue
       }
 
       // `leaveSpace()` is the replication layer's public local teardown path.

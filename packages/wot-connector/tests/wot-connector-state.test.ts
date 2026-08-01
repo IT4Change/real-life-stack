@@ -1377,6 +1377,74 @@ describe("WotConnector private space reconciliation", () => {
     expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
   })
 
+  it("a transient derivation failure never falls back to a random space and heals on retry", async () => {
+    // Review blocker 2: a derivation error was cached as null for the whole
+    // session and routed the capable adapter onto the legacy random-create path.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const spaces: SpaceInfo[] = []
+    const docs: Record<string, RlsSpaceDoc> = {}
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+    let failFirst = true
+    ;(fake as any).identity = {
+      deriveFrameworkKey: async (info: string, length?: number) => {
+        if (failFirst) { failFirst = false; throw new Error("transient key failure") }
+        return fakeDerive(info, length ?? 32)
+      },
+    }
+
+    // First reconcile: fail-closed — NO random space is minted.
+    await expect(
+      (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true }),
+    ).rejects.toThrow(/transient key failure/)
+    expect(fake.replication.createSpace).not.toHaveBeenCalled()
+    expect(spaces).toHaveLength(0)
+
+    // Second reconcile: the failed flight was evicted — derivation retries and
+    // opens ONLY the deterministic space.
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+    expect(fake.replication.createSpace).not.toHaveBeenCalled()
+    expect((fake.replication as any).openOrCreateDeterministicPrivateSpace).toHaveBeenCalled()
+    expect(spaces.map((s) => s.id)).toEqual([detId])
+  })
+
+  it("keeps a source that changed during the durable await intact — no teardown", async () => {
+    // Review blocker 3: items/activity arriving in the legacy space while the
+    // durable ack is pending are not in the confirmed commit. leaveSpace() would
+    // discard them; the cleanup must also not delete unsnapshotted activity.
+    const detId = (await derivePrivateSpaceGenesis(fakeDerive)).spaceId
+    const legacyId = "dddddddd-0000-4000-8000-000000000000"
+    const spaces = [createSpaceInfo(detId), createSpaceInfo(legacyId)]
+    const docs: Record<string, RlsSpaceDoc> = {
+      [detId]: { _type: "rls", items: {} } as RlsSpaceDoc,
+      [legacyId]: {
+        _type: "rls",
+        items: { old: createSerializedItem("old", "Old") },
+        activity: { a0: { id: "a0", action: "create", targetId: "old", targetType: "task", actor: "did:key:alice", summary: "Old", timestamp: "2026-07-01T00:00:00.000Z" } },
+      } as RlsSpaceDoc,
+    }
+    const fake = createFakePrivateSpaceConnector(spaces, docs)
+    makeDeterministicCapable(fake, spaces, docs, detId)
+    // Gate the durable commit; while it is pending, new data lands in the source.
+    const targetHandle = createSpaceHandle(docs[detId], {
+      durableTransact: async (fn, doc) => {
+        fn(doc)
+        docs[legacyId].items.fresh = createSerializedItem("fresh", "Arrived mid-flight")
+        docs[legacyId].activity!.a1 = { id: "a1", action: "create", targetId: "fresh", targetType: "task", actor: "did:key:alice", summary: "Fresh", timestamp: "2026-07-02T00:00:00.000Z" }
+      },
+    })
+    fake.replication.openSpace = vi.fn(async (id: string) => (id === detId ? targetHandle : createSpaceHandle(docs[id]))) as any
+
+    await (WotConnector.prototype as any).reconcilePrivateSpaces.call(fake, { createIfMissing: true })
+
+    // The snapshotted data DID migrate…
+    expect(docs[detId].items.old.data.title).toBe("Old")
+    // …but the space was NOT torn down, and the mid-flight data survives intact.
+    expect(fake.replication.leaveSpace).not.toHaveBeenCalled()
+    expect(docs[legacyId].items.fresh.data.title).toBe("Arrived mid-flight")
+    expect(docs[legacyId].activity?.a1?.summary).toBe("Fresh")
+  })
+
   it("keeps a non-empty duplicate when its migration fails", async () => {
     const spaces = [createSpaceInfo("private-a"), createSpaceInfo("private-b")]
     const docs = {
