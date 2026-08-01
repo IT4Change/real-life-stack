@@ -85,8 +85,17 @@ committed die `latest.json` Dateien automatisch in den `gh-pages` Branch.
 4. Bei Fehler: App läuft normal weiter (kein Crash)
 5. Im Browser/Dev: komplett inaktiv (kein nativer Kontext)
 
-Der `VITE_UPDATE_CHANNEL` wird beim nativen App-Build gesetzt (lokal / Xcode / Android Studio).
-Im CI-Workflow spielt er keine Rolle — dort läuft die OTA-Logik nie (kein nativer Kontext).
+Der `VITE_UPDATE_CHANNEL` wird beim nativen App-Build gesetzt (lokal / Xcode / Android Studio)
+**und beim Bau der OTA-Bundles in CI**. Beides ist nötig:
+
+- Das **eingebaute** Bundle kennt seinen Kanal über den nativen Build.
+- Nach einem OTA-Reload läuft aber das **heruntergeladene** Bundle. Es kennt seinen Kanal
+  nur, wenn `deploy-prototypes.yml` ihn beim Bau gesetzt hat — sonst greift der Fallback
+  `Capacitor.getPlatform()`. Für `ios` und `android` ist der zufällig richtig, für
+  `android-foss` nicht: die F-Droid-App landete dadurch auf dem Play-Kanal (#193).
+
+Nur für den **Web**-Deploy auf GitHub Pages spielt die Variable keine Rolle — dort läuft die
+OTA-Logik nie (kein nativer Kontext).
 
 ### Apple-Richtlinien
 OTA-Updates sind erlaubt für reine Web-Bundle-Änderungen (kein `eval`, keine neuen nativen APIs).
