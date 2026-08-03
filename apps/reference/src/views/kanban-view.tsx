@@ -213,7 +213,7 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, members, isAggregate, editConfig, availableTags],
+    [resolveAuthor, members, activeWorkspaceId, isAggregate, editConfig, availableTags],
   )
   useRegisterDetail("kanban", detailConfig)
 

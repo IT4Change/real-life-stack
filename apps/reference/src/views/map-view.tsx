@@ -51,7 +51,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   const detailConfig = useMemo<DetailConfig>(() => ({
     groupId,
     ...editConfig, renderCommentReactions: (id) => <ReactionBar itemId={id} />, onShare: () => void navigator.clipboard?.writeText(window.location.href), backdrop: false,
-  }), [currentUser, editConfig, isOverview, members])
+  }), [currentUser, editConfig, groupId, isOverview, members])
   useRegisterDetail("map", detailConfig)
   const createAdapter = useCallback(() => new MapLibreMapAdapter(), [])
   const onCreate = useCallback(() => startCreate("place"), [startCreate])

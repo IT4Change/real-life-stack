@@ -138,7 +138,7 @@ export function FeedView({ groupId }: { groupId: string }) {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, editConfig, isOverview],
+    [resolveAuthor, editConfig, groupId, isOverview],
   )
   useRegisterDetail("feed", detailConfig)
 

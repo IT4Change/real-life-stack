@@ -16,7 +16,6 @@ import {
   ItemTypeBadge,
   ReactionBar,
   useCurrentUser,
-  useItemGroupColorResolver,
   useMembers,
   useModulePanel,
   type ContentComposerProps,
@@ -170,7 +169,7 @@ export function useRegisterDetail(module: string, config: DetailConfig): void {
  * because tasks have assignees, not because Kanban is Kanban. The same task
  * opened from the collection therefore silently lost them.
  */
-function ItemDetailRead({
+export function ItemDetailRead({
   item,
   actions,
   groupId,
@@ -185,13 +184,16 @@ function ItemDetailRead({
   const scopedGroupId = isOverview ? null : groupId
   const { data: members } = useMembers(scopedGroupId)
   const { data: currentUser } = useCurrentUser()
-  const resolveGroupColor = useItemGroupColorResolver(scopedGroupId ?? undefined)
 
   // Space members first, then the signed-in user — who is not in `members` for
-  // their own personal space.
-  const author =
-    members.find((member) => member.id === item.createdBy) ??
-    (currentUser?.id === item.createdBy ? currentUser : undefined)
+  // their own personal space. Same lookup for authors and relation targets:
+  // a task you assigned to yourself in your personal space would otherwise
+  // resolve to nobody.
+  const resolveUser = (userId: string): User | undefined =>
+    members.find((member) => member.id === userId) ??
+    (currentUser?.id === userId ? currentUser : undefined)
+
+  const author = resolveUser(item.createdBy)
 
   // Type-driven body. The same resolver the list and grid lenses already use,
   // so a person/project/resource reads the same in the panel as in a lens.
@@ -203,7 +205,7 @@ function ItemDetailRead({
   const assignees = isTask(item)
     ? (item.relations ?? [])
         .filter((relation) => relation.predicate === "assignedTo")
-        .map((relation) => members.find((m) => m.id === relation.target.replace(/^global:/, "")))
+        .map((relation) => resolveUser(relation.target.replace(/^global:/, "")))
         .filter((user): user is User => !!user)
     : []
 
@@ -225,7 +227,6 @@ function ItemDetailRead({
           <ReactionBar itemId={item.id} />
         </>
       }
-      activeGlowColor={resolveGroupColor(item)}
     />
   )
 }

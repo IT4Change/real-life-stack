@@ -40,7 +40,7 @@ export function CollectionView({
     ...editConfig,
     renderCommentReactions: (id) => <ReactionBar itemId={id} />,
     onShare: () => void navigator.clipboard?.writeText(window.location.href),
-  }), [currentUser, editConfig, members, resolveGroupColor])
+  }), [currentUser, editConfig, groupId, members, resolveGroupColor])
   useRegisterDetail("collection", detailConfig)
 
   // The collection shows every item, so create offers the full type registry —
