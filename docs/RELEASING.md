@@ -108,7 +108,17 @@ Ab dann läuft jeder Publish über die CI, ohne Token im Repo.
 
 **Solange Schritt 2/3 für ein Paket fehlt**, schlägt bei dessen Release nur der
 **npm-Step** fehl; der tgz-Asset-Upload ans GitHub-Release gelingt trotzdem. Kein
-Datenverlust, kein Teil-Publish — nur ein roter Step.
+Datenverlust — aber „kein Teil-Publish" gilt nur **pro Paket**:
+
+- **Je Paket atomar:** `npm publish` landet eine Version ganz oder gar nicht. Ein
+  halb publiziertes Paket gibt es nicht.
+- **Über mehrere Pakete hinweg nicht:** ein Release kann mittendrin stehen
+  bleiben. In der CI bekommt jedes Paket seinen eigenen `publish.yml`-Lauf — die
+  einen werden grün, die anderen rot. Der Bootstrap publiziert sequenziell, ein
+  Abbruch beim vierten Paket lässt die ersten drei publiziert zurück.
+- **Und das bleibt so:** npm-Publishes sind praktisch irreversibel (kein
+  Unpublish für eine veröffentlichte Version). Ein misslungener Sammel-Release
+  wird nach vorne repariert — fehlende Pakete nachziehen, nicht zurückrollen.
 
 > Diese Schleife gilt für **jedes künftig neu angelegte Paket**, nicht nur für den
 > Erstaufbau. Deshalb liegt das Bootstrap-Skript im Repo.

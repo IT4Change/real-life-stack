@@ -149,25 +149,24 @@ root=$(make_env correct); run "$root" --dry-run
 
 echo
 echo "== Tarball-Identitaet: nur das erwartete Paket wird publiziert =="
-root=$(make_env foreign); run "$root"
-[ "$RC" -ne 0 ] && [ "$(published_count)" -eq 0 ] \
-  && ok "fremdes Tarball (@boese/fremd) → Abbruch, nichts publiziert" \
-  || bad "fremdes Tarball → rc=$RC, publish=$(published_count)"
+# Jeder Fehlerpfad wird DOPPELT geprueft: kein Publish UND kein Temp-Rest. Der
+# Cleanup-Trap muss gerade dann greifen, wenn das Skript abbricht — im
+# Erfolgsfall allein bewiese er nichts ueber den Abbruchfall.
+check_abort() {  # $1=Label
+  if [ "$RC" -ne 0 ] && [ "$(published_count)" -eq 0 ]; then
+    ok "$1 → Abbruch, nichts publiziert"
+  else
+    bad "$1 → rc=$RC, publish=$(published_count)"
+  fi
+  [ "$TMPLEFT" -eq 0 ] \
+    && ok "$1 → Temp-Verzeichnis auch im Fehlerfall aufgeraeumt" \
+    || bad "$1 → Temp-Reste nach Abbruch: $TMPLEFT"
+}
 
-root=$(make_env mismatch); run "$root"
-[ "$RC" -ne 0 ] && [ "$(published_count)" -eq 0 ] \
-  && ok "falsche Version im Tarball → Abbruch, nichts publiziert" \
-  || bad "Versions-Mismatch → rc=$RC, publish=$(published_count)"
-
-root=$(make_env two); run "$root"
-[ "$RC" -ne 0 ] && [ "$(published_count)" -eq 0 ] \
-  && ok "mehrdeutig (zwei Tarballs) → Abbruch, nichts publiziert" \
-  || bad "zwei Tarballs → rc=$RC, publish=$(published_count)"
-
-root=$(make_env none); run "$root"
-[ "$RC" -ne 0 ] && [ "$(published_count)" -eq 0 ] \
-  && ok "kein Tarball erzeugt → Abbruch, nichts publiziert" \
-  || bad "kein Tarball → rc=$RC, publish=$(published_count)"
+root=$(make_env foreign);  run "$root"; check_abort "fremdes Tarball (@boese/fremd)"
+root=$(make_env mismatch); run "$root"; check_abort "falsche Version im Tarball"
+root=$(make_env two);      run "$root"; check_abort "mehrdeutig (zwei Tarballs)"
+root=$(make_env none);     run "$root"; check_abort "kein Tarball erzeugt"
 
 echo
 echo "== Gutfall: publiziert genau die erwarteten Pakete, mit gebundener Registry =="
