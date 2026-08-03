@@ -2,10 +2,6 @@ import { useCallback, useMemo } from "react"
 import {
   CalendarView as ToolkitCalendarView,
   CreateFab,
-  ItemPreview,
-  ItemTypeBadge,
-  ItemScopeBadge,
-  ItemMetaRow,
   ReactionBar,
   useItemsWithDraft,
   useMembers,
@@ -102,23 +98,7 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // the date, and a multi-day event read as a bare "Ganztägig".
   const detailConfig = useMemo<DetailConfig>(
     () => ({
-      renderRead: (current, actions) => (
-        <ItemPreview
-          item={current}
-          author={resolveAuthor(current.createdBy)}
-          headerAdornment={
-            <>
-              <ItemTypeBadge type={current.type} />
-              {isOverview && <ItemScopeBadge item={current} />}
-            </>
-          }
-          actions={actions}
-          metaAdornment={<ItemMetaRow item={current} />}
-          footerAdornment={
-            current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
-          }
-        />
-      ),
+      groupId,
       ...editConfig,
       renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
       onShare: () => {

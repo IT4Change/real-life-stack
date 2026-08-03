@@ -8,7 +8,6 @@ import {
   ItemTypeBadge,
   ItemGroupBadge,
   ItemPrivateBadge,
-  ItemScopeBadge,
   ItemMetaRow,
   ItemCommentCount,
   FeedComposerTrigger,
@@ -132,23 +131,7 @@ export function FeedView({ groupId }: { groupId: string }) {
   // when author resolution changes.
   const detailConfig = useMemo<DetailConfig>(
     () => ({
-      renderRead: (current, actions) => (
-        <ItemPreview
-          item={current}
-          author={resolveAuthor(current.createdBy)}
-          headerAdornment={
-            <>
-              <ItemTypeBadge type={current.type} />
-              {isOverview && <ItemScopeBadge item={current} />}
-            </>
-          }
-          actions={actions}
-          metaAdornment={<ItemMetaRow item={current} />}
-          footerAdornment={
-            current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
-          }
-        />
-      ),
+      groupId,
       ...editConfig,
       renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
       onShare: () => {
@@ -211,16 +194,15 @@ export function FeedView({ groupId }: { groupId: string }) {
   useRegisterCreate("feed", createConfig)
 
   // Feed footer convention: a ReactionBar on the left and a comment
-  // count on the right. Tasks intentionally don't get reactions in the
-  // feed view today — open a Sebastian-Polish ticket if that changes.
+  // count on the right. Reactions are NOT type-dependent — tasks were excluded
+  // here until Anton corrected that: reactable is a property of the surface and
+  // the connector's capability, not of the item's type.
   const renderFeedFooter = useCallback((item: Item, onCommentClick: () => void) => {
     const commentCount = (item.data as Record<string, unknown>).commentCount
     const count = typeof commentCount === "number" ? commentCount : 0
-    const showReactions = item.type !== "task"
-    if (!showReactions && count <= 0) return undefined
     return (
       <>
-        {showReactions && <ReactionBar itemId={item.id} />}
+        <ReactionBar itemId={item.id} />
         {count > 0 && (
           <div className="ml-auto">
             <ItemCommentCount count={count} onClick={onCommentClick} />

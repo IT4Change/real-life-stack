@@ -11,10 +11,6 @@ import {
   useMembers,
   useModulePanel,
   usePersonalGroupId,
-  ItemMetaRow,
-  ItemPreview,
-  ItemScopeBadge,
-  ItemTypeBadge,
   ReactionBar,
 } from "@real-life-stack/toolkit"
 import { isWritable } from "@real-life-stack/data-interface"
@@ -53,10 +49,7 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   }), [editConfig.composerProps, groupId, groups, isOverview, personalGroupId])
   useRegisterCreate("map", createConfig)
   const detailConfig = useMemo<DetailConfig>(() => ({
-    renderRead: (item, actions) => <ItemPreview item={item}
-      author={members.find((member) => member.id === item.createdBy) ?? (currentUser?.id === item.createdBy ? currentUser : undefined)}
-      headerAdornment={<><ItemTypeBadge type={item.type} />{isOverview && <ItemScopeBadge item={item} />}</>}
-      metaAdornment={<ItemMetaRow item={item} />} footerAdornment={item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined} actions={actions} />,
+    groupId,
     ...editConfig, renderCommentReactions: (id) => <ReactionBar itemId={id} />, onShare: () => void navigator.clipboard?.writeText(window.location.href), backdrop: false,
   }), [currentUser, editConfig, isOverview, members])
   useRegisterDetail("map", detailConfig)

@@ -16,9 +16,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
-  ItemPreview,
-  ItemAssignees,
-  ItemTypeBadge,
   ItemScopeBadge,
   ReactionBar,
   CreateFab,
@@ -204,26 +201,7 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   // type-driven config + the board's tag suggestions.
   const detailConfig = useMemo<DetailConfig>(
     () => ({
-      renderRead: (current, actions) => {
-        const assignees = (current.relations ?? [])
-          .filter((r) => r.predicate === "assignedTo")
-          .map((r) => members.find((m) => m.id === r.target.replace(/^global:/, "")))
-          .filter((u): u is User => !!u)
-        return (
-          <ItemPreview
-            item={current}
-            author={resolveAuthor(current.createdBy)}
-            headerAdornment={
-              <>
-                <ItemTypeBadge type={current.type} />
-                {isAggregate && <ItemScopeBadge item={current} />}
-              </>
-            }
-            actions={actions}
-            footerAdornment={assignees.length > 0 ? <ItemAssignees users={assignees} /> : undefined}
-          />
-        )
-      },
+      groupId: activeWorkspaceId,
       ...editConfig,
       composerProps: {
         ...editConfig.composerProps,
