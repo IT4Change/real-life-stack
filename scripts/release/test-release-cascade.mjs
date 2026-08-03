@@ -1,25 +1,30 @@
 #!/usr/bin/env node
-// Regressionstest fuer die Package→App-Releasekaskade (Issue #202).
+// Regressionstest fuer die Package→App-Releasekaskade.
 //
-// WARUM ES DEN GIBT: Play hat bewusst KEIN OTA. Ein Fix in einem Workspace-Paket
-// erreicht Play daher nur, wenn er einen App-Release ausloest. Das haengt an
-// einem Vertrag, den man beim Editieren der Config leicht bricht — genau das ist
-// in PR #199 zweimal passiert:
-//   1. App stand auf release-type "simple". Der offizielle node-workspace-Code
-//      (NodeWorkspace.buildAllPackages/inScope) verwirft JEDE Komponente mit
-//      releaseType !== "node", BEVOR er package.json liest. Die App war also nie
-//      im Dependency-Graphen, die Kaskade lief ins Leere.
+// WARUM ES DEN GIBT: Play hat bewusst KEIN OTA (Google verbietet Self-Updates
+// ausserhalb seines Mechanismus). Ein Fix in toolkit, data-interface oder einem Konnektor erreicht
+// Play daher NUR, wenn er einen App-Release ausloest. Das haengt an einem
+// Vertrag, den man beim Editieren der release-please-Config leicht bricht —
+// beides ist in PR #199 passiert und war in der CI unsichtbar:
+//   1. Die App stand auf release-type "simple". Der offizielle
+//      node-workspace-Code (NodeWorkspace.buildAllPackages/inScope) verwirft JEDE
+//      Komponente mit releaseType !== "node", BEVOR er package.json liest. Die
+//      App war damit nie im Dependency-Graphen — die Kaskade lief ins Leere, ein
+//      core-Fix haette Play nie erreicht.
 //   2. extra-files-Pfade sind RELATIV zur Komponente. "apps/reference/android/
-//      version.properties" wurde zu "apps/reference/apps/reference/..." und
-//      (createIfMissing: false) still uebersprungen — der Tag waere gestiegen,
-//      die Datei nicht.
-// Beide Fehler waren in der CI unsichtbar und haetten erst beim echten Release
-// gekracht. Dieser Test macht sie sichtbar.
+//      version.properties" wurde zu "apps/reference/apps/reference/..." und (weil Generic
+//      createIfMissing: false nutzt) still uebersprungen: der Tag waere
+//      gestiegen, die Versionsdatei nicht — build-android.sh bricht dann wegen
+//      genau dieser Drift ab.
 //
 // Was er NICHT ist: ein End-to-End-release-please-Lauf (braucht Netz + Token und
 // waere flaky). Er prueft die Invarianten, aus denen die Kaskade folgt. Der
-// End-to-End-Nachweis wurde einmalig per Dry-Run gefuehrt (Baseline-Tag, danach
-// nur ein Paket-Commit → App-Kandidat entsteht).
+// End-to-End-Nachweis wurde einmalig per Dry-Run gefuehrt: Baseline-Tag mit allen
+// Migrations-Aenderungen, danach als einziger Commit ein Paket-fix → release-please
+// baut trotzdem einen apps/reference-Kandidaten.
+//
+// Schwester: web-of-trust/scripts/release/test-release-cascade.mjs (gleicher
+// Vertrag, gleiche Pruefungen).
 //
 // Aufruf:  node scripts/release/test-release-cascade.mjs
 import { readFileSync, existsSync } from 'node:fs'
@@ -92,20 +97,33 @@ for (const dep of workspaceDeps) {
   check(resolvedType(path) === 'node', `${dep} (${path}) ist node`, `aufgeloest: "${resolvedType(path)}"`)
 }
 
-console.log('\n== extra-files zeigt auf die echte Versionsdatei (package-relativ!) ==')
-// Blocker 2 aus #199: ein root-relativer Pfad wird mit dem Komponentenpfad
-// praefigiert und laeuft dann ins Leere — der Tag stiege, die Datei nicht.
-const extras = packages[appPath]['extra-files'] ?? []
-check(extras.length > 0, 'App hat extra-files (version.properties)')
-for (const extra of extras) {
-  const rel = typeof extra === 'string' ? extra : extra.path
-  const resolved = join(appPath, rel)
-  check(
-    existsSync(join(ROOT, resolved)),
-    `extra-files "${rel}" loest auf ${resolved} auf und existiert`,
-    'Pfad muss RELATIV zur Komponente sein (nicht nochmal den Komponentenpfad enthalten)',
-  )
+console.log('\n== extra-files verdrahtet GENAU die Versionsdatei (package-relativ) ==')
+// FAIL-CLOSED: es reicht NICHT, dass irgendein extra-files-Ziel existiert. Zeigte
+// der Eintrag z.B. auf package.json (existiert ja), bliebe der Test gruen,
+// waehrend version.properties nie gebumpt wird — der Tag stiege, die Datei nicht,
+// und build-android.sh braeche an genau dieser Drift ab.
+const VERSION_FILE_REL = 'android/version.properties' // app-relativ, NICHT root-relativ
+const extras = packages[appPath]['extra-files']
+check(Array.isArray(extras) && extras.length > 0, 'App hat extra-files')
+
+// String-Kurzform und {type,path}-Objekt sind beide zulaessig — aber der Pfad
+// muss ein String sein, sonst ignoriert release-please den Eintrag stillschweigend.
+const relOf = (e) => (typeof e === 'string' ? e : e && typeof e.path === 'string' ? e.path : null)
+for (const e of extras ?? []) {
+  check(relOf(e) !== null, 'extra-files-Eintrag hat einen gueltigen String-Pfad', JSON.stringify(e))
 }
+
+const vpEntry = (extras ?? []).find((e) => relOf(e) === VERSION_FILE_REL)
+check(
+  !!vpEntry,
+  `extra-files enthaelt exakt "${VERSION_FILE_REL}"`,
+  `gefunden: ${JSON.stringify((extras ?? []).map(relOf))} — der Pfad muss RELATIV zur Komponente sein`,
+)
+check(
+  !!vpEntry && (typeof vpEntry === 'string' || vpEntry.type === 'generic'),
+  `Eintrag "${VERSION_FILE_REL}" hat type "generic"`,
+  `type=${vpEntry && typeof vpEntry === 'object' ? vpEntry.type : '(fehlt)'}`,
+)
 
 console.log('\n== Versionen konsistent (Manifest / package.json / version.properties) ==')
 // Driftet eins davon, bumpt release-please etwas anderes als gebaut/getaggt wird.
@@ -116,28 +134,45 @@ for (const [path, version] of Object.entries(manifest)) {
   check(pj.version === version, `${path}: package.json ${pj.version} == Manifest ${version}`)
 }
 
-const vpRel = (extras.map((e) => (typeof e === 'string' ? e : e.path)) ?? [])
-  .find((p) => p.endsWith('version.properties'))
-if (vpRel) {
-  const vpPath = join(appPath, vpRel)
-  if (existsSync(join(ROOT, vpPath))) {
-    const m = read(vpPath).match(/^VERSION_NAME=(.+)$/m)
-    check(!!m, 'version.properties enthaelt VERSION_NAME')
-    if (m) {
+// FAIL-CLOSED und unbedingt: frueher hing dieser ganze Block an `if (vpRel)` —
+// fehlte der Eintrag, entfiel die Pruefung stillschweigend.
+const vpPath = join(appPath, VERSION_FILE_REL)
+const vpExists = existsSync(join(ROOT, vpPath))
+check(vpExists, `${vpPath} existiert`)
+
+if (vpExists) {
+  const lines = read(vpPath).split('\n')
+  const versionIdx = lines.findIndex((l) => /^VERSION_NAME=/.test(l))
+  check(versionIdx !== -1, 'version.properties enthaelt VERSION_NAME')
+
+  // Die Blockmarker sind KEIN Kommentar-Schmuck: ohne sie findet der
+  // Generic-Updater nichts zu ersetzen und laesst die Datei unveraendert — der
+  // Tag stiege, VERSION_NAME bliebe stehen, build-android.sh braeche an der Drift
+  // ab. Genau der App-Bump, den dieser Test schuetzen soll, fiele still aus.
+  const startIdx = lines.findIndex((l) => l.includes('x-release-please-start-version'))
+  const endIdx = lines.findIndex((l) => l.includes('x-release-please-end'))
+  const inlineIdx = lines.findIndex((l) => /x-release-please-version\b/.test(l))
+  const inBlock = startIdx !== -1 && endIdx !== -1 && versionIdx > startIdx && versionIdx < endIdx
+  // Inline-Variante: Annotation auf derselben oder der direkt vorangehenden Zeile.
+  const inline = inlineIdx !== -1 && (inlineIdx === versionIdx || inlineIdx === versionIdx - 1)
+  check(
+    inBlock || inline,
+    'VERSION_NAME liegt in einem release-please-Marker (Block oder inline)',
+    'ohne Marker bumpt der Generic-Updater die Datei NIE',
+  )
+
+  if (versionIdx !== -1) {
+    const v = lines[versionIdx].slice('VERSION_NAME='.length).trim()
+    check(v === manifest[appPath], `version.properties ${v} == Manifest ${manifest[appPath]}`)
+    // Derselbe Vertrag wie build.gradle/build-android.sh: exakt major.minor.patch,
+    // minor/patch < 100 (sonst kollidiert 0.1.100 mit 0.2.0).
+    const sv = v.match(/^(\d+)\.(\d+)\.(\d+)$/)
+    check(!!sv, `VERSION_NAME "${v}" ist exakt major.minor.patch`)
+    if (sv) {
       check(
-        m[1].trim() === manifest[appPath],
-        `version.properties ${m[1].trim()} == Manifest ${manifest[appPath]}`,
+        Number(sv[2]) < 100 && Number(sv[3]) < 100,
+        'versionCode-Formel gueltig (minor/patch < 100)',
       )
-      // Derselbe Vertrag wie build.gradle/build-android.sh: exakt major.minor.patch,
-      // minor/patch < 100 (sonst kollidiert 0.1.100 mit 0.2.0).
-      const sv = m[1].trim().match(/^(\d+)\.(\d+)\.(\d+)$/)
-      check(!!sv, `VERSION_NAME "${m[1].trim()}" ist exakt major.minor.patch`)
-      if (sv) {
-        check(
-          Number(sv[2]) < 100 && Number(sv[3]) < 100,
-          'versionCode-Formel gueltig (minor/patch < 100)',
-        )
-      }
     }
   }
 }
