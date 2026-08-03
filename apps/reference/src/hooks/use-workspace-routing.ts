@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
-import { Newspaper, Map as MapIcon, Calendar, Columns3, List } from "lucide-react"
+import { Newspaper, Map as MapIcon, Calendar, Columns3, List, Waves } from "lucide-react"
 import {
   useConnector,
   useGroups,
@@ -23,6 +23,7 @@ const MODULE_ICONS: Record<string, typeof Newspaper> = {
   calendar: Calendar,
   kanban: Columns3,
   collection: List,
+  resonance: Waves,
 }
 
 const MODULE_LABELS: Record<string, string> = {
@@ -31,9 +32,10 @@ const MODULE_LABELS: Record<string, string> = {
   calendar: "Kalender",
   kanban: "Kanban",
   collection: "Liste",
+  resonance: "Resonanz",
 }
 
-export const VALID_MODULES = ["feed", "kanban", "calendar", "map", "collection"]
+export const VALID_MODULES = ["feed", "kanban", "calendar", "map", "collection", "resonance"]
 
 // The aggregate ("Mein Netzwerk") keeps its internal scope id `__overview__`
 // (used across the module views) but appears as `network` in the URL.
@@ -54,6 +56,11 @@ const OVERVIEW_WORKSPACE: Workspace = { id: OVERVIEW_ID, name: "Mein Netzwerk", 
  * default; an explicit `/{scope}/{module}/{itemId}` always wins.
  */
 export function resolveDefaultModule(itemOrHints: Item | ModuleHints, available: string[]): string {
+  // Statements live only in the Resonance module (type-filtered, no field
+  // hint) — a module-less statement link must not fall through to the feed.
+  if ("type" in itemOrHints && itemOrHints.type === "statement" && available.includes("resonance")) {
+    return "resonance"
+  }
   const hints = moduleHintsFor(itemOrHints)
   const preferred =
     hints.hasPosition

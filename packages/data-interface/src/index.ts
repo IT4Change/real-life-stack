@@ -207,6 +207,16 @@ export function deriveActivitySummary(
     const title = parent ? itemDisplayTitle(parent) : undefined
     return title ? `${emoji} auf „${title}"` : emoji
   }
+  if (item.type === "vote") {
+    const stanceLabel = item.data.value === "green" ? "Zustimmung"
+      : item.data.value === "yellow" ? "Bedenken"
+      : item.data.value === "red" ? "Ablehnung" : "Stimme"
+    const target = item.relations?.find((relation) => relation.predicate === "votesOn")?.target
+    const targetId = target?.startsWith("item:") ? target.slice("item:".length) : undefined
+    const parent = targetId ? lookupItem(targetId) : undefined
+    const title = parent ? itemDisplayTitle(parent) : undefined
+    return title ? `${stanceLabel} zu „${title}"` : stanceLabel
+  }
   return itemDisplayTitle(item)
 }
 

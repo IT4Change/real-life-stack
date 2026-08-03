@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "vitest run src/views/kanban-view.activity.test.ts src/notification-navigation.test.ts src/live-update.test.ts",
+    "test": "vitest run src/views/kanban-view.activity.test.ts src/notification-navigation.test.ts src/live-update.test.ts src/resonance-sort.test.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "cap:sync": "cap sync",

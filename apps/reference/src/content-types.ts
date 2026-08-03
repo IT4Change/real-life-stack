@@ -35,6 +35,13 @@ export const ALL_CONTENT_TYPES: ContentTypeConfig[] = [
     submitLabel: "Erstellen",
   },
   {
+    id: "statement",
+    label: "Aussage",
+    defaultWidgets: ["title", "text", "tags"],
+    widgetLabels: { title: "Aussage", text: "Kontext" },
+    submitLabel: "Einbringen",
+  },
+  {
     id: "task",
     label: "Task",
     defaultWidgets: ["title", "text", "status", "people", "tags"],
@@ -62,3 +69,4 @@ export const FEED_CREATE_TYPES = pickContentTypes("post", "event")
 export const CALENDAR_CREATE_TYPES = pickContentTypes("event")
 export const MAP_CREATE_TYPES = pickContentTypes("place", "event")
 export const KANBAN_CREATE_TYPES = pickContentTypes("task")
+export const RESONANCE_CREATE_TYPES = pickContentTypes("statement")

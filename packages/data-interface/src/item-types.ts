@@ -354,6 +354,67 @@ export function isReaction(item: Item): item is ReactionItem {
 }
 
 // ============================================================
+// Statement (Resonance module)
+// ============================================================
+
+export interface StatementData {
+  /** The statement itself — a single sentence the group takes a stance on. */
+  title: string
+  /** Optional context for the statement. */
+  description?: string
+}
+
+export type StatementItem = Item & { type: "statement"; data: StatementData }
+
+/** Reverse relations for a statement. */
+export interface StatementRelations {
+  reverse: {
+    /** Votes on this statement (votesOn → this statement, 0..n) */
+    votesOn: VoteItem
+  }
+}
+
+export function isStatement(item: Item): item is StatementItem {
+  return item.type === "statement"
+}
+
+// ============================================================
+// Vote (Resonance module)
+// ============================================================
+
+/** Three-step stance: agree / neutral-concerns / disagree. */
+export type VoteValue = "green" | "yellow" | "red"
+
+export interface VoteData {
+  /** The stance of this vote. */
+  value: VoteValue
+}
+
+export type VoteItem = Item & { type: "vote"; data: VoteData }
+
+/** Forward relations for a vote. */
+export interface VoteRelations {
+  forward: {
+    /** Vote targets a statement → StatementItem (scope: item:, 1) */
+    votesOn: StatementItem
+  }
+}
+
+export function isVote(item: Item): item is VoteItem {
+  return item.type === "vote"
+}
+
+/**
+ * Deterministic vote item id: one vote per (statement, voter) is enforced
+ * STRUCTURALLY — createItem with an existing id is idempotent, a stance change
+ * is an updateItem on the voter's own item (conflict-free: one item is the
+ * CRDT merge boundary).
+ */
+export function voteItemId(statementId: string, voterDid: string): string {
+  return `vote:${statementId}:${voterDid}`
+}
+
+// ============================================================
 // Comment
 // ============================================================
 
@@ -411,6 +472,7 @@ export type KnownPredicate =
   | keyof EventRelations["forward"]
   | keyof ReactionRelations["forward"]
   | keyof CommentRelations["forward"]
+  | keyof VoteRelations["forward"]
 
 /** Known item types. Connectors may define additional ones. */
 export type KnownItemType =
@@ -425,3 +487,5 @@ export type KnownItemType =
   | "relation"
   | "reaction"
   | "comment"
+  | "statement"
+  | "vote"

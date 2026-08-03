@@ -35,6 +35,8 @@ export function moduleCanDisplay(module: string, hints: ModuleHintsLike | undefi
   if (module === "map") return Boolean(hints?.hasPosition)
   if (module === "calendar") return Boolean(hints?.hasStart)
   if (module === "kanban") return Boolean(hints?.hasStatus)
+  // Resonance shows statements only (type-filtered, see resonance.md).
+  if (module === "resonance") return itemType === "statement"
   // The feed unions content-items (posts) and start-items (events) — anything
   // else (pure tasks, places, people) never appears there.
   if (module === "feed") return itemType === "post" || Boolean(hints?.hasStart)
