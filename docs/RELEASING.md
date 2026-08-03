@@ -80,20 +80,38 @@ Konfiguriert in `release-please-config.json` — **sechs** publizierbare Pakete:
    löst `workspace:*` auf die konkrete Version auf, npm-Paket und Asset sind
    byte-identisch.
 
-### ⚠️ Einmalige npm-Einrichtung (manuell, Voraussetzung)
+### ⚠️ Einmalige npm-Einrichtung pro Paket (Henne-Ei)
 
-Trusted Publishing greift erst, wenn auf npmjs.com pro Paket ein **Trusted
-Publisher** hinterlegt ist:
+Trusted Publishing kann **nicht** von Anfang an greifen: npm lässt einen Trusted
+Publisher erst konfigurieren, wenn das Paket **schon existiert** — die Einstellung
+hängt an der Paketseite. Ein nie publiziertes Paket lässt sich also nicht per OIDC
+publizieren. Die Reihenfolge ist deshalb zwingend:
 
-- **Scope** `@real-life-stack` muss auf npm existieren (Org/User).
-- Pro Paket: **Trusted Publisher** = `real-life-org/real-life-stack` +
-  Workflow `publish.yml`.
-- Solange das fehlt, schlägt der **npm-Schritt** bei einem Paket-Release fehl
-  (der tgz-Asset-Upload gelingt trotzdem). Kein Datenverlust, nur ein roter
-  npm-Step, bis die Publisher gesetzt sind.
+1. **Org/Scope**: Die npm-Org muss zum Scope passen. `@real-life-stack/*` verlangt
+   die Org **`real-life-stack`** — nicht `real-life`. (Scopes sind an den
+   Org-Namen gebunden.)
+2. **Erst-Publish von Hand**, einmal pro Paket, mit normaler npm-Session:
+   ```bash
+   npm login                                    # Mitglied der Org real-life-stack
+   scripts/release/bootstrap-npm-publish.sh --dry-run
+   scripts/release/bootstrap-npm-publish.sh
+   ```
+   Das Skript überspringt bereits publizierte Pakete, baut in
+   Abhängigkeitsreihenfolge und publiziert den `pnpm pack`-Tarball — exakt so, wie
+   es `publish.yml` später tut.
+3. **Trusted Publisher eintragen**, einmal pro Paket:
+   `npmjs.com/package/@real-life-stack/<name>` → *Settings → Trusted publishing* →
+   Repository `real-life-org/real-life-stack`, Workflow `publish.yml`.
+   (Das Skript gibt am Ende die direkten Links aus.)
 
-(Dieselbe Reise wie bei web-of-trust; dort war 2FA/Passkey der ursprüngliche
-Blocker, gelöst über den hinterlegten Trusted Publisher.)
+Ab dann läuft jeder Publish über die CI, ohne Token im Repo.
+
+**Solange Schritt 2/3 für ein Paket fehlt**, schlägt bei dessen Release nur der
+**npm-Step** fehl; der tgz-Asset-Upload ans GitHub-Release gelingt trotzdem. Kein
+Datenverlust, kein Teil-Publish — nur ein roter Step.
+
+> Diese Schleife gilt für **jedes künftig neu angelegte Paket**, nicht nur für den
+> Erstaufbau. Deshalb liegt das Bootstrap-Skript im Repo.
 
 ---
 
