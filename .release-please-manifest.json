@@ -5,5 +5,5 @@
   "packages/local-connector": "0.1.0",
   "packages/wot-connector": "0.1.0",
   "packages/graphql-connector": "0.1.0",
-  "apps/reference": "0.2.2"
+  "apps/reference": "0.2.3"
 }
