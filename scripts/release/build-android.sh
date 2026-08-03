@@ -106,18 +106,22 @@ fi
 
 WANT="${TAG#"$TAG_PREFIX"}"
 VERSION_FILE="$APP_DIR/android/version.properties"
-VERSION_NAME=$(grep VERSION_NAME "$VERSION_FILE" | cut -d= -f2)
+VERSION_NAME=$(grep -E '^VERSION_NAME=' "$VERSION_FILE" | cut -d= -f2)
 if [ "$VERSION_NAME" != "$WANT" ]; then
   abort "Tag sagt $WANT, version.properties sagt $VERSION_NAME."
 fi
-# versionCode deterministisch aus dem NAMEN ableiten — dieselbe Formel wie in
-# build.gradle (major*10000 + minor*100 + patch). version.properties fuehrt kein
-# VERSION_CODE mehr; release-please bumpt nur den Namen. Siehe docs/RELEASING.md.
-case "$VERSION_NAME" in
-  [0-9]*.[0-9]*.[0-9]*) ;;
-  *) abort "VERSION_NAME '$VERSION_NAME' ist kein major.minor.patch." ;;
-esac
-IFS=. read -r _MJ _MN _PT <<<"$VERSION_NAME"
+# versionCode deterministisch aus dem NAMEN ableiten — dieselbe Formel + dieselben
+# Grenzen wie in build.gradle (major*10000 + minor*100 + patch). STRIKT: exakt drei
+# dezimale Segmente, minor/patch < 100 (sonst kollidiert 0.1.100 mit 0.2.0), 10#
+# erzwingt Dezimal (fuehrende Nullen). version.properties fuehrt kein VERSION_CODE
+# mehr; release-please bumpt nur den Namen. Siehe docs/RELEASING.md.
+if [[ ! "$VERSION_NAME" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+  abort "VERSION_NAME '$VERSION_NAME' ist kein major.minor.patch."
+fi
+_MJ=$((10#${BASH_REMATCH[1]})); _MN=$((10#${BASH_REMATCH[2]})); _PT=$((10#${BASH_REMATCH[3]}))
+if [ "$_MN" -ge 100 ] || [ "$_PT" -ge 100 ]; then
+  abort "versionCode-Formel verlangt minor/patch < 100: $VERSION_NAME"
+fi
 VERSION_CODE=$(( _MJ * 10000 + _MN * 100 + _PT ))
 echo "    ok: $TAG == version.properties ($VERSION_NAME → Code $VERSION_CODE abgeleitet)"
 

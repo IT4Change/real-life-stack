@@ -31,11 +31,12 @@
       "include-component-in-tag": true,
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "generic", "path": "apps/reference/android/version.properties" }
+        { "type": "generic", "path": "android/version.properties" }
       ]
     }
   },
   "separate-pull-requests": false,
   "bump-minor-pre-major": true,
-  "bump-patch-for-minor-pre-major": true
+  "bump-patch-for-minor-pre-major": true,
+  "plugins": ["node-workspace"]
 }
