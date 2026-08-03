@@ -37,6 +37,17 @@ die App kompiliert, erzeugt zuverlässig auch einen `app-v*`-Tag → nativen Bui
 Play-Auslieferung. (`graphql-connector` konsumiert die App nicht, kaskadiert also
 nicht.)
 
+> **Der Vertrag dahinter ist zerbrechlich** — `node-workspace` nimmt nur
+> Komponenten mit aufgelöstem `release-type: node` in den Graphen; eine als
+> `simple` konfigurierte App fällt still heraus, und ein root-relativer
+> `extra-files`-Pfad bumpt die Versionsdatei nie. Beides ist in der CI sonst
+> unsichtbar und kracht erst beim Release. Deshalb prüft
+> **`scripts/release/test-release-cascade.mjs`** diese Invarianten bei jedem PR
+> (Job `release-cascade` in `tests.yml`): Plugin aktiv, App und alle konsumierten
+> Pakete sind `node`-Komponenten, `extra-files` zeigt auf die echte Datei,
+> Versionen in Manifest / `package.json` / `version.properties` stimmen überein.
+> Lokal: `node scripts/release/test-release-cascade.mjs`.
+
 ---
 
 ## Was wodurch ausgelöst wird

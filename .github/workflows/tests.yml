@@ -23,6 +23,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Regressionstest fuer die Package→App-Releasekaskade (#202). Eigener Job, weil
+  # er weder Install noch Zeitzonen-Matrix braucht — er liest nur die
+  # release-please-Config und die Manifeste. Faengt genau die zwei Fehler, die in
+  # PR #199 passiert und in der CI unsichtbar waren: App als "simple" (faellt aus
+  # dem node-workspace-Graphen) und ein root-relativer extra-files-Pfad (bumpt die
+  # Versionsdatei nie). Ohne diesen Vertrag erreicht ein Paket-Fix Play nie, weil
+  # Play bewusst kein OTA hat.
+  release-cascade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Kaskaden-Vertrag pruefen
+        run: node scripts/release/test-release-cascade.mjs
+
   test:
     runs-on: ubuntu-latest
     strategy:
