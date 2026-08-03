@@ -31,7 +31,11 @@ import { readFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+// Normalerweise das Repo-Wurzelverzeichnis. RELEASE_CASCADE_ROOT haengt den
+// Checker an einen anderen Baum — genau das braucht der Selbsttest, der ihn gegen
+// praeparierte Fixtures laufen laesst (siehe test-release-cascade.selftest.mjs).
+const ROOT =
+  process.env.RELEASE_CASCADE_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const read = (p) => readFileSync(join(ROOT, p), 'utf8')
 const readJson = (p) => JSON.parse(read(p))
 

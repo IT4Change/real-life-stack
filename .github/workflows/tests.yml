@@ -45,6 +45,12 @@ jobs:
       - name: Kaskaden-Vertrag pruefen
         run: node scripts/release/test-release-cascade.mjs
 
+      # Der Waechter muss auch beweisen, dass er BEISST: der Selbsttest laesst ihn
+      # gegen praeparierte Fixtures laufen und verlangt, dass jede Verletzung rot
+      # wird. Ohne das koennte er wieder still fail-open werden.
+      - name: Waechter-Selbsttest (Negativfaelle)
+        run: node scripts/release/test-release-cascade.selftest.mjs
+
   test:
     runs-on: ubuntu-latest
     strategy:
