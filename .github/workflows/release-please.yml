@@ -1,7 +1,9 @@
-# release-please fuer die RLS Reference App. Aktuell app-fokussiert — die
-# npm-Pakete (data-interface, toolkit, connectors) sind noch NICHT hier
-# eingehaengt; sie kaemen als weitere Komponenten in dieselbe Config (dann
-# strukturgleich zu web-of-trust). Siehe docs/RELEASING.md.
+# release-please fuer Real Life Stack: verwaltet die publizierbaren Pakete
+# (data-interface, toolkit, vier Konnektoren) UND die Reference App in EINER
+# Release-PR. Merge der PR erzeugt die Tags → npm-Publish (publish.yml) bzw.
+# App-Build (build-on-tag), beide per Dispatch (GITHUB_TOKEN-Tags triggern keine
+# Workflows). graphql-server ist private und bleibt draussen. Siehe
+# docs/RELEASING.md.
 name: Release Please
 
 on:
@@ -16,9 +18,22 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      # Die App ist eine release-please-Komponente (component "app") → Tag
-      # app-vX.Y.Z. Der loest build-on-tag NICHT von selbst aus (GITHUB_TOKEN-
-      # Tags triggern keine Workflows) — deshalb der Dispatch-Job unten.
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      # Pakete: pro Komponente released-Flag + Tag-Name (Klammer-Notation, weil
+      # der Key Schraegstriche enthaelt).
+      data_interface_released: ${{ steps.release.outputs['packages/data-interface--release_created'] }}
+      data_interface_tag: ${{ steps.release.outputs['packages/data-interface--tag_name'] }}
+      toolkit_released: ${{ steps.release.outputs['packages/toolkit--release_created'] }}
+      toolkit_tag: ${{ steps.release.outputs['packages/toolkit--tag_name'] }}
+      mock_connector_released: ${{ steps.release.outputs['packages/mock-connector--release_created'] }}
+      mock_connector_tag: ${{ steps.release.outputs['packages/mock-connector--tag_name'] }}
+      local_connector_released: ${{ steps.release.outputs['packages/local-connector--release_created'] }}
+      local_connector_tag: ${{ steps.release.outputs['packages/local-connector--tag_name'] }}
+      wot_connector_released: ${{ steps.release.outputs['packages/wot-connector--release_created'] }}
+      wot_connector_tag: ${{ steps.release.outputs['packages/wot-connector--tag_name'] }}
+      graphql_connector_released: ${{ steps.release.outputs['packages/graphql-connector--release_created'] }}
+      graphql_connector_tag: ${{ steps.release.outputs['packages/graphql-connector--tag_name'] }}
+      # App (component "app") → Tag app-vX.Y.Z, loest build-on-tag per Dispatch aus.
       app_released: ${{ steps.release.outputs['apps/reference--release_created'] }}
       app_tag: ${{ steps.release.outputs['apps/reference--tag_name'] }}
     steps:
@@ -28,11 +43,72 @@ jobs:
           manifest-file: .release-please-manifest.json
           config-file: release-please-config.json
 
+  # Pro released Paket publish.yml per workflow_dispatch anstossen (GITHUB_TOKEN-
+  # Tags triggern kein on:release). publish.yml laeuft so als Top-Level-Workflow
+  # → das OIDC-Token nennt publish.yml, worauf npm den Trusted Publisher pruefen
+  # wird. Guard pro Paket: released=true aber leerer Tag = Abbruch (Schema-Drift).
+  trigger-publish:
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Publish je erzeugtem Paket-Release anstossen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DATA_INTERFACE_RELEASED: ${{ needs.release-please.outputs.data_interface_released }}
+          DATA_INTERFACE_TAG: ${{ needs.release-please.outputs.data_interface_tag }}
+          TOOLKIT_RELEASED: ${{ needs.release-please.outputs.toolkit_released }}
+          TOOLKIT_TAG: ${{ needs.release-please.outputs.toolkit_tag }}
+          MOCK_RELEASED: ${{ needs.release-please.outputs.mock_connector_released }}
+          MOCK_TAG: ${{ needs.release-please.outputs.mock_connector_tag }}
+          LOCAL_RELEASED: ${{ needs.release-please.outputs.local_connector_released }}
+          LOCAL_TAG: ${{ needs.release-please.outputs.local_connector_tag }}
+          WOT_RELEASED: ${{ needs.release-please.outputs.wot_connector_released }}
+          WOT_TAG: ${{ needs.release-please.outputs.wot_connector_tag }}
+          GRAPHQL_RELEASED: ${{ needs.release-please.outputs.graphql_connector_released }}
+          GRAPHQL_TAG: ${{ needs.release-please.outputs.graphql_connector_tag }}
+        run: |
+          set -euo pipefail
+          started=0
+          missing=0
+
+          dispatch() {
+            released=$1; tag=$2; label=$3
+            # Guard PRO PAKET: released ohne Tag-Output = Schema-Drift, nicht still
+            # ueberspringen.
+            if [ "$released" = "true" ] && [ -z "$tag" ]; then
+              echo "ABBRUCH-Kandidat: $label als released gemeldet, aber kein Tag-Output." >&2
+              missing=1
+              return
+            fi
+            [ -n "$tag" ] || return
+            echo "starte publish.yml für $tag"
+            gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" -f tag="$tag"
+            started=$((started + 1))
+          }
+
+          dispatch "$DATA_INTERFACE_RELEASED" "$DATA_INTERFACE_TAG" "data-interface"
+          dispatch "$TOOLKIT_RELEASED"        "$TOOLKIT_TAG"        "toolkit"
+          dispatch "$MOCK_RELEASED"           "$MOCK_TAG"           "mock-connector"
+          dispatch "$LOCAL_RELEASED"          "$LOCAL_TAG"          "local-connector"
+          dispatch "$WOT_RELEASED"            "$WOT_TAG"            "wot-connector"
+          dispatch "$GRAPHQL_RELEASED"        "$GRAPHQL_TAG"        "graphql-connector"
+
+          if [ "$missing" -eq 1 ]; then
+            echo "ABBRUCH: mindestens ein released-Paket ohne Tag-Output (Schema-Aenderung?)." >&2
+            exit 1
+          fi
+          # releases_created war true — aber es kann ein reines App-Release ohne
+          # Paket gewesen sein. Dann ist started=0 voellig ok (kein Abbruch).
+          echo "$started Publish-Lauf/Laeufe angestossen"
+
   # Wurde die App released (Tag app-vX.Y.Z), den nativen Build anstossen.
-  # workflow_dispatch ist von der GITHUB_TOKEN-Sperre ausgenommen. build-on-tag
-  # checkt inputs.tag aus, also traegt build-info.commit den Tag-Commit — genau
-  # worauf die Signier-Pipeline (verify_attested_artifact) bindet. Signiert/
-  # deployt wird danach auf dem Server: docker compose run --rm signer|play-publish.
+  # build-on-tag checkt inputs.tag aus, also traegt build-info.commit den
+  # Tag-Commit — genau worauf die Signier-Pipeline (verify_attested_artifact)
+  # bindet. Signiert/deployt wird danach auf dem Server:
+  # docker compose run --rm signer|play-publish.
   trigger-app-build:
     needs: release-please
     if: needs.release-please.outputs.app_released == 'true'

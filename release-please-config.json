@@ -1,6 +1,30 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "packages": {
+    "packages/data-interface": {
+      "package-name": "@real-life-stack/data-interface",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/toolkit": {
+      "package-name": "@real-life-stack/toolkit",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/mock-connector": {
+      "package-name": "@real-life-stack/mock-connector",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/local-connector": {
+      "package-name": "@real-life-stack/local-connector",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/wot-connector": {
+      "package-name": "@real-life-stack/wot-connector",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/graphql-connector": {
+      "package-name": "@real-life-stack/graphql-connector",
+      "changelog-path": "CHANGELOG.md"
+    },
     "apps/reference": {
       "release-type": "simple",
       "component": "app",

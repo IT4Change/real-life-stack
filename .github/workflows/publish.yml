@@ -1,0 +1,144 @@
+name: Publish Packages
+
+on:
+  # ACHTUNG: dieser Trigger feuert NICHT fuer Releases, die release-please als
+  # github-actions[bot] anlegt — GitHub loest aus GITHUB_TOKEN-Events keine
+  # Workflows aus. Er greift nur, wenn ein Mensch ein Release von Hand anlegt.
+  # Der automatische Weg laeuft ueber den trigger-publish-Job in
+  # release-please.yml, der hier per workflow_dispatch reinkommt.
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release-Tag, an das die tgz-Assets gehängt werden'
+        required: true
+
+jobs:
+  # Tag-Klassifikation als EIGENER Job (Job-level if ueberspringt den Publish
+  # sauber, ein Step-exit liesse Folge-Steps mit leerem dir weiterlaufen).
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      kind: ${{ steps.c.outputs.kind }}
+      dir: ${{ steps.c.outputs.dir }}
+    steps:
+      - id: c
+        env:
+          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in
+            data-interface-v*)    kind=package; dir=packages/data-interface ;;
+            toolkit-v*)           kind=package; dir=packages/toolkit ;;
+            mock-connector-v*)    kind=package; dir=packages/mock-connector ;;
+            local-connector-v*)   kind=package; dir=packages/local-connector ;;
+            wot-connector-v*)     kind=package; dir=packages/wot-connector ;;
+            graphql-connector-v*) kind=package; dir=packages/graphql-connector ;;
+            app-v*)
+              # App-Releases sind eine ERWARTETE Tag-Klasse, aber kein npm-Paket.
+              echo "App-Release-Tag '$TAG' — kein npm-Publish noetig."
+              kind=app; dir= ;;
+            *)
+              echo "ABBRUCH: Tag '$TAG' gehoert zu keinem publizierbaren Paket." >&2
+              echo "Erwartet: <paket>-v* (oder app-v* als Skip)." >&2
+              exit 1 ;;
+          esac
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          echo "dir=$dir"   >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: classify
+    if: needs.classify.outputs.kind == 'package'
+    runs-on: ubuntu-latest
+    # Zwei Ziele, bewusst parallel: tgz-Assets am GitHub-Release UND npm via
+    # Trusted Publishing (OIDC). Erst die Assets, dann npm — scheitert npm, bleibt
+    # der Tarball intakt und der Lauf trotzdem rot.
+    permissions:
+      contents: write
+      # Ohne id-token kein OIDC-Token und damit kein Trusted Publishing.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Beim manuellen Re-Run MUSS der Checkout auf dem Ziel-Tag stehen —
+          # sonst wuerden Tarballs vom master-HEAD mit --clobber die Assets eines
+          # aelteren Releases ueberschreiben.
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+
+      # KEIN version:-Input — packageManager in der package.json entscheidet.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Paket + Workspace-Abhaengigkeiten bauen
+        env:
+          DIR: ${{ needs.classify.outputs.dir }}
+        run: |
+          set -euo pipefail
+          name=$(node -p "require('./$DIR/package.json').name")
+          # "$name..." = das Paket UND seine Workspace-Deps. pnpm ueberspringt
+          # Pakete ohne build-Script.
+          pnpm --filter "${name}..." build
+
+      # pnpm pack loest "workspace:*" auf die konkrete Version auf — npm-Paket und
+      # Release-Asset sind damit byte-identisch.
+      - name: Tarball packen
+        id: pack
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tgz
+          pnpm -C "${{ needs.classify.outputs.dir }}" pack --pack-destination /tmp/tgz
+          tarball=$(ls /tmp/tgz/*.tgz)
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          ls -l "$tarball"
+
+      - name: Upload tarballs to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+        run: gh release upload "$TAG" /tmp/tgz/*.tgz --clobber
+
+      # Trusted Publishing verlangt npm >= 11.5.1. Explizit sicherstellen statt
+      # hoffen: ein zu altes npm kennt den OIDC-Austausch nicht und scheitert mit
+      # irrefuehrendem 404.
+      - name: npm-Version für Trusted Publishing sicherstellen
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      # npm publish auf den fertigen Tarball (hat die workspace:*-Rewrites schon
+      # drin). Drei-Fall-Auswertung von npm view, damit weder ein stiller Skip
+      # noch ein maskierter Auth-Fehler passiert.
+      - name: Publish to npm (Trusted Publishing via OIDC)
+        env:
+          DIR: ${{ needs.classify.outputs.dir }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          name=$(node -p "require('./$DIR/package.json').name")
+          version=$(node -p "require('./$DIR/package.json').version")
+
+          set +e
+          view_out=$(npm view "$name@$version" version 2>&1)
+          view_rc=$?
+          set -e
+
+          if [ "$view_rc" -eq 0 ] && [ "$view_out" = "$version" ]; then
+            echo "übersprungen: $name@$version liegt bereits auf npm"
+            exit 0
+          fi
+          if [ "$view_rc" -ne 0 ] && ! printf '%s' "$view_out" | grep -q 'E404'; then
+            echo "ABBRUCH: npm view für $name@$version fehlgeschlagen:" >&2
+            printf '%s\n' "$view_out" >&2
+            exit 1
+          fi
+
+          echo "publiziere $name@$version aus $TARBALL"
+          npm publish "$TARBALL" --access public
