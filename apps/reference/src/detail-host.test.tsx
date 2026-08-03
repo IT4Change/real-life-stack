@@ -61,10 +61,14 @@ async function readWith(
   })
   await act(async () => { await Promise.resolve() })
   const text = container.textContent ?? ""
+  const reactionButtons = container.querySelectorAll('[aria-label="Add reaction"]').length
   await act(async () => { root.unmount() })
   container.remove()
-  return text
+  return { text, reactionButtons }
 }
+
+/** Convenience for the many assertions that only look at text. */
+const textOf = async (...args: Parameters<typeof readWith>) => (await readWith(...args)).text
 
 const task = (overrides: Record<string, unknown> = {}) => ({
   id: "task-1",
@@ -85,14 +89,14 @@ describe("shared detail read view", () => {
 
   it("renders the same body no matter which space context opened it", async () => {
     const item = task()
-    const fromA = await readWith(connector, item, SPACE_A)
-    const fromB = await readWith(connector, item, SPACE_B)
+    const fromA = await textOf(connector, item, SPACE_A)
+    const fromB = await textOf(connector, item, SPACE_B)
     expect(fromA).toBe(fromB)
     expect(fromA).toContain("Beete vorbereiten")
   })
 
   it("shows a task's assignees — a type rule, not a Kanban rule", async () => {
-    const text = await readWith(connector, task(), SPACE_A)
+    const text = await textOf(connector, task(), SPACE_A)
     expect(text).toContain("Kollegin")
   })
 
@@ -106,15 +110,15 @@ describe("shared detail read view", () => {
       createdBy: MATE,
       relations: [{ predicate: "assignedTo", target: `global:${ME}` }],
     })
-    const text = await readWith(connector, mine, SPACE_A)
+    const text = await textOf(connector, mine, SPACE_A)
     expect(text).toContain("Ich")
   })
 
   it("adds assignees for tasks only — the type decides, not the surface", async () => {
     // Author and assignee are the same person here, so the name count is the
     // signal: twice for a task, once for anything else.
-    const asTask = await readWith(connector, task(), SPACE_A)
-    const asPost = await readWith(
+    const asTask = await textOf(connector, task(), SPACE_A)
+    const asPost = await textOf(
       connector,
       task({ type: "post", relations: [], data: { title: "Notiz", content: "Text" } }),
       SPACE_A,
@@ -123,7 +127,20 @@ describe("shared detail read view", () => {
     expect(asPost.match(/Kollegin/g)?.length).toBe(1)
   })
 
+  it("offers reactions on a task too — reactions are not type-dependent", async () => {
+    // Tasks were excluded from reactions until Anton corrected that. A task
+    // now carries BOTH: its assignees and the reaction affordance.
+    const asTask = await readWith(connector, task(), SPACE_A)
+    const asPost = await readWith(
+      connector,
+      task({ type: "post", relations: [], data: { title: "Notiz", content: "Text" } }),
+      SPACE_A,
+    )
+    expect(asTask.reactionButtons).toBe(1)
+    expect(asPost.reactionButtons).toBe(1)
+  })
+
   it("carries the item's type badge", async () => {
-    expect(await readWith(connector, task(), SPACE_A)).toContain("Task")
+    expect(await textOf(connector, task(), SPACE_A)).toContain("Task")
   })
 })
