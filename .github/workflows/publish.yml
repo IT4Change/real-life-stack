@@ -65,6 +65,34 @@ jobs:
           # sonst wuerden Tarballs vom master-HEAD mit --clobber die Assets eines
           # aelteren Releases ueberschreiben.
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+          # Kein Git-Token im Worktree persistieren, waehrend gleich fremder
+          # Dependency-Code (pnpm install) laeuft. Upload nutzt gh + GH_TOKEN.
+          persist-credentials: false
+
+      # PROVENIENZ FAIL-CLOSED, bevor irgendetwas installiert/gepackt/publiziert
+      # wird: npm-Publishes sind irreversibel. Der Tag muss beweisbar zu genau dem
+      # Paket + der Version gehoeren, die am ausgecheckten Ref stehen.
+      - name: Tag ↔ Paket + Version binden
+        env:
+          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+          DIR: ${{ needs.classify.outputs.dir }}
+        run: |
+          set -euo pipefail
+          # 1. Exakt <component>-v<SemVer>.
+          if [[ ! "$TAG" =~ ^([a-z0-9-]+)-v([0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)*)$ ]]; then
+            echo "ABBRUCH: Tag '$TAG' ist kein <component>-v<SemVer>." >&2; exit 1
+          fi
+          tag_component="${BASH_REMATCH[1]}"
+          tag_version="${BASH_REMATCH[2]}"
+          # 2. Erwarteter Paketname der klassifizierten Komponente == Tag-Component
+          #    (unscoped) UND 3. Tag-Version == package.json.version AM Ref.
+          pkg_name=$(node -p "require('./$DIR/package.json').name")
+          pkg_version=$(node -p "require('./$DIR/package.json').version")
+          [ "${pkg_name##*/}" = "$tag_component" ] \
+            || { echo "ABBRUCH: Tag-Component '$tag_component' != Paket '$pkg_name'." >&2; exit 1; }
+          [ "$pkg_version" = "$tag_version" ] \
+            || { echo "ABBRUCH: Tag-Version '$tag_version' != package.json '$pkg_version' am Ref." >&2; exit 1; }
+          echo "ok: $TAG ↔ $pkg_name@$pkg_version"
 
       # KEIN version:-Input — packageManager in der package.json entscheidet.
       - uses: pnpm/action-setup@v4
@@ -75,7 +103,8 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        # Reproduzierbar: frozen lockfile, kein stiller Lockfile-Drift beim Publish.
+        run: pnpm install --frozen-lockfile
 
       - name: Paket + Workspace-Abhaengigkeiten bauen
         env:
@@ -109,8 +138,10 @@ jobs:
       # hoffen: ein zu altes npm kennt den OIDC-Austausch nicht und scheitert mit
       # irrefuehrendem 404.
       - name: npm-Version für Trusted Publishing sicherstellen
+        # Gepinnt statt @latest: reproduzierbar und >= 11.5.1 (OIDC/Trusted
+        # Publishing). Bewusst anheben, wenn noetig — nicht unkontrolliert driften.
         run: |
-          npm install -g npm@latest
+          npm install -g npm@11.5.1
           npm --version
 
       # npm publish auf den fertigen Tarball (hat die workspace:*-Rewrites schon

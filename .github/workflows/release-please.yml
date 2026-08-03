@@ -76,14 +76,15 @@ jobs:
 
           dispatch() {
             released=$1; tag=$2; label=$3
-            # Guard PRO PAKET: released ohne Tag-Output = Schema-Drift, nicht still
-            # ueberspringen.
-            if [ "$released" = "true" ] && [ -z "$tag" ]; then
+            # released ist das AUTORITATIVE Signal — nur bei true dispatchen. Ein
+            # nichtleerer Tag allein reicht nicht (release-please liefert Tag-Namen
+            # teils auch ohne neues Release).
+            [ "$released" = "true" ] || return
+            if [ -z "$tag" ]; then
               echo "ABBRUCH-Kandidat: $label als released gemeldet, aber kein Tag-Output." >&2
               missing=1
               return
             fi
-            [ -n "$tag" ] || return
             echo "starte publish.yml für $tag"
             gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" -f tag="$tag"
             started=$((started + 1))
