@@ -51,6 +51,12 @@ jobs:
       - name: Waechter-Selbsttest (Negativfaelle)
         run: node scripts/release/test-release-cascade.selftest.mjs
 
+      # Die Schutzwaelle des npm-Bootstraps (Argumentpruefung, Tarball-Identitaet,
+      # Registry-Bindung) gegen Regression sichern. Laeuft OFFLINE — npm und pnpm
+      # sind gestubbt, es wird nichts publiziert und kein Konto gebraucht.
+      - name: npm-Bootstrap-Grenzen pruefen
+        run: scripts/release/bootstrap-npm-publish.test.sh
+
   test:
     runs-on: ubuntu-latest
     strategy:
