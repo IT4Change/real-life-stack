@@ -96,32 +96,49 @@ STUB
   echo "$root"
 }
 
-# run <root> [args...] → setzt RC und LOG
+# run <root> [args...] → setzt RC, LOG, OUT und TMPLEFT
+# TMPDIR wird auf ein leeres, kontrolliertes Verzeichnis gesetzt: `mktemp` im
+# Skript legt sein Tarball-Verzeichnis dort an, also laesst sich hinterher
+# nachweisen, dass es wieder aufgeraeumt wurde (Cleanup-Trap).
 run() {
   local root="$1"; shift
+  rm -rf "$root/tmp"; mkdir -p "$root/tmp"
   set +e
-  ( cd "$root/repo" && PATH="$root/bin:$PATH" ./scripts/release/bootstrap-npm-publish.sh "$@" >"$root/out.txt" 2>&1 )
+  ( cd "$root/repo" && PATH="$root/bin:$PATH" TMPDIR="$root/tmp" \
+      ./scripts/release/bootstrap-npm-publish.sh "$@" >"$root/out.txt" 2>&1 )
   RC=$?
   set -e
   LOG=$(cat "$root/calls.log")
   OUT=$(cat "$root/out.txt")
+  TMPLEFT=$(find "$root/tmp" -mindepth 1 | wc -l)
 }
 published_count() { printf '%s\n' "$LOG" | grep -c '^npm publish' || true; }
+# Alle externen Aufrufe (npm UND pnpm) — fuer "Abbruch VOR Nebenwirkungen".
+call_count() { [ -z "$LOG" ] && echo 0 || printf '%s\n' "$LOG" | grep -c . ; }
+# Reihenfolge der tatsaechlich publizierten Pakete, aus dem Tarball-Pfad
+# (out_dir = Paketname mit / und @ ersetzt durch _).
+published_order() {
+  printf '%s\n' "$LOG" | grep '^npm publish' \
+    | grep -oE '_real-life-stack_[a-z-]+' | sed 's/^_real-life-stack_//'
+}
 
 echo "== Argumentpruefung: nur --dry-run/--help sind erlaubt =="
 # Der eigentliche Blocker: ein Vertipper darf NICHT scharf publizieren.
+# Schaerfer als "hat nicht publiziert": bei unbekannten Argumenten darf ueberhaupt
+# KEIN externer Befehl gelaufen sein — kein npm whoami, kein pnpm install. Sonst
+# waere der Abbruch erst nach Nebenwirkungen erfolgt.
 for arg in --dry-rnu --dryrun -n --force --dry-run=true; do
   root=$(make_env correct); run "$root" "$arg"
-  if [ "$RC" -ne 0 ] && [ "$(published_count)" -eq 0 ]; then
-    ok "'$arg' bricht ab, ohne zu publizieren"
+  if [ "$RC" -ne 0 ] && [ "$(call_count)" -eq 0 ]; then
+    ok "'$arg' bricht VOR jedem externen Aufruf ab"
   else
-    bad "'$arg' → rc=$RC, publish-Aufrufe=$(published_count)"
+    bad "'$arg' → rc=$RC, externe Aufrufe=$(call_count) (erwartet 0): $(printf '%s' "$LOG" | head -1)"
   fi
 done
 root=$(make_env correct); run "$root" --dry-run extra
-[ "$RC" -ne 0 ] && [ "$(published_count)" -eq 0 ] \
-  && ok "'--dry-run extra' bricht ab, ohne zu publizieren" \
-  || bad "'--dry-run extra' → rc=$RC, publish=$(published_count)"
+[ "$RC" -ne 0 ] && [ "$(call_count)" -eq 0 ] \
+  && ok "'--dry-run extra' bricht VOR jedem externen Aufruf ab" \
+  || bad "'--dry-run extra' → rc=$RC, externe Aufrufe=$(call_count)"
 
 echo
 echo "== --dry-run publiziert nichts =="
@@ -161,21 +178,55 @@ else
   bad "Gutfall → rc=$RC, publish=$(published_count) (erwartet ${#PACKAGES[@]})"
   printf '%s\n' "$OUT" | tail -5 | sed 's/^/       /'
 fi
-if [ "$(printf '%s\n' "$LOG" | grep -c 'registry https://registry.npmjs.org')" -ge 3 ]; then
-  ok "Registry explizit gebunden (whoami/view/publish)"
+# Registry JE Publish-Aufruf, nicht "irgendwo mindestens dreimal". Ein einzelner
+# Publish ohne Bindung koennte sonst in eine fremde Registry gehen.
+pub_lines=$(printf '%s\n' "$LOG" | grep '^npm publish' || true)
+pub_with_reg=$(printf '%s\n' "$pub_lines" | grep -c -- '--registry https://registry.npmjs.org' || true)
+if [ "$(published_count)" -gt 0 ] && [ "$pub_with_reg" -eq "$(published_count)" ]; then
+  ok "jeder der $(published_count) publish-Aufrufe bindet die Registry"
 else
-  bad "Registry nicht durchgaengig gebunden"
+  bad "Registry nicht bei jedem publish gebunden ($pub_with_reg von $(published_count))"
 fi
-if printf '%s\n' "$LOG" | grep '^npm publish' | grep -qv -- '--access public'; then
-  bad "publish ohne --access public"
-else
+# whoami und view ebenfalls gegen dieselbe Registry — sonst prueft der
+# Existenz-Check eine andere Registry als der Publish beschreibt.
+for sub in whoami view; do
+  n=$(printf '%s\n' "$LOG" | grep "^npm $sub" | grep -c -- '--registry https://registry.npmjs.org' || true)
+  t=$(printf '%s\n' "$LOG" | grep -c "^npm $sub" || true)
+  [ "$t" -gt 0 ] && [ "$n" -eq "$t" ] \
+    && ok "npm $sub bindet die Registry ($n/$t)" \
+    || bad "npm $sub ohne Registry-Bindung ($n/$t)"
+done
+
+if [ "$(published_count)" -gt 0 ] && ! printf '%s\n' "$pub_lines" | grep -qv -- '--access public'; then
   ok "publish immer mit --access public"
+else
+  bad "mindestens ein publish ohne --access public"
 fi
-# Reihenfolge: data-interface muss vor toolkit und wot-connector publiziert werden.
-order=$(printf '%s\n' "$LOG" | grep '^npm publish' | nl -ba)
-if [ "$(printf '%s\n' "$LOG" | grep -n '^npm publish' | head -1 | cut -d: -f1)" -ge 1 ]; then
-  ok "Publish-Reihenfolge folgt der Abhaengigkeitsliste"
+
+# ECHTE Reihenfolge pruefen (die alte Fassung verglich nichts — sie war immer
+# wahr). Die publizierten Pakete muessen exakt der Abhaengigkeitsliste folgen:
+# data-interface zuerst, wot-connector zuletzt (haengt an data-interface + toolkit).
+actual_order=$(published_order | tr '\n' ' ' | sed 's/ *$//')
+expected_order=$(printf '%s ' "${PACKAGES[@]}" | sed 's/ *$//')
+if [ "$actual_order" = "$expected_order" ]; then
+  ok "Publish-Reihenfolge entspricht der Abhaengigkeitsliste"
+else
+  bad "Publish-Reihenfolge falsch: '$actual_order' != '$expected_order'"
 fi
+# Zusaetzlich die inhaltliche Invariante, unabhaengig von der Listenreihenfolge.
+pos() { published_order | grep -nx "$1" | cut -d: -f1 | head -1; }
+di=$(pos data-interface); tk=$(pos toolkit); wc_=$(pos wot-connector)
+if [ -n "$di" ] && [ -n "$tk" ] && [ -n "$wc_" ] && [ "$di" -lt "$tk" ] && [ "$tk" -lt "$wc_" ]; then
+  ok "data-interface vor toolkit vor wot-connector"
+else
+  bad "Abhaengigkeitsreihenfolge verletzt (di=$di tk=$tk wot=$wc_)"
+fi
+
+# Der Cleanup-Trap des Skripts muss sein Tarball-Verzeichnis wieder entfernen —
+# sonst blieben gepackte Artefakte im temporaeren Bereich liegen.
+[ "$TMPLEFT" -eq 0 ] \
+  && ok "temporaeres Tarball-Verzeichnis wurde aufgeraeumt" \
+  || bad "Temp-Reste nach dem Lauf: $TMPLEFT Eintrag/Eintraege"
 
 echo
 echo "Ergebnis: $PASS/$TOTAL bestanden, $FAIL fehlgeschlagen."
