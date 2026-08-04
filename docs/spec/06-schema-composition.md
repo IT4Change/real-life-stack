@@ -117,10 +117,11 @@ Das Manifest ist die **einzige Quelle für Typ-Identität**: die Typ-Guards und 
 |---|---|---|
 | `id` | Manifest | stabile Typ-Identität; zugleich der Schlüssel für Lokalisierung |
 | Vokabular-Bindung | Manifest | welche `@context`-Schemas der Composer beim Erstellen setzt |
-| `relations` | Manifest | welche Kanten der Typ eingehen kann: `{ predicate, itemRole, otherKind, widget? }`, siehe „Verhältnis zu Relations" |
+| `relations` | Manifest | welche Kanten der Typ eingehen kann: `{ predicate, itemRole, otherKind }`, keyed by (`predicate`, `itemRole`), siehe „Verhältnis zu Relations" |
 | `label` | Darstellung | Anzeigename (Badge, Composer-Auswahl, User-Filter); Anzeigename und Lokalisierung sind Darstellungsgründe, darum nicht im Manifest |
 | `icon` | Darstellung | Typ-Icon |
 | `composerWidgets` | Darstellung | Widget-Set beim Erstellen (heute `ContentTypeConfig.defaultWidgets`) |
+| `relationWidgets` | Darstellung | welches Composer-Widget eine deklarierte Kante bedient, keyed by (`predicate`, `itemRole`) — Widgets sind UI und gehören darum nicht ins Manifest |
 | `preview` | Darstellung | knappe Darstellung für Karten und Zeilen (heute `getItemPreviewAdornments`) |
 | `detail` | Darstellung | ausführliche Darstellung für das Detail-Panel |
 | `footer` | Darstellung | typ-eigene Fußzeile zusätzlich zur Fläche (Task → Assignees) |
@@ -141,7 +142,7 @@ Das Manifest ist die **einzige Quelle für Typ-Identität**: die Typ-Guards und 
 Register-Einträge werden in deterministischer Reihenfolge zusammengesetzt: **Core → App → Space.** Eine Schicht liefert Beiträge in genau einer von zwei Formen:
 
 1. **Typdefinition** — führt eine neue `id` ein. Eine bereits vergebene `id` ist ein **Konflikt** und MUSS abgelehnt werden.
-2. **Erweiterungsfragment** — adressiert eine vorhandene `id` und ergänzt sie additiv. Mengen-Felder (Kanten keyed by `predicate`, Vokabular-Bindung als Menge) werden vereinigt; neue Keys/Member sind erlaubt, das Entfernen oder Umdefinieren vorhandener ist ein Konflikt. Skalare Felder (`label`, `icon`, Slots) DARF ein Fragment nur setzen, wenn die Basis sie nicht setzt — sonst Konflikt.
+2. **Erweiterungsfragment** — adressiert eine vorhandene `id` und ergänzt sie additiv. Mengen-Felder (Kanten keyed by (`predicate`, `itemRole`), Vokabular-Bindung als Menge) werden vereinigt; neue Keys/Member sind erlaubt, das Entfernen oder Umdefinieren vorhandener ist ein Konflikt. Skalare Felder (`label`, `icon`, Slots) DARF ein Fragment nur setzen, wenn die Basis sie nicht setzt — sonst Konflikt.
 3. **Override** ist in v0.1 nicht vorgesehen: Konflikte werden abgelehnt, nicht aufgelöst. Eine spätere Version KANN eine explizite Override-Operation mit Ziel-Key und Prioritätsregel einführen; bis dahin gibt es kein Shadowing, still oder ausdrücklich.
 
 Die zusammengesetzte Sicht ist pro Space deterministisch: gleiche Schichten, gleiches Ergebnis, unabhängig von Lade- oder Registrierungsreihenfolge — Vereinigung und Konfliktprüfung sind ordnungsunabhängig definiert.
@@ -162,11 +163,15 @@ Das `relations`-Feld deklariert, **welche Kanten ein Typ eingehen kann** — als
 
 Regeln:
 
-1. Ein `relations`-Eintrag besteht aus `predicate`, `itemRole` (`"from"` | `"to"` — welche Rolle **dieses Item** an der Kante hat), `otherKind` (was am anderen Endpunkt steht: `person`, `place`, `item`, …) und optional `widget` (welches Composer-Widget die Kante bedient — `people` für Personen-Kanten; Kanten ohne Widget entstehen anderswo, z.B. per Karten-Pick oder Modul-Interaktion). Ausgehend wie eingehend, gleiche Form — Beispiele, nichtnormativ: `task` → `{ assignedTo, itemRole: "from", otherKind: person }`; `statement` → `{ votesOn, itemRole: "to", otherKind: person }` (eingehende Stimmen; der `footer`-Slot weiß darüber, dass er Records **zu** diesem Item abfragt). Normativ wird ein Prädikat erst durch seine Relation-Typ-Definition.
+1. Ein `relations`-Eintrag besteht aus `predicate`, `itemRole` und `otherKind` (was am anderen Endpunkt steht: `person`, `place`, `item`, …); der Schlüssel ist das Paar (`predicate`, `itemRole`). `itemRole` ist `"from"`, `"to"` oder `"either"`:
+   - `"from"` / `"to"` für gerichtete Kanten — welche Rolle **dieses Item** hat. Beide Rollen desselben Prädikats DÜRFEN am selben Typ koexistieren: `task` deklariert `{ blocks, from, task }` **und** `{ blocks, to, task }`, denn ein Task kann blockieren und blockiert werden.
+   - `"either"` für symmetrische Prädikate — `person` → `{ knows, either, person }`. Eine symmetrische Kante hat keine Richtung; 08 kanonisiert ihre Endpunkte gerade deshalb. `"either"` und `"from"`/`"to"` schließen sich für dasselbe Prädikat am selben Typ aus (Konflikt), und `itemRole` MUSS zur Symmetrie-Deklaration der Relation-Typ-Definition passen: symmetrisch ⇒ `"either"`, gerichtet ⇒ `"from"`/`"to"`.
+
+   Beispiele, nichtnormativ: `task` → `{ assignedTo, from, person }`; `statement` → `{ votesOn, to, person }` (eingehende Stimmen; der `footer`-Slot weiß darüber, dass er Records **zu** diesem Item abfragt). Welches Composer-Widget eine Kante bedient, deklariert das Darstellungs-Register (`relationWidgets`, gleicher Schlüssel) — Kanten ohne Widget entstehen anderswo, z.B. per Karten-Pick oder Modul-Interaktion. Normativ wird ein Prädikat erst durch seine Relation-Typ-Definition.
 2. `otherKind` bindet an die Target-Konventionen aus 04: `person` persistiert als `global:`-Target (User-Id oder DID), item-artige Kinds (`place`, `project`, …) als `item:` bzw. `space:{id}/item:`. Composer und Abfrage leiten die Target-Form der Gegenstelle aus `otherKind` ab, nie umgekehrt.
 3. Das Typ-Register definiert **keine** Prädikat-Semantik. Gerichtetheit, Symmetrie und Sichtbarkeit eines Prädikats gehören in die Relation-Typ-Definition (08, Regel 3) — heute App-Konfiguration, Ziel ist die versionierte RelationTypeDefinition im Space. Ein Prädikat, das im Typ-Register auftaucht, MUSS dort definiert sein.
 4. Ob eine Kante eingebettet (`item.relations[]`) oder als Relation-Record persistiert wird, entscheiden die Forward/Reverse-Regeln aus 04 — nicht das Typ-Register. Es deklariert die Möglichkeit, nicht den Mechanismus.
-5. Personen-Kanten sind ein Fall unter vielen, kein Sonderfall: `peopleRelation` aus `ContentTypeConfig` geht in einem `relations`-Eintrag mit `itemRole: "from"`, `otherKind: "person"`, `widget: "people"` auf.
+5. Personen-Kanten sind ein Fall unter vielen, kein Sonderfall: `peopleRelation` aus `ContentTypeConfig` geht auf in einem Manifest-Eintrag `{ assignedTo, from, person }` plus der `relationWidgets`-Zuordnung `people` im Darstellungs-Register.
 
 #### Nicht-Ziele des Registers
 
