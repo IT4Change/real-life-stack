@@ -158,6 +158,7 @@ import {
   type OutboxMessagingRuntime,
 } from "./messaging-runtime.js"
 import { InboxReceptionHost } from "./inbox-reception-host.js"
+import { traceReceptionDrop } from "./reception-trace.js"
 import { IndexedDbVerificationStateStore } from "./verification-state-store.js"
 import { initNamespacedYjsPersonalDoc } from "./personal-doc-persistence.js"
 import {
@@ -3210,14 +3211,24 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       payload = await this.attestationWorkflow.verifyAttestationVcJws(vcJws)
     } catch (error) {
       // Pure VC verification failure is deterministic: conclude without storing.
-      console.debug("[wot-connector] incoming attestation rejected (invalid VC-JWS):", error)
+      traceReceptionDrop(
+        "incoming attestation rejected",
+        `invalid-vc-jws: ${error instanceof Error ? error.message : String(error)}`,
+        { senderDid },
+      )
       return
     }
     const attestation = attestationFromVerifiedVc(payload, vcJws)
 
     // Bind the verified VC to the authenticated Inner-JWS sender and local DID.
-    if (payload.iss !== senderDid || attestation.from !== senderDid) return
-    if (attestation.to !== this.identity.getDid()) return
+    if (payload.iss !== senderDid || attestation.from !== senderDid) {
+      traceReceptionDrop("incoming attestation rejected", "sender-binding: iss/from ≠ authentifizierter Sender", { senderDid })
+      return
+    }
+    if (attestation.to !== this.identity.getDid()) {
+      traceReceptionDrop("incoming attestation rejected", "wrong-recipient: to ≠ eigene DID", { senderDid })
+      return
+    }
 
     let acceptedInitialVerification = false
     if (attestation.isVerification === true) {
@@ -3225,6 +3236,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
         ? await this.verificationWorkflow.acceptVerifiedCounterVerification(this.identity, payload)
         : await this.verificationWorkflow.acceptVerifiedVerificationAttestation(this.identity, payload)
       if (decision.decision !== "accept-in-person" && decision.decision !== "accept-mutual-in-person") {
+        // Bisher der stillste Drop der Kette (Vorfall 04.08.: remote-unbound
+        // nach Session-Verlust der QR-Challenge) — Grund benennen.
+        traceReceptionDrop("incoming verification rejected", `${decision.decision}: ${decision.reason}`, { senderDid })
         return
       }
       acceptedInitialVerification = decision.decision === "accept-in-person"

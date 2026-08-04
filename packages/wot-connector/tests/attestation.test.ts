@@ -5,7 +5,7 @@ import {
   VerificationWorkflow,
 } from "@real-life/wot-core/application"
 import { InMemoryMessagingAdapter } from "@real-life/wot-core/adapters"
-import { WebCryptoProtocolCryptoAdapter } from "@real-life/wot-core"
+import { WebCryptoProtocolCryptoAdapter, getTraceLog } from "@real-life/wot-core"
 import {
   INBOX_MESSAGE_TYPE,
   decodeBase64Url,
@@ -132,6 +132,7 @@ describe("Sync-003 attestation inbox wire", () => {
     // Feld nicht diagnostizierbar. Empfänger-Uhr 25h vor → deterministischer
     // "created_time too old"-Reject einer frisch gesendeten Nachricht.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    getTraceLog().clear()
     const host = new InboxReceptionHost({
       messaging: bobMessaging,
       identity: bob,
@@ -158,6 +159,12 @@ describe("Sync-003 attestation inbox wire", () => {
         "invalid-inner-jws",
         "Inner JWS created_time too old",
       )
+      // rls#219: der Reject muss auch im kopierbaren Debug-Trace landen.
+      expect(getTraceLog().getAll({ success: false })).toContainEqual(expect.objectContaining({
+        store: "relay",
+        operation: "receive",
+        label: "inbox/1.0 rejected: invalid-inner-jws — Inner JWS created_time too old",
+      }))
     } finally {
       host.stop()
       warn.mockRestore()

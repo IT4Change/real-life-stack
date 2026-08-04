@@ -22,6 +22,7 @@ import type {
   ProtocolCryptoAdapter,
 } from "@real-life/wot-core/protocol"
 import type { IdentitySession } from "@real-life/wot-core/types"
+import { logReceptionDropTrace } from "./reception-trace.js"
 
 export interface IncomingAttestationDelivery {
   vcJws: string
@@ -140,6 +141,11 @@ export class InboxReceptionHost {
         // `detail` trägt den konkreten Inner-JWS-Fehler (z.B. "created_time
         // too old") — ohne ihn ist der Sammelgrund im Feld nicht diagnostizierbar.
         console.warn("[wot-connector] rejected inbox/1.0 message:", result.reason, result.detail ?? "")
+        logReceptionDropTrace(
+          "inbox/1.0 rejected",
+          result.detail === undefined ? result.reason : `${result.reason} — ${result.detail}`,
+          { reason: result.reason, messageId: message.id },
+        )
       }
       return
     }
