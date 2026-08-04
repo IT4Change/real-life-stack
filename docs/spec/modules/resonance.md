@@ -101,7 +101,7 @@ Identität, und die geteilte Lese-Validierung macht Mehrfach-Stimmen
 unzählbar — auch wenn ein manipulierter Client an der Fassade vorbei
 rohe Items schreibt. Die verbleibende Lücke (gefälschtes `createdBy` per
 rohem `createItem`) schließen die **SignedClaims** aus
-[08-relation-records.md](../08-relation-records.md) → „Autorbindung":
+[08-relation-records.md → Autorbindung](../08-relation-records.md#autorbindung-signedclaims):
 `votesOn` ist ein `authorial`-Prädikat, jeder Vote-Record trägt die
 Ed25519-JWS seines Autors über Identität und Wert, und die Aggregation
 verwirft Records ohne gültigen Claim — fail closed, auch nach

@@ -2,7 +2,7 @@
 // Deterministic: fixed seeds, fixed payloads — rerunning must reproduce
 // vectors/rls-claim-1.json byte for byte. Node >= 20 (native Ed25519).
 //   node docs/spec/schemas/claims/generate-vectors.mjs
-import { createPrivateKey, createPublicKey, sign as edSign } from "node:crypto"
+import { createHash, createPrivateKey, createPublicKey, sign as edSign } from "node:crypto"
 import { writeFileSync, mkdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -53,8 +53,11 @@ const MALLORY = didKey(mallory.publicKey)
 
 const statementTo = "item:statement-zweiter-brunnen"
 const from = `global:${ALICE}`
-// The record id follows spec 08 rule 4 conceptually; for vectors it is fixed.
-const recordId = "rel-testvector-0001"
+// Spec 08 rule 4: the canonical record id IS derived — vectors double as
+// conformance checks of the id rule.
+const deriveRecordId = (createdBy, predicate, fromT, toT) =>
+  "rel-" + createHash("sha256").update(jcs([createdBy, predicate, fromT, toT]), "utf8").digest("hex")
+const recordId = deriveRecordId(ALICE, "votesOn", from, statementTo)
 
 const basePayload = {
   v: "rls-claim/1",
@@ -129,6 +132,28 @@ vectors.push({
   record: vectors[0].record,
   payload: basePayload,
   jws: wrongTyp.jws,
+})
+
+const confirmationUpdate = { ...basePayload, confirmationRef: "conf-testvector-1" }
+const confirmationSigned = signClaim(confirmationUpdate, alice)
+vectors.push({
+  name: "update-confirmation-ref-valid",
+  expect: "valid",
+  description: "confirmationRef null → id set; a mutation of this contract field MUST re-sign (payload carries the new value).",
+  record: { ...vectors[0].record, confirmationRef: "conf-testvector-1" },
+  payload: confirmationUpdate,
+  jws: confirmationSigned.jws,
+})
+
+const wrongIdPayload = { ...basePayload, id: "rel-testvector-0001" }
+const wrongIdSigned = signClaim(wrongIdPayload, alice)
+vectors.push({
+  name: "id-mismatch-invalid",
+  expect: "invalid",
+  description: "Record id does not match the canonical derivation of (createdBy, predicate, from, to) per spec 08 rule 4 — invalid even with an intact signature.",
+  record: { ...vectors[0].record, id: "rel-testvector-0001" },
+  payload: wrongIdPayload,
+  jws: wrongIdSigned.jws,
 })
 
 const unknownVersion = { ...basePayload, v: "rls-claim/9" }

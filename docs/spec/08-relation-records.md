@@ -100,7 +100,7 @@ Regeln:
    in `data.*`, wie überall im Stack (04: gemeinsame Felder liegen in
    `data`) — `hasField`-Filter, Schema-Validierung und Editoren arbeiten
    ohne Sonderfall. Die Vertragsfelder `predicate`, `confirmationRef` und
-   `claim` (s. „Autorbindung: SignedClaims") sind reserviert; neue
+   `claim` (s. „Autorbindung: SignedClaims“) sind reserviert; neue
    Vertragsfelder kommen nur mit einer neuen Vokabular-Version
    (`relation/v2`), nie still in `v1`.
 7. Ein RelationRecord SOLL im selben Space liegen wie sein `from`-Ziel.
@@ -121,7 +121,7 @@ Regeln:
     (`@context`, s. [06-schema-composition.md](06-schema-composition.md));
     die Schema-Definition folgt in `schemas/vocab/relation/v1/` (validiert
     u. a. genau einen `from`- und einen `to`-Eintrag, die ID-Regel und die
-    reservierten Vertragsfelder `predicate`/`confirmationRef`).
+    reservierten Vertragsfelder `predicate`/`confirmationRef`/`claim`).
 
 ## RelationRecordCapable und RelationRecordWriterCapable (der „RelationStore")
 
@@ -287,18 +287,54 @@ reist **im Record selbst**.
 
 Die Bedrohung existiert nur dort, wo mehrere Schreiber denselben Storage ohne
 zentrale Autoritätsprüfung mutieren. Der Vertrag ist deshalb
-**capability-gescoped** — jeder Connector hat genau einen Claim-Modus:
+**capability-gescoped** — jeder Connector hat höchstens einen Claim-Modus:
 
 | Modus | wer | Pflichten |
 |---|---|---|
 | `signed` | Multi-Writer-Sync ohne zentrale Autorität (WoT/shared CRDT) | MUSS `authorial`-Claims schreiben, re-signieren und verifizieren |
-| `authoritative` | Backends, deren Store `createdBy` selbst bindet bzw. nur einen Schreiber hat (Local, Mock; GraphQL-Server SOLL `createdBy` serverseitig an die Session binden) | KEINE Claims; die Autorbindung ist der Store selbst |
+| `authoritative` | Backends mit erzwungener Autorbindung | `trusted` DARF ein Connector NUR beanspruchen, wenn **jeder Ingress-Pfad** seines Stores (`createItem`, Update, Import, Mirror/Bridge) `createdBy` verbindlich an die authentifizierte Identität bindet — das ist MUSS, nicht SOLL. Privilegierte Fixture-/Seed-Pfade sind ausgenommen, MÜSSEN aber als solche gekennzeichnet und im Produktionspfad unerreichbar sein (analog Fassaden-Regel 3). |
 
-Der Modus ist eine Eigenschaft des Connectors, nicht der Daten. Leseflächen
-erfahren ihn über die Verifikations-API (unten): `authoritative`-Connectoren
-antworten `trusted`, `signed`-Connectoren `valid`/`invalid`. Ein
-`signed`-Connector ohne verfügbaren Signer (nicht authentifiziert) MUSS
-Schreibversuche für `authorial`-Prädikate ablehnen — nie unsigniert schreiben.
+Ein Connector, der keinen der beiden Modi erfüllt (z. B. ein GraphQL-Server,
+dessen Store client-gesetztes `createdBy` akzeptiert), hat KEINEN Claim-Modus:
+er bietet die Verifikations-Capability nicht an, und seine Records gelten in
+authorial-Aggregaten als unverifiziert (Leseregel L1 — fail closed). „Nur ein
+Schreiber" allein beweist keine Identitätsbindung. Ein `signed`-Connector ohne
+verfügbaren Signer (nicht authentifiziert) MUSS Schreibversuche für
+`authorial`-Prädikate ablehnen — nie unsigniert schreiben.
+
+### Verifikations-Capability
+
+Die normative Grenze, über die Leseflächen Verdikte beziehen:
+
+```ts
+type ClaimVerdict =
+  | "valid"     // signed: Claim vorhanden, Signatur gültig, Payload == Record
+  | "invalid"   // signed: Claim fehlt, Signatur/typ/Version falsch, Payload-
+                //         oder ID-Mismatch, fremder Signer
+  | "trusted"   // authoritative: der Store erzwingt die Autorbindung (MUSS)
+
+interface ClaimVerificationCapable {
+  /** Verdikt für einen projizierten Record. Deterministisch und cachebar:
+      (record.id, contentHash(record)) → Verdict ändert sich für unveränderte
+      Records nie. */
+  verifyRecordClaim(record: RelationRecord): Promise<ClaimVerdict>
+}
+
+function hasClaimVerification(c: DataInterface): c is DataInterface & ClaimVerificationCapable
+```
+
+Regeln:
+
+1. `signed`- und `authoritative`-Connectoren MÜSSEN die Capability anbieten;
+   `authoritative` antwortet konstant `trusted`, `signed` prüft kryptografisch.
+   Connectoren ohne die Capability liefern kein Verdikt — ihre Records sind in
+   authorial-Aggregaten unverifiziert (L1).
+2. Der Verdikt-Cache liegt beim Connector. Die **Re-Emission** liegt beim
+   Aggregator: sein abgeleitetes Observable (z. B. die Vote-Summary) MUSS nach
+   Abschluss ausstehender Verifikationen erneut emittieren; die Record-Streams
+   (`observeRelationRecords`) selbst bleiben verdikt-frei.
+3. Die `RelationRecord`-Projektion wird additiv um `claim?: string` (die
+   kompakte JWS) erweitert — als eigenes Feld, nie in `fields` (s. Primitive).
 
 ### Das Primitive
 
@@ -313,8 +349,11 @@ WoT-Konventionen (kein neues Signaturformat, s. Nicht-Ziele):
   Option entgegen — `signed`-Connectoren injizieren sie, `authoritative` nicht).
 - **Verifikation MUSS prüfen:** `typ`-Header, gültige Signatur unter dem aus
   `kid` aufgelösten Schlüssel (did:key: rein lokal auflösbar),
-  `didOrKidToDid(kid) === payload.createdBy`, Payload-Version, und dass jedes
-  Payload-Feld dem gespeicherten Record entspricht (Mismatch = ungültig).
+  `didOrKidToDid(kid) === payload.createdBy`, Payload-Version, dass jedes
+  Payload-Feld dem gespeicherten Record entspricht (Mismatch = ungültig),
+  UND dass `record.id` der kanonischen ID-Regel 4 für
+  `(createdBy, predicate, from, to)` entspricht — ein Record unter falschem
+  Schlüssel ist ungültig, auch mit intakter Signatur.
 
 Der Claim wird als Vertragsfeld `data.claim` gespeichert (reserviert wie
 `predicate`/`confirmationRef`, Fassaden-Regel 6) und ist damit aus jedem
