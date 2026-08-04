@@ -234,6 +234,7 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
             "@context": [VOCAB_A],
             data: { title: "observed" },
             tags: [tag],
+            relations: [{ predicate: "relatesTo", target: "item:ct-obs-target" }],
           })
           const observable = connector.observe({ type })
           // Contract: after the write settled, a fresh observation of the
@@ -252,6 +253,7 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
           expect(observed!.data).toEqual({ title: "observed" })
           expect(observed!.tags).toEqual([tag])
           expect(observed!["@context"]).toEqual([VOCAB_A])
+          expect(observed!.relations).toEqual([{ predicate: "relatesTo", target: "item:ct-obs-target" }])
           expect(observed!.createdBy).toBe(currentUserId)
         })
       })
