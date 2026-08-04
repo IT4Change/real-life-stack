@@ -131,9 +131,13 @@ interface RelationRecord {
   predicate: string
   from: string
   to: string
-  /** alle domänenspezifischen data-Felder (flach gespeichert, ohne Vertragsfelder) */
+  /** alle domänenspezifischen data-Felder (flach gespeichert, ohne die
+      Vertragsfelder predicate/confirmationRef/claim) */
   fields?: Record<string, unknown>
   confirmationRef?: string
+  /** kompakte SignedClaim-JWS (s. „Autorbindung: SignedClaims") — eigenes
+      Feld, nie Teil von fields */
+  claim?: string
   createdBy: string
   createdAt: string
 }
@@ -185,8 +189,10 @@ Regeln:
 
 1. `RelationRecord` ist die typisierte Projektion des Relation-Items: die
    Endpunkt-Relations werden auf die Strings `from`/`to` abgebildet, die
-   domänenspezifischen `data`-Felder (alles außer `predicate` und
-   `confirmationRef`) auf `fields`. Der RelationStore ist eine Fassade,
+   domänenspezifischen `data`-Felder (alles außer den Vertragsfeldern
+   `predicate`, `confirmationRef` und `claim`) auf `fields`; `data.claim`
+   wird auf das eigene Feld `claim` projiziert und erscheint NIE in
+   `fields`. Der RelationStore ist eine Fassade,
    kein eigener Speicher. Lesen und Schreiben sind getrennte Capabilities
    (analog Confirmations, 05): read-only Connectoren bieten nur
    `RelationRecordCapable`, ohne Schreib-Stubs.
