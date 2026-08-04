@@ -22,7 +22,7 @@ import type {
   ProtocolCryptoAdapter,
 } from "@real-life/wot-core/protocol"
 import type { IdentitySession } from "@real-life/wot-core/types"
-import { logReceptionDropTrace } from "./reception-trace.js"
+import { logReceptionDropTrace, traceReceptionDrop } from "./reception-trace.js"
 
 export interface IncomingAttestationDelivery {
   vcJws: string
@@ -177,6 +177,11 @@ export class InboxReceptionHost {
       }
     } catch (error) {
       console.warn("[wot-connector] invalid attestation inbox body:", error)
+      logReceptionDropTrace(
+        "invalid attestation inbox body",
+        error instanceof Error ? error.message : String(error),
+        { outerId: result.outerId, senderDid: result.senderDid },
+      )
       await this.conclude(
         result.outerId,
         { kind: "invalid-rejected", rejection: "malformed", authoritativeStateChanged: false },
@@ -223,7 +228,13 @@ export class InboxReceptionHost {
       for (const listener of [...this.attestationListeners]) await listener(delivery)
       return { kind: "applied", durable: true }
     } catch (error) {
-      console.debug("[wot-connector] attestation inbox apply incomplete:", error)
+      // Zurückgestellt OHNE Ack: die Relay-Redelivery ist der Heilungspfad —
+      // trotzdem eine Disposition, die im Trace sichtbar sein muss (#226).
+      traceReceptionDrop(
+        "attestation apply deferred (no ack, redelivery heals)",
+        error instanceof Error ? error.message : String(error),
+        { outerId: delivery.outerId, senderDid: delivery.senderDid },
+      )
       return { kind: "processing-incomplete", waitingOn: "durable-apply" }
     }
   }
@@ -233,7 +244,11 @@ export class InboxReceptionHost {
       for (const listener of [...this.receiptListeners]) await listener(receipt)
       return { kind: "applied", durable: true }
     } catch (error) {
-      console.debug("[wot-connector] attestation receipt apply incomplete:", error)
+      traceReceptionDrop(
+        "receipt apply deferred (no ack, redelivery heals)",
+        error instanceof Error ? error.message : String(error),
+        { outerId: receipt.outerId, senderDid: receipt.senderDid },
+      )
       return { kind: "processing-incomplete", waitingOn: "durable-apply" }
     }
   }
