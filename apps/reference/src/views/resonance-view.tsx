@@ -7,6 +7,7 @@ import {
   ItemPreview,
   ItemPreviewSkeleton,
   ItemTypeBadge,
+  ReactionBar,
   VoteBar,
   emptyFilterBarValue,
   getActivePanelGlow,
@@ -20,7 +21,6 @@ import {
   usePersonalGroupId,
   useResolvedUsers,
   type FilterBarValue,
-  type ItemTypeBadgeConfig,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -46,16 +46,6 @@ const SORT_LABELS: Record<ResonanceSortMode, string> = {
 }
 
 const SORT_MODES: readonly ResonanceSortMode[] = ["newest", "votes", "approval", "activity"]
-
-// Statement is a module-specific type, so its badge comes via the config prop
-// instead of the shared default registry (see ItemTypeBadge docs).
-const STATEMENT_BADGE: Record<string, ItemTypeBadgeConfig> = {
-  statement: {
-    icon: MessageSquareQuote,
-    label: "Aussage",
-    className: "bg-sky-50 text-sky-700 border-sky-200",
-  },
-}
 
 /**
  * Resonance module: statements the group positions itself on with a
@@ -105,23 +95,14 @@ export function ResonanceView({ groupId }: { groupId: string }) {
   }, [statements])
   const filterActive = filterBarValue.tags.length > 0
 
-  // Detail (read half = ItemPreview + VoteBar; edit half = shared type-driven hook).
+  // Detail: the read body is the host's shared, type-driven renderer (#203) —
+  // the module only contributes the edit half + panel plumbing.
   const editConfig = useItemDetailEdit(members)
   const detailConfig = useMemo<DetailConfig>(() => ({
-    renderRead: (item, actions) => (
-      <ItemPreview
-        item={item}
-        author={resolveAuthor(item.createdBy)}
-        headerAdornment={<ItemTypeBadge type={item.type} config={STATEMENT_BADGE} />}
-        metaAdornment={<ItemMetaRow item={item} />}
-        footerAdornment={item.type === "statement" ? <VoteBar statementId={item.id} /> : undefined}
-        actions={actions}
-        activeGlowColor={resolveGroupColor(item)}
-      />
-    ),
     ...editConfig,
+    renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
     onShare: () => void navigator.clipboard?.writeText(window.location.href),
-  }), [resolveAuthor, editConfig, resolveGroupColor])
+  }), [editConfig])
   useRegisterDetail("resonance", detailConfig)
 
   const { startCreate } = useCreate()
@@ -212,7 +193,7 @@ export function ResonanceView({ groupId }: { groupId: string }) {
                 author={resolveAuthor(item.createdBy)}
                 style={modulePanel.current?.itemId === item.id ? getActivePanelGlow(resolveGroupColor(item)) : undefined}
                 onClick={() => focusItem(item.id)}
-                headerAdornment={<ItemTypeBadge type={item.type} config={STATEMENT_BADGE} />}
+                headerAdornment={<ItemTypeBadge type={item.type} />}
                 metaAdornment={<ItemMetaRow item={item} />}
                 footerAdornment={<VoteBar statementId={item.id} />}
               />

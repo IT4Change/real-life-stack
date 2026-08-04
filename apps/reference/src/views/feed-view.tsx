@@ -27,9 +27,9 @@ import {
   useItemPrivacyResolver,
   getActivePanelGlow,
 } from "@real-life-stack/toolkit"
-import { Calendar, FileText, Search, SearchX } from "lucide-react"
-import { Input } from "@real-life-stack/toolkit"
-import type { Item, User } from "@real-life-stack/data-interface"
+import { Calendar, FileText, MessageSquareQuote, Search, SearchX } from "lucide-react"
+import { Input, VoteBar } from "@real-life-stack/toolkit"
+import { isStatement, type Item, type User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
@@ -40,19 +40,34 @@ import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 const FEED_TYPES: FilterTypeOption[] = [
   { id: "post", label: "Posts", icon: FileText },
   { id: "event", label: "Events", icon: Calendar },
+  { id: "statement", label: "Aussagen", icon: MessageSquareQuote },
 ]
+
+/**
+ * Feed union: posts + events + statements, comments excluded, deduped (one
+ * item can satisfy several queries), newest first. Exported as a plain
+ * function so the membership rule is testable without mounting the feed.
+ */
+export function mergeFeedItems(...queries: Item[][]): Item[] {
+  const merged = queries.flat().filter((it) => it.type !== "comment")
+  const unique = Array.from(new Map(merged.map((it) => [it.id, it])).values())
+  return unique.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
 
 export function FeedView({ groupId }: { groupId: string }) {
   // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
   // items by field presence, not the legacy `type` UI hint.
   // - Posts carry data.content (base/v1)
   // - Events carry data.start (event/v1)
+  // - Statements are the deliberate TYPE exception (no discriminator field,
+  //   see docs/spec/modules/resonance.md) — polls belong in the feed too.
   // Cross-context items (e.g. an event-with-place) naturally show up in
   // multiple modules without any extra handling.
   const { data: posts, isLoading: postsLoading } = useItemsWithDraft({ hasField: ["content"] })
   const { data: events, isLoading: eventsLoading } = useItemsWithDraft({ hasField: ["start"] })
-  // Feed is the union of both queries → it has "loaded" only once both have.
-  const isLoading = postsLoading || eventsLoading
+  const { data: statements, isLoading: statementsLoading } = useItemsWithDraft({ type: "statement" })
+  // Feed is the union of the queries → it has "loaded" only once all have.
+  const isLoading = postsLoading || eventsLoading || statementsLoading
   // `groupId === "__overview__"` is the cross-space aggregate view
   // ("Mein Netzwerk"). useMembers(null) returns the union of all
   // members the connector knows about, so author resolution still
@@ -60,22 +75,16 @@ export function FeedView({ groupId }: { groupId: string }) {
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
 
-  // Merge posts + events, dedupe, sort newest first.
-  // Dedupe is load-bearing: with hasField filters, a single item can
-  // satisfy both queries (a post that also carries data.start, an event
-  // with data.content, …) and would otherwise render twice.
-  //
   // Comment items also carry `data.content` (use-comments writes them
-  // as `type: "comment"` with `data.content`). Without an exclusion
-  // they'd surface in the feed as if they were posts. Use the `type`
-  // UI-hint as a discriminator — spec 06 keeps `type` valid for that
-  // role even when activation runs on field presence. A future
+  // as `type: "comment"` with `data.content`). Without the exclusion in
+  // mergeFeedItems they'd surface in the feed as if they were posts. Use
+  // the `type` UI-hint as a discriminator — spec 06 keeps `type` valid for
+  // that role even when activation runs on field presence. A future
   // comment/v1 vocab + hasSchema would make this redundant.
-  const feedItems = useMemo(() => {
-    const merged = [...posts, ...events].filter((it) => it.type !== "comment")
-    const unique = Array.from(new Map(merged.map((it) => [it.id, it])).values())
-    return unique.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  }, [posts, events])
+  const feedItems = useMemo(
+    () => mergeFeedItems(posts, events, statements),
+    [posts, events, statements],
+  )
 
   // Resolve author info as a User the shared ItemPreview can render
   // directly. Falls back to undefined when the createdBy id isn't a
@@ -291,6 +300,9 @@ export function feedFooter(item: Item, onCommentClick: () => void) {
   const count = typeof commentCount === "number" ? commentCount : 0
   return (
     <>
+      {/* A statement card IS the poll: vote controls right on the card, same
+          type rule as in the detail panel. Reactions stay alongside. */}
+      {isStatement(item) && <VoteBar statementId={item.id} className="w-full" />}
       <ReactionBar itemId={item.id} />
       {count > 0 && (
         <div className="ml-auto">

@@ -47,8 +47,9 @@ dem Inhalt, nicht aus Feature-Varianten des Moduls.
 Die Resonance-Ansicht liest Statements über den Typ-Filter
 (`useItems({ type: "statement" })`). Das weicht bewusst von der
 Feldpräsenz-Konvention aus Spec 06 ab: ein Statement hat kein
-natürliches Alleinstellungs-Feld, und Cross-Module-Projektion von
-Statements ist kein Ziel dieses Moduls (siehe Nicht-Ziele).
+natürliches Alleinstellungs-Feld. Der Feed nimmt Statements aus dem
+gleichen Grund als Typ-Ausnahme in seine Union auf (Posts und Events
+aktiviert er per Feldpräsenz) — eine Umfrage gehört in den Feed.
 
 ### Vote (die Stellungnahme)
 
@@ -133,6 +134,12 @@ Activity-Log; das Modul führt keine eigene Historie.
 
 ## Cross-Module-Verhalten
 
+- **Die Detailansicht folgt dem Item, nicht dem Modul** (#203): ein
+  Statement zeigt seine VoteBar im geteilten Detail-Panel, egal aus
+  welchem Modul es geöffnet wurde — eine Typ-Regel wie Task-Assignees.
+- **Statements erscheinen im Feed** (Typ-Union, siehe Datenmodell) und
+  tragen dort die VoteBar direkt auf der Karte: die Karte ist die Umfrage.
+  Reaktionen bleiben daneben verfügbar (Reaktionen sind nicht typabhängig).
 - Ein Statement mit `data.status` darf im Kanban erscheinen, mit
   `data.start` im Kalender (generische Feldpräsenz-Regeln); das Modul
   definiert dazu nichts Eigenes.

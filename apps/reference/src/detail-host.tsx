@@ -15,6 +15,7 @@ import {
   ItemScopeBadge,
   ItemTypeBadge,
   ReactionBar,
+  VoteBar,
   useCurrentUser,
   useMembers,
   useModulePanel,
@@ -23,7 +24,7 @@ import {
   type ItemEditorMapper,
   type WidgetData,
 } from "@real-life-stack/toolkit"
-import { isTask, type Item, type User } from "@real-life-stack/data-interface"
+import { isStatement, isTask, type Item, type User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "./hooks/use-item-focus"
 
 /** Modules whose detail (read↔edit) is owned by the host. */
@@ -234,6 +235,9 @@ export function ItemDetailRead({
       footerAdornment={
         <>
           {assignees.length > 0 && <ItemAssignees users={assignees} />}
+          {/* Votes are a TYPE rule like assignees: a statement shows its vote
+              bar no matter which module opened the detail (resonance.md). */}
+          {isStatement(item) && <VoteBar statementId={item.id} className="w-full" />}
           <ReactionBar itemId={item.id} />
         </>
       }
