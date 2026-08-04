@@ -43,12 +43,19 @@ describe("type presentation registry", () => {
 
   it("rejects a second entry for an already-presented id — no override in v0.1", () => {
     expect(() => registerTypePresentation("app", [{ id: "task", label: "Aufgabe" }]))
-      .toThrow(/bereits vergeben/)
+      .toThrow(/bereits in Layer "core"/)
   })
 
-  it("rejects re-registering a layer name", () => {
+  it("lets the same layer re-register itself (Vite HMR re-executes modules)", () => {
     registerTypePresentation("app", [{ id: "statement", label: "Aussage" }])
-    expect(() => registerTypePresentation("app", [])).toThrow(/bereits registriert/)
+    registerTypePresentation("app", [{ id: "statement", label: "These" }])
+    expect(resolveTypePresentation("statement").label).toBe("These")
+  })
+
+  it("still rejects an id owned by ANOTHER layer", () => {
+    registerTypePresentation("app", [{ id: "statement", label: "Aussage" }])
+    expect(() => registerTypePresentation("space", [{ id: "statement", label: "X" }]))
+      .toThrow(/bereits in Layer "app"/)
   })
 
   it("lets an app layer add a type that then resolves everywhere", () => {

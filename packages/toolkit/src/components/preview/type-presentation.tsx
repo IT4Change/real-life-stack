@@ -160,22 +160,29 @@ const CORE_PRESENTATION: readonly TypePresentationEntry[] = [
 const layers = new Map<string, readonly TypePresentationEntry[]>([["core", CORE_PRESENTATION]])
 
 /**
- * Register a presentation layer (app or space), once, at startup. Layered
- * like the manifest; a second entry for an already-presented id — within or
- * across layers — is a conflict and throws (no override in v0.1).
+ * Register a presentation layer (app or space) at startup. Layered like the
+ * manifest; an id already presented by ANOTHER layer is a conflict and throws
+ * (no override in v0.1).
+ *
+ * Re-registering the SAME layer name replaces that layer wholesale. That is
+ * not an override between layers but a layer updating itself — required for
+ * Vite HMR, which re-executes the registering module on edit; throwing here
+ * would break every dev session that touches the registration file.
  */
 export function registerTypePresentation(
   layerName: string,
   entries: readonly TypePresentationEntry[],
 ): void {
-  if (layers.has(layerName)) {
-    throw new Error(`Typ-Register [${layerName}]: Layer ist bereits registriert.`)
+  const taken = new Map<string, string>()
+  for (const [name, layerEntries] of layers) {
+    if (name === layerName) continue
+    for (const e of layerEntries) taken.set(e.id, name)
   }
-  const taken = new Set([...layers.values()].flat().map((e) => e.id))
   for (const entry of entries) {
-    if (taken.has(entry.id)) {
+    const owner = taken.get(entry.id)
+    if (owner) {
       throw new Error(
-        `Typ-Register [${layerName}]: Darstellung für "${entry.id}" ist bereits vergeben — kein Override in v0.1 (Spec 06, Erweiterung und Merge).`,
+        `Typ-Register [${layerName}]: Darstellung für "${entry.id}" ist bereits in Layer "${owner}" vergeben — kein Override in v0.1 (Spec 06, Erweiterung und Merge).`,
       )
     }
   }

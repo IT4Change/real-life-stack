@@ -8,7 +8,7 @@ import {
   ItemPreviewSkeleton,
   ItemTypeBadge,
   ReactionBar,
-  VoteBar,
+  renderTypeFooter,
   emptyFilterBarValue,
   getActivePanelGlow,
   useCurrentUser,
@@ -196,7 +196,7 @@ export function ResonanceView({ groupId }: { groupId: string }) {
                 onClick={() => focusItem(item.id)}
                 headerAdornment={<ItemTypeBadge type={item.type} />}
                 metaAdornment={<ItemMetaRow item={item} />}
-                footerAdornment={<VoteBar statementId={item.id} />}
+                footerAdornment={renderTypeFooter(item)}
               />
             </div>
           ))

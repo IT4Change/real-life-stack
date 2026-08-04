@@ -28,8 +28,8 @@ import {
   getActivePanelGlow,
 } from "@real-life-stack/toolkit"
 import { Calendar, FileText, MessageSquareQuote, Search, SearchX } from "lucide-react"
-import { Input, VoteBar } from "@real-life-stack/toolkit"
-import { isStatement, VOCAB_STATEMENT, type Item, type User } from "@real-life-stack/data-interface"
+import { Input, renderTypeFooter } from "@real-life-stack/toolkit"
+import { VOCAB_STATEMENT, type Item, type User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
@@ -298,32 +298,20 @@ export function FeedView({ groupId }: { groupId: string }) {
 export function feedFooter(item: Item, onCommentClick: () => void) {
   const commentCount = (item.data as Record<string, unknown>).commentCount
   const count = typeof commentCount === "number" ? commentCount : 0
-  // A statement card IS the poll: vote controls right on the card, same type
-  // rule as in the detail panel. The vote bar needs the full row for its
-  // distribution bar, so the footer stacks; reactions stay alongside below.
-  if (isStatement(item)) {
-    return (
-      <div className="flex w-full flex-col gap-2">
-        <VoteBar statementId={item.id} className="w-full" />
-        <div className="flex items-center">
-          <ReactionBar itemId={item.id} />
-          {count > 0 && (
-            <div className="ml-auto">
-              <ItemCommentCount count={count} onClick={onCommentClick} />
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
+  // Type-own footer (statement -> votes, task -> assignees) comes from the
+  // type register (spec 06, rule 3) - this surface adds ONLY its own
+  // conventions: reactions left, comment count right. No type branching.
   return (
-    <>
-      <ReactionBar itemId={item.id} />
-      {count > 0 && (
-        <div className="ml-auto">
-          <ItemCommentCount count={count} onClick={onCommentClick} />
-        </div>
-      )}
-    </>
+    <div className="flex w-full flex-col gap-2">
+      {renderTypeFooter(item)}
+      <div className="flex items-center">
+        <ReactionBar itemId={item.id} />
+        {count > 0 && (
+          <div className="ml-auto">
+            <ItemCommentCount count={count} onClick={onCommentClick} />
+          </div>
+        )}
+      </div>
+    </div>
   )
 }

@@ -1,57 +1,56 @@
-import { defaultColumns, type ContentTypeConfig } from "@real-life-stack/toolkit"
+import { defaultColumns, resolveTypePresentation, type ContentTypeConfig } from "@real-life-stack/toolkit"
+
+import { TYPE_MANIFEST } from "./type-register"
 
 /**
- * The app's content types in one place — the shared registry both create and
- * edit draw from, so a type's fields are defined once and the detail edit can be
- * type-driven (any item editable with *its* fields, in any module). Fields follow
- * the spec field-vocabulary; `peopleRelation` declares how a type links people
- * (task → assignedTo, event → invited) for the shared submission mapper.
+ * The app's content types, COMPOSED from the type register (spec 06): label
+ * and widget set come from the Darstellungs-Register, `peopleRelation` derives
+ * from the manifest's relation affordances plus the entry's `relationWidgets`.
+ * Only genuinely app-specific fields (submit labels, widget captions, kanban
+ * columns, group requirements) are declared here.
  *
- * Today this is a static list. It is shaped as data (+ {@link resolveContentType})
- * so it can later be sourced per space from the connector (user-definable types,
- * Scheibe 3) without touching the consuming views.
+ * Adding a type therefore means: one manifest entry + one presentation entry
+ * (see type-register.tsx) — and, only if needed, an APP_EXTRAS line.
  */
-export const ALL_CONTENT_TYPES: ContentTypeConfig[] = [
-  {
-    id: "post",
-    label: "Post",
-    defaultWidgets: ["text"],
-    submitLabel: "Posten",
-  },
-  {
-    id: "event",
-    label: "Veranstaltung",
-    defaultWidgets: ["title", "text", "date", "location"],
-    submitLabel: "Erstellen",
-    // Declared ahead of enabling the widget: when events get a people widget,
-    // attendees link via `invited` (not `assignedTo`). No "people" in
-    // defaultWidgets yet → inactive for now.
-    peopleRelation: { predicate: "invited" },
-  },
-  {
-    id: "place",
-    label: "Ort",
-    defaultWidgets: ["title", "text", "location"],
-    submitLabel: "Erstellen",
-  },
-  {
-    id: "statement",
-    label: "Aussage",
-    defaultWidgets: ["title", "text", "tags"],
+const APP_EXTRAS: Record<string, Partial<ContentTypeConfig>> = {
+  post: { submitLabel: "Posten" },
+  event: { submitLabel: "Erstellen" },
+  place: { submitLabel: "Erstellen" },
+  statement: {
     widgetLabels: { title: "Aussage", text: "Kontext" },
     submitLabel: "Einbringen",
   },
-  {
-    id: "task",
-    label: "Task",
-    defaultWidgets: ["title", "text", "status", "people", "tags"],
+  task: {
     widgetLabels: { text: "Beschreibung", people: "Zugewiesen" },
     statusOptions: defaultColumns.map((col) => ({ id: col.id, label: col.label })),
     defaultStatus: "open",
     groupRequired: true,
-    peopleRelation: { predicate: "assignedTo" },
   },
-]
+}
+
+/** Which types the composer offers, in menu order. Every id must exist in the
+ *  manifest — resolution throws otherwise, which is the point. */
+const COMPOSER_TYPE_IDS = ["post", "event", "place", "statement", "task"] as const
+
+function contentTypeFromRegister(id: string): ContentTypeConfig {
+  if (!TYPE_MANIFEST.has(id)) {
+    throw new Error(`content-types: "${id}" hat keinen Manifest-Eintrag (Spec 06).`)
+  }
+  const presentation = resolveTypePresentation(id)
+  // peopleRelation = the manifest edge whose composer widget is "people".
+  const peopleEdge = (TYPE_MANIFEST.get(id)?.relations ?? []).find(
+    (rel) => presentation.relationWidgets?.[`${rel.predicate} ${rel.itemRole}`] === "people",
+  )
+  return {
+    id,
+    label: presentation.label,
+    defaultWidgets: [...(presentation.composerWidgets ?? ["title", "text"])],
+    ...(peopleEdge ? { peopleRelation: { predicate: peopleEdge.predicate } } : {}),
+    ...APP_EXTRAS[id],
+  }
+}
+
+export const ALL_CONTENT_TYPES: ContentTypeConfig[] = COMPOSER_TYPE_IDS.map(contentTypeFromRegister)
 
 /** Look up a content type by id (e.g. an item's `type`). */
 export function resolveContentType(id: string): ContentTypeConfig | undefined {
