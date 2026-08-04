@@ -106,8 +106,8 @@ Das Register besteht aus zwei Schichten entlang der Paketgrenze. Die Abhängigke
 
 | Schicht | Paket | hält | ändert sich wenn |
 |---|---|---|---|
-| **Typ-Manifest** | `data-interface` (UI-frei) | `id`, `label`, Vokabular-Bindung, `relations` | die Datensemantik eines Typs sich ändert |
-| **Darstellungs-Register** | `toolkit` | `icon`, `composerWidgets`, `preview`/`detail`/`footer` | die Darstellung sich ändert |
+| **Typ-Manifest** | `data-interface` (UI-frei) | `id`, Vokabular-Bindung, `relations` | die Datensemantik eines Typs sich ändert |
+| **Darstellungs-Register** | `toolkit` | `label`, `icon`, `composerWidgets`, `preview`/`detail`/`footer` | die Darstellung sich ändert |
 
 Das Manifest ist die **einzige Quelle für Typ-Identität**: die Typ-Guards und `KnownItemType` in `data-interface` werden aus ihm abgeleitet, nicht daneben gepflegt. Das Darstellungs-Register hängt seine Einträge an Manifest-Ids an und DARF KEINE Typen einführen. Konsumenten lesen nur ihre Schicht: ein Connector oder Validator braucht das Manifest und zieht keine React-Abhängigkeit; eine Fläche liest die Slots.
 
@@ -115,9 +115,10 @@ Das Manifest ist die **einzige Quelle für Typ-Identität**: die Typ-Guards und 
 
 | Feld | Schicht | Zweck |
 |---|---|---|
-| `id`, `label` | Manifest | Identität und Anzeigename (Badge, Composer-Auswahl, User-Filter) |
+| `id` | Manifest | stabile Typ-Identität; zugleich der Schlüssel für Lokalisierung |
 | Vokabular-Bindung | Manifest | welche `@context`-Schemas der Composer beim Erstellen setzt |
-| `relations` | Manifest | welche Kanten der Typ eingehen kann, siehe „Verhältnis zu Relations" |
+| `relations` | Manifest | welche Kanten der Typ eingehen kann: `{ predicate, itemRole, otherKind, widget? }`, siehe „Verhältnis zu Relations" |
+| `label` | Darstellung | Anzeigename (Badge, Composer-Auswahl, User-Filter); Anzeigename und Lokalisierung sind Darstellungsgründe, darum nicht im Manifest |
 | `icon` | Darstellung | Typ-Icon |
 | `composerWidgets` | Darstellung | Widget-Set beim Erstellen (heute `ContentTypeConfig.defaultWidgets`) |
 | `preview` | Darstellung | knappe Darstellung für Karten und Zeilen (heute `getItemPreviewAdornments`) |
@@ -128,7 +129,7 @@ Das Manifest ist die **einzige Quelle für Typ-Identität**: die Typ-Guards und 
 
 #### Regeln
 
-1. Das Typ-Manifest MUSS in `data-interface` leben und UI-frei sein; das Darstellungs-Register MUSS im Toolkit leben und ist über die Typ-Id an das Manifest gebunden. Apps DÜRFEN Einträge ergänzen und app-spezifische Felder (Gruppen-Optionen, Submit-Labels) über registrierte Einträge legen; sie DÜRFEN NICHT Einträge eines Core-Typs ersetzen, ohne es ausdrücklich zu tun (bewusstes Override, kein stilles Parallel-Register).
+1. Das Typ-Manifest MUSS in `data-interface` leben und UI-frei sein; das Darstellungs-Register MUSS im Toolkit leben und ist über die Typ-Id an das Manifest gebunden. Apps DÜRFEN Einträge ergänzen und app-spezifische Felder (Gruppen-Optionen, Submit-Labels) über registrierte Einträge legen. Das Ersetzen bestehender Einträge ist in v0.1 nicht vorgesehen — siehe „Erweiterung und Merge".
 2. Jede Fläche, die ein Item darstellt, MUSS ihre typabhängigen Anteile aus dem Register beziehen. Flächen steuern **Dichte und Rahmen** bei (`compact`/`comfortable`, Karte/Panel/Zeile). Der Typ sagt *was*, die Fläche sagt *wieviel*.
 3. Module DÜRFEN KEINE eigene Typ-Verzweigung besitzen: kein `if (type === …)` in Modul-Code, keine typabhängige Komponentenwahl am Register vorbei. Modul-eigene **Mechanik** (Drag im Kanban, Pins auf der Karte, Zeitraster im Kalender) bleibt Modulsache — sie verzweigt über Felder und Capabilities, nie über `type`.
 4. Das Register DARF NICHT die Modul-Aktivierung tragen (kein `showIn`-Feld). Die bleibt feldbasiert, siehe „Die Rolle von `type`". Ebenso wenig trägt es Capabilities oder Rechte: ob eine Interaktion (Reagieren, Bearbeiten, Kommentieren) verfügbar ist, entscheiden Connector-Capability und Autorisierung — nicht der Typ. Reaktionen insbesondere sind nicht typabhängig.
@@ -137,11 +138,13 @@ Das Manifest ist die **einzige Quelle für Typ-Identität**: die Typ-Guards und 
 
 #### Erweiterung und Merge
 
-Register-Einträge werden in deterministischer Reihenfolge zusammengesetzt: **Core → App → Space.** Es gilt additive Erweiterung:
+Register-Einträge werden in deterministischer Reihenfolge zusammengesetzt: **Core → App → Space.** Eine Schicht liefert Beiträge in genau einer von zwei Formen:
 
-1. Spätere Schichten DÜRFEN neue Typen (Manifest) und neue Felder/Kanten an bestehenden Typen ergänzen. Kanten sind dabei **keyed by `predicate`**: eine Space-Schicht, die `task` um ein neues Prädikat erweitert, fügt einen Eintrag mit neuem Key hinzu.
-2. Ein Eintrag mit bereits vergebenem Key (gleicher Typ + gleiches Prädikat, bzw. gleiche Typ-Id im Manifest) ist ein **Konflikt** und MUSS abgelehnt werden — kein stilles Shadowing. Ersetzen geht nur als explizites Override (Regel 1).
-3. Die zusammengesetzte Sicht ist pro Space deterministisch: gleiche Schichten, gleiches Ergebnis, unabhängig von Lade- oder Registrierungsreihenfolge.
+1. **Typdefinition** — führt eine neue `id` ein. Eine bereits vergebene `id` ist ein **Konflikt** und MUSS abgelehnt werden.
+2. **Erweiterungsfragment** — adressiert eine vorhandene `id` und ergänzt sie additiv. Mengen-Felder (Kanten keyed by `predicate`, Vokabular-Bindung als Menge) werden vereinigt; neue Keys/Member sind erlaubt, das Entfernen oder Umdefinieren vorhandener ist ein Konflikt. Skalare Felder (`label`, `icon`, Slots) DARF ein Fragment nur setzen, wenn die Basis sie nicht setzt — sonst Konflikt.
+3. **Override** ist in v0.1 nicht vorgesehen: Konflikte werden abgelehnt, nicht aufgelöst. Eine spätere Version KANN eine explizite Override-Operation mit Ziel-Key und Prioritätsregel einführen; bis dahin gibt es kein Shadowing, still oder ausdrücklich.
+
+Die zusammengesetzte Sicht ist pro Space deterministisch: gleiche Schichten, gleiches Ergebnis, unabhängig von Lade- oder Registrierungsreihenfolge — Vereinigung und Konfliktprüfung sind ordnungsunabhängig definiert.
 
 #### Verhältnis zu den Schemas
 
@@ -159,11 +162,11 @@ Das `relations`-Feld deklariert, **welche Kanten ein Typ eingehen kann** — als
 
 Regeln:
 
-1. Ein `relations`-Eintrag besteht aus `predicate`, `targetKind` und optional `widget` (welches Composer-Widget die Kante bedient — `people` für Personen-Kanten; Kanten ohne Widget entstehen anderswo, z.B. per Karten-Pick oder Modul-Interaktion). Beispiel, nichtnormativ: `task` → `assignedTo`/person; `event` → `invited`/person und `takesPlaceAt`/place. Normativ wird ein Prädikat erst durch seine Relation-Typ-Definition.
-2. `targetKind` bindet an die Target-Konventionen aus 04: `person` persistiert als `global:`-Target (User-Id oder DID), `item`-artige Kinds (`place`, `project`, …) als `item:` bzw. `space:{id}/item:`. Der Composer leitet die Target-Form aus `targetKind` ab, nie umgekehrt.
+1. Ein `relations`-Eintrag besteht aus `predicate`, `itemRole` (`"from"` | `"to"` — welche Rolle **dieses Item** an der Kante hat), `otherKind` (was am anderen Endpunkt steht: `person`, `place`, `item`, …) und optional `widget` (welches Composer-Widget die Kante bedient — `people` für Personen-Kanten; Kanten ohne Widget entstehen anderswo, z.B. per Karten-Pick oder Modul-Interaktion). Ausgehend wie eingehend, gleiche Form — Beispiele, nichtnormativ: `task` → `{ assignedTo, itemRole: "from", otherKind: person }`; `statement` → `{ votesOn, itemRole: "to", otherKind: person }` (eingehende Stimmen; der `footer`-Slot weiß darüber, dass er Records **zu** diesem Item abfragt). Normativ wird ein Prädikat erst durch seine Relation-Typ-Definition.
+2. `otherKind` bindet an die Target-Konventionen aus 04: `person` persistiert als `global:`-Target (User-Id oder DID), item-artige Kinds (`place`, `project`, …) als `item:` bzw. `space:{id}/item:`. Composer und Abfrage leiten die Target-Form der Gegenstelle aus `otherKind` ab, nie umgekehrt.
 3. Das Typ-Register definiert **keine** Prädikat-Semantik. Gerichtetheit, Symmetrie und Sichtbarkeit eines Prädikats gehören in die Relation-Typ-Definition (08, Regel 3) — heute App-Konfiguration, Ziel ist die versionierte RelationTypeDefinition im Space. Ein Prädikat, das im Typ-Register auftaucht, MUSS dort definiert sein.
 4. Ob eine Kante eingebettet (`item.relations[]`) oder als Relation-Record persistiert wird, entscheiden die Forward/Reverse-Regeln aus 04 — nicht das Typ-Register. Es deklariert die Möglichkeit, nicht den Mechanismus.
-5. Personen-Kanten sind ein Fall unter vielen, kein Sonderfall: `peopleRelation` aus `ContentTypeConfig` geht in einem `relations`-Eintrag mit `targetKind: "person"`, `widget: "people"` auf.
+5. Personen-Kanten sind ein Fall unter vielen, kein Sonderfall: `peopleRelation` aus `ContentTypeConfig` geht in einem `relations`-Eintrag mit `itemRole: "from"`, `otherKind: "person"`, `widget: "people"` auf.
 
 #### Nicht-Ziele des Registers
 
