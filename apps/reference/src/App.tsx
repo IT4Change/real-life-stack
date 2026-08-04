@@ -547,7 +547,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <ModulePanelHost onDrawerHeightChange={setDrawerHeight}>
     <ActivityPanelController open={activityOpen} onClose={closeActivity} onOpenNotification={openNotification} onOpenEntryTarget={openEntryTarget} onOpenGroup={(groupId) => { const group = workspaces.find((workspace) => workspace.id === groupId); if (group) handleWorkspaceChange(group); closeActivity() }} />
     <CreateSheetController />
-    <DetailHostController activeModule={activeModule} />
+    <DetailHostController activeModule={activeModule} activeGroupId={activeWorkspace?.id ?? null} />
     <UnsavedChangesGuard />
     <AppShell>
       <Navbar>

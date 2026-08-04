@@ -1,0 +1,9 @@
+{
+  "packages/data-interface": "0.1.0",
+  "packages/toolkit": "0.1.0",
+  "packages/mock-connector": "0.1.0",
+  "packages/local-connector": "0.1.0",
+  "packages/wot-connector": "0.1.0",
+  "packages/graphql-connector": "0.1.0",
+  "apps/reference": "0.2.3"
+}

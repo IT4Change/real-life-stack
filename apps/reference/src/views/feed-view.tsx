@@ -8,7 +8,6 @@ import {
   ItemTypeBadge,
   ItemGroupBadge,
   ItemPrivateBadge,
-  ItemScopeBadge,
   ItemMetaRow,
   ItemCommentCount,
   FeedComposerTrigger,
@@ -132,23 +131,6 @@ export function FeedView({ groupId }: { groupId: string }) {
   // when author resolution changes.
   const detailConfig = useMemo<DetailConfig>(
     () => ({
-      renderRead: (current, actions) => (
-        <ItemPreview
-          item={current}
-          author={resolveAuthor(current.createdBy)}
-          headerAdornment={
-            <>
-              <ItemTypeBadge type={current.type} />
-              {isOverview && <ItemScopeBadge item={current} />}
-            </>
-          }
-          actions={actions}
-          metaAdornment={<ItemMetaRow item={current} />}
-          footerAdornment={
-            current.type !== "task" ? <ReactionBar itemId={current.id} /> : undefined
-          }
-        />
-      ),
       ...editConfig,
       renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
       onShare: () => {
@@ -210,25 +192,7 @@ export function FeedView({ groupId }: { groupId: string }) {
   )
   useRegisterCreate("feed", createConfig)
 
-  // Feed footer convention: a ReactionBar on the left and a comment
-  // count on the right. Tasks intentionally don't get reactions in the
-  // feed view today — open a Sebastian-Polish ticket if that changes.
-  const renderFeedFooter = useCallback((item: Item, onCommentClick: () => void) => {
-    const commentCount = (item.data as Record<string, unknown>).commentCount
-    const count = typeof commentCount === "number" ? commentCount : 0
-    const showReactions = item.type !== "task"
-    if (!showReactions && count <= 0) return undefined
-    return (
-      <>
-        {showReactions && <ReactionBar itemId={item.id} />}
-        {count > 0 && (
-          <div className="ml-auto">
-            <ItemCommentCount count={count} onClick={onCommentClick} />
-          </div>
-        )}
-      </>
-    )
-  }, [])
+  const renderFeedFooter = useCallback(feedFooter, [])
 
   return (
     <div className="space-y-4">
@@ -309,5 +273,30 @@ export function FeedView({ groupId }: { groupId: string }) {
       </div>
 
     </div>
+  )
+}
+
+/**
+ * Feed card footer: a ReactionBar on the left, the comment count on the right.
+ *
+ * Reactions are NOT type-dependent. Tasks were excluded here ("Tasks
+ * intentionally don't get reactions in the feed view today"); Anton corrected
+ * that — an item is reactable regardless of its type.
+ *
+ * Exported as a plain function so the rule is testable without mounting the
+ * whole feed.
+ */
+export function feedFooter(item: Item, onCommentClick: () => void) {
+  const commentCount = (item.data as Record<string, unknown>).commentCount
+  const count = typeof commentCount === "number" ? commentCount : 0
+  return (
+    <>
+      <ReactionBar itemId={item.id} />
+      {count > 0 && (
+        <div className="ml-auto">
+          <ItemCommentCount count={count} onClick={onCommentClick} />
+        </div>
+      )}
+    </>
   )
 }

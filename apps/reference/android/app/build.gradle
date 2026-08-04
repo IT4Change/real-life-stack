@@ -3,6 +3,25 @@ apply plugin: 'com.android.application'
 def versionProps = new Properties()
 versionProps.load(new FileInputStream(rootProject.file("version.properties")))
 
+// versionCode wird deterministisch aus VERSION_NAME abgeleitet
+// (major*10000 + minor*100 + patch), damit release-please nur den Semver-Namen
+// fuehren muss. version.properties enthaelt daher KEIN VERSION_CODE mehr.
+// Monoton, solange minor/patch < 100. Siehe docs/RELEASING.md.
+def appVersionName = versionProps['VERSION_NAME']
+def _vm = (appVersionName =~ /^(\d+)\.(\d+)\.(\d+)$/)
+if (!_vm.matches()) {
+    throw new GradleException("VERSION_NAME '${appVersionName}' ist kein major.minor.patch")
+}
+def _mj = _vm[0][1].toInteger()
+def _mn = _vm[0][2].toInteger()
+def _pt = _vm[0][3].toInteger()
+// Die Formel bricht, sobald minor/patch >= 100 kollidieren (0.1.100 == 0.2.0).
+// Fail-closed statt still falsch rechnen.
+if (_mn >= 100 || _pt >= 100) {
+    throw new GradleException("versionCode-Formel verlangt minor/patch < 100: '${appVersionName}'")
+}
+def appVersionCode = _mj * 10000 + _mn * 100 + _pt
+
 android {
     namespace = "org.reallife.reallifestack"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -10,8 +29,8 @@ android {
         applicationId "org.reallife.reallifestack"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode versionProps['VERSION_CODE'] as Integer
-        versionName versionProps['VERSION_NAME']
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

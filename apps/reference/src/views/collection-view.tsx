@@ -2,9 +2,6 @@ import { useCallback, useMemo } from "react"
 import {
   CollectionView as ToolkitCollectionView,
   CreateFab,
-  ItemMetaRow,
-  ItemPreview,
-  ItemTypeBadge,
   ReactionBar,
   useCurrentUser,
   useGroups,
@@ -15,7 +12,6 @@ import {
   usePersonalGroupId,
   type SelectionFocusVisibleArea,
 } from "@real-life-stack/toolkit"
-import type { User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 import { ALL_CONTENT_TYPES } from "../content-types"
@@ -40,15 +36,6 @@ export function CollectionView({
   const editConfig = useItemDetailEdit(members)
 
   const detailConfig = useMemo<DetailConfig>(() => ({
-    renderRead: (item, actions) => <ItemPreview
-      item={item}
-      author={members.find((member) => member.id === item.createdBy) ?? (currentUser?.id === item.createdBy ? currentUser : undefined) as User | undefined}
-      headerAdornment={<ItemTypeBadge type={item.type} />}
-      metaAdornment={<ItemMetaRow item={item} />}
-      footerAdornment={item.type !== "task" ? <ReactionBar itemId={item.id} /> : undefined}
-      actions={actions}
-      activeGlowColor={resolveGroupColor(item)}
-    />,
     ...editConfig,
     renderCommentReactions: (id) => <ReactionBar itemId={id} />,
     onShare: () => void navigator.clipboard?.writeText(window.location.href),

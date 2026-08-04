@@ -1,0 +1,48 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "packages/data-interface": {
+      "package-name": "@real-life-stack/data-interface",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/toolkit": {
+      "package-name": "@real-life-stack/toolkit",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/mock-connector": {
+      "package-name": "@real-life-stack/mock-connector",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/local-connector": {
+      "package-name": "@real-life-stack/local-connector",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/wot-connector": {
+      "package-name": "@real-life-stack/wot-connector",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/graphql-connector": {
+      "package-name": "@real-life-stack/graphql-connector",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "apps/reference": {
+      "release-type": "node",
+      "component": "app",
+      "include-component-in-tag": true,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "android/version.properties"
+        }
+      ]
+    }
+  },
+  "separate-pull-requests": false,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "plugins": [
+    "node-workspace"
+  ],
+  "bootstrap-sha": "b30cf1ec318f844b97202031744cce2be9fe201e"
+}
