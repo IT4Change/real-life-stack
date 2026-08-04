@@ -173,16 +173,6 @@ Regeln:
 4. Ob eine Kante eingebettet (`item.relations[]`) oder als Relation-Record persistiert wird, entscheiden die Forward/Reverse-Regeln aus 04 — nicht das Typ-Register. Es deklariert die Möglichkeit, nicht den Mechanismus.
 5. Personen-Kanten sind ein Fall unter vielen, kein Sonderfall: `peopleRelation` aus `ContentTypeConfig` geht auf in einem Manifest-Eintrag `{ assignedTo, from, person }` plus der `relationWidgets`-Zuordnung `people` im Darstellungs-Register.
 
-#### RDF-Abbildung
-
-RLS-Daten sind über die JSON-LD-Kontexte bereits Linked-Data-nah; dieser Abschnitt macht die Abbildung für Relations und Register normativ, damit Interop-Anschlüsse (Export, SPARQL, Solid-Ökosystem) nicht an Details scheitern. Es besteht **keine RDF-Runtime-Pflicht** — die Abbildung muss definiert sein, nicht implementiert.
-
-1. Prädikat-Strings sind **kompakte Namen im Relations-Namensraum**: `knows` ≡ `https://real-life-stack.org/vocab/relations/v1#knows`. Ein RDF-Export MUSS sie zu IRIs expandieren. Damit sind Relationen als echte Tripel abfragbar und die Relation-Typ-Definition (08) kann als TBox an Property-IRIs andocken (`owl:SymmetricProperty` u.ä.). Der heutige `relation/v1`-Context (`predicate` als `xsd:string`) beschreibt die Wire-Form, nicht die Bedeutung.
-2. Die Abbildung der Kantenformen: eine **eingebettete Relation** ist ein Tripel (Item → Prädikat-IRI → Target); ein **RelationRecord** ist die Reifikation einer Kante (RDF-star-äquivalent) — ein Knoten, der die Kante trägt (`from` = Subjekt, `to` = Objekt) plus eigene Aussagen (`tense`, `confirmationRef`).
-3. **Symmetrische Prädikate:** RDF kennt keine ungerichteten Tripel. Die kanonische Endpunkt-Ordnung aus 08 ist ein Speicherdetail; ein Export MUSS entweder beide Richtungen emittieren oder das Prädikat als `owl:SymmetricProperty` deklarieren. Die `either`-Rolle des Registers ist reine UI-Projektion und hat keine Datenform.
-4. `itemRole`/`otherKind` entsprechen `rdfs:domain`/`rdfs:range` des Prädikats; die Target-Präfixe aus 04 sind CURIEs (`global:did:…` ist bereits eine URI; `item:`-Targets brauchen für globalen Export eine Basis-URI je Space).
-5. `type` bleibt die **Intention** und wird nicht auf `rdf:type` abgebildet; Klassen-Mitgliedschaft trägt die `@context`-Liste. Ein Export DARF `type` als eigenes Property (`rls:intent`) mitführen.
-
 #### Nicht-Ziele des Registers
 
 - Modul-Aktivierung (feldbasiert, s.o.)
