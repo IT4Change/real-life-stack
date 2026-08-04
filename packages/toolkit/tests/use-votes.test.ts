@@ -85,9 +85,14 @@ function connector(initialRecords: RelationRecord[], opts?: { userId?: string | 
     observeRelationRecords: vi.fn((filter?: { predicate?: string; to?: string }) => staticObservable(matches(filter))),
     getRelationNeighbors: async () => [],
     observeRelationNeighbors: () => staticObservable([]),
-    // RelationRecordWriterCapable — stamps createdBy like the real facade
+    // RelationRecordWriterCapable — stamps createdBy like the real facade and
+    // mirrors its IDEMPOTENCE: an existing record of the same canonical tuple
+    // is returned UNCHANGED (fields are not reconciled — issue #211).
     createRelationRecord: vi.fn(async (input: RelationRecordInput) => {
       writes.created.push(input)
+      const existing = records.find((record) =>
+        record.predicate === input.predicate && record.from === input.from && record.to === input.to)
+      if (existing) return existing
       const record = voteRecord(`rel-${records.length}`, userId ?? "nobody", String(input.fields?.value), {
         predicate: input.predicate,
         from: input.from,
@@ -226,6 +231,30 @@ describe("useVotes — write contract (auth-bound record facade)", () => {
 
     expect(writes.created).toHaveLength(1)
     expect(writes.deleted).toEqual(["rel-0"])
+  })
+
+  it("repairs an existing canonical record with an INVALID value via update — no permanently optimistic vote (#211)", async () => {
+    // The idempotent create returns the pre-existing broken record unchanged;
+    // the hook must detect the mismatch and repair the OWN record.
+    const broken = voteRecord("rel-mine", ME, "purple")
+    const { connector: c, writes } = connector([broken])
+    harness.connector = c
+    const result = renderHookSettled(() => hooks.useVotes(STATEMENT))
+    await result.vote("green")
+
+    expect(writes.updated).toEqual([{ id: "rel-mine", updates: { fields: { value: "green" } } }])
+    expect(writes.deleted).toHaveLength(0)
+  })
+
+  it("repairs an existing canonical record with a MISSING value the same way (#211)", async () => {
+    const broken = voteRecord("rel-mine", ME, "unused", { fields: {} })
+    const { connector: c, writes } = connector([broken])
+    harness.connector = c
+    const result = renderHookSettled(() => hooks.useVotes(STATEMENT))
+    await result.vote("yellow")
+
+    expect(writes.updated).toEqual([{ id: "rel-mine", updates: { fields: { value: "yellow" } } }])
+    expect(writes.deleted).toHaveLength(0)
   })
 
   it("never votes anonymously: no user → no write and canVote=false", async () => {

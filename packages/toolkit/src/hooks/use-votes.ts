@@ -140,7 +140,14 @@ export function useVotes(statementId: string): UseVotesResult {
         }
         return
       }
-      await connector.createRelationRecord(voteRecordInput(userId, statementId, value))
+      const created = await connector.createRelationRecord(voteRecordInput(userId, statementId, value))
+      // Idempotent create returns a PRE-EXISTING canonical record UNCHANGED —
+      // including one with an invalid or missing fields.value that the
+      // validated read path rightly ignores (#211). Detect the mismatch and
+      // repair the OWN record, otherwise the optimistic vote never converges.
+      if (created.fields?.value !== value) {
+        await connector.updateRelationRecord(created.id, { fields: { value } })
+      }
     } catch {
       if (latestRef.current === requestId) setPending(null)
     }
