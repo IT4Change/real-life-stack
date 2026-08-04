@@ -414,7 +414,17 @@ Typ-Register, 06).
 | Profil | Payload | Mutation | Katalog v0.1 |
 |---|---|---|---|
 | `authorial` | `relation-authorial` (Identität **+ Inhalt** inkl. `fields` und `confirmationRef`) | nur der Autor; jedes `updateRelationRecord` (auch `confirmationRef`-Änderung) MUSS re-signieren | `votesOn`, `knows`, `connectedWith`, `takesPlaceAt` |
-| `structural` | kein Record-Claim; als eigenständiges Relation-Item trägt der Record den **Item-Herkunfts-Claim** (unten) | kollaborativ | — (heute keine Record-Prädikate; eingebettete `assignedTo`/`invited`/`blocks`/`childOf` deckt der Herkunfts-Claim des Trägeritems) |
+| `structural` | kein Record-Claim; als eigenständiges Relation-Item trägt der Record den **Exklusivität (ein Claim pro Datensatz):** `data.claim` trägt genau EINEN
+Claim — kein Array, keine parallelen Felder. Ein `authorial`-Record trägt
+ausschließlich `relation-authorial`; er ERSETZT den Herkunfts-Claim, dessen
+unveränderliche Felder (`id`, `createdBy`, `createdAt`) er bereits mitbindet.
+`structural`-Records und alle übrigen Items tragen (mit dem
+Item-Provenance-Slice) `item-provenance`. Verifier dispatchen anhand
+`payload.profile`; ein Profil, das nicht zur Datensatz-Klasse passt
+(`item-provenance` auf einem Katalog-`authorial`-Record oder
+`relation-authorial` außerhalb von Relation-Records), ist `invalid`.
+
+**Item-Herkunfts-Claim** (unten) | kollaborativ | — (heute keine Record-Prädikate; eingebettete `assignedTo`/`invited`/`blocks`/`childOf` deckt der Herkunfts-Claim des Trägeritems) |
 
 Prädikate außerhalb des Katalogs haben KEIN definiertes Claim-Profil:
 `signed`-Connectoren MÜSSEN Schreibversuche dafür ablehnen, solange kein

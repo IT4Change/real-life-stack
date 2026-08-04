@@ -156,6 +156,24 @@ vectors.push({
   jws: wrongIdSigned.jws,
 })
 
+const provenanceOnAuthorial = {
+  v: "rls-claim/1",
+  profile: "item-provenance",
+  id: recordId,
+  type: "relation",
+  createdBy: ALICE,
+  createdAt: basePayload.createdAt,
+}
+const provenanceSigned = signClaim(provenanceOnAuthorial, alice)
+vectors.push({
+  name: "wrong-profile-invalid",
+  expect: "invalid",
+  description: "Exclusivity: a catalog authorial record must carry relation-authorial; an item-provenance claim on it is invalid even with a valid signature.",
+  record: vectors[0].record,
+  payload: provenanceOnAuthorial,
+  jws: provenanceSigned.jws,
+})
+
 const unknownVersion = { ...basePayload, v: "rls-claim/9" }
 const unknownVersionSigned = signClaim(unknownVersion, alice)
 vectors.push({

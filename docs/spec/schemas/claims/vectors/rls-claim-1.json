@@ -269,6 +269,32 @@
       "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoicmxzLWNsYWltK2p3cyJ9.eyJjb25maXJtYXRpb25SZWYiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDRUMTI6MDA6MDAuMDAwWiIsImNyZWF0ZWRCeSI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTIiwiZmllbGRzIjp7InZhbHVlIjoiZ3JlZW4ifSwiZnJvbSI6Imdsb2JhbDpkaWQ6a2V5Ono2TWt0VUx1ZFR0QXNBaFJlZ1lQaVo2NjMxUlYzdml2MTJxZDRHUUY4ejF4QjIyUyIsImlkIjoicmVsLXRlc3R2ZWN0b3ItMDAwMSIsInByZWRpY2F0ZSI6InZvdGVzT24iLCJwcm9maWxlIjoicmVsYXRpb24tYXV0aG9yaWFsIiwidG8iOiJpdGVtOnN0YXRlbWVudC16d2VpdGVyLWJydW5uZW4iLCJ2IjoicmxzLWNsYWltLzEifQ.RasTcEObWtZWAhpDWuSihIqu_vHnceFE2o4zNcc2eKnQWGrSeJaoRixZ8Ou3RKLmQ3pdFG6zBgkFqgeJUu3OCA"
     },
     {
+      "name": "wrong-profile-invalid",
+      "expect": "invalid",
+      "description": "Exclusivity: a catalog authorial record must carry relation-authorial; an item-provenance claim on it is invalid even with a valid signature.",
+      "record": {
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "payload": {
+        "v": "rls-claim/1",
+        "profile": "item-provenance",
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "type": "relation",
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoicmxzLWNsYWltK2p3cyJ9.eyJjcmVhdGVkQXQiOiIyMDI2LTA4LTA0VDEyOjAwOjAwLjAwMFoiLCJjcmVhdGVkQnkiOiJkaWQ6a2V5Ono2TWt0VUx1ZFR0QXNBaFJlZ1lQaVo2NjMxUlYzdml2MTJxZDRHUUY4ejF4QjIyUyIsImlkIjoicmVsLWQxZmQzNzg5ODk5NzgwOGYwNzM2NTBlOThlZTljM2RiYzNmMWFiNTA3YzhiYmI0ODhlMzNjYjk5NDExMjA4NTEiLCJwcm9maWxlIjoiaXRlbS1wcm92ZW5hbmNlIiwidHlwZSI6InJlbGF0aW9uIiwidiI6InJscy1jbGFpbS8xIn0.5GXvz4jtR4klyflSbtCjyYe7d_QZfwiBNNdoCT2ySfV7otuc22vHYaSaodQ1ZFGuCJadWPCgJLSttntMJ_3CBQ"
+    },
+    {
       "name": "unknown-version-invalid",
       "expect": "invalid",
       "description": "Unknown payload version MUST fail closed.",
