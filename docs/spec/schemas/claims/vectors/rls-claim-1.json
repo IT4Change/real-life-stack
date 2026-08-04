@@ -1,0 +1,330 @@
+{
+  "description": "Canonical SignedClaim vectors (rls-claim/1, relation-authorial). Binding for every implementation — see docs/spec/08-relation-records.md → Autorbindung.",
+  "keys": {
+    "alice": {
+      "did": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+      "seed": "0x11 * 32 (test-only, deliberately public)"
+    },
+    "mallory": {
+      "did": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+      "seed": "0x22 * 32 (test-only, deliberately public)"
+    }
+  },
+  "jcsNote": "Payload/header canonicalisation is RFC 8785 over I-JSON values; the signing input is base64url(JCS(header)) + '.' + base64url(JCS(payload)) as ASCII.",
+  "vectors": [
+    {
+      "name": "create-valid",
+      "expect": "valid",
+      "description": "Fresh authorial vote claim; verifier resolves the key from kid (did:key), payload matches the stored record.",
+      "record": {
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "payload": {
+        "v": "rls-claim/1",
+        "profile": "relation-authorial",
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoicmxzLWNsYWltK2p3cyJ9.eyJjb25maXJtYXRpb25SZWYiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDRUMTI6MDA6MDAuMDAwWiIsImNyZWF0ZWRCeSI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTIiwiZmllbGRzIjp7InZhbHVlIjoiZ3JlZW4ifSwiZnJvbSI6Imdsb2JhbDpkaWQ6a2V5Ono2TWt0VUx1ZFR0QXNBaFJlZ1lQaVo2NjMxUlYzdml2MTJxZDRHUUY4ejF4QjIyUyIsImlkIjoicmVsLWQxZmQzNzg5ODk5NzgwOGYwNzM2NTBlOThlZTljM2RiYzNmMWFiNTA3YzhiYmI0ODhlMzNjYjk5NDExMjA4NTEiLCJwcmVkaWNhdGUiOiJ2b3Rlc09uIiwicHJvZmlsZSI6InJlbGF0aW9uLWF1dGhvcmlhbCIsInRvIjoiaXRlbTpzdGF0ZW1lbnQtendlaXRlci1icnVubmVuIiwidiI6InJscy1jbGFpbS8xIn0.fAfBRDs_RwqGX9m3LsaZ31sJBbZu8uz8iRh_V1BM41bw-TypBQCqYMaectU-imYpgYQhuwUEbdysr-bXH3T8Cw"
+    },
+    {
+      "name": "update-resigned-valid",
+      "expect": "valid",
+      "description": "Stance change green→red re-signed by the author; same record key, new payload.",
+      "record": {
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "red"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "payload": {
+        "v": "rls-claim/1",
+        "profile": "relation-authorial",
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "red"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoicmxzLWNsYWltK2p3cyJ9.eyJjb25maXJtYXRpb25SZWYiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDRUMTI6MDA6MDAuMDAwWiIsImNyZWF0ZWRCeSI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTIiwiZmllbGRzIjp7InZhbHVlIjoicmVkIn0sImZyb20iOiJnbG9iYWw6ZGlkOmtleTp6Nk1rdFVMdWRUdEFzQWhSZWdZUGlaNjYzMVJWM3ZpdjEycWQ0R1FGOHoxeEIyMlMiLCJpZCI6InJlbC1kMWZkMzc4OTg5OTc4MDhmMDczNjUwZTk4ZWU5YzNkYmMzZjFhYjUwN2M4YmJiNDg4ZTMzY2I5OTQxMTIwODUxIiwicHJlZGljYXRlIjoidm90ZXNPbiIsInByb2ZpbGUiOiJyZWxhdGlvbi1hdXRob3JpYWwiLCJ0byI6Iml0ZW06c3RhdGVtZW50LXp3ZWl0ZXItYnJ1bm5lbiIsInYiOiJybHMtY2xhaW0vMSJ9.S2K-powh_LTPROgnBMqezeVk13t9VoZamill9CYHqr72lX_Etm-wWy3KUdHM-8UAdP5AJoYsT45IQw6phhz5Dg"
+    },
+    {
+      "name": "snapshot-reverify-valid",
+      "expect": "valid",
+      "description": "Identical to create-valid but verified from stored data.claim after a snapshot bootstrap (no log available) — must verify from the record alone.",
+      "record": {
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "payload": {
+        "v": "rls-claim/1",
+        "profile": "relation-authorial",
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoicmxzLWNsYWltK2p3cyJ9.eyJjb25maXJtYXRpb25SZWYiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDRUMTI6MDA6MDAuMDAwWiIsImNyZWF0ZWRCeSI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTIiwiZmllbGRzIjp7InZhbHVlIjoiZ3JlZW4ifSwiZnJvbSI6Imdsb2JhbDpkaWQ6a2V5Ono2TWt0VUx1ZFR0QXNBaFJlZ1lQaVo2NjMxUlYzdml2MTJxZDRHUUY4ejF4QjIyUyIsImlkIjoicmVsLWQxZmQzNzg5ODk5NzgwOGYwNzM2NTBlOThlZTljM2RiYzNmMWFiNTA3YzhiYmI0ODhlMzNjYjk5NDExMjA4NTEiLCJwcmVkaWNhdGUiOiJ2b3Rlc09uIiwicHJvZmlsZSI6InJlbGF0aW9uLWF1dGhvcmlhbCIsInRvIjoiaXRlbTpzdGF0ZW1lbnQtendlaXRlci1icnVubmVuIiwidiI6InJscy1jbGFpbS8xIn0.fAfBRDs_RwqGX9m3LsaZ31sJBbZu8uz8iRh_V1BM41bw-TypBQCqYMaectU-imYpgYQhuwUEbdysr-bXH3T8Cw"
+    },
+    {
+      "name": "field-mismatch-invalid",
+      "expect": "invalid",
+      "description": "Claim signs value green but the stored record says red (raw-CRDT tamper after signing) — payload/record mismatch MUST fail.",
+      "record": {
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "red"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "payload": {
+        "v": "rls-claim/1",
+        "profile": "relation-authorial",
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoicmxzLWNsYWltK2p3cyJ9.eyJjb25maXJtYXRpb25SZWYiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDRUMTI6MDA6MDAuMDAwWiIsImNyZWF0ZWRCeSI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTIiwiZmllbGRzIjp7InZhbHVlIjoiZ3JlZW4ifSwiZnJvbSI6Imdsb2JhbDpkaWQ6a2V5Ono2TWt0VUx1ZFR0QXNBaFJlZ1lQaVo2NjMxUlYzdml2MTJxZDRHUUY4ejF4QjIyUyIsImlkIjoicmVsLWQxZmQzNzg5ODk5NzgwOGYwNzM2NTBlOThlZTljM2RiYzNmMWFiNTA3YzhiYmI0ODhlMzNjYjk5NDExMjA4NTEiLCJwcmVkaWNhdGUiOiJ2b3Rlc09uIiwicHJvZmlsZSI6InJlbGF0aW9uLWF1dGhvcmlhbCIsInRvIjoiaXRlbTpzdGF0ZW1lbnQtendlaXRlci1icnVubmVuIiwidiI6InJscy1jbGFpbS8xIn0.fAfBRDs_RwqGX9m3LsaZ31sJBbZu8uz8iRh_V1BM41bw-TypBQCqYMaectU-imYpgYQhuwUEbdysr-bXH3T8Cw"
+    },
+    {
+      "name": "foreign-signer-invalid",
+      "expect": "invalid",
+      "description": "kid names the author but the signature was produced by another key (mallory) — signature verification MUST fail.",
+      "record": {
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "payload": {
+        "v": "rls-claim/1",
+        "profile": "relation-authorial",
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoicmxzLWNsYWltK2p3cyJ9.eyJjb25maXJtYXRpb25SZWYiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDRUMTI6MDA6MDAuMDAwWiIsImNyZWF0ZWRCeSI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTIiwiZmllbGRzIjp7InZhbHVlIjoiZ3JlZW4ifSwiZnJvbSI6Imdsb2JhbDpkaWQ6a2V5Ono2TWt0VUx1ZFR0QXNBaFJlZ1lQaVo2NjMxUlYzdml2MTJxZDRHUUY4ejF4QjIyUyIsImlkIjoicmVsLWQxZmQzNzg5ODk5NzgwOGYwNzM2NTBlOThlZTljM2RiYzNmMWFiNTA3YzhiYmI0ODhlMzNjYjk5NDExMjA4NTEiLCJwcmVkaWNhdGUiOiJ2b3Rlc09uIiwicHJvZmlsZSI6InJlbGF0aW9uLWF1dGhvcmlhbCIsInRvIjoiaXRlbTpzdGF0ZW1lbnQtendlaXRlci1icnVubmVuIiwidiI6InJscy1jbGFpbS8xIn0.q6p-Oo3s6rYPLHeAf8TAq9rdpq5N8yalZ_lLzGOxiBE3DMOH0P3QsD8uYDZiuzkIHUOOd4mlTA3Q08o1wBgtBQ"
+    },
+    {
+      "name": "wrong-typ-invalid",
+      "expect": "invalid",
+      "description": "Domain separation: any typ other than rls-claim+jws MUST be rejected even with a valid signature.",
+      "record": {
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "payload": {
+        "v": "rls-claim/1",
+        "profile": "relation-authorial",
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoidmMrand0In0.eyJjb25maXJtYXRpb25SZWYiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDRUMTI6MDA6MDAuMDAwWiIsImNyZWF0ZWRCeSI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTIiwiZmllbGRzIjp7InZhbHVlIjoiZ3JlZW4ifSwiZnJvbSI6Imdsb2JhbDpkaWQ6a2V5Ono2TWt0VUx1ZFR0QXNBaFJlZ1lQaVo2NjMxUlYzdml2MTJxZDRHUUY4ejF4QjIyUyIsImlkIjoicmVsLWQxZmQzNzg5ODk5NzgwOGYwNzM2NTBlOThlZTljM2RiYzNmMWFiNTA3YzhiYmI0ODhlMzNjYjk5NDExMjA4NTEiLCJwcmVkaWNhdGUiOiJ2b3Rlc09uIiwicHJvZmlsZSI6InJlbGF0aW9uLWF1dGhvcmlhbCIsInRvIjoiaXRlbTpzdGF0ZW1lbnQtendlaXRlci1icnVubmVuIiwidiI6InJscy1jbGFpbS8xIn0.sGVA0EpDrSb6NIu6S8M6wehNe22d2lHJLkd8fbSr-i6CxsfG4lq_u5_zeXkY_DpxcQetaM1BWGUeFkmwcizLBQ"
+    },
+    {
+      "name": "update-confirmation-ref-valid",
+      "expect": "valid",
+      "description": "confirmationRef null → id set; a mutation of this contract field MUST re-sign (payload carries the new value).",
+      "record": {
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": "conf-testvector-1",
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "payload": {
+        "v": "rls-claim/1",
+        "profile": "relation-authorial",
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": "conf-testvector-1",
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoicmxzLWNsYWltK2p3cyJ9.eyJjb25maXJtYXRpb25SZWYiOiJjb25mLXRlc3R2ZWN0b3ItMSIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDRUMTI6MDA6MDAuMDAwWiIsImNyZWF0ZWRCeSI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTIiwiZmllbGRzIjp7InZhbHVlIjoiZ3JlZW4ifSwiZnJvbSI6Imdsb2JhbDpkaWQ6a2V5Ono2TWt0VUx1ZFR0QXNBaFJlZ1lQaVo2NjMxUlYzdml2MTJxZDRHUUY4ejF4QjIyUyIsImlkIjoicmVsLWQxZmQzNzg5ODk5NzgwOGYwNzM2NTBlOThlZTljM2RiYzNmMWFiNTA3YzhiYmI0ODhlMzNjYjk5NDExMjA4NTEiLCJwcmVkaWNhdGUiOiJ2b3Rlc09uIiwicHJvZmlsZSI6InJlbGF0aW9uLWF1dGhvcmlhbCIsInRvIjoiaXRlbTpzdGF0ZW1lbnQtendlaXRlci1icnVubmVuIiwidiI6InJscy1jbGFpbS8xIn0.cgKmpIX9mLVV0MAE_B1kPhU0IjYp633sKWgzXKt0tQh_toQx6wsY_1MpptBv8u3iAz7w39VN3WPINKkM8mlhDg"
+    },
+    {
+      "name": "id-mismatch-invalid",
+      "expect": "invalid",
+      "description": "Record id does not match the canonical derivation of (createdBy, predicate, from, to) per spec 08 rule 4 — invalid even with an intact signature.",
+      "record": {
+        "id": "rel-testvector-0001",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "payload": {
+        "v": "rls-claim/1",
+        "profile": "relation-authorial",
+        "id": "rel-testvector-0001",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoicmxzLWNsYWltK2p3cyJ9.eyJjb25maXJtYXRpb25SZWYiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDRUMTI6MDA6MDAuMDAwWiIsImNyZWF0ZWRCeSI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTIiwiZmllbGRzIjp7InZhbHVlIjoiZ3JlZW4ifSwiZnJvbSI6Imdsb2JhbDpkaWQ6a2V5Ono2TWt0VUx1ZFR0QXNBaFJlZ1lQaVo2NjMxUlYzdml2MTJxZDRHUUY4ejF4QjIyUyIsImlkIjoicmVsLXRlc3R2ZWN0b3ItMDAwMSIsInByZWRpY2F0ZSI6InZvdGVzT24iLCJwcm9maWxlIjoicmVsYXRpb24tYXV0aG9yaWFsIiwidG8iOiJpdGVtOnN0YXRlbWVudC16d2VpdGVyLWJydW5uZW4iLCJ2IjoicmxzLWNsYWltLzEifQ.RasTcEObWtZWAhpDWuSihIqu_vHnceFE2o4zNcc2eKnQWGrSeJaoRixZ8Ou3RKLmQ3pdFG6zBgkFqgeJUu3OCA"
+    },
+    {
+      "name": "wrong-profile-invalid",
+      "expect": "invalid",
+      "description": "Exclusivity: a catalog authorial record must carry relation-authorial; an item-provenance claim on it is invalid even with a valid signature.",
+      "record": {
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "payload": {
+        "v": "rls-claim/1",
+        "profile": "item-provenance",
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "type": "relation",
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoicmxzLWNsYWltK2p3cyJ9.eyJjcmVhdGVkQXQiOiIyMDI2LTA4LTA0VDEyOjAwOjAwLjAwMFoiLCJjcmVhdGVkQnkiOiJkaWQ6a2V5Ono2TWt0VUx1ZFR0QXNBaFJlZ1lQaVo2NjMxUlYzdml2MTJxZDRHUUY4ejF4QjIyUyIsImlkIjoicmVsLWQxZmQzNzg5ODk5NzgwOGYwNzM2NTBlOThlZTljM2RiYzNmMWFiNTA3YzhiYmI0ODhlMzNjYjk5NDExMjA4NTEiLCJwcm9maWxlIjoiaXRlbS1wcm92ZW5hbmNlIiwidHlwZSI6InJlbGF0aW9uIiwidiI6InJscy1jbGFpbS8xIn0.5GXvz4jtR4klyflSbtCjyYe7d_QZfwiBNNdoCT2ySfV7otuc22vHYaSaodQ1ZFGuCJadWPCgJLSttntMJ_3CBQ"
+    },
+    {
+      "name": "unknown-version-invalid",
+      "expect": "invalid",
+      "description": "Unknown payload version MUST fail closed.",
+      "record": {
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "payload": {
+        "v": "rls-claim/9",
+        "profile": "relation-authorial",
+        "id": "rel-d1fd37898997808f073650e98ee9c3dbc3f1ab507c8bbb488e33cb9941120851",
+        "predicate": "votesOn",
+        "from": "global:did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "to": "item:statement-zweiter-brunnen",
+        "fields": {
+          "value": "green"
+        },
+        "confirmationRef": null,
+        "createdBy": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+        "createdAt": "2026-08-04T12:00:00.000Z"
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTI3NpZy0wIiwidHlwIjoicmxzLWNsYWltK2p3cyJ9.eyJjb25maXJtYXRpb25SZWYiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDRUMTI6MDA6MDAuMDAwWiIsImNyZWF0ZWRCeSI6ImRpZDprZXk6ejZNa3RVTHVkVHRBc0FoUmVnWVBpWjY2MzFSVjN2aXYxMnFkNEdRRjh6MXhCMjJTIiwiZmllbGRzIjp7InZhbHVlIjoiZ3JlZW4ifSwiZnJvbSI6Imdsb2JhbDpkaWQ6a2V5Ono2TWt0VUx1ZFR0QXNBaFJlZ1lQaVo2NjMxUlYzdml2MTJxZDRHUUY4ejF4QjIyUyIsImlkIjoicmVsLWQxZmQzNzg5ODk5NzgwOGYwNzM2NTBlOThlZTljM2RiYzNmMWFiNTA3YzhiYmI0ODhlMzNjYjk5NDExMjA4NTEiLCJwcmVkaWNhdGUiOiJ2b3Rlc09uIiwicHJvZmlsZSI6InJlbGF0aW9uLWF1dGhvcmlhbCIsInRvIjoiaXRlbTpzdGF0ZW1lbnQtendlaXRlci1icnVubmVuIiwidiI6InJscy1jbGFpbS85In0.S1_xUp-4UGGC8U0TXKYptd6tFCs_pCnZzdykY8kl0dSRIteBuDLepIhI1lXfvY-5ntlNY3LFO3rdbxXSv655Cw"
+    }
+  ]
+}

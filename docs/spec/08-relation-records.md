@@ -99,9 +99,10 @@ Regeln:
 6. Domänenspezifische Kanten-Felder (z. B. `tense: "coming"`) liegen flach
    in `data.*`, wie überall im Stack (04: gemeinsame Felder liegen in
    `data`) — `hasField`-Filter, Schema-Validierung und Editoren arbeiten
-   ohne Sonderfall. Die Vertragsfelder `predicate` und `confirmationRef`
-   sind reserviert; neue Vertragsfelder kommen nur mit einer neuen
-   Vokabular-Version (`relation/v2`), nie still in `v1`.
+   ohne Sonderfall. Die Vertragsfelder `predicate`, `confirmationRef` und
+   `claim` (s. „Autorbindung: SignedClaims“) sind reserviert; neue
+   Vertragsfelder kommen nur mit einer neuen Vokabular-Version
+   (`relation/v2`), nie still in `v1`.
 7. Ein RelationRecord SOLL im selben Space liegen wie sein `from`-Ziel.
    Endpunkte in anderen Spaces werden über `space:{id}/item:` adressiert.
 8. Records mit nicht auflösbaren oder fehlerhaften Endpunkten (kein oder
@@ -120,7 +121,7 @@ Regeln:
     (`@context`, s. [06-schema-composition.md](06-schema-composition.md));
     die Schema-Definition folgt in `schemas/vocab/relation/v1/` (validiert
     u. a. genau einen `from`- und einen `to`-Eintrag, die ID-Regel und die
-    reservierten Vertragsfelder `predicate`/`confirmationRef`).
+    reservierten Vertragsfelder `predicate`/`confirmationRef`/`claim`).
 
 ## RelationRecordCapable und RelationRecordWriterCapable (der „RelationStore")
 
@@ -130,9 +131,13 @@ interface RelationRecord {
   predicate: string
   from: string
   to: string
-  /** alle domänenspezifischen data-Felder (flach gespeichert, ohne Vertragsfelder) */
+  /** alle domänenspezifischen data-Felder (flach gespeichert, ohne die
+      Vertragsfelder predicate/confirmationRef/claim) */
   fields?: Record<string, unknown>
   confirmationRef?: string
+  /** kompakte SignedClaim-JWS (s. „Autorbindung: SignedClaims") — eigenes
+      Feld, nie Teil von fields */
+  claim?: string
   createdBy: string
   createdAt: string
 }
@@ -184,8 +189,10 @@ Regeln:
 
 1. `RelationRecord` ist die typisierte Projektion des Relation-Items: die
    Endpunkt-Relations werden auf die Strings `from`/`to` abgebildet, die
-   domänenspezifischen `data`-Felder (alles außer `predicate` und
-   `confirmationRef`) auf `fields`. Der RelationStore ist eine Fassade,
+   domänenspezifischen `data`-Felder (alles außer den Vertragsfeldern
+   `predicate`, `confirmationRef` und `claim`) auf `fields`; `data.claim`
+   wird auf das eigene Feld `claim` projiziert und erscheint NIE in
+   `fields`. Der RelationStore ist eine Fassade,
    kein eigener Speicher. Lesen und Schreiben sind getrennte Capabilities
    (analog Confirmations, 05): read-only Connectoren bieten nur
    `RelationRecordCapable`, ohne Schreib-Stubs.
@@ -269,6 +276,212 @@ Regeln:
 6. Sensible Relationen (z. B. `livesAt`) regeln Sichtbarkeit über die Wahl
    des Space und bestehende Berechtigungen, nicht über ein neues
    Krypto-Feld.
+
+## Autorbindung: SignedClaims
+
+**Status:** Normativer Entwurf (rls#209, Interop-Vertrag rls#227). Motivation:
+Die Store-Fassade bindet ehrliche Clients an ihre Identität, aber ein geteiltes
+CRDT-Dokument ist eine physische Schreibgrenze — ein manipulierter Client eines
+Mitglieds kann per rohem `createItem` einen Record mit fremdem `createdBy` und
+passender kanonischer ID fälschen. Die Sync-Schicht signiert jedes Update als
+Ganzes (Ed25519-JWS über den Log-Eintrag, `authorKid` relay-verifiziert),
+verliert diese Bindung aber bei `applyUpdate`, und Snapshot-Bootstraps tragen
+kein Log. SignedClaims schließen die Lücke auf Datenebene: die Autorschaft
+reist **im Record selbst**.
+
+### Geltungsbereich: Claim-Modi pro Connector
+
+Die Bedrohung existiert nur dort, wo mehrere Schreiber denselben Storage ohne
+zentrale Autoritätsprüfung mutieren. Der Vertrag ist deshalb
+**capability-gescoped** — jeder Connector hat höchstens einen Claim-Modus:
+
+| Modus | wer | Pflichten |
+|---|---|---|
+| `signed` | Multi-Writer-Sync ohne zentrale Autorität (WoT/shared CRDT) | MUSS `authorial`-Claims schreiben, re-signieren und verifizieren |
+| `authoritative` | Backends mit erzwungener Autorbindung | `trusted` DARF ein Connector NUR beanspruchen, wenn **jeder Ingress-Pfad** seines Stores (`createItem`, Update, Import, Mirror/Bridge) `createdBy` verbindlich an die authentifizierte Identität bindet — das ist MUSS, nicht SOLL. Privilegierte Fixture-/Seed-Pfade sind ausgenommen, MÜSSEN aber als solche gekennzeichnet und im Produktionspfad unerreichbar sein (analog Fassaden-Regel 3). |
+
+Ein Connector, der keinen der beiden Modi erfüllt (z. B. ein GraphQL-Server,
+dessen Store client-gesetztes `createdBy` akzeptiert), hat KEINEN Claim-Modus:
+er bietet die Verifikations-Capability nicht an, und seine Records gelten in
+authorial-Aggregaten als unverifiziert (Leseregel L1 — fail closed). „Nur ein
+Schreiber" allein beweist keine Identitätsbindung. Ein `signed`-Connector ohne
+verfügbaren Signer (nicht authentifiziert) MUSS Schreibversuche für
+`authorial`-Prädikate ablehnen — nie unsigniert schreiben.
+
+### Verifikations-Capability
+
+Die normative Grenze, über die Leseflächen Verdikte beziehen:
+
+```ts
+type ClaimVerdict =
+  | "valid"     // signed: Claim vorhanden, Signatur gültig, Payload == Record
+  | "invalid"   // signed: Claim fehlt, Signatur/typ/Version falsch, Payload-
+                //         oder ID-Mismatch, fremder Signer
+  | "trusted"   // authoritative: der Store erzwingt die Autorbindung (MUSS)
+
+interface ClaimVerificationCapable {
+  /** Verdikt für einen projizierten Record. Deterministisch und cachebar:
+      (record.id, contentHash(record)) → Verdict ändert sich für unveränderte
+      Records nie. */
+  verifyRecordClaim(record: RelationRecord): Promise<ClaimVerdict>
+}
+
+function hasClaimVerification(c: DataInterface): c is DataInterface & ClaimVerificationCapable
+```
+
+Regeln:
+
+1. `signed`- und `authoritative`-Connectoren MÜSSEN die Capability anbieten;
+   `authoritative` antwortet konstant `trusted`, `signed` prüft kryptografisch.
+   Connectoren ohne die Capability liefern kein Verdikt — ihre Records sind in
+   authorial-Aggregaten unverifiziert (L1).
+2. Der Verdikt-Cache liegt beim Connector. Die **Re-Emission** liegt beim
+   Aggregator: sein abgeleitetes Observable (z. B. die Vote-Summary) MUSS nach
+   Abschluss ausstehender Verifikationen erneut emittieren; die Record-Streams
+   (`observeRelationRecords`) selbst bleiben verdikt-frei.
+3. Die `RelationRecord`-Projektion wird additiv um `claim?: string` (die
+   kompakte JWS) erweitert — als eigenes Feld, nie in `fields` (s. Primitive).
+
+### Das Primitive
+
+Ein SignedClaim ist eine kompakte Ed25519-JWS nach den bestehenden
+WoT-Konventionen (kein neues Signaturformat, s. Nicht-Ziele):
+
+- **Header:** `{ "alg": "EdDSA", "typ": "rls-claim+jws", "kid": "<createdBy>#sig-0" }` —
+  `typ` ist die Domänentrennung gegen jede andere JWS-Anwendung des Stacks.
+- **Payload:** JCS-kanonisiert (RFC 8785), exaktes Schema s. u.
+- **Signer:** die Identität des Autors (im WoT-Connector die interne
+  `IdentitySession`; die generische Default-Fassade nimmt Signer/Verifier als
+  Option entgegen — `signed`-Connectoren injizieren sie, `authoritative` nicht).
+- **Verifikation MUSS prüfen:** `typ`-Header, gültige Signatur unter dem aus
+  `kid` aufgelösten Schlüssel (did:key: rein lokal auflösbar),
+  `didOrKidToDid(kid) === payload.createdBy`, Payload-Version, dass jedes
+  Payload-Feld dem gespeicherten Record entspricht (Mismatch = ungültig),
+  UND dass `record.id` der kanonischen ID-Regel 4 für
+  `(createdBy, predicate, from, to)` entspricht — ein Record unter falschem
+  Schlüssel ist ungültig, auch mit intakter Signatur.
+
+Der Claim wird als Vertragsfeld `data.claim` gespeichert (reserviert wie
+`predicate`/`confirmationRef`, Fassaden-Regel 6) und ist damit aus jedem
+Storage- und Sync-Pfad re-verifizierbar — auch nach Snapshot-Bootstrap.
+`relationRecordFromItem` MUSS `claim` aus `fields` ausfiltern (wie die anderen
+Vertragsfelder); `claim` erscheint NIE im signierten Payload — das Payload ist
+nie selbstreferenziell.
+
+### Payload-Schema `rls-claim/1` (relation-authorial)
+
+```json
+{
+  "v": "rls-claim/1",
+  "profile": "relation-authorial",
+  "id": "rel-…",
+  "predicate": "votesOn",
+  "from": "global:did:key:…",
+  "to": "item:…",
+  "fields": { },
+  "confirmationRef": null,
+  "createdBy": "did:key:…",
+  "createdAt": "2026-08-04T12:00:00.000Z"
+}
+```
+
+Regeln des Schemas (Interop-Vertrag, rls#227):
+
+1. **Alle zehn Member sind IMMER präsent.** `fields` ist `{}` wenn leer und
+   enthält `data` OHNE die Vertragsfelder `predicate`/`confirmationRef`/`claim`;
+   `confirmationRef` ist `null` wenn nicht gesetzt. Kein optionales Weglassen —
+   Verifier vergleichen strukturgleich.
+2. Zulässige Werte sind **I-JSON** (RFC 7493): Strings, endliche Zahlen,
+   Boolean, `null`, Objekte, Arrays; kein `undefined`, keine Nicht-UTF-8-Keys.
+   JCS kanonisiert genau diese Menge deterministisch.
+3. `v` versioniert das Schema; unbekannte Versionen sind für Verifier
+   **ungültig** (fail closed), neue Versionen kommen nur additiv als
+   `rls-claim/2`.
+4. Kanonische **Testvektoren** (positiv und negativ: Create, Update,
+   Feld-Mismatch, fremder Signer, falscher `typ`, Snapshot-Reverifikation)
+   liegen unter `schemas/claims/vectors/` und sind für Implementierungen
+   verbindlich.
+
+### Zwei Profile
+
+Welches Profil ein Prädikat trägt, kommt in v0.1 aus dem **geschlossenen
+Katalog dieser Spec** — nicht aus Space-Daten, damit kein manipulierter oder
+abweichend konfigurierter Client denselben Record anders einstufen kann. Die
+künftige space-definierte RelationTypeDefinition MUSS das Feld `claimProfile`
+tragen und DARF Katalog-Einträge nicht überschreiben (additiv wie das
+Typ-Register, 06).
+
+| Profil | Payload | Mutation | Katalog v0.1 |
+|---|---|---|---|
+| `authorial` | `relation-authorial` (Identität **+ Inhalt** inkl. `fields` und `confirmationRef`) | nur der Autor; jedes `updateRelationRecord` (auch `confirmationRef`-Änderung) MUSS re-signieren | `votesOn`, `knows`, `connectedWith`, `takesPlaceAt` |
+| `structural` | kein Record-Claim; als eigenständiges Relation-Item trägt der Record den **Item-Herkunfts-Claim** (unten) | kollaborativ | — (heute keine Record-Prädikate; eingebettete `assignedTo`/`invited`/`blocks`/`childOf` deckt der Herkunfts-Claim des Trägeritems) |
+
+**Exklusivität (ein Claim pro Datensatz):** `data.claim` trägt genau EINEN
+Claim — kein Array, keine parallelen Felder. Ein `authorial`-Record trägt
+ausschließlich `relation-authorial`; er ERSETZT den Herkunfts-Claim, dessen
+unveränderliche Felder (`id`, `createdBy`, `createdAt`) er bereits mitbindet.
+`structural`-Records und alle übrigen Items tragen (mit dem
+Item-Provenance-Slice) `item-provenance`. Verifier dispatchen anhand
+`payload.profile`; ein Profil, das nicht zur Datensatz-Klasse passt
+(`item-provenance` auf einem Katalog-`authorial`-Record oder
+`relation-authorial` außerhalb von Relation-Records), ist `invalid`.
+
+Prädikate außerhalb des Katalogs haben KEIN definiertes Claim-Profil:
+`signed`-Connectoren MÜSSEN Schreibversuche dafür ablehnen, solange kein
+Katalog-/Definitionseintrag existiert; Leseflächen behandeln vorhandene Records
+solcher Prädikate wie unverifizierte (Regel L2).
+
+**Item-Herkunfts-Claim** (`profile: "item-provenance"`, Gegenstück für
+kollaborative Objekte, Umsetzung separat): Payload
+`{ "v": "rls-claim/1", "profile": "item-provenance", "id", "type", "createdBy", "createdAt" }` —
+nur die unveränderlichen Felder. Beglaubigt die Herkunft, überlebt jeden
+legitimen Fremd-Edit (zwei parallel gemergte Edits hätten keinen Zustand, den
+je jemand signiert hat). Er gilt für ALLE Items — Relation-Items
+eingeschlossen, wodurch auch eigenständige `structural`-Records eine
+Herkunftsbindung bekommen.
+
+### Schreibregeln (Fassade)
+
+1. `createRelationRecord` MUSS für Katalog-`authorial`-Prädikate den Claim
+   erzeugen und speichern; `updateRelationRecord` MUSS re-signieren (auch bei
+   `confirmationRef`-Änderungen). Die Fixture-/ETL-Ausnahme (Fassaden-Regel 3)
+   MUSS ebenfalls gültige Claims schreiben.
+2. **Idempotenz repariert:** Trifft `createRelationRecord` auf den bereits
+   existierenden kanonischen Record der EIGENEN Identität ohne gültigen Claim
+   (Altbestand, Fremdbesetzung des eigenen Slots), gibt es ihn nicht unverändert
+   zurück, sondern MUSS ihn per Update mit gültigem Claim reparieren
+   (dasselbe Konvergenzmuster wie die Value-Reparatur, rls#211). Fremde
+   Identität bleibt eine Kollision (Fehler).
+
+### Leseregeln (Aggregation)
+
+Verifikation ist asynchron (WebCrypto) und cachebar
+(`(recordId, contentHash) → verdict` — für unveränderte Records ändert sich
+das Verdikt nie). Der reaktive Vertrag ist deterministisch:
+
+- **L1:** Aggregierende Leseflächen (z. B. `votesFromRelationRecords`-Konsumenten)
+  zählen einen Record erst NACH positivem Verdikt (`valid` oder `trusted`) —
+  **fail closed ab dem ersten Frame**: ausstehende Verifikation zählt wie
+  ungültig. Das Observable MUSS nach Abschluss ausstehender Verifikationen
+  erneut emittieren; der Übergang ist monoton (unverifiziert → gezählt), nie
+  umgekehrt für unveränderte Records. Gleiche Record-Menge ⇒ gleicher
+  Endzustand, unabhängig von Verifikations-Reihenfolge.
+- **L2:** `invalid` (Signatur/Payload-Mismatch/fremder Signer/unbekannte
+  Version) wird verworfen und NIE gezählt; reine Anzeige-Flächen DÜRFEN solche
+  Records als unverifiziert markieren, statt sie zu verbergen.
+- **L3:** `trusted` (authoritative Connector) zählt ohne Signaturprüfung — die
+  Autorbindung leistet dort der Store.
+- **L4:** Ein Claim beglaubigt die **Aussage des Autors**, nicht Wahrheit oder
+  Berechtigung: Capability- und Membership-Prüfungen bleiben unberührt.
+
+### Vertrauensgrenze danach
+
+Fälschbar bleibt nur noch, was der Autor selbst signiert — Vote-Fälschung im
+Namen Dritter ist auch für manipulierte Clients ausgeschlossen. NICHT
+abgedeckt: Löschung fremder Records im rohen CRDT (Verfügbarkeit, nicht
+Autorschaft) und Replay alter eigener Claims (der deterministische Record-Key
+begrenzt das auf den eigenen Tupel-Slot; ein Replay setzt schlimmstenfalls die
+EIGENE frühere Stimme wieder ein).
 
 ## Nicht-Ziele
 
