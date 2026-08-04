@@ -199,6 +199,23 @@ describe("relation-store facade — SignedClaims write rules", () => {
     ).rejects.toThrow(/verif/i)
   })
 
+  it("UPDATE with a broken signer REJECTS instead of persisting an invalid claim", async () => {
+    const { signer, did } = await testSigner()
+    const { connector, items } = memoryConnector(did)
+    const store = createDefaultRelationStore(connector, { claimSigner: signer })
+    const created = await store.createRelationRecord({
+      predicate: "votesOn", from: `global:${did}`, to: "item:s1", fields: { value: "green" },
+    })
+    const broken = createDefaultRelationStore(connector, {
+      claimSigner: { kid: `${did}#sig-0`, signEd25519: async () => new Uint8Array(64) },
+    })
+    await expect(broken.updateRelationRecord(created.id, { fields: { value: "red" } })).rejects.toThrow(/verif/i)
+    // The stored record still carries the last VALID state and claim.
+    const stored = items.get(created.id)!
+    expect(stored.data.value).toBe("green")
+    expect(await verifyRelationClaim({ ...created, claim: stored.data.claim as string })).toBe("valid")
+  })
+
   it("without a signer, behaviour is unchanged — no claim, no refusal", async () => {
     const { did } = await testSigner()
     const { connector } = memoryConnector(did)

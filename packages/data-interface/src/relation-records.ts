@@ -523,10 +523,20 @@ export function createDefaultRelationStore(
         ...(fields !== undefined && Object.keys(fields).length > 0 ? { fields } : { fields: undefined }),
         ...(confirmationRef !== undefined ? { confirmationRef } : { confirmationRef: undefined }),
       }
-      data.claim = await signRelationClaim(nextState, signer)
+      const claim = await signRelationClaim(nextState, signer)
+      // Same gate as claimAndPersist: a broken signer must reject loudly,
+      // never persist a state whose claim is instantly invalid.
+      if ((await verifyRelationClaim({ ...nextState, claim })) !== "valid") {
+        throw new Error(`Claim signer produced a claim that fails verification for record ${id}`)
+      }
+      data.claim = claim
     }
     const updated = await connector.updateItem(id, { data })
-    return assertSameIdentity(updated, current)
+    const result = assertSameIdentity(updated, current)
+    if (signer && (await verifyRelationClaim(result)) !== "valid") {
+      throw new Error(`Persisted relation record ${id} does not verify against its claim`)
+    }
+    return result
   }
 
   const deleteRelationRecord = async (id: string): Promise<void> => {
