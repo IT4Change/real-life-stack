@@ -125,6 +125,16 @@ describe("IndexedDbVerificationStateStore", () => {
     expect(await s.hasConsumedNonce("fresh")).toBe(true)
   })
 
+  it("Review-Follow-up #224: unparsebares consumedAt blockiert die Nonce nicht dauerhaft", async () => {
+    const s = store()
+    await s.recordConsumedNonce("stuck", "kein-datum")
+    // Date.parse("kein-datum") = NaN — der Vergleich mit dem Cutoff ist immer
+    // false; ohne expliziten Finite-Check überlebt der Eintrag jeden Prune.
+    await s.pruneConsumedNonces("2026-08-04T00:00:00Z")
+    expect(await s.hasConsumedNonce("stuck")).toBe(false)
+    expect(await s.tryConsumeNonce("stuck", "2026-08-04T10:00:00Z")).toBe(true)
+  })
+
   it("consumePendingCounterVerification covers consumed/missing/expired/wrong-counterparty", async () => {
     const s = store()
     const record = pendingRecord()

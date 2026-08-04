@@ -136,9 +136,11 @@ export class IndexedDbVerificationStateStore implements VerificationStateStore {
       const values = await requestResult(nonces.getAll())
       for (let i = 0; i < keys.length; i++) {
         const value = values[i]
-        // Unlesbare Einträge werden mit gewischt — sie können nie mehr
-        // legitim geprüft werden und dürfen den Prune nicht crashen.
-        if (!isStoredNonce(value) || Date.parse(value.consumedAt) < cutoff) {
+        // Unlesbare Einträge (falsche Form ODER unparsebares consumedAt)
+        // werden mit gewischt — Date.parse → NaN besteht jeden Vergleich und
+        // würde die Nonce sonst dauerhaft blockieren (#224).
+        const consumedAtMs = isStoredNonce(value) ? Date.parse(value.consumedAt) : Number.NaN
+        if (!Number.isFinite(consumedAtMs) || consumedAtMs < cutoff) {
           await requestResult(nonces.delete(keys[i]))
         }
       }
