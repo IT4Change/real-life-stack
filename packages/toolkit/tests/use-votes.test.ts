@@ -313,9 +313,18 @@ describe("useVotes — aggregation (shared validation)", () => {
 describe("useVoteUsers — transparent voter list", () => {
   it("subscribes to the records observable instead of a one-shot read", () => {
     const { connector: c } = connector([voteRecord("rel-1", OTHER, "green")])
+    const subscribeSpy = vi.fn(() => () => {})
+    const observeSpy = (c as unknown as { observeRelationRecords: ReturnType<typeof vi.fn> }).observeRelationRecords
+    observeSpy.mockImplementation(() => ({
+      current: [voteRecord("rel-1", OTHER, "green")],
+      loaded: true,
+      subscribe: subscribeSpy,
+    }))
     harness.connector = c
     renderHookSettled(() => hooks.useVoteUsers(STATEMENT))
-    const observeSpy = (c as unknown as { observeRelationRecords: ReturnType<typeof vi.fn> }).observeRelationRecords
     expect(observeSpy).toHaveBeenCalled()
+    // The reactive contract: the hook actually SUBSCRIBES — a later record
+    // change re-renders the voter list, it is not a one-shot read.
+    expect(subscribeSpy).toHaveBeenCalled()
   })
 })

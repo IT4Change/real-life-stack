@@ -6,11 +6,13 @@ export { BaseConnector, createObservable, shallowEqual, matchesFilter, findRelat
 export {
   canonicalizeRelationEndpoints,
   createDefaultRelationStore,
+  createRelationRecordWith,
   deriveRelationRecordId,
   relationRecordFromItem,
   relationStoreOptionsFrom,
   type DefaultRelationStoreOptions,
   type RelationPredicateDefinition,
+  type RelationRecordCreateConnector,
 } from "./relation-records.js"
 export * from "./item-types.js"
 export * from "./votes.js"

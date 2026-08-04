@@ -17,12 +17,13 @@ import type {
   NotificationStatePatch,
   RelatedItemsOptions,
   RelationRecord,
+  RelationRecordCreateConnector,
   RelationRecordFilter,
   RelationRecordInput,
   RelationRecordUpdate,
   Source,
 } from "@real-life-stack/data-interface"
-import { createObservable, createDefaultRelationStore, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
+import { createObservable, createDefaultRelationStore, createRelationRecordWith, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
 import { get, set, del, createStore, update as updateStoredValue } from "idb-keyval"
 
 // --- Types ---
@@ -390,8 +391,11 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
   }
 
   async createItem(item: CreateItemInput): Promise<Item> {
+    return this.createItemInGroup(item, this.currentGroup?.id ?? null)
+  }
+
+  private async createItemInGroup(item: CreateItemInput, targetGroupId: string | null): Promise<Item> {
     const actor = this.requireCurrentUser().id
-    const targetGroupId = this.currentGroup?.id ?? null
     let result: Item | undefined
     let committedState: StoredState | undefined
     let created = false
@@ -646,7 +650,23 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
   }
 
   createRelationRecord(input: RelationRecordInput): Promise<RelationRecord> {
-    return this.relationStoreInstance().createRelationRecord(input)
+    // A relation record belongs NEXT TO the item it targets. From the overview
+    // (no current group) the generic createItem would leave it without any
+    // group scope — invisible to the target's group — so resolve the target
+    // item's owner group and create the record there.
+    const targetItemId = input.to.startsWith("item:") ? input.to.slice("item:".length) : null
+    const targetGroupId = targetItemId ? this.getItemGroupId(targetItemId) : null
+    if (targetGroupId === null || targetGroupId === this.currentGroup?.id) {
+      return this.relationStoreInstance().createRelationRecord(input)
+    }
+    const scoped: RelationRecordCreateConnector = {
+      // Collision check must be scope-independent: item ids are globally
+      // unique, and the canonical record may live outside the current scope.
+      getItem: async (id: string) => this.items.find((candidate) => candidate.id === id) ?? null,
+      createItem: (item: CreateItemInput) => this.createItemInGroup(item, targetGroupId),
+      getCurrentUser: () => this.getCurrentUser(),
+    }
+    return createRelationRecordWith(scoped, input)
   }
 
   updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord> {

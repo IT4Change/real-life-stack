@@ -123,7 +123,7 @@ Resonanz-spezifische Lücke.
 |---|---|---|
 | Statement einbringen | `ItemWriter` | `createItem(type: "statement")` |
 | Statement bearbeiten | `ItemWriter` + Berechtigung | `updateItem`; Historie über das Activity-Log |
-| Stimme abgeben | `RelationRecordWriterCapable` + `Authenticatable` | `createRelationRecord` (kanonische ID, `createdBy` aus der Identität) |
+| Stimme abgeben | `RelationRecordCapable` + `RelationRecordWriterCapable` + `Authenticatable` | `createRelationRecord` (kanonische ID, `createdBy` aus der Identität); der Record entsteht im Owner-Space des Statements |
 | Stimme ändern | dito + Autorschaft | `updateRelationRecord` auf den eigenen Record |
 | Stimme zurückziehen | dito + Autorschaft | `deleteRelationRecord` auf den eigenen Record |
 

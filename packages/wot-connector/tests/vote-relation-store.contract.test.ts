@@ -93,6 +93,39 @@ describe("WotConnector — vote relation store contract", () => {
     await expect(c.createRelationRecord(voteRecordInput(ALICE, "s1", "green"))).rejects.toThrow(/collision/i)
   })
 
+  it("creates the vote in the STATEMENT's space when voting from the overview — not the private space", async () => {
+    // Overview aggregates items across spaces; createItem there writes to the
+    // PRIVATE space. A vote must instead land next to its statement, or other
+    // members never see it and the own stance vanishes inside the group view.
+    const privateSpace = handle()
+    const statementSpace = handle()
+    statementSpace.value.items["s1"] = {
+      id: "s1",
+      type: "statement",
+      createdBy: BOB,
+      createdAt: "2026-08-04T09:00:00.000Z",
+      data: { title: "Zweiter Brunnen" },
+    }
+    const { connector: c } = connector(privateSpace)
+    const anyC = c as any
+    anyC.currentGroupId = null // overview
+    anyC.crossGroupIndex = {
+      getItemGroupId: (id: string) => (id === "s1" ? "space-b" : null),
+      reindexGroup: vi.fn(),
+    }
+    anyC.replication = {
+      openSpace: vi.fn(async (id: string) => {
+        if (id !== "space-b") throw new Error(`unexpected space ${id}`)
+        return statementSpace
+      }),
+    }
+
+    const record = await c.createRelationRecord(voteRecordInput(ALICE, "s1", "green"))
+
+    expect(statementSpace.value.items[record.id]).toMatchObject({ type: "relation", createdBy: ALICE })
+    expect(privateSpace.value.items[record.id]).toBeUndefined()
+  })
+
   it("refuses to update or delete another author's record", async () => {
     const { connector: c, handle: h } = connector()
     const bobsId = await deriveRelationRecordId(BOB, VOTE_PREDICATE, `global:${BOB}`, "item:s1")

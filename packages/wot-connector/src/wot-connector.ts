@@ -9,6 +9,7 @@ import type {
   AuthMethod,
   RelatedItemsOptions,
   RelationRecord,
+  RelationRecordCreateConnector,
   RelationRecordFilter,
   RelationRecordInput,
   RelationRecordUpdate,
@@ -33,6 +34,7 @@ import {
   deriveActivitySummary,
   BaseConnector,
   createDefaultRelationStore,
+  createRelationRecordWith,
   createObservable,
   deriveContext,
   matchesFilter,
@@ -1579,8 +1581,32 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     return this.relationStoreInstance().observeRelationNeighbors(endpoint, predicate)
   }
 
-  createRelationRecord(input: RelationRecordInput): Promise<RelationRecord> {
-    return this.relationStoreInstance().createRelationRecord(input)
+  async createRelationRecord(input: RelationRecordInput): Promise<RelationRecord> {
+    await this.handleReady
+    // A relation record belongs NEXT TO the item it targets. From the overview
+    // (currentGroupId null) the generic createItem would write to the PRIVATE
+    // space — invisible to other members — so resolve the target item's owner
+    // space and create the record there.
+    const targetItemId = input.to.startsWith("item:") ? input.to.slice("item:".length) : null
+    const targetSpaceId = targetItemId ? this.crossGroupIndex?.getItemGroupId(targetItemId) ?? null : null
+    if (targetSpaceId === null || targetSpaceId === this.currentGroupId || !this.replication) {
+      return this.relationStoreInstance().createRelationRecord(input)
+    }
+
+    const handle = await this.replication.openSpace<RlsSpaceDoc>(targetSpaceId)
+    try {
+      const scoped: RelationRecordCreateConnector = {
+        getItem: async (id: string) => {
+          const serialized = handle.getDoc().items?.[id]
+          return serialized ? deserializeItem(serialized) : null
+        },
+        createItem: async (item: CreateItemInput) => this.createItemOnHandle(handle, item, targetSpaceId),
+        getCurrentUser: () => this.getCurrentUser(),
+      }
+      return await createRelationRecordWith(scoped, input)
+    } finally {
+      handle.close()
+    }
   }
 
   updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord> {

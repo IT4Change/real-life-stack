@@ -93,6 +93,22 @@ describe("LocalConnector — vote relation store contract", () => {
     await expect(connector.createRelationRecord(voteRecordInput(me, "s1", "green"))).rejects.toThrow(/collision/i)
   })
 
+  it("creates the vote in the STATEMENT's group when voting from the overview", async () => {
+    // Overview aggregates items across groups: a vote cast there must land
+    // NEXT TO the statement (its owner group), not scope-less — otherwise
+    // other members never see it.
+    const me = await currentUserId()
+    connector.setCurrentGroup("g1")
+    const statement = await connector.createItem({
+      type: "statement",
+      createdBy: me,
+      data: { title: "Zweiter Brunnen" },
+    })
+    connector.setCurrentGroup(null) // overview
+    const record = await connector.createRelationRecord(voteRecordInput(me, statement.id, "green"))
+    expect(connector.getItemGroupId(record.id)).toBe("g1")
+  })
+
   it("refuses to update or delete another author's record", async () => {
     const me = await currentUserId()
     const bobsId = await deriveRelationRecordId(BOB, VOTE_PREDICATE, `global:${BOB}`, "item:s1")
