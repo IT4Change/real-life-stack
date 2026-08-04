@@ -16,6 +16,7 @@ export const IDENTITY_DATABASE_PREFIXES = {
   outbox: "wot-outbox",
   "work-queue": "wot-work-queue",
   spaceCompact: "rls-yjs-space-compact-store",
+  verificationState: "wot-verification-state",
 } as const
 
 export type IdentityDatabaseKind = keyof typeof IDENTITY_DATABASE_PREFIXES

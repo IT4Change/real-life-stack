@@ -1,28 +1,23 @@
+import { IDBFactory } from "fake-indexeddb"
 import { beforeEach, describe, expect, it } from "vitest"
 import { AttestationWorkflow, IdentityWorkflow, VerificationWorkflow } from "@real-life/wot-core/application"
 import { WebCryptoProtocolCryptoAdapter } from "@real-life/wot-core"
 import type { PublicIdentitySession } from "@real-life/wot-core/types"
 
-import {
-  LocalStorageVerificationStateStore,
-  type KeyValueStorageLike,
-} from "../src/verification-state-store.js"
+import { IndexedDbVerificationStateStore } from "../src/verification-state-store.js"
+import { IDENTITY_DATABASE_PREFIXES, deleteIndexedDatabase, identityDatabaseName } from "../src/identity-persistence.js"
 
-function memoryStorage(): KeyValueStorageLike & { dump(): Record<string, string> } {
-  const map = new Map<string, string>()
-  return {
-    getItem: (key) => map.get(key) ?? null,
-    setItem: (key, value) => void map.set(key, value),
-    removeItem: (key) => void map.delete(key),
-    dump: () => Object.fromEntries(map),
-  }
-}
+const DID = "did:key:ztest"
+const DB_NAME = identityDatabaseName("verificationState", DID)
 
-const KEY = "rls-wot-verification-state:did:key:ztest"
-const store = (storage: KeyValueStorageLike) =>
-  new LocalStorageVerificationStateStore({ key: () => KEY, storage })
+const store = () => new IndexedDbVerificationStateStore({ databaseName: () => DB_NAME })
 
-const pendingRecord = (overrides: Partial<Parameters<LocalStorageVerificationStateStore["recordPendingCounterVerification"]>[0]> = {}) => ({
+const pendingRecord = (overrides: Partial<{
+  counterpartyDid: string
+  originalVerificationId: string
+  createdAt: string
+  expiresAt: string
+}> = {}) => ({
   counterpartyDid: "did:key:zpeer",
   originalVerificationId: "urn:uuid:11111111-1111-4111-8111-111111111111",
   createdAt: "2026-08-04T10:00:00Z",
@@ -30,23 +25,99 @@ const pendingRecord = (overrides: Partial<Parameters<LocalStorageVerificationSta
   ...overrides,
 })
 
-describe("LocalStorageVerificationStateStore", () => {
-  let storage: ReturnType<typeof memoryStorage>
+/** Schreibt einen rohen (ggf. ungültigen) Record direkt in die DB. */
+async function seedRawPending(key: string, value: unknown): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1)
+    request.onupgradeneeded = () => {
+      const db = request.result
+      if (!db.objectStoreNames.contains("nonces")) db.createObjectStore("nonces")
+      if (!db.objectStoreNames.contains("pending")) db.createObjectStore("pending")
+    }
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const db = request.result
+      const txn = db.transaction("pending", "readwrite")
+      txn.objectStore("pending").put(value, key)
+      txn.oncomplete = () => { db.close(); resolve() }
+      txn.onerror = () => { db.close(); reject(txn.error) }
+    }
+  })
+}
 
-  beforeEach(() => {
-    storage = memoryStorage()
+beforeEach(() => {
+  Object.defineProperty(globalThis, "indexedDB", {
+    configurable: true,
+    value: new IDBFactory(),
+    writable: true,
+  })
+})
+
+describe("IndexedDbVerificationStateStore", () => {
+  it("ist im Identity-Wipe-Register eingetragen (DID-Lebenszyklus-Grenze)", () => {
+    expect(IDENTITY_DATABASE_PREFIXES.verificationState).toBe("wot-verification-state")
   })
 
   it("mirrors the InMemory contract: tryConsumeNonce is one-shot and case-insensitive", async () => {
-    const s = store(storage)
+    const s = store()
     expect(await s.tryConsumeNonce("Nonce-A", "2026-08-04T10:00:00Z")).toBe(true)
     expect(await s.tryConsumeNonce("nonce-a", "2026-08-04T10:00:01Z")).toBe(false)
     expect(await s.hasConsumedNonce("NONCE-A")).toBe(true)
     expect(await s.hasConsumedNonce("other")).toBe(false)
   })
 
+  it("Review-Repro Blocker 1: zwei Instanzen können dieselbe Nonce nicht beide konsumieren", async () => {
+    const a = store()
+    const b = store()
+    // Beide Instanzen VOR dem Konsum benutzen (entspricht „vorhydriert").
+    expect(await a.hasConsumedNonce("nonce-x")).toBe(false)
+    expect(await b.hasConsumedNonce("nonce-x")).toBe(false)
+    expect(await a.tryConsumeNonce("nonce-x", "2026-08-04T10:00:00Z")).toBe(true)
+    expect(await b.tryConsumeNonce("nonce-x", "2026-08-04T10:00:01Z")).toBe(false)
+  })
+
+  it("Review-Repro Blocker 1b: doppelter Counter-Consume über zwei Instanzen ist einmalig", async () => {
+    const record = pendingRecord()
+    const a = store()
+    const b = store()
+    await a.recordPendingCounterVerification(record)
+    expect(await b.getPendingCounterVerification(record.originalVerificationId)).not.toBeNull()
+    expect(
+      await a.consumePendingCounterVerification(record.originalVerificationId, record.counterpartyDid, "2026-08-04T10:01:00Z"),
+    ).toBe("consumed")
+    expect(
+      await b.consumePendingCounterVerification(record.originalVerificationId, record.counterpartyDid, "2026-08-04T10:01:00Z"),
+    ).toBe("missing")
+  })
+
+  it("Review-Repro Blocker 2: strukturell ungültige Records crashen weder Consume noch Prune", async () => {
+    await seedRawPending("broken-null", null)
+    await seedRawPending("broken-shape", { counterpartyDid: 42 })
+    await seedRawPending("broken-time", pendingRecord({ originalVerificationId: "broken-time", expiresAt: "kein-datum" }))
+    const s = store()
+    expect(await s.consumePendingCounterVerification("broken-null", "did:key:zpeer", "2026-08-04T10:01:00Z")).toBe("missing")
+    expect(await s.consumePendingCounterVerification("broken-shape", "did:key:zpeer", "2026-08-04T10:01:00Z")).toBe("missing")
+    expect(await s.consumePendingCounterVerification("broken-time", "did:key:zpeer", "2026-08-04T10:01:00Z")).toBe("missing")
+    await s.prunePendingCounterVerifications("2026-08-04T10:01:00Z")
+    expect(await s.getPendingCounterVerifications()).toEqual([])
+  })
+
+  it("Review-Repro Blocker 3: der Identity-Wipe wirkt auch gegen eine lebende Store-Instanz", async () => {
+    const s = store()
+    await s.tryConsumeNonce("nonce-w", "2026-08-04T10:00:00Z")
+    await s.recordPendingCounterVerification(pendingRecord())
+
+    // Logout-Wipe: DB weg — die Instanz existiert weiter (langlebiger Workflow).
+    await deleteIndexedDatabase(DB_NAME)
+
+    expect(await s.hasConsumedNonce("nonce-w")).toBe(false)
+    expect(await s.getPendingCounterVerification(pendingRecord().originalVerificationId)).toBeNull()
+    // Re-Login derselben DID beginnt sauber.
+    expect(await s.tryConsumeNonce("nonce-w", "2026-08-04T11:00:00Z")).toBe(true)
+  })
+
   it("prunes consumed nonces strictly older than the cutoff", async () => {
-    const s = store(storage)
+    const s = store()
     await s.recordConsumedNonce("old", "2026-08-03T09:00:00Z")
     await s.recordConsumedNonce("fresh", "2026-08-04T09:00:00Z")
     await s.pruneConsumedNonces("2026-08-04T00:00:00Z")
@@ -55,14 +126,13 @@ describe("LocalStorageVerificationStateStore", () => {
   })
 
   it("consumePendingCounterVerification covers consumed/missing/expired/wrong-counterparty", async () => {
-    const s = store(storage)
+    const s = store()
     const record = pendingRecord()
     await s.recordPendingCounterVerification(record)
 
     expect(
       await s.consumePendingCounterVerification(record.originalVerificationId, "did:key:zother", "2026-08-04T10:01:00Z"),
     ).toBe("wrong-counterparty")
-    // wrong-counterparty must leave the non-expired record in place
     expect(await s.getPendingCounterVerification(record.originalVerificationId)).not.toBeNull()
 
     expect(
@@ -80,59 +150,43 @@ describe("LocalStorageVerificationStateStore", () => {
     expect(await s.getPendingCounterVerification(expired.originalVerificationId)).toBeNull()
   })
 
-  it("survives a new instance over the same storage (Reload-Szenario)", async () => {
-    const first = store(storage)
+  it("survives a new instance over the same database (Reload-Szenario)", async () => {
+    const first = store()
     await first.tryConsumeNonce("nonce-r", "2026-08-04T10:00:00Z")
     await first.recordPendingCounterVerification(pendingRecord())
 
-    const second = store(storage)
+    const second = store()
     expect(await second.hasConsumedNonce("nonce-r")).toBe(true)
     expect(await second.getPendingCounterVerification(pendingRecord().originalVerificationId)).toMatchObject({
       counterpartyDid: "did:key:zpeer",
     })
   })
 
-  it("treats corrupt JSON as empty state instead of throwing", async () => {
-    storage.setItem(KEY, "{not json")
-    const s = store(storage)
-    expect(await s.hasConsumedNonce("x")).toBe(false)
-    expect(await s.getPendingCounterVerifications()).toEqual([])
-    // and keeps working (write-through repairs the blob)
-    expect(await s.tryConsumeNonce("x", "2026-08-04T10:00:00Z")).toBe(true)
-  })
-
-  it("keeps working in-memory when the underlying storage throws", async () => {
-    const broken: KeyValueStorageLike = {
-      getItem: () => { throw new Error("denied") },
-      setItem: () => { throw new Error("denied") },
-      removeItem: () => { throw new Error("denied") },
-    }
-    const s = new LocalStorageVerificationStateStore({ key: () => KEY, storage: broken })
+  it("degradiert ohne indexedDB auf volatiles Referenzverhalten statt zu werfen", async () => {
+    Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: undefined, writable: true })
+    const s = store()
     expect(await s.tryConsumeNonce("n", "2026-08-04T10:00:00Z")).toBe(true)
+    expect(await s.tryConsumeNonce("n", "2026-08-04T10:00:00Z")).toBe(false)
     expect(await s.hasConsumedNonce("n")).toBe(true)
   })
 })
 
-describe("VerificationWorkflow mit LocalStorageVerificationStateStore (Reload-Szenarien)", () => {
+describe("VerificationWorkflow mit IndexedDbVerificationStateStore (Reload-Szenarien)", () => {
   const protocolCrypto = new WebCryptoProtocolCryptoAdapter()
   let scannerIdentity: PublicIdentitySession
   let ownerIdentity: PublicIdentitySession
-  let storage: ReturnType<typeof memoryStorage>
 
   beforeEach(async () => {
     const crypto = new WebCryptoProtocolCryptoAdapter()
     const identityWorkflow = new IdentityWorkflow({ crypto })
     scannerIdentity = (await identityWorkflow.createIdentity({ passphrase: "scanner", storeSeed: false })).identity
     ownerIdentity = (await identityWorkflow.createIdentity({ passphrase: "owner", storeSeed: false })).identity
-    storage = memoryStorage()
   })
 
   const workflow = () =>
-    new VerificationWorkflow({ crypto: protocolCrypto, stateStore: store(storage) })
+    new VerificationWorkflow({ crypto: protocolCrypto, stateStore: store() })
 
   it("akzeptiert die Gegen-Verifizierung auch nach Workflow-Neuaufbau (Reload überlebt)", async () => {
-    // Scanner-Seite vor dem Reload: Verifizierung erzeugen merkt den
-    // pending counter im Store vor.
     const before = workflow()
     const verification = await before.createVerificationAttestation({
       issuer: scannerIdentity,
@@ -140,7 +194,6 @@ describe("VerificationWorkflow mit LocalStorageVerificationStateStore (Reload-Sz
       challengeNonce: "550e8400-e29b-41d4-a716-446655440000",
     })
 
-    // Gegenseite antwortet (eigene Session, kein geteilter Store).
     const counter = await new VerificationWorkflow({ crypto: protocolCrypto }).createCounterVerificationAttestation({
       issuer: ownerIdentity,
       subjectDid: scannerIdentity.getDid(),
@@ -148,8 +201,7 @@ describe("VerificationWorkflow mit LocalStorageVerificationStateStore (Reload-Sz
     })
     const payload = await new AttestationWorkflow({ crypto: protocolCrypto }).verifyAttestationVcJws(counter.vcJws)
 
-    // Reload der Scanner-Seite: neue Workflow-Instanz über demselben Storage.
-    // Ohne durablen Store wäre das 'no-pending-counter-verification'.
+    // Reload der Scanner-Seite: neue Workflow-Instanz über derselben DB.
     const after = workflow()
     expect(await after.acceptVerifiedCounterVerification(scannerIdentity, payload)).toEqual({
       decision: "accept-mutual-in-person",
@@ -166,11 +218,8 @@ describe("VerificationWorkflow mit LocalStorageVerificationStateStore (Reload-Sz
     })
     const payload = await new AttestationWorkflow({ crypto: protocolCrypto }).verifyAttestationVcJws(verification.vcJws)
 
-    // Owner-Session 1 hat die Nonce bereits konsumiert (z.B. Erst-Annahme).
-    await store(storage).recordConsumedNonce(nonce, "2026-08-04T10:00:00Z")
+    await store().recordConsumedNonce(nonce, "2026-08-04T10:00:00Z")
 
-    // Owner-Session 2 (Reload, keine aktive Challenge): dieselbe Verifizierung
-    // nochmal → muss als Replay erkannt werden, nicht als remote-unbound.
     const after = workflow()
     expect(await after.acceptVerifiedVerificationAttestation(ownerIdentity, payload)).toEqual({
       decision: "reject",

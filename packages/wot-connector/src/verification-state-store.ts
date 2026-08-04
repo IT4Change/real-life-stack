@@ -1,143 +1,182 @@
 import type { PendingCounterVerificationRecord, VerificationStateStore } from "@real-life/wot-core/ports"
+import { InMemoryVerificationStateStore } from "@real-life/wot-core/adapters"
 
-export interface KeyValueStorageLike {
-  getItem(key: string): string | null
-  setItem(key: string, value: string): void
-  removeItem(key: string): void
-}
+const NONCES_STORE = "nonces"
+const PENDING_STORE = "pending"
+const DB_VERSION = 1
 
-interface PersistedVerificationState {
-  consumedNonces: Record<string, string>
-  pendingCounterVerifications: Record<string, PendingCounterVerificationRecord>
-}
-
-export interface LocalStorageVerificationStateStoreOptions {
+export interface IndexedDbVerificationStateStoreOptions {
   /**
-   * DID-namespaced Storage-Key, pro Aufruf aufgelöst — die Identität steht
-   * beim Konstruieren des Connectors noch nicht fest (gleiches Muster wie
-   * rls-wot-pending-verification-save).
+   * DID-namespaced DB-Name, pro Aufruf aufgelöst (die Identität steht beim
+   * Konstruieren des Connectors noch nicht fest). Muss aus
+   * identityDatabaseName("verificationState", did) kommen, damit der
+   * Identity-Wipe die DB über das Register mit abräumt.
    */
-  key: () => string
-  /** Default: globalThis.localStorage (fehlt in Node-Tests — dann rein volatil). */
-  storage?: KeyValueStorageLike
+  databaseName: () => string
+}
+
+interface StoredNonce {
+  consumedAt: string
+}
+
+function isStoredNonce(value: unknown): value is StoredNonce {
+  return typeof value === "object" && value !== null
+    && typeof (value as StoredNonce).consumedAt === "string"
+}
+
+function isPendingRecord(value: unknown): value is PendingCounterVerificationRecord {
+  if (typeof value !== "object" || value === null) return false
+  const record = value as PendingCounterVerificationRecord
+  return typeof record.counterpartyDid === "string"
+    && typeof record.originalVerificationId === "string"
+    && typeof record.createdAt === "string"
+    && typeof record.expiresAt === "string"
+    && Number.isFinite(Date.parse(record.expiresAt))
+}
+
+function requestResult<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"))
+  })
 }
 
 /**
  * Durable Trust-002-Zustandsgrenze (konsumierte Nonces + ausstehende
- * Gegen-Verifizierungen) über DID-namespaced localStorage.
+ * Gegen-Verifizierungen) über eine DID-gebundene IndexedDB.
  *
- * Quelle der Wahrheit sind in-memory Maps; jede Mutation schreibt best-effort
- * durch. Fällt Storage aus (Privacy-Modus, Quota), degradiert das Verhalten
- * exakt auf den bisherigen volatilen Stand — nie schlechter. Kein Cross-Tab-
- * Locking: der Verifizierungs-Flow läuft in genau einer Session.
+ * Bewusst zustandslos: jede Operation öffnet die DB, läuft in genau einer
+ * Transaktion und schließt wieder. Damit gilt die atomare One-Shot-Garantie
+ * des Ports echt — über Instanzen und Tabs hinweg (readwrite-Transaktionen
+ * serialisieren) — und der Identity-Wipe trifft nie eine offene Verbindung
+ * oder einen vorhydrierten RAM-Zustand.
+ *
+ * Ohne indexedDB (Nicht-Browser-Umgebung) degradiert der Store auf die
+ * volatile InMemory-Referenzimplementierung des Ports — der Stand vor diesem
+ * Feature, nie schlechter.
  */
-export class LocalStorageVerificationStateStore implements VerificationStateStore {
-  private readonly options: LocalStorageVerificationStateStoreOptions
-  private consumedNonces: Map<string, string> | null = null
-  private pendingCounterVerifications: Map<string, PendingCounterVerificationRecord> | null = null
-  private hydratedKey: string | null = null
+export class IndexedDbVerificationStateStore implements VerificationStateStore {
+  private readonly options: IndexedDbVerificationStateStoreOptions
+  private volatileFallback: InMemoryVerificationStateStore | null = null
 
-  constructor(options: LocalStorageVerificationStateStoreOptions) {
+  constructor(options: IndexedDbVerificationStateStoreOptions) {
     this.options = options
   }
 
-  private storage(): KeyValueStorageLike | undefined {
-    if (this.options.storage) return this.options.storage
-    try {
-      return (globalThis as { localStorage?: KeyValueStorageLike }).localStorage
-    } catch {
-      return undefined
-    }
+  private fallback(): VerificationStateStore | null {
+    const factory = (globalThis as { indexedDB?: IDBFactory }).indexedDB
+    if (factory) return null
+    this.volatileFallback ??= new InMemoryVerificationStateStore()
+    return this.volatileFallback
   }
 
-  /** Hydriert lazily; bei DID-Wechsel (neuer Key) wird neu geladen. */
-  private hydrate(): { nonces: Map<string, string>; pending: Map<string, PendingCounterVerificationRecord> } {
-    const key = this.options.key()
-    if (this.hydratedKey !== key || this.consumedNonces === null || this.pendingCounterVerifications === null) {
-      let state: PersistedVerificationState = { consumedNonces: {}, pendingCounterVerifications: {} }
-      try {
-        const raw = this.storage()?.getItem(key)
-        if (raw) {
-          const parsed: unknown = JSON.parse(raw)
-          if (typeof parsed === "object" && parsed !== null) {
-            const candidate = parsed as Partial<PersistedVerificationState>
-            state = {
-              consumedNonces: typeof candidate.consumedNonces === "object" && candidate.consumedNonces !== null
-                ? candidate.consumedNonces
-                : {},
-              pendingCounterVerifications:
-                typeof candidate.pendingCounterVerifications === "object" && candidate.pendingCounterVerifications !== null
-                  ? candidate.pendingCounterVerifications
-                  : {},
-            }
-          }
-        }
-      } catch { /* korruptes/fehlendes Blob = leerer Zustand */ }
-      this.consumedNonces = new Map(Object.entries(state.consumedNonces))
-      this.pendingCounterVerifications = new Map(Object.entries(state.pendingCounterVerifications))
-      this.hydratedKey = key
-    }
-    return { nonces: this.consumedNonces, pending: this.pendingCounterVerifications }
-  }
-
-  private persist(): void {
-    if (this.consumedNonces === null || this.pendingCounterVerifications === null || this.hydratedKey === null) return
-    const state: PersistedVerificationState = {
-      consumedNonces: Object.fromEntries(this.consumedNonces),
-      pendingCounterVerifications: Object.fromEntries(this.pendingCounterVerifications),
-    }
+  private async withTransaction<T>(
+    storeName: typeof NONCES_STORE | typeof PENDING_STORE,
+    mode: IDBTransactionMode,
+    work: (store: IDBObjectStore) => Promise<T>,
+  ): Promise<T> {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(this.options.databaseName(), DB_VERSION)
+      request.onupgradeneeded = () => {
+        const database = request.result
+        if (!database.objectStoreNames.contains(NONCES_STORE)) database.createObjectStore(NONCES_STORE)
+        if (!database.objectStoreNames.contains(PENDING_STORE)) database.createObjectStore(PENDING_STORE)
+      }
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"))
+    })
     try {
-      this.storage()?.setItem(this.hydratedKey, JSON.stringify(state))
-    } catch { /* best-effort: ohne Storage bleibt der Zustand volatil */ }
+      const txn = db.transaction(storeName, mode)
+      const result = await work(txn.objectStore(storeName))
+      await new Promise<void>((resolve, reject) => {
+        txn.oncomplete = () => resolve()
+        txn.onabort = () => reject(txn.error ?? new Error("IndexedDB transaction aborted"))
+        txn.onerror = () => reject(txn.error ?? new Error("IndexedDB transaction failed"))
+      })
+      return result
+    } finally {
+      db.close()
+    }
   }
 
   async recordConsumedNonce(nonce: string, consumedAt: string): Promise<void> {
-    this.hydrate().nonces.set(nonce.toLowerCase(), consumedAt)
-    this.persist()
+    const fallback = this.fallback()
+    if (fallback) return fallback.recordConsumedNonce(nonce, consumedAt)
+    await this.withTransaction(NONCES_STORE, "readwrite", async (nonces) => {
+      await requestResult(nonces.put({ consumedAt } satisfies StoredNonce, nonce.toLowerCase()))
+    })
   }
 
   async tryConsumeNonce(nonce: string, consumedAt: string): Promise<boolean> {
-    const { nonces } = this.hydrate()
+    const fallback = this.fallback()
+    if (fallback) return fallback.tryConsumeNonce(nonce, consumedAt)
     const normalizedNonce = nonce.toLowerCase()
-    if (nonces.has(normalizedNonce)) return false
-    nonces.set(normalizedNonce, consumedAt)
-    this.persist()
-    return true
+    return this.withTransaction(NONCES_STORE, "readwrite", async (nonces) => {
+      const existing = await requestResult(nonces.get(normalizedNonce))
+      if (existing !== undefined) return false
+      await requestResult(nonces.put({ consumedAt } satisfies StoredNonce, normalizedNonce))
+      return true
+    })
   }
 
   async hasConsumedNonce(nonce: string): Promise<boolean> {
-    return this.hydrate().nonces.has(nonce.toLowerCase())
+    const fallback = this.fallback()
+    if (fallback) return fallback.hasConsumedNonce(nonce)
+    return this.withTransaction(NONCES_STORE, "readonly", async (nonces) => {
+      return (await requestResult(nonces.get(nonce.toLowerCase()))) !== undefined
+    })
   }
 
   async pruneConsumedNonces(olderThan: string): Promise<void> {
-    const { nonces } = this.hydrate()
+    const fallback = this.fallback()
+    if (fallback) return fallback.pruneConsumedNonces(olderThan)
     const cutoff = Date.parse(olderThan)
-    let changed = false
-    for (const [nonce, consumedAt] of nonces) {
-      if (Date.parse(consumedAt) < cutoff) {
-        nonces.delete(nonce)
-        changed = true
+    await this.withTransaction(NONCES_STORE, "readwrite", async (nonces) => {
+      const keys = await requestResult(nonces.getAllKeys())
+      const values = await requestResult(nonces.getAll())
+      for (let i = 0; i < keys.length; i++) {
+        const value = values[i]
+        // Unlesbare Einträge werden mit gewischt — sie können nie mehr
+        // legitim geprüft werden und dürfen den Prune nicht crashen.
+        if (!isStoredNonce(value) || Date.parse(value.consumedAt) < cutoff) {
+          await requestResult(nonces.delete(keys[i]))
+        }
       }
-    }
-    if (changed) this.persist()
+    })
   }
 
   async recordPendingCounterVerification(pending: PendingCounterVerificationRecord): Promise<void> {
-    this.hydrate().pending.set(pending.originalVerificationId, { ...pending })
-    this.persist()
+    const fallback = this.fallback()
+    if (fallback) return fallback.recordPendingCounterVerification(pending)
+    await this.withTransaction(PENDING_STORE, "readwrite", async (store) => {
+      await requestResult(store.put({ ...pending }, pending.originalVerificationId))
+    })
   }
 
   async getPendingCounterVerification(originalVerificationId: string): Promise<PendingCounterVerificationRecord | null> {
-    const pending = this.hydrate().pending.get(originalVerificationId)
-    return pending === undefined ? null : { ...pending }
+    const fallback = this.fallback()
+    if (fallback) return fallback.getPendingCounterVerification(originalVerificationId)
+    return this.withTransaction(PENDING_STORE, "readonly", async (store) => {
+      const record = await requestResult(store.get(originalVerificationId))
+      return isPendingRecord(record) ? { ...record } : null
+    })
   }
 
   async getPendingCounterVerifications(): Promise<PendingCounterVerificationRecord[]> {
-    return Array.from(this.hydrate().pending.values(), (pending) => ({ ...pending }))
+    const fallback = this.fallback()
+    if (fallback) return fallback.getPendingCounterVerifications()
+    return this.withTransaction(PENDING_STORE, "readonly", async (store) => {
+      const records = await requestResult(store.getAll())
+      return records.filter(isPendingRecord).map((record) => ({ ...record }))
+    })
   }
 
   async deletePendingCounterVerification(originalVerificationId: string): Promise<void> {
-    if (this.hydrate().pending.delete(originalVerificationId)) this.persist()
+    const fallback = this.fallback()
+    if (fallback) return fallback.deletePendingCounterVerification(originalVerificationId)
+    await this.withTransaction(PENDING_STORE, "readwrite", async (store) => {
+      await requestResult(store.delete(originalVerificationId))
+    })
   }
 
   async consumePendingCounterVerification(
@@ -145,30 +184,40 @@ export class LocalStorageVerificationStateStore implements VerificationStateStor
     counterpartyDid: string,
     now: string,
   ): Promise<"consumed" | "missing" | "expired" | "wrong-counterparty"> {
-    const { pending } = this.hydrate()
-    const record = pending.get(originalVerificationId)
-    if (record === undefined) return "missing"
-    if (Date.parse(record.expiresAt) <= Date.parse(now)) {
-      pending.delete(originalVerificationId)
-      this.persist()
-      return "expired"
-    }
-    if (record.counterpartyDid !== counterpartyDid) return "wrong-counterparty"
-    pending.delete(originalVerificationId)
-    this.persist()
-    return "consumed"
+    const fallback = this.fallback()
+    if (fallback) return fallback.consumePendingCounterVerification(originalVerificationId, counterpartyDid, now)
+    return this.withTransaction(PENDING_STORE, "readwrite", async (store) => {
+      const record = await requestResult(store.get(originalVerificationId))
+      if (record === undefined) return "missing"
+      if (!isPendingRecord(record)) {
+        // Strukturell ungültig = nie mehr legitim konsumierbar: entfernen und
+        // wie fehlend behandeln statt zu crashen (Review-Blocker 2).
+        await requestResult(store.delete(originalVerificationId))
+        return "missing"
+      }
+      if (Date.parse(record.expiresAt) <= Date.parse(now)) {
+        await requestResult(store.delete(originalVerificationId))
+        return "expired"
+      }
+      if (record.counterpartyDid !== counterpartyDid) return "wrong-counterparty"
+      await requestResult(store.delete(originalVerificationId))
+      return "consumed"
+    })
   }
 
   async prunePendingCounterVerifications(now: string): Promise<void> {
-    const { pending } = this.hydrate()
+    const fallback = this.fallback()
+    if (fallback) return fallback.prunePendingCounterVerifications(now)
     const nowMs = Date.parse(now)
-    let changed = false
-    for (const [originalVerificationId, record] of pending) {
-      if (Date.parse(record.expiresAt) <= nowMs) {
-        pending.delete(originalVerificationId)
-        changed = true
+    await this.withTransaction(PENDING_STORE, "readwrite", async (store) => {
+      const keys = await requestResult(store.getAllKeys())
+      const records = await requestResult(store.getAll())
+      for (let i = 0; i < keys.length; i++) {
+        const record = records[i]
+        if (!isPendingRecord(record) || Date.parse(record.expiresAt) <= nowMs) {
+          await requestResult(store.delete(keys[i]))
+        }
       }
-    }
-    if (changed) this.persist()
+    })
   }
 }

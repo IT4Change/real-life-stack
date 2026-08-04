@@ -158,7 +158,7 @@ import {
   type OutboxMessagingRuntime,
 } from "./messaging-runtime.js"
 import { InboxReceptionHost } from "./inbox-reception-host.js"
-import { LocalStorageVerificationStateStore } from "./verification-state-store.js"
+import { IndexedDbVerificationStateStore } from "./verification-state-store.js"
 import { initNamespacedYjsPersonalDoc } from "./personal-doc-persistence.js"
 import {
   ACTIVE_DID_STORAGE_KEY,
@@ -335,13 +335,14 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   private graphCacheService: GraphCacheService
   private protocolCrypto = new WebCryptoProtocolCryptoAdapter()
   // Trust-002-Zustand (konsumierte Nonces, ausstehende Gegen-Verifizierungen)
-  // durabel: überlebt Reload/Re-Login derselben Identität. Die AKTIVE
+  // durabel: überlebt Reload/Re-Login derselben Identität. Über das
+  // Identity-DB-Register läuft der Logout-Wipe automatisch mit. Die AKTIVE
   // QR-Challenge bleibt bewusst Session-Zustand (Port-Vertrag: "intentionally
   // not part of this port").
   private verificationWorkflow = new VerificationWorkflow({
     crypto: this.protocolCrypto,
-    stateStore: new LocalStorageVerificationStateStore({
-      key: () => `rls-wot-verification-state:${this.identity.getDid()}`,
+    stateStore: new IndexedDbVerificationStateStore({
+      databaseName: () => identityDatabaseName("verificationState", this.identity.getDid()),
     }),
   })
   private attestationWorkflow = new AttestationWorkflow({ crypto: this.protocolCrypto })
@@ -747,7 +748,6 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // Clear identity switch marker + DID-gebundene Pending-Saves
     try { localStorage.removeItem(ACTIVE_DID_STORAGE_KEY) } catch { /* ignore */ }
     try { localStorage.removeItem(`rls-wot-pending-verification-save:${did}`) } catch { /* ignore */ }
-    try { localStorage.removeItem(`rls-wot-verification-state:${did}`) } catch { /* ignore */ }
 
     this.currentUserObs.set(null)
     this.authStateObs.set({ status: "unauthenticated" })
@@ -4054,7 +4054,6 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.invalidateRuntimeGeneration()
     const cleanupGeneration = this.runtimeGeneration
     try { localStorage.removeItem(`rls-wot-pending-verification-save:${did}`) } catch { /* ignore */ }
-    try { localStorage.removeItem(`rls-wot-verification-state:${did}`) } catch { /* ignore */ }
     await wipeIdentityPersistence(did, {
       isCancelled: () => this.runtimeGeneration !== cleanupGeneration,
     })
