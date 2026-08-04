@@ -298,11 +298,26 @@ export function FeedView({ groupId }: { groupId: string }) {
 export function feedFooter(item: Item, onCommentClick: () => void) {
   const commentCount = (item.data as Record<string, unknown>).commentCount
   const count = typeof commentCount === "number" ? commentCount : 0
+  // A statement card IS the poll: vote controls right on the card, same type
+  // rule as in the detail panel. The vote bar needs the full row for its
+  // distribution bar, so the footer stacks; reactions stay alongside below.
+  if (isStatement(item)) {
+    return (
+      <div className="flex w-full flex-col gap-2">
+        <VoteBar statementId={item.id} className="w-full" />
+        <div className="flex items-center">
+          <ReactionBar itemId={item.id} />
+          {count > 0 && (
+            <div className="ml-auto">
+              <ItemCommentCount count={count} onClick={onCommentClick} />
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
   return (
     <>
-      {/* A statement card IS the poll: vote controls right on the card, same
-          type rule as in the detail panel. Reactions stay alongside. */}
-      {isStatement(item) && <VoteBar statementId={item.id} className="w-full" />}
       <ReactionBar itemId={item.id} />
       {count > 0 && (
         <div className="ml-auto">

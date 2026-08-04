@@ -1,24 +1,26 @@
 import { describe, expect, it } from "vitest"
-import type { Item } from "@real-life-stack/data-interface"
+import type { Item, RelationRecord } from "@real-life-stack/data-interface"
 import { aggregateVoteStats, sortStatements, type StatementVoteStats } from "./resonance-sort"
 
 function statement(id: string, createdAt: string): Item {
   return { id, type: "statement", createdAt, createdBy: "did:key:author", data: { title: id } }
 }
 
-function vote(statementId: string, voter: string, value: string, createdAt: string): Item {
+function vote(statementId: string, voter: string, value: string, createdAt: string, overrides: Partial<RelationRecord> = {}): RelationRecord {
   return {
-    id: `vote:${statementId}:${voter}`,
-    type: "vote",
-    createdAt,
+    id: `rel-${statementId}-${voter}`,
+    predicate: "votesOn",
+    from: `global:${voter}`,
+    to: `item:${statementId}`,
+    fields: { value },
     createdBy: voter,
-    data: { value },
-    relations: [{ predicate: "votesOn", target: `item:${statementId}` }],
+    createdAt,
+    ...overrides,
   }
 }
 
 describe("aggregateVoteStats", () => {
-  it("groups votes by their votesOn target and tracks the latest vote time", () => {
+  it("groups validated vote records by statement and tracks the latest vote time", () => {
     const stats = aggregateVoteStats([
       vote("a", "u1", "green", "2026-08-01T10:00:00.000Z"),
       vote("a", "u2", "red", "2026-08-01T12:00:00.000Z"),
@@ -28,12 +30,18 @@ describe("aggregateVoteStats", () => {
     expect(stats.get("b")).toEqual({ green: 0, yellow: 1, red: 0, total: 1, lastVoteAt: "2026-08-01T11:00:00.000Z" })
   })
 
-  it("ignores malformed vote values and votes without a votesOn relation", () => {
+  it("shares the record validation: forged, malformed and duplicate records don't skew the sort", () => {
     const stats = aggregateVoteStats([
-      vote("a", "u1", "purple", "2026-08-01T10:00:00.000Z"),
-      { ...vote("a", "u2", "green", "2026-08-01T11:00:00.000Z"), relations: [] },
+      // Forged: endpoint not bound to the author.
+      vote("a", "u1", "green", "2026-08-01T10:00:00.000Z", { createdBy: "did:key:mallory" }),
+      // Malformed value.
+      vote("a", "u2", "purple", "2026-08-01T10:00:00.000Z"),
+      // Duplicate tuple under two ids — counts once.
+      vote("b", "u1", "green", "2026-08-01T10:00:00.000Z", { id: "rel-z" }),
+      vote("b", "u1", "green", "2026-08-01T10:00:00.000Z", { id: "rel-a" }),
     ])
-    expect(stats.size).toBe(0)
+    expect(stats.get("a")).toBeUndefined()
+    expect(stats.get("b")?.total).toBe(1)
   })
 })
 

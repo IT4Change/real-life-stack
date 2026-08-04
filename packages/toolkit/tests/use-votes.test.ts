@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
-import type { DataInterface, Item, Observable } from "@real-life-stack/data-interface"
+import type { DataInterface, Observable, RelationRecord, RelationRecordInput } from "@real-life-stack/data-interface"
 
 interface HookSlot {
   cleanup?: () => void
@@ -42,46 +42,82 @@ const ME = "did:key:me"
 const OTHER = "did:key:other"
 const STATEMENT = "statement-1"
 
-function voteItem(id: string, createdBy: string, value: string): Item {
+function voteRecord(id: string, voter: string, value: string, overrides: Partial<RelationRecord> = {}): RelationRecord {
   return {
     id,
-    type: "vote",
-    createdAt: "2026-08-01T00:00:00.000Z",
-    createdBy,
-    data: { value },
-    relations: [{ predicate: "votesOn", target: `item:${STATEMENT}` }],
+    predicate: "votesOn",
+    from: `global:${voter}`,
+    to: `item:${STATEMENT}`,
+    fields: { value },
+    createdBy: voter,
+    createdAt: "2026-08-04T00:00:00.000Z",
+    ...overrides,
   }
 }
 
 interface FakeWrites {
-  created: unknown[]
+  created: RelationRecordInput[]
   updated: Array<{ id: string; updates: unknown }>
   deleted: string[]
 }
 
-function connector(existingVotes: Item[], opts?: { userId?: string | null }): { connector: DataInterface; writes: FakeWrites } {
+/**
+ * Stateful record fake: writes mutate the record set, so a second serialized
+ * vote() call reads the effect of the first — the double-click contract.
+ */
+function connector(initialRecords: RelationRecord[], opts?: { userId?: string | null; authenticatable?: boolean }) {
   const writes: FakeWrites = { created: [], updated: [], deleted: [] }
+  const records = [...initialRecords]
   const userId = opts?.userId === undefined ? ME : opts.userId
-  const fake = {
+  const matches = (filter?: { predicate?: string; to?: string }) =>
+    records.filter((record) =>
+      (filter?.predicate === undefined || record.predicate === filter.predicate) &&
+      (filter?.to === undefined || record.to === filter.to))
+  const fake: Record<string, unknown> = {
     init: async () => {},
     dispose: async () => {},
     getItems: async () => [],
     getItem: async () => null,
-    observe: () => staticObservable<Item[]>([]),
-    observeItem: () => staticObservable<Item | null>(null),
-    // ItemWriter
-    createItem: vi.fn(async (input: { id?: string }) => { writes.created.push(input); return { ...input } }),
-    updateItem: vi.fn(async (id: string, updates: unknown) => { writes.updated.push({ id, updates }); return {} }),
-    deleteItem: vi.fn(async (id: string) => { writes.deleted.push(id) }),
-    // RelationCapable
-    getRelatedItems: vi.fn(async () => existingVotes),
-    observeRelatedItems: vi.fn(() => staticObservable<Item[]>(existingVotes)),
-    // Authenticatable
-    getCurrentUser: async () => (userId ? { id: userId, displayName: "Me" } : null),
-    observeCurrentUser: () => staticObservable(userId ? { id: userId, displayName: "Me" } : null),
-    getUser: async (id: string) => ({ id, displayName: id }),
-    getAuthState: () => (userId ? "authenticated" : "unauthenticated"),
-    authenticate: async () => { throw new Error("unused") },
+    observe: () => staticObservable([]),
+    observeItem: () => staticObservable(null),
+    // RelationRecordCapable
+    getRelationRecords: vi.fn(async (filter?: { predicate?: string; to?: string }) => matches(filter)),
+    observeRelationRecords: vi.fn((filter?: { predicate?: string; to?: string }) => staticObservable(matches(filter))),
+    getRelationNeighbors: async () => [],
+    observeRelationNeighbors: () => staticObservable([]),
+    // RelationRecordWriterCapable — stamps createdBy like the real facade
+    createRelationRecord: vi.fn(async (input: RelationRecordInput) => {
+      writes.created.push(input)
+      const record = voteRecord(`rel-${records.length}`, userId ?? "nobody", String(input.fields?.value), {
+        predicate: input.predicate,
+        from: input.from,
+        to: input.to,
+      })
+      records.push(record)
+      return record
+    }),
+    updateRelationRecord: vi.fn(async (id: string, updates: { fields?: Record<string, unknown> }) => {
+      writes.updated.push({ id, updates })
+      const record = records.find((candidate) => candidate.id === id)
+      if (record && updates.fields) record.fields = updates.fields
+      return record
+    }),
+    deleteRelationRecord: vi.fn(async (id: string) => {
+      writes.deleted.push(id)
+      const index = records.findIndex((candidate) => candidate.id === id)
+      if (index >= 0) records.splice(index, 1)
+    }),
+  }
+  if (opts?.authenticatable !== false) {
+    Object.assign(fake, {
+      getCurrentUser: async () => (userId ? { id: userId, displayName: "Me" } : null),
+      observeCurrentUser: () => staticObservable(userId ? { id: userId, displayName: "Me" } : null),
+      getUser: async (id: string) => ({ id, displayName: `Name of ${id}` }),
+      getAuthState: () => staticObservable({ status: userId ? "authenticated" : "unauthenticated" }),
+      getAuthMethods: () => [],
+      authenticate: async () => { throw new Error("unused") },
+      logout: async () => {},
+    })
   }
   return { connector: fake as unknown as DataInterface, writes }
 }
@@ -136,46 +172,60 @@ beforeAll(async () => {
 
 beforeEach(resetHarness)
 
-describe("useVotes — write contract", () => {
-  it("casts a vote as an OWN item with the deterministic id and votesOn relation", async () => {
+describe("useVotes — write contract (auth-bound record facade)", () => {
+  it("casts a vote through createRelationRecord with the canonical author-bound input — never a caller-supplied createdBy", async () => {
     const { connector: c, writes } = connector([])
     harness.connector = c
     const result = renderHookSettled(() => hooks.useVotes(STATEMENT))
     await result.vote("green")
 
-    expect(writes.created).toHaveLength(1)
-    const created = writes.created[0] as { id: string; type: string; createdBy: string; data: { value: string }; relations: Array<{ predicate: string; target: string }> }
-    expect(created.id).toBe(`vote:${STATEMENT}:${ME}`) // structural one-vote-per-user
-    expect(created.type).toBe("vote")
-    expect(created.createdBy).toBe(ME)
-    expect(created.data.value).toBe("green")
-    expect(created.relations).toEqual([{ predicate: "votesOn", target: `item:${STATEMENT}` }])
+    expect(writes.created).toEqual([{
+      predicate: "votesOn",
+      from: `global:${ME}`,
+      to: `item:${STATEMENT}`,
+      fields: { value: "green" },
+    }])
+    expect("createdBy" in (writes.created[0] as object)).toBe(false)
     expect(writes.updated).toHaveLength(0)
     expect(writes.deleted).toHaveLength(0)
   })
 
-  it("switches stance via updateItem on the OWN vote item — no delete/create churn", async () => {
-    const mine = voteItem(`vote:${STATEMENT}:${ME}`, ME, "green")
+  it("switches stance via updateRelationRecord on the OWN record — no delete/create churn", async () => {
+    const mine = voteRecord("rel-mine", ME, "green")
     const { connector: c, writes } = connector([mine])
     harness.connector = c
     const result = renderHookSettled(() => hooks.useVotes(STATEMENT))
     await result.vote("red")
 
-    expect(writes.updated).toEqual([{ id: mine.id, updates: { data: { value: "red" } } }])
+    expect(writes.updated).toEqual([{ id: "rel-mine", updates: { fields: { value: "red" } } }])
     expect(writes.created).toHaveLength(0)
     expect(writes.deleted).toHaveLength(0)
   })
 
-  it("withdraws the vote via deleteItem when the same value is cast again", async () => {
-    const mine = voteItem(`vote:${STATEMENT}:${ME}`, ME, "yellow")
+  it("withdraws the vote via deleteRelationRecord when the same value is cast again", async () => {
+    const mine = voteRecord("rel-mine", ME, "yellow")
     const { connector: c, writes } = connector([mine])
     harness.connector = c
     const result = renderHookSettled(() => hooks.useVotes(STATEMENT))
     await result.vote("yellow")
 
-    expect(writes.deleted).toEqual([mine.id])
+    expect(writes.deleted).toEqual(["rel-mine"])
     expect(writes.created).toHaveLength(0)
     expect(writes.updated).toHaveLength(0)
+  })
+
+  it("resolves rapid serialized same-value clicks against FRESH records: create, then withdraw", async () => {
+    // Two quick green clicks with no re-render in between: the second must see
+    // the first one's record (fresh read) and withdraw it — not compare
+    // against the stale rendered myVote and vote again.
+    const { connector: c, writes } = connector([])
+    harness.connector = c
+    const result = renderHookSettled(() => hooks.useVotes(STATEMENT))
+    await result.vote("green")
+    await result.vote("green")
+
+    expect(writes.created).toHaveLength(1)
+    expect(writes.deleted).toEqual(["rel-0"])
   })
 
   it("never votes anonymously: no user → no write and canVote=false", async () => {
@@ -186,27 +236,57 @@ describe("useVotes — write contract", () => {
     await result.vote("green")
     expect(writes.created).toHaveLength(0)
   })
+
+  it("requires Authenticatable: a writer without identity cannot vote", async () => {
+    const { connector: c, writes } = connector([], { authenticatable: false })
+    harness.connector = c
+    const result = renderHookSettled(() => hooks.useVotes(STATEMENT))
+    expect(result.canVote).toBe(false)
+    await result.vote("green")
+    expect(writes.created).toHaveLength(0)
+  })
 })
 
-describe("useVotes — aggregation", () => {
+describe("useVotes — aggregation (shared validation)", () => {
   it("aggregates the distribution and marks the own stance", () => {
     harness.connector = connector([
-      voteItem("v1", OTHER, "green"),
-      voteItem("v2", "did:key:third", "green"),
-      voteItem("v3", "did:key:fourth", "red"),
-      voteItem(`vote:${STATEMENT}:${ME}`, ME, "yellow"),
+      voteRecord("rel-1", OTHER, "green"),
+      voteRecord("rel-2", "did:key:third", "green"),
+      voteRecord("rel-3", "did:key:fourth", "red"),
+      voteRecord("rel-4", ME, "yellow"),
     ]).connector
     const result = renderHookSettled(() => hooks.useVotes(STATEMENT))
     expect(result.summary).toEqual({ green: 2, yellow: 1, red: 1, total: 4, myVote: "yellow" })
   })
 
-  it("ignores malformed vote values", () => {
+  it("ignores forged records (endpoint not bound to author) and malformed values", () => {
     harness.connector = connector([
-      voteItem("v1", OTHER, "green"),
-      voteItem("v2", "did:key:third", "purple"),
+      voteRecord("rel-1", OTHER, "green"),
+      // Forged: claims OTHER's endpoint but was written by a third DID.
+      voteRecord("rel-2", OTHER, "red", { createdBy: "did:key:mallory" }),
+      voteRecord("rel-3", "did:key:third", "purple"),
+    ]).connector
+    const result = renderHookSettled(() => hooks.useVotes(STATEMENT))
+    expect(result.summary).toEqual({ green: 1, yellow: 0, red: 0, total: 1 })
+  })
+
+  it("counts at most one vote per voter even when duplicate records exist", () => {
+    harness.connector = connector([
+      voteRecord("rel-b", OTHER, "green"),
+      voteRecord("rel-a", OTHER, "red"),
     ]).connector
     const result = renderHookSettled(() => hooks.useVotes(STATEMENT))
     expect(result.summary.total).toBe(1)
-    expect(result.summary.green).toBe(1)
+    expect(result.summary.red).toBe(1) // deterministic winner: smallest record id
+  })
+})
+
+describe("useVoteUsers — transparent voter list", () => {
+  it("subscribes to the records observable instead of a one-shot read", () => {
+    const { connector: c } = connector([voteRecord("rel-1", OTHER, "green")])
+    harness.connector = c
+    renderHookSettled(() => hooks.useVoteUsers(STATEMENT))
+    const observeSpy = (c as unknown as { observeRelationRecords: ReturnType<typeof vi.fn> }).observeRelationRecords
+    expect(observeSpy).toHaveBeenCalled()
   })
 })

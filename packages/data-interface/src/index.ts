@@ -13,6 +13,7 @@ export {
   type RelationPredicateDefinition,
 } from "./relation-records.js"
 export * from "./item-types.js"
+export * from "./votes.js"
 export * from "./vocab.js"
 export { EMPTY_NOTIFICATION_STATE, cloneNotificationState, applyNotificationStatePatch, maxTs, pruneReadEntryKeys } from "./notification-state.js"
 
@@ -207,11 +208,13 @@ export function deriveActivitySummary(
     const title = parent ? itemDisplayTitle(parent) : undefined
     return title ? `${emoji} auf „${title}"` : emoji
   }
-  if (item.type === "vote") {
+  if (item.type === "relation" && item.data.predicate === "votesOn") {
+    // Votes are relation records (votes.ts); their record item carries the
+    // stance in data.value and the statement in the "to" endpoint relation.
     const stanceLabel = item.data.value === "green" ? "Zustimmung"
       : item.data.value === "yellow" ? "Bedenken"
       : item.data.value === "red" ? "Ablehnung" : "Stimme"
-    const target = item.relations?.find((relation) => relation.predicate === "votesOn")?.target
+    const target = item.relations?.find((relation) => relation.predicate === "to")?.target
     const targetId = target?.startsWith("item:") ? target.slice("item:".length) : undefined
     const parent = targetId ? lookupItem(targetId) : undefined
     const title = parent ? itemDisplayTitle(parent) : undefined

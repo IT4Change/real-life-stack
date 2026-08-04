@@ -7,7 +7,7 @@ import { NotificationCenter, type NotificationCandidate } from "@real-life-stack
 import { buildNotificationRoute } from "./notification-navigation"
 
 const groups: Group[] = [
-  { id: "garten", name: "Gartenprojekt", data: { modules: ["feed", "map", "kanban", "calendar"] } },
+  { id: "garten", name: "Gartenprojekt", data: { modules: ["feed", "map", "kanban", "calendar", "resonance"] } },
   { id: "nachbarn", name: "Nachbarschaft", data: { modules: ["feed"] } },
 ]
 
@@ -54,6 +54,16 @@ describe("B-T4 — Klick-Sprünge über die echten App-Verträge", () => {
       .toBe("/nachbarn/feed/p1")
     // No hints (e.g. plain post) → default module.
     expect(buildNotificationRoute(candidate({}), groups)).toBe("/garten/feed/p1")
+  })
+
+  it("routes statements to the resonance module — the subject TYPE decides, hints have none", () => {
+    // Statements carry no discriminator field, so the hint-based resolver
+    // alone would land them in the feed, which never renders them standalone.
+    expect(buildNotificationRoute(candidate({ subjectType: "statement", subjectId: "s1" }), groups))
+      .toBe("/garten/resonance/s1")
+    // A space without the resonance module falls back through the resolver.
+    expect(buildNotificationRoute(candidate({ groupId: "nachbarn", subjectType: "statement", subjectId: "s1" }), groups))
+      .toBe("/nachbarn/feed/s1")
   })
 
   it("a rendered subject click travels through the real route builder exactly once", async () => {

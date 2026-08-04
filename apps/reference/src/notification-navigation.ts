@@ -15,11 +15,15 @@ export function buildNotificationRoute(
   const group = groups.find(({ id }) => id === notification.groupId)
   // Unknown scope (e.g. the overview aggregate is not a group) must not
   // collapse the choice to feed — resolve against the full module set.
-  const available = Array.isArray(group?.data?.modules) ? (group.data.modules as string[]) : ["feed", "map", "kanban", "calendar"]
-  const module = resolveDefaultModule(
-    notification.moduleHints ?? { hasPosition: false, hasStart: false, hasStatus: false },
-    available,
-  )
+  const available = Array.isArray(group?.data?.modules) ? (group.data.modules as string[]) : ["feed", "map", "kanban", "calendar", "resonance"]
+  // Statements have no discriminator field, so the hint resolver can't route
+  // them — the subject TYPE decides (mirrors resolveDefaultModule's item path).
+  const module = notification.subjectType === "statement" && available.includes("resonance")
+    ? "resonance"
+    : resolveDefaultModule(
+        notification.moduleHints ?? { hasPosition: false, hasStart: false, hasStatus: false },
+        available,
+      )
   return `/${notification.groupId}/${module}/${notification.subjectId}`
 }
 

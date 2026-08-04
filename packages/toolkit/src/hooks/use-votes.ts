@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react"
-import type { Item, VoteValue } from "@real-life-stack/data-interface"
-import { isWritable, hasRelations, isAuthenticatable, deriveContext, voteItemId } from "@real-life-stack/data-interface"
+import type { RelationRecord, VoteRecord, VoteValue } from "@real-life-stack/data-interface"
+import {
+  VOTE_PREDICATE,
+  hasRelationRecords,
+  hasRelationRecordWriter,
+  isAuthenticatable,
+  voteRecordInput,
+  votesFromRelationRecords,
+} from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 
 /** Aggregated vote distribution for a statement. */
@@ -19,40 +26,35 @@ export interface UseVotesResult {
   /** Set or toggle the current user's vote. Same value = withdraw, different value = switch. */
   vote: (value: VoteValue) => Promise<void>
   isLoading: boolean
-  /** Whether the current user can vote (authenticated + connector supports writing). */
+  /** Whether the current user can vote (authenticated + connector has the record writer). */
   canVote: boolean
-}
-
-const VOTE_VALUES: readonly VoteValue[] = ["green", "yellow", "red"]
-
-function isVoteValue(value: unknown): value is VoteValue {
-  return typeof value === "string" && (VOTE_VALUES as readonly string[]).includes(value)
 }
 
 /**
  * Hook for reading and casting votes on a statement (Resonance module).
  *
- * The truth is the set of vote ITEMS (votesOn → this statement) — never a
- * summary field on the statement (updateItem reconciles data wholesale, so a
- * summary would let concurrent voters erase each other; see
- * docs/spec/modules/resonance.md). One vote per (statement, voter) is enforced
- * STRUCTURALLY via the deterministic item id `vote:<statementId>:<did>`:
- * createItem with an existing id is idempotent, a stance change is an
- * updateItem on the voter's OWN item (one item = the CRDT merge boundary).
+ * Votes are RELATION RECORDS written through the auth-bound relation store
+ * (docs/spec/08-relation-records.md): `createdBy` comes from the authenticated
+ * identity, the canonical hash id binds (voter, statement) — one record per
+ * tuple, structurally. The read side accepts only validated records
+ * (`votesFromRelationRecords`): endpoint bound to the author, at most one
+ * counted vote per (statement, voter). See docs/spec/modules/resonance.md.
  */
 export function useVotes(statementId: string): UseVotesResult {
   const connector = useConnector()
-  const canRelate = hasRelations(connector)
-  const relatedObservable = useMemo(
-    () => (canRelate ? connector.observeRelatedItems(statementId, "votesOn", { direction: "to" }) : null),
-    [canRelate, connector, statementId],
+  const canRead = hasRelationRecords(connector)
+  const recordsObservable = useMemo(
+    () => (canRead
+      ? connector.observeRelationRecords({ predicate: VOTE_PREDICATE, to: `item:${statementId}` })
+      : null),
+    [canRead, connector, statementId],
   )
-  const [voteItems, setVoteItems] = useState<Item[]>(relatedObservable?.current ?? [])
+  const [records, setRecords] = useState<RelationRecord[]>(recordsObservable?.current ?? [])
   useEffect(() => {
-    if (!relatedObservable) return
-    setVoteItems(relatedObservable.current)
-    return relatedObservable.subscribe((items) => startTransition(() => setVoteItems(items)))
-  }, [relatedObservable])
+    if (!recordsObservable) return
+    setRecords(recordsObservable.current)
+    return recordsObservable.subscribe((next) => startTransition(() => setRecords(next)))
+  }, [recordsObservable])
 
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined)
   useEffect(() => {
@@ -62,19 +64,21 @@ export function useVotes(statementId: string): UseVotesResult {
     return observable.subscribe((user) => setCurrentUserId(user?.id))
   }, [connector])
 
-  const canWrite = isWritable(connector)
   // Votes are identity-bound and transparent — never written as "anonymous".
-  const canVote = canWrite && canRelate && (!isAuthenticatable(connector) || currentUserId !== undefined)
+  // Without Authenticatable there is no identity, hence no voting.
+  const canWrite = hasRelationRecordWriter(connector)
+  const canVote = canWrite && canRead && isAuthenticatable(connector) && currentUserId !== undefined
+
+  const votes = useMemo(() => votesFromRelationRecords(records), [records])
 
   // Optimistic overlay for the own vote: applied on click, dropped as soon as
-  // the related-items observable reflects the write.
+  // the records observable reflects the write.
   const [pending, setPending] = useState<{ value: VoteValue | null } | null>(null)
 
-  const myVoteItem = useMemo(
-    () => (currentUserId ? voteItems.find((v) => v.createdBy === currentUserId) : undefined),
-    [voteItems, currentUserId],
+  const persistedMyVote = useMemo(
+    () => (currentUserId ? votes.find((vote) => vote.voterId === currentUserId)?.value : undefined),
+    [votes, currentUserId],
   )
-  const persistedMyVote = isVoteValue(myVoteItem?.data.value) ? myVoteItem.data.value : undefined
   const myVote = pending ? pending.value ?? undefined : persistedMyVote
 
   useEffect(() => {
@@ -84,11 +88,9 @@ export function useVotes(statementId: string): UseVotesResult {
 
   const summary: VoteSummary = useMemo(() => {
     const result: VoteSummary = { green: 0, yellow: 0, red: 0, total: 0 }
-    for (const item of voteItems) {
-      if (pending && currentUserId && item.createdBy === currentUserId) continue
-      const value = item.data.value
-      if (!isVoteValue(value)) continue
-      result[value] += 1
+    for (const vote of votes) {
+      if (pending && currentUserId && vote.voterId === currentUserId) continue
+      result[vote.value] += 1
       result.total += 1
     }
     if (pending?.value) {
@@ -97,59 +99,48 @@ export function useVotes(statementId: string): UseVotesResult {
     }
     if (myVote) result.myVote = myVote
     return result
-  }, [voteItems, pending, currentUserId, myVote])
+  }, [votes, pending, currentUserId, myVote])
 
   // Latest-wins + write chain, mirroring use-reactions.
   const latestRef = useRef(0)
   const chainRef = useRef<Promise<void>>(Promise.resolve())
 
   const performVote = useCallback(async (value: VoteValue) => {
-    if (!isWritable(connector) || !hasRelations(connector)) return
+    if (!hasRelationRecordWriter(connector) || !hasRelationRecords(connector)) return
+    if (!isAuthenticatable(connector)) return
 
-    const writableConnector = connector
     const requestId = ++latestRef.current
-    const isSameValue = myVote === value
-    setPending({ value: isSameValue ? null : value })
+    // Optimistic feedback from the rendered state; the WRITE decision below
+    // uses freshly read records, so serialized double-clicks resolve against
+    // the true current stance, not a stale render.
+    setPending({ value: myVote === value ? null : value })
 
     try {
-      let userId = currentUserId
-      if (userId === undefined && isAuthenticatable(connector)) {
-        userId = (await connector.getCurrentUser())?.id
-        if (userId === undefined) {
-          if (latestRef.current === requestId) setPending(null)
-          return
-        }
-      }
+      const userId = currentUserId ?? (await connector.getCurrentUser())?.id
       if (userId === undefined) {
         if (latestRef.current === requestId) setPending(null)
         return
       }
-      const existingVotes = await writableConnector.getRelatedItems(statementId, "votesOn", { direction: "to" })
+      const freshRecords = await connector.getRelationRecords({
+        predicate: VOTE_PREDICATE,
+        to: `item:${statementId}`,
+      })
       if (latestRef.current !== requestId) return
-      const existingMine = existingVotes.find((v) => v.createdBy === userId)
+      const existingMine = votesFromRelationRecords(freshRecords)
+        .find((vote) => vote.voterId === userId)
 
       if (existingMine) {
-        if (isSameValue) {
-          // Withdraw the own vote.
-          await writableConnector.deleteItem(existingMine.id)
+        if (existingMine.value === value) {
+          // Same stance again — withdraw the own vote.
+          if (latestRef.current === requestId) setPending({ value: null })
+          await connector.deleteRelationRecord(existingMine.recordId)
         } else {
-          // Stance change: update the OWN vote item — conflict-free, no
-          // delete/create churn, and the deterministic id stays stable.
-          await writableConnector.updateItem(existingMine.id, { data: { value } })
+          // Stance change: update the OWN record — the canonical id stays stable.
+          await connector.updateRelationRecord(existingMine.recordId, { fields: { value } })
         }
         return
       }
-      if (isSameValue) return // nothing to withdraw
-
-      const data = { value }
-      await writableConnector.createItem({
-        id: voteItemId(statementId, userId),
-        type: "vote",
-        createdBy: userId,
-        "@context": deriveContext("vote", data),
-        data,
-        relations: [{ predicate: "votesOn", target: `item:${statementId}` }],
-      })
+      await connector.createRelationRecord(voteRecordInput(userId, statementId, value))
     } catch {
       if (latestRef.current === requestId) setPending(null)
     }
@@ -161,10 +152,10 @@ export function useVotes(statementId: string): UseVotesResult {
     return next
   }, [performVote])
 
-  return { summary, vote, isLoading: relatedObservable === null, canVote }
+  return { summary, vote, isLoading: recordsObservable === null, canVote }
 }
 
-/** Voter entry for the detail view — votes are transparent by design. */
+/** Voter entry for the transparent voter list — votes are transparent by design. */
 export interface VoteUser {
   id: string
   displayName: string
@@ -177,14 +168,37 @@ export interface UseVoteUsersResult {
   isLoading: boolean
 }
 
-/** Loads the list of voters (with stance) for a statement. */
+/**
+ * Reactive list of voters (with stance) for a statement: subscribes to the
+ * vote records and re-resolves display names when the set changes.
+ */
 export function useVoteUsers(statementId: string, enabled = true): UseVoteUsersResult {
   const connector = useConnector()
+  const canRead = hasRelationRecords(connector)
+  const recordsObservable = useMemo(
+    () => (enabled && canRead
+      ? connector.observeRelationRecords({ predicate: VOTE_PREDICATE, to: `item:${statementId}` })
+      : null),
+    [enabled, canRead, connector, statementId],
+  )
+  const [records, setRecords] = useState<RelationRecord[]>(recordsObservable?.current ?? [])
+  useEffect(() => {
+    if (!recordsObservable) return
+    setRecords(recordsObservable.current)
+    return recordsObservable.subscribe((next) => startTransition(() => setRecords(next)))
+  }, [recordsObservable])
+
+  const votes = useMemo(
+    () => votesFromRelationRecords(records)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [records],
+  )
+
   const [users, setUsers] = useState<VoteUser[]>([])
   const [isLoading, setIsLoading] = useState(enabled)
 
   useEffect(() => {
-    if (!enabled || !hasRelations(connector)) {
+    if (!recordsObservable) {
       setIsLoading(false)
       return
     }
@@ -192,20 +206,16 @@ export function useVoteUsers(statementId: string, enabled = true): UseVoteUsersR
     setIsLoading(true)
     ;(async () => {
       try {
-        const voteItems = await connector.getRelatedItems(statementId, "votesOn", { direction: "to" })
         const resolved = await Promise.all(
-          voteItems
-            .filter((v) => isVoteValue(v.data.value))
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-            .map(async (v) => {
-              const user = isAuthenticatable(connector) ? await connector.getUser(v.createdBy) : null
-              return {
-                id: v.createdBy,
-                displayName: user?.displayName ?? v.createdBy,
-                avatarUrl: user?.avatarUrl,
-                value: v.data.value as VoteValue,
-              }
-            }),
+          votes.map(async (vote: VoteRecord) => {
+            const user = isAuthenticatable(connector) ? await connector.getUser(vote.voterId) : null
+            return {
+              id: vote.voterId,
+              displayName: user?.displayName ?? vote.voterId,
+              avatarUrl: user?.avatarUrl,
+              value: vote.value,
+            }
+          }),
         )
         if (!cancelled) setUsers(resolved)
       } catch {
@@ -215,7 +225,7 @@ export function useVoteUsers(statementId: string, enabled = true): UseVoteUsersR
       }
     })()
     return () => { cancelled = true }
-  }, [connector, statementId, enabled])
+  }, [connector, recordsObservable, votes])
 
   return { users, isLoading }
 }

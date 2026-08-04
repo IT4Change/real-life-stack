@@ -16,9 +16,13 @@ import type {
   NotificationStateCapable,
   NotificationStatePatch,
   RelatedItemsOptions,
+  RelationRecord,
+  RelationRecordFilter,
+  RelationRecordInput,
+  RelationRecordUpdate,
   Source,
 } from "@real-life-stack/data-interface"
-import { createObservable, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
+import { createObservable, createDefaultRelationStore, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
 import { get, set, del, createStore, update as updateStoredValue } from "idb-keyval"
 
 // --- Types ---
@@ -611,6 +615,46 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
       this.relatedObservableParams.set(key, { itemId, predicate, options })
     }
     return this.relatedObservables.get(key)!
+  }
+
+  // --- Relation records (auth-bound store) ---
+
+  // Generic default facade (docs/spec/08-relation-records.md): createdBy from
+  // the authenticated identity, canonical hash ids, authorship-checked
+  // mutations. Lazy so alternative construction paths stay safe.
+  private relationRecordStore: ReturnType<typeof createDefaultRelationStore> | null = null
+
+  private relationStoreInstance(): ReturnType<typeof createDefaultRelationStore> {
+    this.relationRecordStore ??= createDefaultRelationStore(this)
+    return this.relationRecordStore
+  }
+
+  getRelationRecords(filter?: RelationRecordFilter): Promise<RelationRecord[]> {
+    return this.relationStoreInstance().getRelationRecords(filter)
+  }
+
+  observeRelationRecords(filter?: RelationRecordFilter): Observable<RelationRecord[]> {
+    return this.relationStoreInstance().observeRelationRecords(filter)
+  }
+
+  getRelationNeighbors(endpoint: string, predicate?: string): Promise<Item[]> {
+    return this.relationStoreInstance().getRelationNeighbors(endpoint, predicate)
+  }
+
+  observeRelationNeighbors(endpoint: string, predicate?: string): Observable<Item[]> {
+    return this.relationStoreInstance().observeRelationNeighbors(endpoint, predicate)
+  }
+
+  createRelationRecord(input: RelationRecordInput): Promise<RelationRecord> {
+    return this.relationStoreInstance().createRelationRecord(input)
+  }
+
+  updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord> {
+    return this.relationStoreInstance().updateRelationRecord(id, updates)
+  }
+
+  deleteRelationRecord(id: string): Promise<void> {
+    return this.relationStoreInstance().deleteRelationRecord(id)
   }
 
   // --- Users ---

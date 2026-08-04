@@ -143,7 +143,7 @@ describe("LocalConnector activity-log contract", () => {
     expect(await fresh.getActivity()).toEqual([])
   })
 
-  it("17. rejects logged mutations after logout without items or activity side effects (Local has no relation facade)", async () => {
+  it("17. rejects logged mutations after logout without items or activity side effects (incl. the relation facade)", async () => {
     const connector = await ready()
     const item = await connector.createItem({ id: "one", type: "task", createdBy: "x", data: {} })
     const before = await connector.getActivity()
@@ -152,7 +152,10 @@ describe("LocalConnector activity-log contract", () => {
     await expect(connector.updateItem(item.id, { data: {} })).rejects.toThrow(/auth/i)
     await expect(connector.deleteItem(item.id)).rejects.toThrow(/auth/i)
     await expect(connector.moveItemToGroup(item.id, "beta")).rejects.toThrow(/auth/i)
-    expect("createRelationRecord" in connector).toBe(false)
+    // The relation facade is auth-bound too: no user → no record writes.
+    await expect(
+      connector.createRelationRecord({ predicate: "votesOn", from: "global:x", to: "item:one" }),
+    ).rejects.toThrow(/auth/i)
     expect(await connector.getItem(item.id)).toEqual(item)
     expect(await connector.getActivity()).toEqual(before)
   })

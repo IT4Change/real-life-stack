@@ -366,14 +366,6 @@ export interface StatementData {
 
 export type StatementItem = Item & { type: "statement"; data: StatementData }
 
-/** Reverse relations for a statement. */
-export interface StatementRelations {
-  reverse: {
-    /** Votes on this statement (votesOn → this statement, 0..n) */
-    votesOn: VoteItem
-  }
-}
-
 export function isStatement(item: Item): item is StatementItem {
   return item.type === "statement"
 }
@@ -382,37 +374,15 @@ export function isStatement(item: Item): item is StatementItem {
 // Vote (Resonance module)
 // ============================================================
 
-/** Three-step stance: agree / neutral-concerns / disagree. */
-export type VoteValue = "green" | "yellow" | "red"
-
-export interface VoteData {
-  /** The stance of this vote. */
-  value: VoteValue
-}
-
-export type VoteItem = Item & { type: "vote"; data: VoteData }
-
-/** Forward relations for a vote. */
-export interface VoteRelations {
-  forward: {
-    /** Vote targets a statement → StatementItem (scope: item:, 1) */
-    votesOn: StatementItem
-  }
-}
-
-export function isVote(item: Item): item is VoteItem {
-  return item.type === "vote"
-}
-
 /**
- * Deterministic vote item id: one vote per (statement, voter) is enforced
- * STRUCTURALLY — createItem with an existing id is idempotent, a stance change
- * is an updateItem on the voter's own item (conflict-free: one item is the
- * CRDT merge boundary).
+ * Three-step stance: agree / neutral-concerns / disagree.
+ *
+ * Votes are NOT an item type — they are relation records
+ * (`predicate: "votesOn"`, one canonical record per (voter, statement),
+ * auth-bound via the relation-store facade). See `votes.ts` and
+ * docs/spec/modules/resonance.md.
  */
-export function voteItemId(statementId: string, voterDid: string): string {
-  return `vote:${statementId}:${voterDid}`
-}
+export type VoteValue = "green" | "yellow" | "red"
 
 // ============================================================
 // Comment
@@ -472,7 +442,9 @@ export type KnownPredicate =
   | keyof EventRelations["forward"]
   | keyof ReactionRelations["forward"]
   | keyof CommentRelations["forward"]
-  | keyof VoteRelations["forward"]
+  // Votes are relation records, not embedded relations — but the predicate
+  // is part of the known vocabulary.
+  | "votesOn"
 
 /** Known item types. Connectors may define additional ones. */
 export type KnownItemType =
@@ -488,4 +460,3 @@ export type KnownItemType =
   | "reaction"
   | "comment"
   | "statement"
-  | "vote"

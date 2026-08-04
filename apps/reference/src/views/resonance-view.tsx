@@ -19,6 +19,7 @@ import {
   useMembers,
   useModulePanel,
   usePersonalGroupId,
+  useRelationRecords,
   useResolvedUsers,
   type FilterBarValue,
   Button,
@@ -29,7 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@real-life-stack/toolkit"
 import { ArrowUpDown, MessageSquareQuote } from "lucide-react"
-import type { User } from "@real-life-stack/data-interface"
+import { VOTE_PREDICATE, type User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 import { RESONANCE_CREATE_TYPES } from "../content-types"
@@ -58,7 +59,7 @@ export function ResonanceView({ groupId }: { groupId: string }) {
   const { data: statements, isLoading } = useItems({ type: "statement" })
   // All votes of the scope in one query — the per-statement sort keys (count,
   // approval, last activity) need the full picture, not per-card subscriptions.
-  const { data: votes } = useItems({ type: "vote" })
+  const { data: voteRecords } = useRelationRecords({ predicate: VOTE_PREDICATE })
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
   const modulePanel = useModulePanel()
@@ -83,7 +84,7 @@ export function ResonanceView({ groupId }: { groupId: string }) {
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [sortMode, setSortMode] = useState<ResonanceSortMode>("newest")
   const filteredStatements = useFilterableItems(statements, filterBarValue)
-  const voteStats = useMemo(() => aggregateVoteStats(votes), [votes])
+  const voteStats = useMemo(() => aggregateVoteStats(voteRecords), [voteRecords])
   const sortedStatements = useMemo(
     () => sortStatements(filteredStatements, voteStats, sortMode),
     [filteredStatements, voteStats, sortMode],

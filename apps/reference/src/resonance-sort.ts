@@ -1,4 +1,5 @@
-import type { Item, VoteValue } from "@real-life-stack/data-interface"
+import type { Item, RelationRecord } from "@real-life-stack/data-interface"
+import { votesFromRelationRecords } from "@real-life-stack/data-interface"
 
 /** Sort modes of the Resonance view (docs/spec/modules/resonance.md → Sortierungen). */
 export type ResonanceSortMode = "newest" | "votes" | "approval" | "activity"
@@ -12,26 +13,20 @@ export interface StatementVoteStats {
   lastVoteAt: string | null
 }
 
-const VOTE_VALUES = new Set<string>(["green", "yellow", "red"])
-
 /**
- * Group vote items by the statement their `votesOn` relation targets.
- * Malformed values and votes without a votesOn relation are ignored —
- * the same tolerance the per-statement aggregation in useVotes applies.
+ * Group vote records by statement, using the SHARED validation
+ * (`votesFromRelationRecords`): only author-bound canonical records count,
+ * at most one per (statement, voter) — the same contract the per-statement
+ * aggregation in useVotes applies, so list order and card counts agree.
  */
-export function aggregateVoteStats(votes: Item[]): Map<string, StatementVoteStats> {
+export function aggregateVoteStats(records: RelationRecord[]): Map<string, StatementVoteStats> {
   const stats = new Map<string, StatementVoteStats>()
-  for (const item of votes) {
-    const value = item.data.value
-    if (typeof value !== "string" || !VOTE_VALUES.has(value)) continue
-    const target = (item.relations ?? []).find((r) => r.predicate === "votesOn")?.target
-    if (!target?.startsWith("item:")) continue
-    const statementId = target.slice("item:".length)
-    const entry = stats.get(statementId) ?? { green: 0, yellow: 0, red: 0, total: 0, lastVoteAt: null }
-    entry[value as VoteValue] += 1
+  for (const vote of votesFromRelationRecords(records)) {
+    const entry = stats.get(vote.statementId) ?? { green: 0, yellow: 0, red: 0, total: 0, lastVoteAt: null }
+    entry[vote.value] += 1
     entry.total += 1
-    if (entry.lastVoteAt === null || item.createdAt > entry.lastVoteAt) entry.lastVoteAt = item.createdAt
-    stats.set(statementId, entry)
+    if (entry.lastVoteAt === null || vote.createdAt > entry.lastVoteAt) entry.lastVoteAt = vote.createdAt
+    stats.set(vote.statementId, entry)
   }
   return stats
 }

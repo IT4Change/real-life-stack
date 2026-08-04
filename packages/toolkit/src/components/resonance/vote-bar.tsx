@@ -3,7 +3,7 @@
 import { useCallback } from "react"
 import type { VoteValue } from "@real-life-stack/data-interface"
 import { cn } from "@/lib/utils"
-import { useVotes } from "@/hooks/use-votes"
+import { useVotes, useVoteUsers } from "@/hooks/use-votes"
 
 export interface VoteBarProps {
   /** ID of the statement item to show votes for. */
@@ -55,6 +55,17 @@ const DOT_CLASSES: Record<VoteValue, string> = {
  */
 export function VoteBar({ statementId, className }: VoteBarProps) {
   const { summary, vote, canVote } = useVotes(statementId)
+  // Votes are transparent: the tooltip names who voted how (resonance.md).
+  const { users: voters } = useVoteUsers(statementId, summary.total > 0)
+
+  const tooltipFor = useCallback(
+    (value: VoteValue, isMine: boolean) => {
+      const names = voters.filter((voter) => voter.value === value).map((voter) => voter.displayName)
+      if (names.length > 0) return `${VOTE_LABELS[value]}: ${names.join(", ")}`
+      return isMine ? `${VOTE_LABELS[value]} zurückziehen` : VOTE_LABELS[value]
+    },
+    [voters],
+  )
 
   const handleVote = useCallback(
     (value: VoteValue) => {
@@ -107,7 +118,7 @@ export function VoteBar({ statementId, className }: VoteBarProps) {
               )}
               aria-pressed={isMine}
               aria-label={`${VOTE_LABELS[value]}${isMine ? ", deine Stimme" : ""}`}
-              title={isMine ? `${VOTE_LABELS[value]} zurückziehen` : VOTE_LABELS[value]}
+              title={tooltipFor(value, isMine)}
               onClick={() => handleVote(value)}
             >
               <span className={cn("h-2 w-2 rounded-full", DOT_CLASSES[value])} />

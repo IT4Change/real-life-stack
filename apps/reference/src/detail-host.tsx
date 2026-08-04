@@ -233,13 +233,15 @@ export function ItemDetailRead({
       actions={actions}
       metaAdornment={metaAdornment ?? <ItemMetaRow item={item} />}
       footerAdornment={
-        <>
+        // Full-width column: the vote bar needs the whole row for its
+        // distribution bar, reactions flow below it.
+        <div className="flex w-full flex-col gap-2">
           {assignees.length > 0 && <ItemAssignees users={assignees} />}
           {/* Votes are a TYPE rule like assignees: a statement shows its vote
               bar no matter which module opened the detail (resonance.md). */}
           {isStatement(item) && <VoteBar statementId={item.id} className="w-full" />}
           <ReactionBar itemId={item.id} />
-        </>
+        </div>
       }
     />
   )

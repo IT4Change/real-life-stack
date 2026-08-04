@@ -8,6 +8,10 @@ import type {
   AuthState,
   AuthMethod,
   RelatedItemsOptions,
+  RelationRecord,
+  RelationRecordFilter,
+  RelationRecordInput,
+  RelationRecordUpdate,
   Source,
   ContactInfo,
   RelayState,
@@ -28,6 +32,7 @@ import type {
 import {
   deriveActivitySummary,
   BaseConnector,
+  createDefaultRelationStore,
   createObservable,
   deriveContext,
   matchesFilter,
@@ -1543,6 +1548,47 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       void this.getRelatedItems(itemId, predicate, options).then((items) => obs.set(items))
     }
     return this.relatedObservables.get(key)!
+  }
+
+  // ==================== Relation records (auth-bound store) ====================
+
+  // The generic default facade over DataInterface + ItemWriter + Authenticatable
+  // (docs/spec/08-relation-records.md): createdBy comes from the authenticated
+  // identity, ids are canonical hashes, mutations check authorship. Lazily
+  // created so contract harnesses that bypass the constructor still work.
+  private relationRecordStore: ReturnType<typeof createDefaultRelationStore> | null = null
+
+  private relationStoreInstance(): ReturnType<typeof createDefaultRelationStore> {
+    this.relationRecordStore ??= createDefaultRelationStore(this)
+    return this.relationRecordStore
+  }
+
+  getRelationRecords(filter?: RelationRecordFilter): Promise<RelationRecord[]> {
+    return this.relationStoreInstance().getRelationRecords(filter)
+  }
+
+  observeRelationRecords(filter?: RelationRecordFilter): Observable<RelationRecord[]> {
+    return this.relationStoreInstance().observeRelationRecords(filter)
+  }
+
+  getRelationNeighbors(endpoint: string, predicate?: string): Promise<Item[]> {
+    return this.relationStoreInstance().getRelationNeighbors(endpoint, predicate)
+  }
+
+  observeRelationNeighbors(endpoint: string, predicate?: string): Observable<Item[]> {
+    return this.relationStoreInstance().observeRelationNeighbors(endpoint, predicate)
+  }
+
+  createRelationRecord(input: RelationRecordInput): Promise<RelationRecord> {
+    return this.relationStoreInstance().createRelationRecord(input)
+  }
+
+  updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord> {
+    return this.relationStoreInstance().updateRelationRecord(id, updates)
+  }
+
+  deleteRelationRecord(id: string): Promise<void> {
+    return this.relationStoreInstance().deleteRelationRecord(id)
   }
 
   // ==================== Internal: Bootstrap ====================

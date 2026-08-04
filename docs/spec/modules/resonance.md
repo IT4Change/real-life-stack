@@ -53,42 +53,68 @@ aktiviert er per Feldpräsenz) — eine Umfrage gehört in den Feed.
 
 ### Vote (die Stellungnahme)
 
-Ein Vote ist ein **eigenes Item** — niemals ein Feld am Statement:
+Ein Vote ist ein **Relation Record** ([08-relation-records.md](../08-relation-records.md)) —
+niemals ein Feld am Statement und kein eigener Item-Typ:
 
 | Feld | Bedeutung |
 |---|---|
-| `id` | deterministisch: `vote:<statementId>:<voterDid>` |
-| `type` | `"vote"` |
-| `data.value` | `"green"` \| `"yellow"` \| `"red"` |
-| `relations` | `[{ predicate: "votesOn", target: "item:<statementId>" }]` |
-| `createdBy` | die Stimme gehört dieser DID |
+| `id` | kanonisch: `rel-<SHA-256 über [createdBy, "votesOn", from, to]>` |
+| `predicate` | `"votesOn"` |
+| `from` | `global:<voterDid>` — MUSS gleich `global:<createdBy>` sein |
+| `to` | `item:<statementId>` |
+| `fields.value` | `"green"` \| `"yellow"` \| `"red"` |
+| `createdBy` | vom Connector aus der authentifizierten Identität gesetzt — nie vom Aufrufer |
 
 Regeln (MUSS):
 
-1. **Ein Vote pro (Person, Statement).** Die deterministische Item-ID
-   erzwingt das strukturell: `createItem` mit vorhandener ID ist
-   idempotent (liefert das bestehende Item), ein Wechsel der Stimme ist
-   `updateItem` auf das **eigene** Vote-Item.
+1. **Ein Vote pro (Person, Statement) — auth-gebunden.** Schreibpfad ist
+   ausschließlich die Relation-Store-Fassade: `createdBy` stammt aus der
+   authentifizierten Identität, die kanonische Hash-ID bindet
+   `(Voter, Statement)` kollisionssicher (kein Trennzeichen-Trick möglich),
+   eine vorbelegte ID mit abweichender Identität ist ein **Fehler**, kein
+   idempotenter Erfolg, und Update/Delete prüfen Autorschaft. Wechsel der
+   Stimme = `updateRelationRecord` auf den **eigenen** Record, gleiche
+   Stimme erneut = Rückzug via `deleteRelationRecord`.
 2. **Votes werden nie in das Statement-Item geschrieben.** `updateItem`
    rekonziliert `data` vollständig — ein Summary-Feld am Statement würde
-   konkurrierende Stimmen gegenseitig löschen. Ein Item ist die
-   CRDT-Konfliktgrenze; ein Vote-Item pro Person merged konfliktfrei
-   (gleiches Muster wie Reaktionen, siehe `use-reactions.ts`).
-3. **Aggregation ist rein clientseitig** (`VoteSummary`: green/yellow/
-   red/total + eigene Stimme), gelesen über
-   `observeRelatedItems(statementId, "votesOn", { direction: "to" })`.
-4. **Votes sind transparent.** Jede Stimme trägt `createdBy` und ist im
-   Space für alle Mitglieder lesbar und im Sync-Log autorsigniert.
-   Anonymität wird nicht versprochen, weil sie technisch nicht existiert.
+   konkurrierende Stimmen gegenseitig löschen. Ein Record pro Person
+   merged konfliktfrei (ein Item ist die CRDT-Konfliktgrenze).
+3. **Alle Lesepfade teilen EINE Validierung** (`votesFromRelationRecords`
+   in `data-interface/src/votes.ts`): Es zählen nur Records, deren
+   `from`-Endpunkt an den Autor gebunden ist (`from === global:<createdBy>`)
+   und deren `fields.value` gültig ist; pro `(Statement, Voter)` zählt
+   höchstens EIN Record — Duplikate kollabieren deterministisch auf die
+   lexikographisch kleinste Record-ID, sodass alle Clients unabhängig von
+   der Sync-Reihenfolge dasselbe Aggregat bilden. Aggregation ist rein
+   clientseitig (`VoteSummary`), gelesen über
+   `observeRelationRecords({ predicate: "votesOn", to: "item:<id>" })`.
+4. **Votes sind transparent.** Jede Stimme trägt `createdBy`, ist im Space
+   für alle Mitglieder lesbar, und die VoteBar zeigt die Voter-Namen je
+   Stufe im Tooltip. Anonymität wird nicht versprochen, weil sie technisch
+   nicht existiert.
+
+**Vertrauensgrenze (ehrlich benannt):** Die Fassade bindet ehrliche
+Clients an ihre Identität, und die geteilte Lese-Validierung macht
+Mehrfach-Stimmen unzählbar — auch wenn ein manipulierter Client an der
+Fassade vorbei rohe Items schreibt. Was clientseitig NICHT verhinderbar
+ist: ein manipulierter Client kann per rohem `createItem` einen Record mit
+fremdem `createdBy` und passender kanonischer ID fälschen. Das geteilte
+CRDT-Dokument ist die Schreibgrenze (jedes Mitglied kann jeden Key
+schreiben); Autorenschaft ist erst dann kryptografisch garantiert, wenn
+das Sync-Protokoll sie pro Item nachweisbar an den eingeloggten Akteur
+bindet. Diese Grenze gilt für alle Item-Schreibpfade gleichermaßen
+(Reaktionen, Kommentare, Relation Records) und ist keine
+Resonanz-spezifische Lücke.
 
 ## Capabilities
 
 | Capability | Verhalten, wenn vorhanden | Verhalten, wenn fehlt |
 |---|---|---|
-| `DataInterface` | Statements + Votes lesen | Modul kann nicht lesen |
-| `ItemWriter` | Statements anlegen/bearbeiten, Votes setzen/ändern | Schreibaktionen deaktiviert |
-| `RelationCapable` | Votes je Statement beobachten | VoteBar ausblenden |
-| `Authenticatable` | eigene Stimme markieren, Vote-Identität | Voten deaktiviert |
+| `DataInterface` | Statements lesen | Modul kann nicht lesen |
+| `ItemWriter` | Statements anlegen/bearbeiten | Statement-Schreibaktionen deaktiviert |
+| `RelationRecordCapable` | Votes je Statement beobachten | VoteBar ausblenden |
+| `RelationRecordWriterCapable` | Stimmen setzen/ändern/zurückziehen | Voten deaktiviert |
+| `Authenticatable` | Vote-Identität, eigene Stimme markieren | Voten deaktiviert (Votes sind identitätsgebunden — ohne Identität kein Vote) |
 | `ProfileCapable` | Voter-Namen im Tooltip | Fallback auf DIDs |
 
 ## Aktionen
@@ -97,9 +123,9 @@ Regeln (MUSS):
 |---|---|---|
 | Statement einbringen | `ItemWriter` | `createItem(type: "statement")` |
 | Statement bearbeiten | `ItemWriter` + Berechtigung | `updateItem`; Historie über das Activity-Log |
-| Stimme abgeben | `ItemWriter` + `Authenticatable` | `createItem(type: "vote")` mit deterministischer ID |
-| Stimme ändern | dito | `updateItem` auf das eigene Vote-Item |
-| Stimme zurückziehen | dito | `deleteItem` auf das eigene Vote-Item |
+| Stimme abgeben | `RelationRecordWriterCapable` + `Authenticatable` | `createRelationRecord` (kanonische ID, `createdBy` aus der Identität) |
+| Stimme ändern | dito + Autorschaft | `updateRelationRecord` auf den eigenen Record |
+| Stimme zurückziehen | dito + Autorschaft | `deleteRelationRecord` auf den eigenen Record |
 
 ## Sortierungen
 
@@ -117,8 +143,9 @@ Vier Sortierungen, Tiebreaker in Klammern:
 | Komponente | Rolle | Wiederverwendbar? |
 |---|---|---|
 | `ResonanceView` (App) | Liste, Sortierung, Tag-Filter, Create/Detail-Registrierung | nein |
-| `VoteBar` (Toolkit) | Verteilungsbalken grün/gelb/rot + Vote-Buttons; sitzt im `footerAdornment` der `ItemPreview`; Tooltip mit Voter-Namen; `stopPropagation` auf Interaktionen | ja |
-| `useVotes` (Toolkit) | Vote-Lesen/Schreiben/Aggregation nach dem `use-reactions`-Muster (optimistisches Overlay, Write-Chain) | ja |
+| `VoteBar` (Toolkit) | Verteilungsbalken grün/gelb/rot + Vote-Buttons; sitzt im `footerAdornment` der `ItemPreview`; Tooltip mit Voter-Namen je Stufe (`useVoteUsers`); `stopPropagation` auf Interaktionen | ja |
+| `useVotes` (Toolkit) | Vote-Lesen/Schreiben/Aggregation über die Relation-Store-Fassade (optimistisches Overlay, Write-Chain; Schreibentscheidung gegen frisch gelesene Records) | ja |
+| `useVoteUsers` (Toolkit) | reaktive, transparente Voter-Liste (abonniert die Records) | ja |
 
 Karten werden ausschließlich aus `ItemPreview` gebaut
 (siehe [shared-components.md](./shared-components.md)); die VoteBar ist
@@ -127,10 +154,11 @@ ein Adornment, keine eigene Kartenform.
 ## Activity-Log
 
 Der Connector schreibt Activity automatisch (create/update/delete).
-`deriveActivitySummary` erhält einen Zweig für `type === "vote"` analog
-zum Reaction-Zweig, damit im Log „Stimme (grün) zu ‚…‘" statt eines
-leeren Eintrags steht. Die Edit-Historie eines Statements ist das
-Activity-Log; das Modul führt keine eigene Historie.
+`deriveActivitySummary` erhält einen Zweig für Relation-Items mit
+`data.predicate === "votesOn"` analog zum Reaction-Zweig, damit im Log
+„Zustimmung zu ‚…‘" statt eines leeren Eintrags steht. Die Edit-Historie
+eines Statements ist das Activity-Log; das Modul führt keine eigene
+Historie.
 
 ## Cross-Module-Verhalten
 
@@ -143,8 +171,9 @@ Activity-Log; das Modul führt keine eigene Historie.
 - Ein Statement mit `data.status` darf im Kanban erscheinen, mit
   `data.start` im Kalender (generische Feldpräsenz-Regeln); das Modul
   definiert dazu nichts Eigenes.
-- Vote-Items sind reine Relations-Träger und erscheinen in keiner
-  anderen Modul-Ansicht (kein `content`, `status`, `start`, `location`).
+- Vote-Records sind reine Relations-Träger (`type: "relation"`) und
+  erscheinen in keiner Modul-Ansicht (kein `content`, `status`, `start`,
+  `location`).
 
 ## Nicht-Ziele
 
@@ -159,7 +188,9 @@ Activity-Log; das Modul führt keine eigene Historie.
 
 ## Implementierungsreferenzen
 
-- Vote-Mechanik-Vorlage: `packages/toolkit/src/hooks/use-reactions.ts`
+- Vote-Vertrag (Validierung, Dedupe, Input): `packages/data-interface/src/votes.ts`
+- Relation-Store-Fassade: `packages/data-interface/src/relation-records.ts` + Spec 08
+- Optimistik/Write-Chain-Vorlage: `packages/toolkit/src/hooks/use-reactions.ts`
 - Karten/Adornments: `packages/toolkit/src/components/preview/item-preview.tsx`
 - View-Blaupause: `apps/reference/src/views/feed-view.tsx`,
   `collection-view.tsx`
