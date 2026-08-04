@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import {
   GraphView,
   resolveTypePresentation,
@@ -16,7 +16,7 @@ import {
   type RelationRecord,
   type User,
 } from "@real-life-stack/data-interface"
-import { ReactionBar, useOpenProfile } from "@real-life-stack/toolkit"
+import { ReactionBar, useItemGroupResolver, useOpenProfile } from "@real-life-stack/toolkit"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
@@ -60,12 +60,14 @@ export interface GraphProjection {
 const label = (item: Item): string =>
   String(item.data.title ?? item.data.displayName ?? item.data.name ?? "Ohne Titel")
 
-/** `item:x` / `space:s/item:x` → local item id; `global:u` → user id. */
-function parseTarget(target: string): { kind: "item" | "user"; id: string } | null {
+/** `item:x` / `space:s/item:x` → item id (+ claimed space); `global:u` → user id. */
+function parseTarget(
+  target: string,
+): { kind: "item"; id: string; spaceId?: string } | { kind: "user"; id: string } | null {
   if (target.startsWith("global:")) return { kind: "user", id: target.slice("global:".length) }
   if (target.startsWith("item:")) return { kind: "item", id: target.slice("item:".length) }
-  const cross = target.match(/^space:[^/]+\/item:(.+)$/)
-  if (cross) return { kind: "item", id: cross[1] }
+  const cross = target.match(/^space:([^/]+)\/item:(.+)$/)
+  if (cross) return { kind: "item", id: cross[2], spaceId: cross[1] }
   return null
 }
 
@@ -79,6 +81,10 @@ export function projectSpaceGraph(
   records: readonly RelationRecord[],
   users: readonly User[],
   resolveLabel: (typeId: string) => string,
+  opts?: {
+    /** Which space an item ACTUALLY lives in (connector knowledge), or null. */
+    resolveItemSpace?: (itemId: string) => string | null
+  },
 ): GraphProjection {
   const systemTypes = new Set<string>(SYSTEM_ITEM_TYPES)
   const cardItems = items.filter((item) => !systemTypes.has(item.type))
@@ -98,7 +104,17 @@ export function projectSpaceGraph(
   const endpointNode = (target: string): string | null => {
     const parsed = parseTarget(target)
     if (!parsed) return null
-    if (parsed.kind === "item") return itemIds.has(parsed.id) ? parsed.id : null
+    if (parsed.kind === "item") {
+      if (!itemIds.has(parsed.id)) return null
+      // A space-qualified target claims a HOME for the item. Connect only when
+      // the connector confirms the local item really lives there — a local id
+      // that merely collides with a foreign item's id must not link. No
+      // resolver → unverifiable → drop, never guess.
+      if (parsed.spaceId !== undefined) {
+        if (opts?.resolveItemSpace?.(parsed.id) !== parsed.spaceId) return null
+      }
+      return parsed.id
+    }
     const user = usersById.get(parsed.id)
     if (!user) return null
     if (!nodes.has(user.id)) {
@@ -168,9 +184,21 @@ export function GraphViewWrapper({ groupId }: { groupId: string }) {
 
   const resolveLabel = useCallback((typeId: string) => resolveTypePresentation(typeId).label, [])
 
+  // Connector knowledge of an item's HOME space, for verifying space-qualified
+  // relation targets (`space:B/item:x`) against id collisions.
+  const resolveGroup = useItemGroupResolver()
+  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
+  const resolveItemSpace = useCallback(
+    (itemId: string) => {
+      const item = itemById.get(itemId)
+      return item ? resolveGroup(item)?.id ?? null : null
+    },
+    [itemById, resolveGroup],
+  )
+
   const projection = useMemo(
-    () => projectSpaceGraph(items, records, members, resolveLabel),
-    [items, records, members, resolveLabel],
+    () => projectSpaceGraph(items, records, members, resolveLabel, { resolveItemSpace }),
+    [items, records, members, resolveLabel, resolveItemSpace],
   )
 
   // Selection wires into the shared focus/detail flow: an ITEM node opens the
@@ -178,13 +206,34 @@ export function GraphViewWrapper({ groupId }: { groupId: string }) {
   // overlay (`?profile=`), the same surface every avatar in the app uses.
   // Spec 04 allows profiles as `type: "profile"` items — once a connector
   // projects them, person details can flow through the detail host instead.
+  //
+  // Item focus → person click: the old focus (and its panel) must go. Focus
+  // and profile both write the URL, and two navigations in one tick race each
+  // other's stale route state — so clear first, then open the profile from an
+  // effect once the focus is really gone.
   const openProfile = useOpenProfile()
-  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
+  const pendingProfileRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!focusedItemId && pendingProfileRef.current) {
+      const userId = pendingProfileRef.current
+      pendingProfileRef.current = null
+      openProfile(userId)
+    }
+  }, [focusedItemId, openProfile])
   const onSelect = useCallback(
     (nodeId: string | null) => {
-      if (nodeId && itemById.has(nodeId)) focusItem(nodeId)
-      else if (nodeId) openProfile(nodeId)
-      else if (focusedItemId) clearFocus()
+      if (nodeId && itemById.has(nodeId)) {
+        focusItem(nodeId)
+      } else if (nodeId) {
+        if (focusedItemId) {
+          pendingProfileRef.current = nodeId
+          clearFocus()
+        } else {
+          openProfile(nodeId)
+        }
+      } else if (focusedItemId) {
+        clearFocus()
+      }
     },
     [itemById, focusItem, openProfile, focusedItemId, clearFocus],
   )

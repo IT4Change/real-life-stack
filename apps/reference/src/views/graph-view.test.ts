@@ -67,15 +67,29 @@ describe("projectSpaceGraph", () => {
     expect(edges).toEqual([])
   })
 
-  it("parses cross-space item targets", () => {
-    const { edges } = projectSpaceGraph(
-      [
-        item("a", "post", {}, [{ predicate: "answers", target: "space:garden/item:b" }]),
-        item("b", "post", {}),
-      ],
-      [], USERS, labelOf,
-    )
-    expect(edges[0]).toMatchObject({ sourceId: "a", targetId: "b" })
+  it("connects a cross-space target only when the item really lives in that space", () => {
+    const items = [
+      item("a", "post", {}, [{ predicate: "answers", target: "space:garden/item:b" }]),
+      item("b", "post", {}),
+    ]
+    const inGarden = { resolveItemSpace: (id: string) => (id === "b" ? "garden" : null) }
+    expect(projectSpaceGraph(items, [], USERS, labelOf, inGarden).edges[0]).toMatchObject({
+      sourceId: "a",
+      targetId: "b",
+    })
+  })
+
+  it("drops a cross-space target whose local id collides with a foreign item", () => {
+    // `space:other/item:b` points at ANOTHER space's item; a local item that
+    // happens to share the id `b` must not be linked to it.
+    const items = [
+      item("a", "post", {}, [{ predicate: "answers", target: "space:other/item:b" }]),
+      item("b", "post", {}),
+    ]
+    const inGarden = { resolveItemSpace: (id: string) => (id === "b" ? "garden" : null) }
+    expect(projectSpaceGraph(items, [], USERS, labelOf, inGarden).edges).toEqual([])
+    // Without a resolver the space claim is unverifiable — drop, never guess.
+    expect(projectSpaceGraph(items, [], USERS, labelOf).edges).toEqual([])
   })
 
   it("derives node type labels from the resolver — no fifth type list", () => {
