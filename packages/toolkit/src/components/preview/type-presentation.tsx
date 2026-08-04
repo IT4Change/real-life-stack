@@ -221,6 +221,11 @@ export function setTypeManifest(next: ComposedTypeManifest): void {
       }
       assertRelationWidgetKeys(next, entry.id, entry.relationWidgets, name)
     }
+    // Extensions carry relationWidgets too — a rebind that skipped them could
+    // leave orphan widget keys behind (#228).
+    for (const frag of layer.extensions ?? []) {
+      assertRelationWidgetKeys(next, frag.id, frag.relationWidgets, name)
+    }
   }
   manifest = next
 }

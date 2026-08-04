@@ -91,6 +91,21 @@ describe("type presentation registry", () => {
     expect(resolveTypePresentation("task").footer).not.toBe(Footer)
   })
 
+  it("revalidates EXTENSION relationWidgets on manifest rebind (#228)", () => {
+    // Valid under the app manifest (statement declares votesOn/to)…
+    setTypeManifest(APP_MANIFEST)
+    registerTypePresentation("app", {
+      definitions: [{ id: "statement", label: "Aussage" }],
+      extensions: [{ id: "statement", relationWidgets: { "votesOn to": "people" } }],
+    })
+    // …but a rebind to a manifest without that edge must throw, not leave
+    // the orphan widget behind.
+    expect(() => setTypeManifest(composeTypeManifest([
+      CORE_TYPE_LAYER,
+      { name: "app", definitions: [{ id: "statement", vocabularies: [] }] },
+    ]))).toThrow(/keine Manifest-Kante/)
+  })
+
   it("rejects relationWidgets keys the manifest does not declare", () => {
     // Re-Review Should-Fix: a widget for an edge without authoritative
     // identity is an orphan affordance and must not register.
