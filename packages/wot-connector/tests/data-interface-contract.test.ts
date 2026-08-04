@@ -30,7 +30,6 @@ function handle(value = doc()) {
 }
 
 describeDataInterfaceContract("WotConnector", {
-  features: { observeReflectsWrites: false },
   async makeConnector() {
     const current = handle()
     const value = Object.create(WotConnector.prototype) as any

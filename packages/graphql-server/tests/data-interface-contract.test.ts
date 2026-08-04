@@ -23,7 +23,6 @@ afterAll(async () => {
 })
 
 describeDataInterfaceContract("GraphQLConnector ↔ graphql-server", {
-  features: { observeReflectsWrites: false },
   async makeConnector() {
     const app = Fastify()
     await app.register(mercurius, { schema, subscription: false })

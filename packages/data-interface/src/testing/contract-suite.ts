@@ -31,18 +31,8 @@ export interface ContractContext {
   dispose?: () => Promise<void> | void
 }
 
-export interface ContractFeatures {
-  /**
-   * Whether `observe()` reflects writes in-process. Transports whose live
-   * updates need external infrastructure (e.g. GraphQL over websockets)
-   * set false; their query path is still fully covered.
-   */
-  observeReflectsWrites?: boolean
-}
-
 export interface ContractHarness {
   makeConnector(): Promise<ContractContext>
-  features?: ContractFeatures
 }
 
 let uniqueCounter = 0
@@ -167,6 +157,30 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
           expect(new Set([page1[0]!.id, page2[0]!.id])).toEqual(new Set([first.id, second.id]))
         })
       })
+      it("filters by bbox — positional items inside the box, everything else out", async () => {
+        await withConnector(async ({ connector, currentUserId }) => {
+          if (!isWritable(connector)) return
+          const type = unique("ct-bbox")
+          const inside = await connector.createItem({
+            type,
+            createdBy: currentUserId,
+            data: { title: "inside", position: { type: "Point", coordinates: [10, 50] } },
+          })
+          const outside = await connector.createItem({
+            type,
+            createdBy: currentUserId,
+            data: { title: "outside", position: { type: "Point", coordinates: [30, 20] } },
+          })
+          const noPosition = await connector.createItem({ type, createdBy: currentUserId, data: { title: "none" } })
+          const hit = await connector.getItems({ type, bbox: [9, 49, 11, 51] })
+          expect(hit.map(({ id }) => id)).toEqual([inside.id])
+          const miss = await connector.getItems({ type, bbox: [0, 0, 1, 1] })
+          expect(miss).toEqual([])
+          // Items without a parsable position are excluded while bbox is set.
+          expect(hit.map(({ id }) => id)).not.toContain(noPosition.id)
+          expect(miss.map(({ id }) => id)).not.toContain(outside.id)
+        })
+      })
     })
 
     describe("persistence roundtrip", () => {
@@ -209,23 +223,36 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
         })
       })
 
-      it("observe reflects a create for a matching filter", async () => {
-        if (harness.features?.observeReflectsWrites === false) return
+      it("observe reflects a create for a matching filter — with COMPLETE item fields", async () => {
         await withConnector(async ({ connector, currentUserId }) => {
           if (!isWritable(connector)) return
           const type = unique("ct-obs")
-          const created = await connector.createItem({ type, createdBy: currentUserId, data: {} })
+          const tag = unique("ct-obs-tag")
+          const created = await connector.createItem({
+            type,
+            createdBy: currentUserId,
+            "@context": [VOCAB_A],
+            data: { title: "observed" },
+            tags: [tag],
+          })
           const observable = connector.observe({ type })
           // Contract: after the write settled, a fresh observation of the
           // matching filter contains the item (initial fetch or live update).
           await new Promise((resolve) => setTimeout(resolve, 0))
-          const ids = () => observable.current.map(({ id }) => id)
-          if (!ids().includes(created.id)) {
+          const find = () => observable.current.find(({ id }) => id === created.id)
+          if (!find()) {
             await new Promise<void>((resolve) => {
               const stop = observable.subscribe(() => { stop(); resolve() })
             })
           }
-          expect(ids()).toContain(created.id)
+          const observed = find()
+          expect(observed).toBeDefined()
+          // The observe path must deliver the SAME field surface as getItem —
+          // a lossy selection here would hide fields from every live view.
+          expect(observed!.data).toEqual({ title: "observed" })
+          expect(observed!.tags).toEqual([tag])
+          expect(observed!["@context"]).toEqual([VOCAB_A])
+          expect(observed!.createdBy).toBe(currentUserId)
         })
       })
     })

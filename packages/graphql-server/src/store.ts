@@ -35,9 +35,14 @@ export function getItems(wireFilter?: WireItemFilter): Item[] {
   // this boundary (rls#214).
   if (!wireFilter) return items
   const { bbox, ...rest } = wireFilter
+  if (bbox && bbox.length !== 4) {
+    // Fail CLOSED: silently dropping an invalid bbox would return everything
+    // as if no filter were set.
+    throw new Error(`bbox must be [west, south, east, north] (4 numbers), got ${bbox.length}`)
+  }
   const filter: ItemFilter = {
     ...rest,
-    ...(bbox && bbox.length === 4 ? { bbox: bbox as [number, number, number, number] } : {}),
+    ...(bbox ? { bbox: bbox as [number, number, number, number] } : {}),
   }
   const filtered = items.filter((item) => matchesFilter(item, filter))
   return applyPagination(filtered, filter.limit, filter.offset)
