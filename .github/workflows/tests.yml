@@ -14,11 +14,6 @@ on:
   push:
     branches:
       - master
-      # Release-PRs legt release-please mit dem GITHUB_TOKEN an; fuer solche PRs
-      # loest GitHub bewusst KEIN pull_request-Event aus (Rekursionsschutz). Ohne
-      # diesen Branch-Eintrag liefe auf einer Release-PR also gar keine CI —
-      # ausgerechnet auf der PR, die niemand zeilenweise liest (#207).
-      - 'release-please--**'
 
 permissions:
   contents: read
