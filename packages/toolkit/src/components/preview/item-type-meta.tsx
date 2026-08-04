@@ -1,19 +1,13 @@
 "use client"
 
-import type { ReactNode } from "react"
-import {
-  isEvent,
-  isProfileItem,
-  isProject,
-  isResource,
-  type Item,
-} from "@real-life-stack/data-interface"
+import { createElement, type ReactNode } from "react"
+import { isProfileItem, isProject, isResource, type Item } from "@real-life-stack/data-interface"
 import { BadgeCheck, Globe, Wrench } from "lucide-react"
 
 import { cn } from "../../lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
-import { ItemMetaRow } from "./item-meta-row"
 import { ItemTypeBadge } from "./item-type-badge"
+import { resolveTypePresentation } from "./type-presentation"
 
 /**
  * Type-specific preview adornments for items whose useful metadata is not
@@ -105,23 +99,19 @@ export interface ItemPreviewAdornments {
 /**
  * Resolve the type-aware slots for the generic ItemPreview surface.
  *
- * Person, project and resource fields need their own presentational helpers;
- * events reuse ItemMetaRow. Other items retain a visible type cue through the
- * existing ItemTypeBadge instead of introducing a lens-specific fallback.
+ * Since the type register (spec 06) this is a thin lookup: the per-type
+ * preview slot comes from the Darstellungs-Register, and an unregistered
+ * type keeps its visible cue through the neutral fallback badge. The
+ * function stays exported because list/grid lenses and the detail host all
+ * consume it — ONE resolution path for every surface.
  */
 export function getItemPreviewAdornments(item: Item): ItemPreviewAdornments {
-  if (isProfileItem(item)) {
-    return { metaAdornment: <ItemProfileMeta item={item} /> }
+  const resolved = resolveTypePresentation(item.type)
+  if (resolved.preview) {
+    return { metaAdornment: createElement(resolved.preview, { item }) }
   }
-  if (isProject(item)) {
-    return { metaAdornment: <ItemProjectMeta item={item} /> }
+  if (resolved.generic) {
+    return { headerAdornment: <ItemTypeBadge type={item.type} fallback /> }
   }
-  if (isResource(item)) {
-    return { metaAdornment: <ItemResourceMeta item={item} /> }
-  }
-  if (isEvent(item)) {
-    return { metaAdornment: <ItemMetaRow item={item} /> }
-  }
-
-  return { headerAdornment: <ItemTypeBadge type={item.type} fallback /> }
+  return {}
 }
