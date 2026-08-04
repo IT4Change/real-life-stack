@@ -15,6 +15,7 @@
 
 import {
   VOCAB_BASE,
+  VOCAB_STATEMENT,
   VOCAB_EVENT,
   VOCAB_PERSON,
   VOCAB_PLACE,
@@ -214,7 +215,7 @@ export const CORE_TYPE_MANIFEST = [
  */
 export const STATEMENT_TYPE_DEFINITION = {
   id: "statement",
-  vocabularies: ["https://real-life-stack.org/vocab/statement/v1"],
+  vocabularies: [VOCAB_STATEMENT],
   relations: [{ predicate: "votesOn", itemRole: "to", otherKind: "person" }],
 } as const satisfies TypeManifestEntry
 

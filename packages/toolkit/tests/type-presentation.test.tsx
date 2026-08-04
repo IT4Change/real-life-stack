@@ -72,11 +72,11 @@ describe("type presentation registry", () => {
       .toThrow(/bereits in Layer "app"/)
   })
 
-  it("extends a core type additively — a space fills an empty footer slot", () => {
-    // #220-Review Blocker 4: without presentation fragments, the Core→App→
-    // Space contract was only half implemented.
-    const Footer = () => createElement("span", null, "Space-Fußzeile")
-    registerTypePresentation("space", { extensions: [{ id: "place", footer: Footer }] })
+  it("extends a presented type additively — a later layer fills an empty footer slot", () => {
+    // Extension machinery (spec: Erweiterungsfragment). NOTE: layers are
+    // app-scoped for now; per-space isolation is tracked in rls#212.
+    const Footer = () => createElement("span", null, "Zusatz-Fußzeile")
+    registerTypePresentation("app", { extensions: [{ id: "place", footer: Footer }] })
     expect(resolveTypePresentation("place").footer).toBe(Footer)
     // The base entry stays intact.
     expect(resolveTypePresentation("place").label).toBe("Ort")
@@ -85,10 +85,23 @@ describe("type presentation registry", () => {
   it("rejects a fragment setting a scalar the base already sets", () => {
     const Footer = () => null
     // task already ships a footer (assignees) — a fragment may not shadow it.
-    expect(() => registerTypePresentation("space", { extensions: [{ id: "task", footer: Footer }] }))
+    expect(() => registerTypePresentation("app", { extensions: [{ id: "task", footer: Footer }] }))
       .toThrow(/Basis bereits setzt/)
     // The failed registration leaves no partial layer behind.
     expect(resolveTypePresentation("task").footer).not.toBe(Footer)
+  })
+
+  it("rejects relationWidgets keys the manifest does not declare", () => {
+    // Re-Review Should-Fix: a widget for an edge without authoritative
+    // identity is an orphan affordance and must not register.
+    setTypeManifest(APP_MANIFEST)
+    expect(() =>
+      registerTypePresentation("app", [{
+        id: "statement",
+        label: "Aussage",
+        relationWidgets: { "endorses from": "people" },
+      }]),
+    ).toThrow(/keine Manifest-Kante/)
   })
 
   it("shows the type badge in lenses for registered types WITHOUT a preview slot", () => {

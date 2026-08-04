@@ -19,6 +19,13 @@
 // none, `relationWidgets` united by key. Conflicts throw; no override in
 // v0.1. Re-registering the SAME layer replaces it wholesale (Vite HMR
 // re-executes registering modules on edit; throwing would break dev).
+//
+// SCOPE: this registry implements the Core → App composition. The SPACE
+// layer of the spec is deliberately NOT offered yet — the registry is a
+// module-global, so a space layer would leak across spaces instead of being
+// scoped to one. Space layers need a scope-bound registry (context/instance)
+// and a dynamic composer path; tracked in rls#212. The layer/extension
+// machinery below is written so that cut can build on it.
 
 import type { ComponentType, ReactNode } from "react"
 import { createElement } from "react"
@@ -212,9 +219,30 @@ export function setTypeManifest(next: ComposedTypeManifest): void {
           `Typ-Register: Manifest kennt "${entry.id}" nicht, Layer "${name}" präsentiert es aber — das Darstellungs-Register führt keine Typen ein (Spec 06, Regel 1/6).`,
         )
       }
+      assertRelationWidgetKeys(next, entry.id, entry.relationWidgets, name)
     }
   }
   manifest = next
+}
+
+/** Every relationWidgets key MUST name an edge the manifest declares for the
+ *  type — the UI cannot offer a widget for an affordance that has no
+ *  authoritative identity (spec: Verhältnis zu Relations, Regel 2/3). */
+function assertRelationWidgetKeys(
+  source: ComposedTypeManifest,
+  typeId: string,
+  widgets: Readonly<Record<string, string>> | undefined,
+  layerName: string,
+): void {
+  if (!widgets) return
+  const declared = new Set((source.get(typeId)?.relations ?? []).map(relationAffordanceKey))
+  for (const key of Object.keys(widgets)) {
+    if (!declared.has(key)) {
+      throw new Error(
+        `Typ-Register [${layerName}]: relationWidgets["${key}"] an "${typeId}" hat keine Manifest-Kante — Widgets bedienen nur deklarierte Affordances (Spec 06, Verhältnis zu Relations).`,
+      )
+    }
+  }
 }
 
 /** Test seam: core-only manifest, core-only presentation. Deliberately NOT
@@ -226,7 +254,8 @@ export function resetTypePresentationForTests(): void {
 }
 
 /**
- * Register a presentation layer (app or space) at startup.
+ * Register a presentation layer (the app; space layers are not supported yet
+ * — see the SCOPE note above and rls#212) at startup.
  *
  * - *Definitions* present a manifest-known type for the first time. An id the
  *   manifest does not know throws (no type introduction, spec rules 1/6); an
@@ -265,6 +294,10 @@ export function registerTypePresentation(
         `Typ-Register [${layerName}]: Darstellung für "${entry.id}" ist bereits in Layer "${owner}" vergeben — kein Override in v0.1; zum Ergänzen einzelner Felder Extensions verwenden (Spec 06, Erweiterung und Merge).`,
       )
     }
+    assertRelationWidgetKeys(manifest, entry.id, entry.relationWidgets, layerName)
+  }
+  for (const frag of normalized.extensions ?? []) {
+    assertRelationWidgetKeys(manifest, frag.id, frag.relationWidgets, layerName)
   }
 
   const previous = layers.get(layerName)
