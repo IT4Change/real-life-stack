@@ -99,9 +99,10 @@ Regeln:
 6. Domänenspezifische Kanten-Felder (z. B. `tense: "coming"`) liegen flach
    in `data.*`, wie überall im Stack (04: gemeinsame Felder liegen in
    `data`) — `hasField`-Filter, Schema-Validierung und Editoren arbeiten
-   ohne Sonderfall. Die Vertragsfelder `predicate` und `confirmationRef`
-   sind reserviert; neue Vertragsfelder kommen nur mit einer neuen
-   Vokabular-Version (`relation/v2`), nie still in `v1`.
+   ohne Sonderfall. Die Vertragsfelder `predicate`, `confirmationRef` und
+   `claim` (s. „Autorbindung: SignedClaims") sind reserviert; neue
+   Vertragsfelder kommen nur mit einer neuen Vokabular-Version
+   (`relation/v2`), nie still in `v1`.
 7. Ein RelationRecord SOLL im selben Space liegen wie sein `from`-Ziel.
    Endpunkte in anderen Spaces werden über `space:{id}/item:` adressiert.
 8. Records mit nicht auflösbaren oder fehlerhaften Endpunkten (kein oder
@@ -269,6 +270,76 @@ Regeln:
 6. Sensible Relationen (z. B. `livesAt`) regeln Sichtbarkeit über die Wahl
    des Space und bestehende Berechtigungen, nicht über ein neues
    Krypto-Feld.
+
+## Autorbindung: SignedClaims
+
+**Status:** Normativer Entwurf (rls#209). Motivation: Die Store-Fassade
+bindet ehrliche Clients an ihre Identität, aber das geteilte CRDT-Dokument
+ist die physische Schreibgrenze — ein manipulierter Client eines Mitglieds
+kann per rohem `createItem` einen Record mit fremdem `createdBy` und
+passender kanonischer ID fälschen. Die Sync-Schicht signiert heute jedes
+Update als Ganzes (Ed25519-JWS über den Log-Eintrag, `authorKid`
+relay-verifiziert), verliert diese Bindung aber bei `applyUpdate`, und
+Snapshot-Bootstraps tragen gar kein Log. SignedClaims schließen die Lücke
+auf Datenebene: die Autorschaft reist **im Record selbst**.
+
+### Das Primitive
+
+Ein SignedClaim ist eine kompakte Ed25519-JWS nach den bestehenden
+WoT-Konventionen (kein neues Signaturformat, s. Nicht-Ziele): Payload
+JCS-kanonisiert (RFC 8785), `alg: EdDSA`, `kid: <createdBy>#sig-0`,
+Signer ist die `IdentitySession` des Autors. Verifikation MUSS prüfen:
+gültige Signatur unter dem aus `kid` aufgelösten Schlüssel, und
+`didOrKidToDid(kid) === payload.createdBy`. Der Claim wird als
+Vertragsfeld `data.claim` am Record gespeichert (reserviert wie
+`predicate`/`confirmationRef`, Fassaden-Regel 6) und ist damit aus jedem
+Storage- und Sync-Pfad re-verifizierbar — auch nach Snapshot-Bootstrap.
+
+### Zwei Profile
+
+Welches Profil gilt, deklariert die **RelationTypeDefinition** des
+Prädikats (dort, wo bereits Gerichtetheit, Symmetrie und Sichtbarkeit
+leben) über das Feld `claimProfile`:
+
+| Profil | Payload | Mutation | für |
+|---|---|---|---|
+| `authorial` | `{ id, predicate, from, to, fields, createdBy, createdAt }` — **Identität + Inhalt** | nur der Autor; jedes `updateRelationRecord` MUSS re-signieren | perspektivische Prädikate: die Kante IST eine Aussage ihres Autors (`votesOn`, `knows`, `connectedWith`) |
+| `structural` | — (kein Record-Claim) | kollaborativ | strukturelle Kanten (`blocks`, `childOf`, `partOf`, `assignedTo`): der letzte legitime Fremd-Edit würde jede Autorsignatur brechen; als eingebettete Relations deckt sie der Herkunfts-Claim des Trägeritems |
+
+Alle heute definierten Record-Prädikate sind `authorial`. Ein
+`structural`-Prädikat als Record ist zulässig, trägt aber keinen
+Voll-Claim — seine Autorbindung ist dann nur die der Fassade.
+
+**Herkunfts-Claim für Items** (Gegenstück für kollaborative Objekte,
+Umsetzung separat): Payload `{ id, type, createdBy, createdAt }` — nur
+die unveränderlichen Felder. Beglaubigt die Herkunft, überlebt jeden
+legitimen Fremd-Edit (Inhalt bleibt bewusst draußen; zwei parallel
+gemergte Edits hätten keinen Zustand, den je jemand signiert hat).
+
+### Regeln
+
+1. `createRelationRecord` MUSS für `authorial`-Prädikate den Claim
+   erzeugen und speichern; `updateRelationRecord` MUSS re-signieren.
+   Die Fassade ist der einzige Schreibpfad (Fassaden-Regel 3); die
+   Fixture-/ETL-Ausnahme dort gilt unverändert und MUSS ebenfalls
+   gültige Claims schreiben.
+2. Leseflächen, die aus `authorial`-Records **Aggregate oder
+   Autorschafts-Aussagen** bilden (z. B. `votesFromRelationRecords`),
+   MÜSSEN Records ohne gültigen Claim, mit fremdem Signer oder mit
+   Payload-Abweichung vom Record verwerfen — fail closed. Reine
+   Anzeige-Flächen DÜRFEN unverifizierte Records als solche markieren.
+3. Verifikation ist asynchron (WebCrypto) und cachebar (`(recordId,
+   contentHash) → verdict`); das Ergebnis ändert sich für unveränderte
+   Records nie.
+4. Ein Claim beglaubigt die **Aussage des Autors**, nicht Wahrheit oder
+   Berechtigung: Capability- und Membership-Prüfungen bleiben davon
+   unberührt (Relay-Gates, 05/09).
+5. Vertrauensgrenze danach: Fälschbar bleibt nur noch, was der Autor
+   selbst signiert — Vote-Fälschung im Namen Dritter ist auch für
+   manipulierte Clients ausgeschlossen. NICHT abgedeckt: Löschung
+   fremder Records im rohen CRDT (Verfügbarkeit, nicht Autorschaft)
+   und Replay alter eigener Claims (der deterministische Record-Key
+   begrenzt das auf den eigenen Tupel-Slot).
 
 ## Nicht-Ziele
 
