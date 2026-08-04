@@ -386,6 +386,9 @@ importers:
         specifier: ^15.1.0
         version: 15.1.0(graphql@16.13.1)
     devDependencies:
+      '@real-life-stack/graphql-connector':
+        specifier: workspace:*
+        version: link:../graphql-connector
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.15

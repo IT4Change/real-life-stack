@@ -28,6 +28,10 @@ export const ItemType = builder.objectRef<Item>("Item").implement({
       nullable: true,
       resolve: (item) => item["@context"] ?? null,
     }),
+    tags: t.stringList({
+      nullable: true,
+      resolve: (item) => item.tags ?? null,
+    }),
     schema: t.exposeString("schema", { nullable: true }),
     schemaVersion: t.exposeInt("schemaVersion", { nullable: true }),
     data: t.field({
@@ -40,6 +44,10 @@ export const ItemType = builder.objectRef<Item>("Item").implement({
       resolve: (item) => item.relations ?? null,
     }),
     _source: t.exposeString("_source", { nullable: true }),
+    _included: t.boolean({
+      nullable: true,
+      resolve: (item) => (item as Item & { _included?: boolean })._included ?? null,
+    }),
   }),
 })
 
@@ -51,7 +59,13 @@ export const ItemFilterInputType = builder.inputType("ItemFilterInput", {
     hasField: t.stringList(),
     /** Spec 06: every listed @context vocabulary must be active on the item. */
     hasSchema: t.stringList(),
+    /** AND semantics: every listed tag must be present (spec 07). */
+    hasTag: t.stringList(),
     createdBy: t.string(),
+    /** Viewport bounding box [west, south, east, north] (spec: map module). */
+    bbox: t.floatList(),
+    limit: t.int(),
+    offset: t.int(),
   }),
 })
 
@@ -70,6 +84,7 @@ export const ItemInputType = builder.inputType("ItemInput", {
     createdBy: t.string({ required: true }),
     /** The item's @context vocabulary list (spec 06). */
     context: t.stringList(),
+    tags: t.stringList(),
     data: t.field({ type: "JSON", required: true }),
     relations: t.field({ type: [RelationInputType] }),
   }),
@@ -78,6 +93,7 @@ export const ItemInputType = builder.inputType("ItemInput", {
 export const ItemUpdateInputType = builder.inputType("ItemUpdateInput", {
   fields: (t) => ({
     context: t.stringList(),
+    tags: t.stringList(),
     data: t.field({ type: "JSON" }),
     relations: t.field({ type: [RelationInputType] }),
   }),

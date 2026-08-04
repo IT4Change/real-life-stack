@@ -16,6 +16,11 @@
       "types": "./dist/src/demo-data.d.ts",
       "development": "./src/demo-data.ts",
       "import": "./dist/src/demo-data.js"
+    },
+    "./testing": {
+      "types": "./dist/src/testing/contract-suite.d.ts",
+      "development": "./src/testing/contract-suite.ts",
+      "import": "./dist/src/testing/contract-suite.js"
     }
   },
   "files": [
