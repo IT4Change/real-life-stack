@@ -2,6 +2,7 @@
 // Zentrale Typdefinitionen für das DataInterface (Connector-Schnittstelle)
 
 import { BaseConnector } from "./base-connector.js"
+import { VOCAB_STATEMENT } from "./vocab.js"
 export { BaseConnector, createObservable, shallowEqual, matchesFilter, findRelatedItems, applyPagination, type ReactiveObservable } from "./base-connector.js"
 export {
   canonicalizeRelationEndpoints,
@@ -119,6 +120,12 @@ export interface ItemFilter {
    * Empty array matches every item. Spec: docs/spec/07-tags.md.
    */
   hasTag?: string[]
+  /**
+   * Schema-based module activation (Spec 06): every listed `@context`
+   * vocabulary must be active on the item. The faster prefilter equivalent
+   * of field presence when vocabularies are applied consistently.
+   */
+  hasSchema?: string[]
   createdBy?: string
   /**
    * Viewport bounding box `[west, south, east, north]` (GeoJSON lng/lat axis
@@ -256,7 +263,7 @@ export interface ScopedActivityEntry {
     type: string
     createdBy?: string
     title?: string
-    moduleHints?: { hasPosition: boolean; hasStart: boolean; hasStatus: boolean }
+    moduleHints?: { hasPosition: boolean; hasStart: boolean; hasStatus: boolean; hasStatement?: boolean }
   } | null
   isPersonal?: boolean
   actor: User | null
@@ -303,6 +310,9 @@ export function moduleHintsFor(itemOrHints: Item | ModuleHints): ModuleHints {
     hasPosition: Array.isArray(position?.coordinates),
     hasStart: typeof data.start === "string" && data.start.length > 0,
     hasStatus: item.type === "task" || (typeof status === "string" && KANBAN_STATUSES.has(status)),
+    // Statements have no discriminator field — their activation hint comes
+    // from the statement/v1 schema (spec 06), never from `type`.
+    hasStatement: (item["@context"] ?? []).includes(VOCAB_STATEMENT),
   }
 }
 

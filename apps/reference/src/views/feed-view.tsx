@@ -29,7 +29,7 @@ import {
 } from "@real-life-stack/toolkit"
 import { Calendar, FileText, MessageSquareQuote, Search, SearchX } from "lucide-react"
 import { Input, VoteBar } from "@real-life-stack/toolkit"
-import { isStatement, type Item, type User } from "@real-life-stack/data-interface"
+import { isStatement, VOCAB_STATEMENT, type Item, type User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
@@ -59,13 +59,13 @@ export function FeedView({ groupId }: { groupId: string }) {
   // items by field presence, not the legacy `type` UI hint.
   // - Posts carry data.content (base/v1)
   // - Events carry data.start (event/v1)
-  // - Statements are the deliberate TYPE exception (no discriminator field,
-  //   see docs/spec/modules/resonance.md) — polls belong in the feed too.
+  // - Statements carry the statement/v1 schema (no discriminator field, so
+  //   hasSchema is their activation — spec 06); polls belong in the feed too.
   // Cross-context items (e.g. an event-with-place) naturally show up in
   // multiple modules without any extra handling.
   const { data: posts, isLoading: postsLoading } = useItemsWithDraft({ hasField: ["content"] })
   const { data: events, isLoading: eventsLoading } = useItemsWithDraft({ hasField: ["start"] })
-  const { data: statements, isLoading: statementsLoading } = useItemsWithDraft({ type: "statement" })
+  const { data: statements, isLoading: statementsLoading } = useItemsWithDraft({ hasSchema: [VOCAB_STATEMENT] })
   // Feed is the union of the queries → it has "loaded" only once all have.
   const isLoading = postsLoading || eventsLoading || statementsLoading
   // `groupId === "__overview__"` is the cross-space aggregate view

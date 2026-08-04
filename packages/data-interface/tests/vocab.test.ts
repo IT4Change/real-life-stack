@@ -9,6 +9,7 @@ import {
   VOCAB_RELATION,
   VOCAB_PROJECT,
   VOCAB_RESOURCE,
+  VOCAB_STATEMENT,
 } from "../src/index.js"
 
 describe("deriveContext", () => {
@@ -60,6 +61,14 @@ describe("deriveContext", () => {
   it("does NOT add task/v1 for status outside the spec enum", () => {
     expect(deriveContext("post", { status: "draft" })).not.toContain(VOCAB_TASK)
     expect(deriveContext("post", { status: "" })).not.toContain(VOCAB_TASK)
+  })
+
+  it("adds statement/v1 when type === 'statement' — the schema carries the module activation (spec 06)", () => {
+    expect(deriveContext("statement", { title: "These" })).toContain(VOCAB_STATEMENT)
+  })
+
+  it("does NOT add statement/v1 for other types", () => {
+    expect(deriveContext("post", { content: "x" })).not.toContain(VOCAB_STATEMENT)
   })
 
   it("adds person/v1 when type === 'person'", () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { createObservable, shallowEqual, matchesFilter, findRelatedItems, BaseConnector } from "../src/base-connector.js"
 import type { Item, ItemFilter } from "../src/index.js"
+import { moduleHintsFor } from "../src/index.js"
 
 // Helper: create a minimal Item
 function createItem(overrides: Partial<Item> = {}): Item {
@@ -270,6 +271,50 @@ describe("matchesFilter", () => {
     })
     expect(matchesFilter(event, { type: "event", hasField: ["position"], bbox: BERLIN_BBOX })).toBe(true)
     expect(matchesFilter(event, { type: "task", bbox: BERLIN_BBOX })).toBe(false)
+  })
+})
+
+describe("moduleHintsFor — hasStatement schema hint", () => {
+  it("derives hasStatement from the statement/v1 vocabulary, not the type", () => {
+    const withSchema = {
+      id: "s1", type: "statement", createdAt: "t", createdBy: "u",
+      "@context": ["https://real-life-stack.org/vocab/base/v1", "https://real-life-stack.org/vocab/statement/v1"],
+      data: { title: "These" },
+    } as never
+    const withoutSchema = { id: "s2", type: "statement", createdAt: "t", createdBy: "u", data: { title: "Alt" } } as never
+    expect(moduleHintsFor(withSchema).hasStatement).toBe(true)
+    expect(moduleHintsFor(withoutSchema).hasStatement).toBe(false)
+  })
+
+  it("passes persisted hints through unchanged (older entries without the field stay undefined)", () => {
+    const legacy = { hasPosition: false, hasStart: false, hasStatus: true }
+    expect(moduleHintsFor(legacy).hasStatement).toBeUndefined()
+  })
+})
+
+describe("matchesFilter — hasSchema (spec 06: schema-based module activation)", () => {
+  const statement = {
+    id: "s1",
+    type: "statement",
+    createdAt: "2026-08-05T00:00:00.000Z",
+    createdBy: "u1",
+    "@context": ["https://real-life-stack.org/vocab/base/v1", "https://real-life-stack.org/vocab/statement/v1"],
+    data: { title: "These" },
+  } as never
+
+  it("matches when every listed vocabulary is active", () => {
+    expect(matchesFilter(statement, { hasSchema: ["https://real-life-stack.org/vocab/statement/v1"] })).toBe(true)
+    expect(matchesFilter(statement, { hasSchema: ["https://real-life-stack.org/vocab/base/v1", "https://real-life-stack.org/vocab/statement/v1"] })).toBe(true)
+  })
+
+  it("rejects when a listed vocabulary is missing or @context is absent", () => {
+    expect(matchesFilter(statement, { hasSchema: ["https://real-life-stack.org/vocab/event/v1"] })).toBe(false)
+    const bare = { ...statement, "@context": undefined } as never
+    expect(matchesFilter(bare, { hasSchema: ["https://real-life-stack.org/vocab/statement/v1"] })).toBe(false)
+  })
+
+  it("an empty hasSchema list matches every item", () => {
+    expect(matchesFilter(statement, { hasSchema: [] })).toBe(true)
   })
 })
 

@@ -120,7 +120,7 @@ describe("Notification contracts — WotConnector", () => {
     const c = connector(); c.currentGroupId = "alpha"; c.crossGroupIndex = index
     const entries = await c.getScopedActivity()
     expect(entries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ groupId: "alpha", actor: expect.objectContaining({ id: "did:alice" }), subject: expect.objectContaining({ moduleHints: { hasPosition: true, hasStart: true, hasStatus: true } }) }),
+      expect.objectContaining({ groupId: "alpha", actor: expect.objectContaining({ id: "did:alice" }), subject: expect.objectContaining({ moduleHints: { hasPosition: true, hasStart: true, hasStatus: true, hasStatement: false } }) }),
       expect.objectContaining({ groupId: "beta", actor: expect.objectContaining({ id: "did:bob" }) }),
       expect.objectContaining({ groupId: "private", isPersonal: true }),
     ]))

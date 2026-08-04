@@ -56,12 +56,11 @@ const OVERVIEW_WORKSPACE: Workspace = { id: OVERVIEW_ID, name: "Mein Netzwerk", 
  * default; an explicit `/{scope}/{module}/{itemId}` always wins.
  */
 export function resolveDefaultModule(itemOrHints: Item | ModuleHints, available: string[]): string {
-  // Statements live only in the Resonance module (type-filtered, no field
-  // hint) — a module-less statement link must not fall through to the feed.
-  if ("type" in itemOrHints && itemOrHints.type === "statement" && available.includes("resonance")) {
-    return "resonance"
-  }
   const hints = moduleHintsFor(itemOrHints)
+  // Statements have no discriminator field; their schema hint (statement/v1,
+  // spec 06) routes them — a module-less statement link must not fall
+  // through to the feed, which never lists them standalone.
+  if (hints.hasStatement && available.includes("resonance")) return "resonance"
   const preferred =
     hints.hasPosition
       ? "map"

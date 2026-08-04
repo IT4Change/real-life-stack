@@ -30,7 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@real-life-stack/toolkit"
 import { ArrowUpDown, MessageSquareQuote } from "lucide-react"
-import { VOTE_PREDICATE, type User } from "@real-life-stack/data-interface"
+import { VOCAB_STATEMENT, VOTE_PREDICATE, type User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 import { RESONANCE_CREATE_TYPES } from "../content-types"
@@ -53,10 +53,10 @@ const SORT_MODES: readonly ResonanceSortMode[] = ["newest", "votes", "approval",
  * green/yellow/red vote. Spec: docs/spec/modules/resonance.md.
  */
 export function ResonanceView({ groupId }: { groupId: string }) {
-  // Statements are read by TYPE, a deliberate deviation from the field-presence
-  // convention (spec: Datenmodell) — a statement has no natural discriminator
-  // field, and cross-module projection of statements is a non-goal.
-  const { data: statements, isLoading } = useItems({ type: "statement" })
+  // Statements are activated by their SCHEMA (statement/v1), per spec 06 —
+  // `type` never drives module activation. The composer stamps the vocabulary
+  // via deriveContext on create.
+  const { data: statements, isLoading } = useItems({ hasSchema: [VOCAB_STATEMENT] })
   // All votes of the scope in one query — the per-statement sort keys (count,
   // approval, last activity) need the full picture, not per-card subscriptions.
   const { data: voteRecords } = useRelationRecords({ predicate: VOTE_PREDICATE })

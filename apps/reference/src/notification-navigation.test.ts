@@ -56,14 +56,25 @@ describe("B-T4 — Klick-Sprünge über die echten App-Verträge", () => {
     expect(buildNotificationRoute(candidate({}), groups)).toBe("/garten/feed/p1")
   })
 
-  it("routes statements to the resonance module — the subject TYPE decides, hints have none", () => {
-    // Statements carry no discriminator field, so the hint-based resolver
-    // alone would land them in the feed, which never renders them standalone.
-    expect(buildNotificationRoute(candidate({ subjectType: "statement", subjectId: "s1" }), groups))
+  it("routes statements to the resonance module via the statement/v1 schema hint (spec 06)", () => {
+    // Statements carry no discriminator field; their activation travels as a
+    // schema-derived hint, never as the type.
+    const hints = { hasPosition: false, hasStart: false, hasStatus: false, hasStatement: true }
+    expect(buildNotificationRoute(candidate({ subjectType: "statement", subjectId: "s1", moduleHints: hints }), groups))
       .toBe("/garten/resonance/s1")
     // A space without the resonance module falls back through the resolver.
-    expect(buildNotificationRoute(candidate({ groupId: "nachbarn", subjectType: "statement", subjectId: "s1" }), groups))
+    expect(buildNotificationRoute(candidate({ groupId: "nachbarn", subjectType: "statement", subjectId: "s1", moduleHints: hints }), groups))
       .toBe("/nachbarn/feed/s1")
+  })
+
+  it("moduleCanDisplay follows the SCHEMA hint for resonance — the type alone neither suffices nor is needed", () => {
+    const statementHints = { hasPosition: false, hasStart: false, hasStatus: false, hasStatement: true }
+    // Hint without the type: displayable (the schema decides).
+    expect(moduleCanDisplay("resonance", statementHints, undefined)).toBe(true)
+    expect(moduleCanDisplay("feed", statementHints, undefined)).toBe(true)
+    // Type without the hint (e.g. a legacy item without @context): NOT displayable.
+    expect(moduleCanDisplay("resonance", { hasPosition: false, hasStart: false, hasStatus: false }, "statement")).toBe(false)
+    expect(moduleCanDisplay("resonance", { hasPosition: false, hasStart: false, hasStatus: true }, "task")).toBe(false)
   })
 
   it("a rendered subject click travels through the real route builder exactly once", async () => {

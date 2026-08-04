@@ -44,12 +44,15 @@ dem Inhalt, nicht aus Feature-Varianten des Moduls.
 | `tags` | Top-level am Item, Kategorisierung — siehe [07-tags.md](../07-tags.md) |
 | `createdBy` | Autorin der Aussage |
 
-Die Resonance-Ansicht liest Statements über den Typ-Filter
-(`useItems({ type: "statement" })`). Das weicht bewusst von der
-Feldpräsenz-Konvention aus Spec 06 ab: ein Statement hat kein
-natürliches Alleinstellungs-Feld. Der Feed nimmt Statements aus dem
-gleichen Grund als Typ-Ausnahme in seine Union auf (Posts und Events
-aktiviert er per Feldpräsenz) — eine Umfrage gehört in den Feed.
+Ein Statement trägt das Vokabular **`statement/v1`** in `@context`
+(gesetzt vom Composer über `deriveContext`). Die Modul-Aktivierung läuft
+über dieses Schema, nie über `type` (Spec 06, „Die Rolle von `type`"):
+die Resonance-Ansicht liest `useItems({ hasSchema: [statement/v1] })`,
+der Feed nimmt Statements über denselben Filter in seine Union auf, und
+Routing/Notifications tragen die Aktivierung als Schema-Hint
+(`moduleHints.hasStatement`). `type: "statement"` bleibt für die
+Composer-Vorlage, das Badge und User-Filter — die Rollen, die Spec 06
+dem Typ zuweist.
 
 ### Vote (die Stellungnahme)
 
@@ -165,7 +168,7 @@ Historie.
 - **Die Detailansicht folgt dem Item, nicht dem Modul** (#203): ein
   Statement zeigt seine VoteBar im geteilten Detail-Panel, egal aus
   welchem Modul es geöffnet wurde — eine Typ-Regel wie Task-Assignees.
-- **Statements erscheinen im Feed** (Typ-Union, siehe Datenmodell) und
+- **Statements erscheinen im Feed** (Schema-Union über `statement/v1`, siehe Datenmodell) und
   tragen dort die VoteBar direkt auf der Karte: die Karte ist die Umfrage.
   Reaktionen bleiben daneben verfügbar (Reaktionen sind nicht typabhängig).
 - Ein Statement mit `data.status` darf im Kanban erscheinen, mit
