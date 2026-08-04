@@ -26,6 +26,7 @@
 // documentation and a foundation for future typing.
 
 import type { Item } from "./index.js"
+import type { CoreItemTypeId } from "./type-manifest"
 
 // --- Shared Types ---
 
@@ -446,17 +447,20 @@ export type KnownPredicate =
   // is part of the known vocabulary.
   | "votesOn"
 
-/** Known item types. Connectors may define additional ones. */
+/** System types: never rendered as standalone cards, hence no register
+ *  entry (spec 06, "Core-Typ"). */
+export const SYSTEM_ITEM_TYPES = ["relation", "reaction", "comment"] as const
+
+/**
+ * Known item types. Connectors may define additional ones.
+ *
+ * The core members DERIVE from the type manifest (spec 06: the manifest is
+ * the single source of type identity — no parallel list). `feature` and
+ * `statement` are non-core: `feature` is a data-level marker without a card,
+ * `statement` is registered by the app layer (Resonance module).
+ */
 export type KnownItemType =
-  | "task"
-  | "event"
-  | "post"
-  | "place"
-  | "project"
-  | "resource"
+  | CoreItemTypeId
+  | (typeof SYSTEM_ITEM_TYPES)[number]
   | "feature"
-  | "person"
-  | "relation"
-  | "reaction"
-  | "comment"
   | "statement"
