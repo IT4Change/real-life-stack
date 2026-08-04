@@ -88,9 +88,50 @@ Wenn semantisch unterschiedliche Konzepte denselben Property-Namen tragen würde
 
 ### Die Rolle von `type`
 
-`type` benennt die **Art**, als die ein Item erstellt wurde (`post`, `event`, `task`) — die Intention beim Erstellen. Aus ihr wählt der Composer ein **Template** (Widget-Set beim Erstellen, Karten-Darstellung beim Anzeigen); sie bleibt am Item, damit Module und User sich darauf beziehen können. `type` ist genau eine pro Item; bei mehreren Werten zählt die erste. Pro `type` gehört **ein** Template (Erstellen-Widgets und Anzeige-Karte zusammen); heute als `ContentTypeConfig` je Modul-View definiert — ein kanonisches, modulübergreifend geteiltes Typ-Register ist eine offene Ausbaustufe.
+`type` benennt die **Art**, als die ein Item erstellt wurde (`post`, `event`, `task`) — die Intention beim Erstellen. Aus ihr wählt der Composer ein **Template** (Widget-Set beim Erstellen, Karten-Darstellung beim Anzeigen); sie bleibt am Item, damit Module und User sich darauf beziehen können. `type` ist genau eine pro Item; bei mehreren Werten zählt die erste. Pro `type` gehört **ein** Template (Erstellen-Widgets und Anzeige-Karte zusammen); heute als `ContentTypeConfig` je Modul-View definiert; das kanonische, modulübergreifend geteilte **Typ-Register** (nächster Abschnitt) löst diese Streuung ab.
 
 `type` darf tragen: die Composer-Vorlage, die Karten-Wahl in aggregierenden Sichten (Feed, Suche) und **User-Filter** („zeig mir nur Veranstaltungen"). Es darf **nicht** die **Modul-Aktivierung** steuern: ob ein Item im Calendar erscheint, entscheidet `data.start`, nie `type` — sonst verschwände ein Task mit Fälligkeitsdatum zu Unrecht. Der Unterschied ist prinzipiell: Modul-Aktivierung ist eine System-Frage und immer feldbasiert; ein User-Filter ist eine Mensch-Frage und darf die Intention nutzen, die nur in `type` steht (ein Task mit Deadline und ein Event tragen beide `start` — „die Veranstaltungen" sind aus Feldern allein nicht herauszufiltern).
+
+### Typ-Register
+
+Das Typ-Register löst die oben genannte Ausbaustufe ein: **ein** kanonischer Eintrag pro `type`, geteilt von allen Modulen und Flächen. Es beantwortet genau eine Frage — *was folgt daraus, dass ein Item diesen `type` trägt?* — und beantwortet sie an genau einer Stelle.
+
+Motivation aus der Praxis: dieselbe Frage wurde bisher an vier Stellen unabhängig beantwortet (Typ-Guards in `data-interface`, `ContentTypeConfig` je App-View, `ItemTypeBadge`, `getItemPreviewAdornments`). Die vier Listen kennen unterschiedliche Typ-Mengen — `project` und `resource` haben eine Preview-Darstellung, aber keinen Composer-Eintrag; `post` das Umgekehrte — und sind nachweislich auseinandergelaufen (Kalender-Detail mit abweichender Meta-Komponente; Task-Assignees nur im Kanban sichtbar).
+
+#### Eintrag
+
+Ein Registereintrag hält pro `type`:
+
+| Feld | Zweck |
+|---|---|
+| `label`, `icon` | Anzeige des Typs (Badge, Composer-Auswahl, User-Filter) |
+| `composerWidgets` | Widget-Set beim Erstellen (heute `ContentTypeConfig.defaultWidgets`) |
+| `peopleRelation` | Prädikat, über das der Typ Personen verknüpft (`task` → `assignedTo`, `event` → `invited`) |
+| `preview` | knappe Darstellung für Karten und Zeilen (heute `getItemPreviewAdornments`) |
+| `detail` | ausführliche Darstellung für das Detail-Panel |
+| `footer` | typ-eigene Fußzeile zusätzlich zur Fläche (Task → Assignees) |
+
+`preview`/`detail`/`footer` liefern Slot-Inhalte für die geteilte `ItemPreview`-Hülle — keine eigenen Karten. Karten-Markup bleibt Sache der Fläche.
+
+#### Regeln
+
+1. Das Register MUSS im Toolkit leben. Apps DÜRFEN Einträge ergänzen und app-spezifische Felder (Gruppen-Optionen, Submit-Labels) über registrierte Einträge legen; sie DÜRFEN NICHT die Darstellungs-Slots eines Core-Typs ersetzen, ohne es ausdrücklich zu tun (bewusstes Override, kein stilles Parallel-Register).
+2. Jede Fläche, die ein Item darstellt, MUSS ihre typabhängigen Anteile aus dem Register beziehen. Flächen steuern ausschließlich **Dichte und Rahmen** bei (`compact`/`comfortable`, Karte/Panel/Zeile). Der Typ sagt *was*, die Fläche sagt *wieviel*.
+3. Module DÜRFEN NICHT typabhängig rendern. Was ein Modul über ein Item weiß, das eine andere Fläche nicht wüsste, gehört entweder in den Typ (→ Register) oder in die Fläche (→ Dichte) — nie ins Modul.
+4. Das Register DARF NICHT die Modul-Aktivierung tragen (kein `showIn`-Feld). Die bleibt feldbasiert, siehe „Die Rolle von `type`". Ebenso wenig trägt es Capabilities oder Rechte: ob eine Interaktion (Reagieren, Bearbeiten, Kommentieren) verfügbar ist, entscheiden Connector-Capability und Autorisierung — nicht der Typ. Reaktionen insbesondere sind nicht typabhängig.
+5. Ein unbekannter `type` MUSS auf einen generischen Eintrag zurückfallen (Titel, Beschreibung, `base/v1`-Felder, neutrales Badge). Ein Item ohne Registereintrag darf nie unsichtbar oder kaputt sein — sonst bestraft das Register die Erweiterbarkeit, die es ermöglichen soll.
+6. Ein neuer Typ wird durch **einen** Registereintrag eingeführt. Wenn dafür zusätzlich eine zweite Liste zu pflegen ist, ist das ein Fehler in dieser Spec.
+
+#### Verhältnis zu den Schemas
+
+Register und Vokabulare bleiben getrennt: Schemas (`@context`) definieren die **Feldstruktur**, das Register die **Intention** (`type`) und ihre Folgen für Composer und Darstellung. Ein Registereintrag SOLL benennen, welche Vokabulare der Composer beim Erstellen setzt (`event` → `base/v1` + `event/v1` + optional `place/v1`), damit Template und Schema nicht divergieren.
+
+#### Nicht-Ziele des Registers
+
+- Modul-Aktivierung (feldbasiert, s.o.)
+- Capabilities, Rechte, Interaktions-Verfügbarkeit
+- Karten-/Panel-Markup (Sache der Flächen; das Register liefert Slot-Inhalte)
+- Feld-Validierung (Sache der Schemas)
 
 ## Vocabulary-Registry
 
