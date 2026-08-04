@@ -22,6 +22,12 @@ export const ItemType = builder.objectRef<Item>("Item").implement({
       resolve: (item) => item.createdAt,
     }),
     createdBy: t.exposeString("createdBy"),
+    // GraphQL field names cannot start with "@" — `context` carries the
+    // item's `@context` vocabulary list (spec 06 schema activation).
+    context: t.stringList({
+      nullable: true,
+      resolve: (item) => item["@context"] ?? null,
+    }),
     schema: t.exposeString("schema", { nullable: true }),
     schemaVersion: t.exposeInt("schemaVersion", { nullable: true }),
     data: t.field({
@@ -43,6 +49,8 @@ export const ItemFilterInputType = builder.inputType("ItemFilterInput", {
   fields: (t) => ({
     type: t.string(),
     hasField: t.stringList(),
+    /** Spec 06: every listed @context vocabulary must be active on the item. */
+    hasSchema: t.stringList(),
     createdBy: t.string(),
   }),
 })
@@ -60,6 +68,8 @@ export const ItemInputType = builder.inputType("ItemInput", {
     id: t.id(),
     type: t.string({ required: true }),
     createdBy: t.string({ required: true }),
+    /** The item's @context vocabulary list (spec 06). */
+    context: t.stringList(),
     data: t.field({ type: "JSON", required: true }),
     relations: t.field({ type: [RelationInputType] }),
   }),
@@ -67,6 +77,7 @@ export const ItemInputType = builder.inputType("ItemInput", {
 
 export const ItemUpdateInputType = builder.inputType("ItemUpdateInput", {
   fields: (t) => ({
+    context: t.stringList(),
     data: t.field({ type: "JSON" }),
     relations: t.field({ type: [RelationInputType] }),
   }),

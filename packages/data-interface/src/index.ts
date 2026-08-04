@@ -2,17 +2,21 @@
 // Zentrale Typdefinitionen für das DataInterface (Connector-Schnittstelle)
 
 import { BaseConnector } from "./base-connector.js"
+import { VOCAB_STATEMENT } from "./vocab.js"
 export { BaseConnector, createObservable, shallowEqual, matchesFilter, findRelatedItems, applyPagination, type ReactiveObservable } from "./base-connector.js"
 export {
   canonicalizeRelationEndpoints,
   createDefaultRelationStore,
+  createRelationRecordWith,
   deriveRelationRecordId,
   relationRecordFromItem,
   relationStoreOptionsFrom,
   type DefaultRelationStoreOptions,
   type RelationPredicateDefinition,
+  type RelationRecordCreateConnector,
 } from "./relation-records.js"
 export * from "./item-types.js"
+export * from "./votes.js"
 export * from "./vocab.js"
 export { EMPTY_NOTIFICATION_STATE, cloneNotificationState, applyNotificationStatePatch, maxTs, pruneReadEntryKeys } from "./notification-state.js"
 
@@ -116,6 +120,12 @@ export interface ItemFilter {
    * Empty array matches every item. Spec: docs/spec/07-tags.md.
    */
   hasTag?: string[]
+  /**
+   * Schema-based module activation (Spec 06): every listed `@context`
+   * vocabulary must be active on the item. The faster prefilter equivalent
+   * of field presence when vocabularies are applied consistently.
+   */
+  hasSchema?: string[]
   createdBy?: string
   /**
    * Viewport bounding box `[west, south, east, north]` (GeoJSON lng/lat axis
@@ -207,6 +217,18 @@ export function deriveActivitySummary(
     const title = parent ? itemDisplayTitle(parent) : undefined
     return title ? `${emoji} auf „${title}"` : emoji
   }
+  if (item.type === "relation" && item.data.predicate === "votesOn") {
+    // Votes are relation records (votes.ts); their record item carries the
+    // stance in data.value and the statement in the "to" endpoint relation.
+    const stanceLabel = item.data.value === "green" ? "Zustimmung"
+      : item.data.value === "yellow" ? "Bedenken"
+      : item.data.value === "red" ? "Ablehnung" : "Stimme"
+    const target = item.relations?.find((relation) => relation.predicate === "to")?.target
+    const targetId = target?.startsWith("item:") ? target.slice("item:".length) : undefined
+    const parent = targetId ? lookupItem(targetId) : undefined
+    const title = parent ? itemDisplayTitle(parent) : undefined
+    return title ? `${stanceLabel} zu „${title}"` : stanceLabel
+  }
   return itemDisplayTitle(item)
 }
 
@@ -241,7 +263,7 @@ export interface ScopedActivityEntry {
     type: string
     createdBy?: string
     title?: string
-    moduleHints?: { hasPosition: boolean; hasStart: boolean; hasStatus: boolean }
+    moduleHints?: { hasPosition: boolean; hasStart: boolean; hasStatus: boolean; hasStatement?: boolean }
   } | null
   isPersonal?: boolean
   actor: User | null
@@ -288,6 +310,9 @@ export function moduleHintsFor(itemOrHints: Item | ModuleHints): ModuleHints {
     hasPosition: Array.isArray(position?.coordinates),
     hasStart: typeof data.start === "string" && data.start.length > 0,
     hasStatus: item.type === "task" || (typeof status === "string" && KANBAN_STATUSES.has(status)),
+    // Statements have no discriminator field — their activation hint comes
+    // from the statement/v1 schema (spec 06), never from `type`.
+    hasStatement: (item["@context"] ?? []).includes(VOCAB_STATEMENT),
   }
 }
 

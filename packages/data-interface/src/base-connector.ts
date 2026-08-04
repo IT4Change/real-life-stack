@@ -146,6 +146,13 @@ export function matchesFilter(item: Item, filter: ItemFilter): boolean {
       if (!itemTags.includes(tag)) return false
     }
   }
+  if (filter.hasSchema) {
+    // Spec 06: every listed @context vocabulary must be active on the item.
+    const context = item["@context"] ?? []
+    for (const vocab of filter.hasSchema) {
+      if (!context.includes(vocab)) return false
+    }
+  }
   if (filter.bbox && !positionInBbox(item, filter.bbox)) return false
   return true
 }

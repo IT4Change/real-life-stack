@@ -44,7 +44,12 @@ import {
 } from "./queries.js"
 
 function parseItem(raw: Record<string, unknown>): Item {
-  return raw as unknown as Item
+  // GraphQL cannot name a field "@context" — the wire field is `context`.
+  const { context, ...rest } = raw
+  return {
+    ...rest,
+    ...(context != null ? { "@context": context } : {}),
+  } as unknown as Item
 }
 
 export class GraphQLConnector implements FullConnector {
@@ -197,7 +202,7 @@ export class GraphQLConnector implements FullConnector {
   // --- Items ---
 
   async getItems(filter?: ItemFilter): Promise<Item[]> {
-    const gqlFilter = filter ? { type: filter.type, hasField: filter.hasField, createdBy: filter.createdBy, limit: filter.limit, offset: filter.offset } : undefined
+    const gqlFilter = filter ? { type: filter.type, hasField: filter.hasField, hasSchema: filter.hasSchema, createdBy: filter.createdBy, limit: filter.limit, offset: filter.offset } : undefined
     const { items } = await this.client.request<{ items: Record<string, unknown>[] }>(ITEMS_QUERY, { filter: gqlFilter })
     return items.map(parseItem)
   }
@@ -219,7 +224,7 @@ export class GraphQLConnector implements FullConnector {
       .finally(() => observable.markLoaded())
 
     // SSE subscription for live updates
-    const gqlFilter = filter ? { type: filter.type, hasField: filter.hasField, createdBy: filter.createdBy, limit: filter.limit, offset: filter.offset } : undefined
+    const gqlFilter = filter ? { type: filter.type, hasField: filter.hasField, hasSchema: filter.hasSchema, createdBy: filter.createdBy, limit: filter.limit, offset: filter.offset } : undefined
     this.subscribeWs<{ itemsChanged: Record<string, unknown>[] }>(
       ITEMS_CHANGED_SUBSCRIPTION,
       { filter: gqlFilter },
@@ -252,7 +257,7 @@ export class GraphQLConnector implements FullConnector {
 
   async createItem(item: CreateItemInput): Promise<Item> {
     const { createItem } = await this.client.request<{ createItem: Record<string, unknown> }>(CREATE_ITEM_MUTATION, {
-      input: { id: item.id, type: item.type, createdBy: item.createdBy, data: item.data, relations: item.relations },
+      input: { id: item.id, type: item.type, createdBy: item.createdBy, context: item["@context"], data: item.data, relations: item.relations },
     })
     return parseItem(createItem)
   }
@@ -260,7 +265,7 @@ export class GraphQLConnector implements FullConnector {
   async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
     const { updateItem } = await this.client.request<{ updateItem: Record<string, unknown> }>(UPDATE_ITEM_MUTATION, {
       id,
-      input: { data: updates.data, relations: updates.relations },
+      input: { context: updates["@context"], data: updates.data, relations: updates.relations },
     })
     return parseItem(updateItem)
   }

@@ -16,9 +16,14 @@ import type {
   NotificationStateCapable,
   NotificationStatePatch,
   RelatedItemsOptions,
+  RelationRecord,
+  RelationRecordCreateConnector,
+  RelationRecordFilter,
+  RelationRecordInput,
+  RelationRecordUpdate,
   Source,
 } from "@real-life-stack/data-interface"
-import { createObservable, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
+import { createObservable, createDefaultRelationStore, createRelationRecordWith, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
 import { get, set, del, createStore, update as updateStoredValue } from "idb-keyval"
 
 // --- Types ---
@@ -386,8 +391,11 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
   }
 
   async createItem(item: CreateItemInput): Promise<Item> {
+    return this.createItemInGroup(item, this.currentGroup?.id ?? null)
+  }
+
+  private async createItemInGroup(item: CreateItemInput, targetGroupId: string | null): Promise<Item> {
     const actor = this.requireCurrentUser().id
-    const targetGroupId = this.currentGroup?.id ?? null
     let result: Item | undefined
     let committedState: StoredState | undefined
     let created = false
@@ -611,6 +619,62 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
       this.relatedObservableParams.set(key, { itemId, predicate, options })
     }
     return this.relatedObservables.get(key)!
+  }
+
+  // --- Relation records (auth-bound store) ---
+
+  // Generic default facade (docs/spec/08-relation-records.md): createdBy from
+  // the authenticated identity, canonical hash ids, authorship-checked
+  // mutations. Lazy so alternative construction paths stay safe.
+  private relationRecordStore: ReturnType<typeof createDefaultRelationStore> | null = null
+
+  private relationStoreInstance(): ReturnType<typeof createDefaultRelationStore> {
+    this.relationRecordStore ??= createDefaultRelationStore(this)
+    return this.relationRecordStore
+  }
+
+  getRelationRecords(filter?: RelationRecordFilter): Promise<RelationRecord[]> {
+    return this.relationStoreInstance().getRelationRecords(filter)
+  }
+
+  observeRelationRecords(filter?: RelationRecordFilter): Observable<RelationRecord[]> {
+    return this.relationStoreInstance().observeRelationRecords(filter)
+  }
+
+  getRelationNeighbors(endpoint: string, predicate?: string): Promise<Item[]> {
+    return this.relationStoreInstance().getRelationNeighbors(endpoint, predicate)
+  }
+
+  observeRelationNeighbors(endpoint: string, predicate?: string): Observable<Item[]> {
+    return this.relationStoreInstance().observeRelationNeighbors(endpoint, predicate)
+  }
+
+  createRelationRecord(input: RelationRecordInput): Promise<RelationRecord> {
+    // A relation record belongs NEXT TO the item it targets. From the overview
+    // (no current group) the generic createItem would leave it without any
+    // group scope — invisible to the target's group — so resolve the target
+    // item's owner group and create the record there.
+    const targetItemId = input.to.startsWith("item:") ? input.to.slice("item:".length) : null
+    const targetGroupId = targetItemId ? this.getItemGroupId(targetItemId) : null
+    if (targetGroupId === null || targetGroupId === this.currentGroup?.id) {
+      return this.relationStoreInstance().createRelationRecord(input)
+    }
+    const scoped: RelationRecordCreateConnector = {
+      // Collision check must be scope-independent: item ids are globally
+      // unique, and the canonical record may live outside the current scope.
+      getItem: async (id: string) => this.items.find((candidate) => candidate.id === id) ?? null,
+      createItem: (item: CreateItemInput) => this.createItemInGroup(item, targetGroupId),
+      getCurrentUser: () => this.getCurrentUser(),
+    }
+    return createRelationRecordWith(scoped, input)
+  }
+
+  updateRelationRecord(id: string, updates: RelationRecordUpdate): Promise<RelationRecord> {
+    return this.relationStoreInstance().updateRelationRecord(id, updates)
+  }
+
+  deleteRelationRecord(id: string): Promise<void> {
+    return this.relationStoreInstance().deleteRelationRecord(id)
   }
 
   // --- Users ---

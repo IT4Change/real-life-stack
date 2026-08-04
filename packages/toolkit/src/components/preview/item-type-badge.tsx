@@ -1,7 +1,7 @@
 "use client"
 
 import type { ComponentType } from "react"
-import { Calendar, CheckSquare, MapPin, Shapes, User } from "lucide-react"
+import { Calendar, CheckSquare, MapPin, MessageSquareQuote, Shapes, User } from "lucide-react"
 import { cn } from "../../lib/utils"
 
 /**
@@ -54,6 +54,11 @@ const DEFAULT_CONFIG: Record<string, ItemTypeBadgeConfig> = {
     icon: User,
     label: "Profil",
     className: "bg-violet-50 text-violet-700 border-violet-200",
+  },
+  statement: {
+    icon: MessageSquareQuote,
+    label: "Aussage",
+    className: "bg-sky-50 text-sky-700 border-sky-200",
   },
 }
 

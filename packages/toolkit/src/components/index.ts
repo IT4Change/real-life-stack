@@ -23,6 +23,7 @@ export * from "./map"
 // Shared module components (used across space modules)
 export * from "./comments"
 export * from "./reactions"
+export * from "./resonance"
 export * from "./composer"
 export * from "./detail"
 export * from "./preview"

@@ -354,6 +354,37 @@ export function isReaction(item: Item): item is ReactionItem {
 }
 
 // ============================================================
+// Statement (Resonance module)
+// ============================================================
+
+export interface StatementData {
+  /** The statement itself — a single sentence the group takes a stance on. */
+  title: string
+  /** Optional context for the statement. */
+  description?: string
+}
+
+export type StatementItem = Item & { type: "statement"; data: StatementData }
+
+export function isStatement(item: Item): item is StatementItem {
+  return item.type === "statement"
+}
+
+// ============================================================
+// Vote (Resonance module)
+// ============================================================
+
+/**
+ * Three-step stance: agree / neutral-concerns / disagree.
+ *
+ * Votes are NOT an item type — they are relation records
+ * (`predicate: "votesOn"`, one canonical record per (voter, statement),
+ * auth-bound via the relation-store facade). See `votes.ts` and
+ * docs/spec/modules/resonance.md.
+ */
+export type VoteValue = "green" | "yellow" | "red"
+
+// ============================================================
 // Comment
 // ============================================================
 
@@ -411,6 +442,9 @@ export type KnownPredicate =
   | keyof EventRelations["forward"]
   | keyof ReactionRelations["forward"]
   | keyof CommentRelations["forward"]
+  // Votes are relation records, not embedded relations — but the predicate
+  // is part of the known vocabulary.
+  | "votesOn"
 
 /** Known item types. Connectors may define additional ones. */
 export type KnownItemType =
@@ -425,3 +459,4 @@ export type KnownItemType =
   | "relation"
   | "reaction"
   | "comment"
+  | "statement"

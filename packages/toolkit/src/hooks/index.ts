@@ -32,6 +32,7 @@ export { useConfirmations } from "./use-confirmations"
 export { useRelayStatus } from "./use-relay-status"
 export { useReactions, useReactionUsers, type AggregatedReaction, type UseReactionsResult, type ReactionUser, type UseReactionUsersResult } from "./use-reactions"
 export { useComments, useReplies, type CommentWithAuthor, type UseCommentsResult, type UseRepliesResult } from "./use-comments"
+export { useVotes, useVoteUsers, type VoteSummary, type UseVotesResult, type VoteUser, type UseVoteUsersResult } from "./use-votes"
 export { useIncomingEvents, IncomingEventsProvider } from "./use-incoming-events"
 
 // Item-Detail Hooks (shared across modules — Feed, Kanban, Calendar, Map)

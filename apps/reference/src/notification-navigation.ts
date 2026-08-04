@@ -15,7 +15,9 @@ export function buildNotificationRoute(
   const group = groups.find(({ id }) => id === notification.groupId)
   // Unknown scope (e.g. the overview aggregate is not a group) must not
   // collapse the choice to feed — resolve against the full module set.
-  const available = Array.isArray(group?.data?.modules) ? (group.data.modules as string[]) : ["feed", "map", "kanban", "calendar"]
+  const available = Array.isArray(group?.data?.modules) ? (group.data.modules as string[]) : ["feed", "map", "kanban", "calendar", "resonance"]
+  // Statements route via their schema hint (statement/v1 → hasStatement,
+  // spec 06) — carried in moduleHints like every other activation signal.
   const module = resolveDefaultModule(
     notification.moduleHints ?? { hasPosition: false, hasStart: false, hasStatus: false },
     available,
@@ -23,7 +25,7 @@ export function buildNotificationRoute(
   return `/${notification.groupId}/${module}/${notification.subjectId}`
 }
 
-export type ModuleHintsLike = { hasPosition: boolean; hasStart: boolean; hasStatus: boolean }
+export type ModuleHintsLike = { hasPosition: boolean; hasStart: boolean; hasStatus: boolean; hasStatement?: boolean }
 
 /**
  * Can the ACTIVE module actually show this item? Mirrors the lens escalation
@@ -35,8 +37,10 @@ export function moduleCanDisplay(module: string, hints: ModuleHintsLike | undefi
   if (module === "map") return Boolean(hints?.hasPosition)
   if (module === "calendar") return Boolean(hints?.hasStart)
   if (module === "kanban") return Boolean(hints?.hasStatus)
-  // The feed unions content-items (posts) and start-items (events) — anything
-  // else (pure tasks, places, people) never appears there.
-  if (module === "feed") return itemType === "post" || Boolean(hints?.hasStart)
+  // Resonance shows statements only — activated by their schema hint (spec 06).
+  if (module === "resonance") return Boolean(hints?.hasStatement)
+  // The feed unions content-items (posts), start-items (events) and
+  // statements — anything else (pure tasks, places, people) never appears there.
+  if (module === "feed") return itemType === "post" || Boolean(hints?.hasStart) || Boolean(hints?.hasStatement)
   return true
 }

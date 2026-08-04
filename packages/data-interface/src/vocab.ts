@@ -14,6 +14,7 @@ export const VOCAB_PERSON = "https://real-life-stack.org/vocab/person/v1"
 export const VOCAB_RELATION = "https://real-life-stack.org/vocab/relation/v1"
 export const VOCAB_PROJECT = "https://real-life-stack.org/vocab/project/v1"
 export const VOCAB_RESOURCE = "https://real-life-stack.org/vocab/resource/v1"
+export const VOCAB_STATEMENT = "https://real-life-stack.org/vocab/statement/v1"
 
 const TASK_STATUS_VALUES = new Set(["open", "in-progress", "done", "archived"])
 const PLACE_GEOMETRY_TYPES = new Set(["Point", "LineString", "Polygon"])
@@ -41,6 +42,8 @@ function isPlaceGeometry(value: unknown): boolean {
  * - `relation/v1` if `type === "relation"`.
  * - `project/v1` if `type === "project"`.
  * - `resource/v1` if `type === "resource"`.
+ * - `statement/v1` if `type === "statement"` — the schema (not the type)
+ *   then carries the module activation for Resonance/Feed (spec 06).
  */
 export function deriveContext(type: string, data: Record<string, unknown>): string[] {
   const ctx: string[] = [VOCAB_BASE]
@@ -71,6 +74,10 @@ export function deriveContext(type: string, data: Record<string, unknown>): stri
 
   if (type === "resource") {
     ctx.push(VOCAB_RESOURCE)
+  }
+
+  if (type === "statement") {
+    ctx.push(VOCAB_STATEMENT)
   }
 
   return ctx

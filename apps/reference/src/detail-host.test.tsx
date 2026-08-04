@@ -6,7 +6,7 @@ import { MockConnector } from "@real-life-stack/mock-connector"
 import { ConnectorProvider } from "@real-life-stack/toolkit"
 
 import { ItemDetailRead } from "./detail-host"
-import { feedFooter } from "./views/feed-view"
+import { feedFooter, mergeFeedItems } from "./views/feed-view"
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -63,9 +63,10 @@ async function readWith(
   await act(async () => { await Promise.resolve() })
   const text = container.textContent ?? ""
   const reactionButtons = container.querySelectorAll('[aria-label="Add reaction"]').length
+  const voteButtons = container.querySelectorAll('[aria-label^="Zustimmung"]').length
   await act(async () => { root.unmount() })
   container.remove()
-  return { text, reactionButtons }
+  return { text, reactionButtons, voteButtons }
 }
 
 /** Convenience for the many assertions that only look at text. */
@@ -78,6 +79,15 @@ const task = (overrides: Record<string, unknown> = {}) => ({
   createdAt: "2026-08-01T10:00:00.000Z",
   data: { title: "Beete vorbereiten", status: "open" },
   relations: [{ predicate: "assignedTo", target: `global:${MATE}` }],
+  ...overrides,
+})
+
+const statement = (overrides: Record<string, unknown> = {}) => ({
+  id: "statement-1",
+  type: "statement",
+  createdBy: MATE,
+  createdAt: "2026-08-01T10:00:00.000Z",
+  data: { title: "Wir brauchen einen zweiten Brunnen" },
   ...overrides,
 })
 
@@ -144,6 +154,25 @@ describe("shared detail read view", () => {
   it("carries the item's type badge", async () => {
     expect(await textOf(connector, task(), SPACE_A)).toContain("Task")
   })
+
+  it("offers the vote bar on a statement — voting follows the type, not the module", async () => {
+    // A statement opened from ANY module's detail shows the vote controls;
+    // other types never do (spec: docs/spec/modules/resonance.md).
+    const asStatement = await readWith(connector, statement(), SPACE_A)
+    const asPost = await readWith(
+      connector,
+      statement({ type: "post", data: { title: "Notiz", content: "Text" } }),
+      SPACE_A,
+    )
+    expect(asStatement.voteButtons).toBe(1)
+    expect(asPost.voteButtons).toBe(0)
+    // Votes come IN ADDITION to reactions, not instead of them.
+    expect(asStatement.reactionButtons).toBe(1)
+  })
+
+  it("labels a statement with its badge", async () => {
+    expect(await textOf(connector, statement(), SPACE_A)).toContain("Aussage")
+  })
 })
 
 describe("feed card footer", () => {
@@ -166,5 +195,41 @@ describe("feed card footer", () => {
     expect(container.querySelectorAll('[aria-label="Add reaction"]').length).toBe(1)
     await act(async () => { root.unmount() })
     container.remove()
+  })
+
+  it("shows the vote bar on a statement card — a poll reads as a poll in the feed", async () => {
+    const { connector } = await connectorWith({})
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(
+        createElement(ConnectorProvider, {
+          connector: connector as never,
+          children: feedFooter(statement() as never, () => {}),
+        }),
+      )
+    })
+    await act(async () => { await Promise.resolve() })
+    expect(container.querySelectorAll('[aria-label^="Zustimmung"]').length).toBe(1)
+    // Reactions stay available alongside the votes.
+    expect(container.querySelectorAll('[aria-label="Add reaction"]').length).toBe(1)
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
+})
+
+describe("feed item union", () => {
+  const post = { id: "p1", type: "post", createdAt: "2026-08-01T10:00:00.000Z", createdBy: ME, data: { content: "Hallo" } }
+  const comment = { id: "c1", type: "comment", createdAt: "2026-08-01T11:00:00.000Z", createdBy: ME, data: { content: "Antwort" } }
+
+  it("includes statements — polls surface in the feed", () => {
+    const merged = mergeFeedItems([post as never], [], [statement() as never])
+    expect(merged.map((item) => item.id)).toEqual(["p1", "statement-1"])
+  })
+
+  it("still excludes comments and dedupes across the queries", () => {
+    const merged = mergeFeedItems([post as never, comment as never], [post as never], [])
+    expect(merged.map((item) => item.id)).toEqual(["p1"])
   })
 })

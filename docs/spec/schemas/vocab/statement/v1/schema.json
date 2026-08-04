@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://real-life-stack.org/vocab/statement/v1/schema.json",
+  "title": "RLS Statement Vocabulary",
+  "description": "Marker vocabulary for statements the group takes a stance on (Resonance module). It introduces no own data properties: the statement sentence lives in the base/v1 `title`, optional context in `description`. Carrying this vocabulary activates the item for the Resonance module and the feed union (spec 06, marker vocabularies).",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["title"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The statement itself — one sentence (base/v1 term, required by this vocabulary)."
+        }
+      }
+    }
+  }
+}

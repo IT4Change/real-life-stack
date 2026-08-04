@@ -14,6 +14,7 @@ import type {
   RelationRecordInput,
   RelationRecordUpdate,
   RelationRecordWriterCapable,
+  User,
 } from "./index.js"
 
 export interface DefaultRelationStoreOptions {
@@ -37,6 +38,18 @@ export function relationStoreOptionsFrom(
 
 type RelationStoreConnector = DataInterface & ItemWriter & Authenticatable
 type DefaultRelationStore = RelationRecordCapable & RelationRecordWriterCapable
+
+/**
+ * The minimal surface the record-CREATE contract needs. Connectors that must
+ * create a record in a specific scope (e.g. the owner space of the item a
+ * vote targets, resolved per input) pass a scoped facade of exactly these
+ * three methods to {@link createRelationRecordWith}.
+ */
+export interface RelationRecordCreateConnector {
+  getItem(id: string): Promise<Item | null>
+  createItem(input: CreateItemInput): Promise<Item>
+  getCurrentUser(): Promise<User | null>
+}
 
 const RESERVED_FIELD_KEYS = new Set(["predicate", "confirmationRef"])
 
@@ -311,6 +324,56 @@ function buildRelationData(
   }
 }
 
+/**
+ * The record-CREATE contract, callable against a scoped item facade: caller
+ * never supplies `createdBy` (it comes from the authenticated identity), the
+ * canonical id hashes the (author, tuple), and a pre-existing id with a
+ * different identity is an error, not an idempotent success. The default
+ * store delegates here; connectors reuse it to create a record inside the
+ * resolved owner scope of the item the relation targets.
+ */
+export async function createRelationRecordWith(
+  connector: RelationRecordCreateConnector,
+  input: RelationRecordInput,
+  options?: DefaultRelationStoreOptions,
+): Promise<RelationRecord> {
+  assertInput(input)
+  const user = await connector.getCurrentUser()
+  if (!user) throw new Error("Relation record creation requires an authenticated user")
+
+  const endpoints = canonicalizeRelationEndpoints(
+    input.predicate,
+    input.from,
+    input.to,
+    options,
+  )
+  const id = await deriveRelationRecordId(
+    user.id,
+    input.predicate,
+    endpoints.from,
+    endpoints.to,
+    options,
+  )
+  const expected = { id, predicate: input.predicate, ...endpoints, createdBy: user.id }
+  const existing = await connector.getItem(id)
+  if (existing) return assertSameIdentity(existing, expected)
+
+  const data = buildRelationData(input.predicate, input.fields, input.confirmationRef)
+  const itemInput: CreateItemInput = {
+    id,
+    type: "relation",
+    createdBy: user.id,
+    "@context": deriveContext("relation", data),
+    data,
+    relations: [
+      { predicate: "from", target: endpoints.from },
+      { predicate: "to", target: endpoints.to },
+    ],
+  }
+  const created = await connector.createItem(itemInput)
+  return assertSameIdentity(created, expected)
+}
+
 export function createDefaultRelationStore(
   connector: RelationStoreConnector,
   options?: DefaultRelationStoreOptions,
@@ -341,43 +404,8 @@ export function createDefaultRelationStore(
     )
   }
 
-  const createRelationRecord = async (input: RelationRecordInput): Promise<RelationRecord> => {
-    assertInput(input)
-    const user = await connector.getCurrentUser()
-    if (!user) throw new Error("Relation record creation requires an authenticated user")
-
-    const endpoints = canonicalizeRelationEndpoints(
-      input.predicate,
-      input.from,
-      input.to,
-      stableOptions,
-    )
-    const id = await deriveRelationRecordId(
-      user.id,
-      input.predicate,
-      endpoints.from,
-      endpoints.to,
-      stableOptions,
-    )
-    const expected = { id, predicate: input.predicate, ...endpoints, createdBy: user.id }
-    const existing = await connector.getItem(id)
-    if (existing) return assertSameIdentity(existing, expected)
-
-    const data = buildRelationData(input.predicate, input.fields, input.confirmationRef)
-    const itemInput: CreateItemInput = {
-      id,
-      type: "relation",
-      createdBy: user.id,
-      "@context": deriveContext("relation", data),
-      data,
-      relations: [
-        { predicate: "from", target: endpoints.from },
-        { predicate: "to", target: endpoints.to },
-      ],
-    }
-    const created = await connector.createItem(itemInput)
-    return assertSameIdentity(created, expected)
-  }
+  const createRelationRecord = (input: RelationRecordInput): Promise<RelationRecord> =>
+    createRelationRecordWith(connector, input, stableOptions)
 
   const updateRelationRecord = async (
     id: string,

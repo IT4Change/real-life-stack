@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react"
-import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon } from "lucide-react"
+import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon, Waves } from "lucide-react"
 import type { Group, ContactInfo } from "@real-life-stack/data-interface"
 import { useMembers } from "../../hooks/use-groups"
 import { resolveAdminView } from "../../lib/group-admin-view"
@@ -30,6 +30,8 @@ const AVAILABLE_MODULES = [
   { id: "kanban", label: "Kanban", icon: Columns3 },
   { id: "calendar", label: "Kalender", icon: Calendar },
   { id: "map", label: "Karte", icon: MapIcon },
+  // Opt-in only (not in DEFAULT_MODULES) — spec: docs/spec/modules/resonance.md.
+  { id: "resonance", label: "Resonanz", icon: Waves },
 ] as const
 
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]

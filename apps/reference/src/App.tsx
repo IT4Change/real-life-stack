@@ -525,7 +525,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     const item = allItems.find(({ id }) => id === targetId)
     const hints = item ? moduleHintsFor(item) : undefined
     if (item && activeWorkspace && !moduleCanDisplay(activeModule ?? "feed", hints, item.type)) {
-      navigate(buildNotificationRoute({ groupId: activeWorkspace.id, subjectId: targetId, moduleHints: hints } as import("@real-life-stack/toolkit").NotificationCandidate, groups))
+      navigate(buildNotificationRoute({ groupId: activeWorkspace.id, subjectId: targetId, subjectType: item.type, moduleHints: hints } as import("@real-life-stack/toolkit").NotificationCandidate, groups))
       return
     }
     focusItem(targetId)

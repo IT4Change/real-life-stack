@@ -195,6 +195,7 @@ RLS-Vokabulare sind als JSON-LD und JSON-Schema unter `https://real-life-stack.o
 - `https://real-life-stack.org/vocab/relation/v1` — eigenständige RelationRecords
 - `https://real-life-stack.org/vocab/project/v1` — Projekt-Felder
 - `https://real-life-stack.org/vocab/resource/v1` — Ressourcen-Felder
+- `https://real-life-stack.org/vocab/statement/v1` — Marker: Aussage zur Gruppen-Stellungnahme (Resonance); keine eigenen Felder, verlangt `base/v1 title`
 
 Jede Vocabulary-URL liefert:
 
@@ -292,9 +293,11 @@ Module aktivieren ein Item primär **feldbasiert** (das benötigte Feld ist in `
   ['…/task/v1']` für Task-Items. `archived` gehört nicht zu den Default-
   Spalten und erscheint daher ohne explizite Konfiguration nicht.
 
-Da `@context`-Konsistenz aktuell nicht erzwingbar ist, **müssen Module den Feldfilter verwenden** und dürfen `hasSchema` nur als zusätzliche Optimierung anbieten.
+Für Vokabulare mit eigenem Feld gilt: Da `@context`-Konsistenz nicht erzwingbar ist, **müssen Module den Feldfilter verwenden** und dürfen `hasSchema` nur als zusätzliche Optimierung anbieten.
 
-> **Status:** `hasSchema` ist in `ItemFilter` als zukünftige Erweiterung dokumentiert, aber **noch nicht in `data-interface` implementiert**. Module verlassen sich derzeit ausschließlich auf `hasField` und clientseitiges Filtern.
+**Marker-Vokabulare** sind die definierte Ausnahme: ein Vokabular, das kein eigenes Feld einführt, sondern eine Intention markiert und dabei nur Basis-Felder verlangt (z.B. `statement/v1` — verlangt `base/v1 title`). Für sie existiert kein äquivalenter Feldfilter, darum ist `hasSchema` ihr **primärer und einziger** Aktivierungsfilter. Voraussetzungen: der Composer MUSS das Vokabular beim Erstellen setzen (`deriveContext`), und das Vokabular MUSS in der Registry mit Schema und Context ausgewiesen sein. Ein Item ohne das Marker-Vokabular erscheint nicht in dessen Modulen — auch wenn sein `type` gleich heißt; `type` aktiviert nie (s.o.).
+
+> **Status:** `hasSchema` ist implementiert: `matchesFilter` in `data-interface` prüft, dass alle gelisteten Vokabulare in `@context` aktiv sind; die lokal filternden Connectoren (Local, Mock, WoT) erben das, der GraphQL-Pfad transportiert Filter und `@context` end-to-end.
 
 ## Modul-Konsequenzen
 
@@ -303,8 +306,9 @@ Da `@context`-Konsistenz aktuell nicht erzwingbar ist, **müssen Module den Feld
 | Map | `hasField: ['position']` | `hasSchema: ['…/place/v1']` | alles räumlich Darstellbare |
 | Calendar | `hasField: ['start']` | `hasSchema: ['…/event/v1']` | alles zeitlich Darstellbares |
 | Kanban | konfiguriertes `hasField: [statusField]` (Default: `['status']`) plus Spaltenwert-Prüfung | bei Default `hasSchema: ['…/task/v1']`; bei anderem Feld keine Task-Vokabular-Annahme | Nicht-Relation-Items mit verwertbarem konfiguriertem Spaltenfeld; `archived` nur bei expliziter Spalte |
-| Feed | kein Filter / `hasSchema: ['…/base/v1']` | alles |
-| Contacts | `hasSchema: ['…/person/v1']` | Personen-Profile |
+| Feed | `hasField: ['content']` ∪ `hasField: ['start']` ∪ `hasSchema: ['…/statement/v1']` | — | Posts, Events und Aussagen |
+| Resonance | `hasSchema: ['…/statement/v1']` (Marker-Vokabular, s.o.) | — | Aussagen zur Gruppen-Stellungnahme |
+| Contacts | `hasSchema: ['…/person/v1']` | — | Personen-Profile |
 
 Ein Item mit mehreren Schemas erscheint in jedem zuständigen Modul gleichzeitig. Jedes Modul rendert nur den Schema-Anteil, den es kennt.
 

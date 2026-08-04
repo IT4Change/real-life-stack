@@ -7,6 +7,7 @@ import { MapView } from "./map-view"
 import { CalendarViewWrapper } from "./calendar-view"
 import { KanbanView } from "./kanban-view"
 import { CollectionView } from "./collection-view"
+import { ResonanceView } from "./resonance-view"
 
 export interface ModuleOutletProps {
   /**
@@ -83,6 +84,10 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
           groupId={activeWorkspace?.id ?? ""}
           selectionFocusVisibleArea={selectionFocusVisibleArea}
         />
+      ) : activeModule === "resonance" ? (
+        <div className={containerClass}>
+          <ResonanceView groupId={activeWorkspace?.id ?? ""} />
+        </div>
       ) : null}
     </>
   )
