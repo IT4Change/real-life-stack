@@ -41,7 +41,7 @@ Die Kern-Dokumente bauen in dieser Reihenfolge aufeinander auf:
 | [03-capabilities.md](03-capabilities.md) | Normativer Entwurf | Optionale Connector-Fähigkeiten, Type Guards und FullConnector-Abgrenzung |
 | [04-items-relations-groups-spaces.md](04-items-relations-groups-spaces.md) | Normativer Entwurf | Items, Relations, Groups/Spaces und Projektionen für RLNP/Game |
 | [05-confirmations-and-trust.md](05-confirmations-and-trust.md) | Normativer Entwurf | Claims, Confirmations, Attestations und Trust-Level |
-| [06-schema-composition.md](06-schema-composition.md) | Normativer Entwurf | Schema-Komposition über `@context`, Standardvokabulare, `type`-Hint |
+| [06-schema-composition.md](06-schema-composition.md) | Normativer Entwurf | Schema-Komposition über `@context`, Standardvokabulare, `type`-Hint, Typ-Register |
 | [07-tags.md](07-tags.md) | Normativer Entwurf | Tags als Kategorisierungs-Achse: einfache Strings + strukturierte URN-Tags |
 | [08-relation-records.md](08-relation-records.md) | Normativer Entwurf | Relationen als eigenständige Items (`type: "relation"`), `RelationStoreCapable`, Trust-Bindung an Confirmations |
 | [09-mirror-bridge.md](09-mirror-bridge.md) | Normativer Entwurf (Implementierung ab Netzwerk-App P2) | Items in mehreren Spaces: Canonical Home, read-only Mirror-Snapshots, Brücken-Clients |
