@@ -106,7 +106,7 @@ Ein Registereintrag hält pro `type`:
 |---|---|
 | `label`, `icon` | Anzeige des Typs (Badge, Composer-Auswahl, User-Filter) |
 | `composerWidgets` | Widget-Set beim Erstellen (heute `ContentTypeConfig.defaultWidgets`) |
-| `peopleRelation` | Prädikat, über das der Typ Personen verknüpft (`task` → `assignedTo`, `event` → `invited`) |
+| `relations` | welche Kanten der Typ eingehen kann: `{ predicate, targetKind, widget? }` je Eintrag (`task` → `assignedTo`/person, `event` → `invited`/person und `takesPlaceAt`/place) |
 | `preview` | knappe Darstellung für Karten und Zeilen (heute `getItemPreviewAdornments`) |
 | `detail` | ausführliche Darstellung für das Detail-Panel |
 | `footer` | typ-eigene Fußzeile zusätzlich zur Fläche (Task → Assignees) |
@@ -125,6 +125,23 @@ Ein Registereintrag hält pro `type`:
 #### Verhältnis zu den Schemas
 
 Register und Vokabulare bleiben getrennt: Schemas (`@context`) definieren die **Feldstruktur**, das Register die **Intention** (`type`) und ihre Folgen für Composer und Darstellung. Ein Registereintrag SOLL benennen, welche Vokabulare der Composer beim Erstellen setzt (`event` → `base/v1` + `event/v1` + optional `place/v1`), damit Template und Schema nicht divergieren.
+
+#### Verhältnis zu Relations
+
+Das `relations`-Feld deklariert, **welche Kanten ein Typ eingehen kann** — nicht, was eine Kante bedeutet. Die Arbeitsteilung:
+
+| Frage | Antwortet | Ort |
+|---|---|---|
+| Welche Relationen kann ein `task` haben? | Typ-Register | dieses Kapitel |
+| Was bedeutet `assignedTo`? Symmetrisch? Sichtbarkeit? | Relation-Typ-Definition | [08-relation-records.md](08-relation-records.md), Regel 3 |
+| Eingebettet oder eigenes Relation-Item? | Forward/Reverse-Regeln | [04-items-relations-groups-spaces.md](04-items-relations-groups-spaces.md) |
+
+Regeln:
+
+1. Ein `relations`-Eintrag besteht aus `predicate`, `targetKind` (worauf die Kante zeigt: `person`, `place`, `item`, …) und optional `widget` (welches Composer-Widget die Kante bedient — `people` für Personen-Kanten; Kanten ohne Widget entstehen anderswo, z.B. per Karten-Pick oder Modul-Interaktion).
+2. Das Typ-Register definiert **keine** Prädikat-Semantik. Gerichtetheit, Symmetrie und Sichtbarkeit eines Prädikats gehören in die Relation-Typ-Definition (08, Regel 3) — heute App-Konfiguration, Ziel ist die versionierte RelationTypeDefinition im Space. Ein Prädikat, das im Typ-Register auftaucht, MUSS dort definiert sein.
+3. Ob eine Kante eingebettet (`item.relations[]`) oder als Relation-Record persistiert wird, entscheiden die Forward/Reverse-Regeln aus 04 — nicht das Typ-Register. Es deklariert die Möglichkeit, nicht den Mechanismus.
+4. Personen-Kanten sind ein Fall unter vielen, kein Sonderfall: `peopleRelation` aus `ContentTypeConfig` geht in einem `relations`-Eintrag mit `targetKind: "person"`, `widget: "people"` auf.
 
 #### Nicht-Ziele des Registers
 
