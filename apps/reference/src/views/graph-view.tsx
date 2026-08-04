@@ -16,7 +16,7 @@ import {
   type RelationRecord,
   type User,
 } from "@real-life-stack/data-interface"
-import { ReactionBar } from "@real-life-stack/toolkit"
+import { ReactionBar, useOpenProfile } from "@real-life-stack/toolkit"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
@@ -174,15 +174,19 @@ export function GraphViewWrapper({ groupId }: { groupId: string }) {
   )
 
   // Selection wires into the shared focus/detail flow: an ITEM node opens the
-  // one detail panel every module shares; person nodes just select visually
-  // (profiles have their own surface).
+  // one detail panel every module shares; a PERSON node opens the profile
+  // overlay (`?profile=`), the same surface every avatar in the app uses.
+  // Spec 04 allows profiles as `type: "profile"` items — once a connector
+  // projects them, person details can flow through the detail host instead.
+  const openProfile = useOpenProfile()
   const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
   const onSelect = useCallback(
     (nodeId: string | null) => {
       if (nodeId && itemById.has(nodeId)) focusItem(nodeId)
-      else if (!nodeId && focusedItemId) clearFocus()
+      else if (nodeId) openProfile(nodeId)
+      else if (focusedItemId) clearFocus()
     },
-    [itemById, focusItem, focusedItemId, clearFocus],
+    [itemById, focusItem, openProfile, focusedItemId, clearFocus],
   )
 
   return (
