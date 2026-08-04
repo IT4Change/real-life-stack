@@ -1,8 +1,8 @@
 "use client"
 
 import type { ComponentType } from "react"
-import { Calendar, CheckSquare, MapPin, MessageSquareQuote, Shapes, User } from "lucide-react"
 import { cn } from "../../lib/utils"
+import { GENERIC_BADGE, resolveTypePresentation } from "./type-presentation"
 
 /**
  * `ItemTypeBadge` — small chip showing what kind of item a card
@@ -34,43 +34,26 @@ export interface ItemTypeBadgeConfig {
   className: string
 }
 
-const DEFAULT_CONFIG: Record<string, ItemTypeBadgeConfig> = {
-  event: {
-    icon: Calendar,
-    label: "Event",
-    className: "bg-blue-50 text-blue-700 border-blue-200",
-  },
-  task: {
-    icon: CheckSquare,
-    label: "Task",
-    className: "bg-amber-50 text-amber-700 border-amber-200",
-  },
-  place: {
-    icon: MapPin,
-    label: "Ort",
-    className: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  },
-  person: {
-    icon: User,
-    label: "Profil",
-    className: "bg-violet-50 text-violet-700 border-violet-200",
-  },
-  statement: {
-    icon: MessageSquareQuote,
-    label: "Aussage",
-    className: "bg-sky-50 text-sky-700 border-sky-200",
-  },
-}
-
 export function ItemTypeBadge({ type, config, fallback = false, className }: ItemTypeBadgeProps) {
-  const merged = config ? { ...DEFAULT_CONFIG, ...config } : DEFAULT_CONFIG
-  const cfg = merged[type] ?? (fallback
-    ? {
-        icon: Shapes,
-        label: type,
-        className: "bg-muted text-muted-foreground border-border",
-      }
-    : undefined)
+  // Label, icon and styling come from the type register (spec 06) — the
+  // previous DEFAULT_CONFIG here was one of the four parallel type lists.
+  // The `config` prop remains as a caller override for special surfaces.
+  //
+  // Rule 5 lives HERE, prop-independent: a type the register does not know
+  // renders the neutral fallback badge on EVERY surface — an unknown type may
+  // never be invisible. Only a REGISTERED type without badge style (plain
+  // posts) deliberately renders nothing; `fallback` forces a badge even then.
+  const resolved = resolveTypePresentation(type)
+  const registryCfg: ItemTypeBadgeConfig | undefined = resolved.badge
+    ? { icon: resolved.badge.icon, label: resolved.label, className: resolved.badge.className }
+    : undefined
+  const genericCfg: ItemTypeBadgeConfig = {
+    icon: GENERIC_BADGE.icon,
+    label: resolved.label,
+    className: GENERIC_BADGE.className,
+  }
+  const cfg =
+    config?.[type] ?? registryCfg ?? (resolved.generic || fallback ? genericCfg : undefined)
   if (!cfg) return null
   const Icon = cfg.icon
   return (

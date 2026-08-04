@@ -24,3 +24,16 @@ export {
   type ItemPreviewAdornments,
   type ItemTypeMetaProps,
 } from "./item-type-meta"
+export {
+  registerTypePresentation,
+  resolveTypePresentation,
+  renderTypeFooter,
+  setTypeManifest,
+  GENERIC_BADGE,
+  type ItemSlotProps,
+  type TypeBadgeStyle,
+  type TypePresentationEntry,
+  type TypePresentationFragment,
+  type TypePresentationLayer,
+  type ResolvedTypePresentation,
+} from "./type-presentation"

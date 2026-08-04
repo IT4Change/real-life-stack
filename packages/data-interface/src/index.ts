@@ -18,6 +18,7 @@ export {
 export * from "./item-types.js"
 export * from "./votes.js"
 export * from "./vocab.js"
+export * from "./type-manifest.js"
 export { EMPTY_NOTIFICATION_STATE, cloneNotificationState, applyNotificationStatePatch, maxTs, pruneReadEntryKeys } from "./notification-state.js"
 
 // --- Core Types ---

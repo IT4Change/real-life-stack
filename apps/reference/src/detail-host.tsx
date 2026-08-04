@@ -7,15 +7,13 @@ import {
   type ReactNode,
 } from "react"
 import {
-  getItemPreviewAdornments,
-  ItemAssignees,
   ItemDetailView,
-  ItemMetaRow,
+  renderTypeFooter,
+  resolveTypePresentation,
   ItemPreview,
   ItemScopeBadge,
   ItemTypeBadge,
   ReactionBar,
-  VoteBar,
   useCurrentUser,
   useMembers,
   useModulePanel,
@@ -24,7 +22,7 @@ import {
   type ItemEditorMapper,
   type WidgetData,
 } from "@real-life-stack/toolkit"
-import { isStatement, isTask, type Item, type User } from "@real-life-stack/data-interface"
+import type { Item, User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "./hooks/use-item-focus"
 
 /** Modules whose detail (read↔edit) is owned by the host. */
@@ -206,19 +204,9 @@ export function ItemDetailRead({
 
   const author = resolveUser(item.createdBy)
 
-  // Type-driven body. The same resolver the list and grid lenses already use,
-  // so a person/project/resource reads the same in the panel as in a lens.
-  const { metaAdornment } = getItemPreviewAdornments(item)
-
-  // Assignees are a property of the TYPE, so they belong here and not in
-  // whichever module happens to show tasks. They come IN ADDITION to reactions:
-  // an item is reactable regardless of its type.
-  const assignees = isTask(item)
-    ? (item.relations ?? [])
-        .filter((relation) => relation.predicate === "assignedTo")
-        .map((relation) => resolveUser(relation.target.replace(/^global:/, "")))
-        .filter((user): user is User => !!user)
-    : []
+  // Type-driven body and footer, both from the type register (spec 06) — the
+  // same resolution path the list and grid lenses use.
+  const presentation = resolveTypePresentation(item.type)
 
   return (
     <ItemPreview
@@ -231,15 +219,15 @@ export function ItemDetailRead({
         </>
       }
       actions={actions}
-      metaAdornment={metaAdornment ?? <ItemMetaRow item={item} />}
+      metaAdornment={<presentation.detail item={item} />}
       footerAdornment={
-        // Full-width column: the vote bar needs the whole row for its
-        // distribution bar, reactions flow below it.
+        // Full-width column: a type footer (vote bar) may need the whole row
+        // for its distribution bar; reactions flow below it.
         <div className="flex w-full flex-col gap-2">
-          {assignees.length > 0 && <ItemAssignees users={assignees} />}
-          {/* Votes are a TYPE rule like assignees: a statement shows its vote
-              bar no matter which module opened the detail (resonance.md). */}
-          {isStatement(item) && <VoteBar statementId={item.id} className="w-full" />}
+          {/* Type-own footer (task -> assignees, statement -> votes) from the
+              register (spec 06, rule 3) - no type branching here. Reactions
+              are surface convention and never type-bound. */}
+          {renderTypeFooter(item)}
           <ReactionBar itemId={item.id} />
         </div>
       }
