@@ -137,7 +137,9 @@ export class InboxReceptionHost {
           "duplicate-known",
         )
       } else {
-        console.warn("[wot-connector] rejected inbox/1.0 message:", result.reason)
+        // `detail` trägt den konkreten Inner-JWS-Fehler (z.B. "created_time
+        // too old") — ohne ihn ist der Sammelgrund im Feld nicht diagnostizierbar.
+        console.warn("[wot-connector] rejected inbox/1.0 message:", result.reason, result.detail ?? "")
       }
       return
     }
