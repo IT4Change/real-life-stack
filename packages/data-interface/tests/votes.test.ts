@@ -63,6 +63,20 @@ describe("votesFromRelationRecords", () => {
     expect(forward[0]?.recordId).toBe("rel-aaaa")
   })
 
+  it("breaks a tie between SAME-ID records (cross-space legacy copies) deterministically by value", () => {
+    // Spec 08: relation ids are space-local — the same canonical id may exist
+    // as two edges in two spaces (e.g. a pre-fix legacy vote in the private
+    // space). With identical ids the id-tiebreak cannot decide; the value
+    // comparison must, so aggregation stays order-independent.
+    const inTargetSpace = record({ id: "rel-aaaa", fields: { value: "red" } })
+    const legacyCopy = record({ id: "rel-aaaa", fields: { value: "green" } })
+    const forward = votesFromRelationRecords([inTargetSpace, legacyCopy])
+    const reverse = votesFromRelationRecords([legacyCopy, inTargetSpace])
+    expect(forward).toEqual(reverse)
+    expect(forward).toHaveLength(1)
+    expect(forward[0]?.value).toBe("green")
+  })
+
   it("keeps distinct voters and distinct statements apart", () => {
     const votes = votesFromRelationRecords([
       record(),

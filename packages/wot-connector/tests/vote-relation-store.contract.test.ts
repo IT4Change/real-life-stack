@@ -126,6 +126,51 @@ describe("WotConnector — vote relation store contract", () => {
     expect(privateSpace.value.items[record.id]).toBeUndefined()
   })
 
+  it("space-local uniqueness (spec 08): a same-id record in ANOTHER space does not block the create in the target space", async () => {
+    // Relation ids are space-local — the same tuple in two spaces is two
+    // edges, and cross-space indexes key by (spaceId, id). A legacy copy in
+    // the private space (pre-fix overview votes) must neither block the
+    // correctly-scoped create nor be touched by it; ambiguity is handled
+    // fail-closed by CrossGroupIndex.getUniqueById (tested in
+    // cross-group-index.test.ts).
+    const privateSpace = handle()
+    const statementSpace = handle()
+    statementSpace.value.items["s1"] = {
+      id: "s1",
+      type: "statement",
+      createdBy: BOB,
+      createdAt: "2026-08-04T09:00:00.000Z",
+      data: { title: "Zweiter Brunnen" },
+    }
+    const canonicalId = await deriveRelationRecordId(ALICE, VOTE_PREDICATE, `global:${ALICE}`, "item:s1")
+    privateSpace.value.items[canonicalId] = {
+      id: canonicalId,
+      type: "relation",
+      createdBy: ALICE,
+      createdAt: "2026-08-01T09:00:00.000Z",
+      data: { predicate: VOTE_PREDICATE, value: "green" },
+      relations: [
+        { predicate: "from", target: `global:${ALICE}` },
+        { predicate: "to", target: "item:s1" },
+      ],
+    }
+    const { connector: c } = connector(privateSpace)
+    const anyC = c as any
+    anyC.currentGroupId = null
+    anyC.crossGroupIndex = {
+      getItemGroupId: (id: string) => (id === "s1" ? "space-b" : null),
+      reindexGroup: vi.fn(),
+    }
+    anyC.replication = { openSpace: vi.fn(async () => statementSpace) }
+
+    const record = await c.createRelationRecord(voteRecordInput(ALICE, "s1", "red"))
+
+    expect(record.id).toBe(canonicalId)
+    expect(statementSpace.value.items[canonicalId]).toMatchObject({ type: "relation", createdBy: ALICE })
+    // The legacy edge in the other space is left untouched.
+    expect((privateSpace.value.items[canonicalId] as { data: { value: string } }).data.value).toBe("green")
+  })
+
   it("refuses to update or delete another author's record", async () => {
     const { connector: c, handle: h } = connector()
     const bobsId = await deriveRelationRecordId(BOB, VOTE_PREDICATE, `global:${BOB}`, "item:s1")
