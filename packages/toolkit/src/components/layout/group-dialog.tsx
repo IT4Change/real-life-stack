@@ -53,6 +53,49 @@ export function moveModule(modules: readonly string[], id: string, direction: -1
 
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
 
+/**
+ * Serialize saves so a slow older request can never overwrite a newer state:
+ * at most one save runs at a time; states arriving meanwhile collapse to the
+ * LATEST one, sent exactly once after the running save settles. A failure
+ * retries with the newer queued state if there is one; only a failure with
+ * nothing newer surfaces via `onError` (with the value that was lost).
+ */
+export function createLatestWinsSaver<T>(
+  save: (value: T) => Promise<void>,
+  onError: (error: unknown, failedValue: T) => void,
+): (value: T) => void {
+  let inFlight = false
+  let queued: { value: T } | null = null
+  const run = (value: T) => {
+    inFlight = true
+    save(value).then(
+      () => {
+        inFlight = false
+        if (queued) {
+          const next = queued.value
+          queued = null
+          run(next)
+        }
+      },
+      (error) => {
+        inFlight = false
+        if (queued) {
+          // Something newer is waiting — the failed state is obsolete anyway.
+          const next = queued.value
+          queued = null
+          run(next)
+        } else {
+          onError(error, value)
+        }
+      },
+    )
+  }
+  return (value: T) => {
+    if (inFlight) queued = { value }
+    else run(value)
+  }
+}
+
 /** Human-readable fallback for raw IDs (e.g. DIDs) */
 function shortName(id: string): string {
   return `User-${id.slice(-6)}`
@@ -117,6 +160,44 @@ export function GroupDialog({
   const [activeModules, setActiveModules] = useState<string[]>(() =>
     isEdit ? (mode.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES : DEFAULT_MODULES
   )
+
+  // Persisting the module list: rapid ↑/↓ clicks fire faster than a save
+  // round-trips, and two in-flight saves can settle out of order — the older
+  // one would then win in the store. The saver serializes to one in-flight
+  // save with latest-wins; it lives in a ref (stable for the dialog's
+  // lifetime) and reads mode/onUpdateGroup through refs so a completed save
+  // spreads the LIVE group data, not the render it was created in.
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const onUpdateGroupRef = useRef(onUpdateGroup)
+  onUpdateGroupRef.current = onUpdateGroup
+  const saveModulesRef = useRef<((modules: string[]) => void) | null>(null)
+  if (!saveModulesRef.current) {
+    saveModulesRef.current = createLatestWinsSaver<string[]>(
+      (modules) => {
+        const current = modeRef.current
+        if (current.type !== "edit") return Promise.resolve()
+        return onUpdateGroupRef.current(current.group.id, {
+          data: { ...current.group.data, modules },
+        })
+      },
+      (err, failed) => {
+        // Roll the UI back to the last persisted order — a silently divergent
+        // list would suggest the reorder stuck when it didn't.
+        const current = modeRef.current
+        setActiveModules(
+          current.type === "edit"
+            ? ((current.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES)
+            : failed,
+        )
+        setError(err instanceof Error ? err.message : "Module konnten nicht gespeichert werden")
+      },
+    )
+  }
+  const applyModules = useCallback((next: string[]) => {
+    setActiveModules(next)
+    saveModulesRef.current?.(next)
+  }, [])
 
   // Invite state
   const [invitingId, setInvitingId] = useState<string | null>(null)
@@ -464,12 +545,6 @@ export function GroupDialog({
                   if (!mod) return null
                   const Icon = mod.icon
                   const isOnly = activeModules.length === 1
-                  const apply = (next: string[]) => {
-                    setActiveModules(next)
-                    if (mode.type === "edit") {
-                      void onUpdateGroup(mode.group.id, { data: { ...mode.group.data, modules: next } })
-                    }
-                  }
                   return (
                     <div key={id} className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted/50">
                       <span className="w-4 text-right text-xs tabular-nums text-muted-foreground">{index + 1}</span>
@@ -479,7 +554,7 @@ export function GroupDialog({
                         type="button"
                         aria-label={`${mod.label} nach oben`}
                         disabled={index === 0}
-                        onClick={() => apply(moveModule(activeModules, id, -1))}
+                        onClick={() => applyModules(moveModule(activeModules, id, -1))}
                         className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
                       >
                         <ChevronUp className="h-3.5 w-3.5" />
@@ -488,7 +563,7 @@ export function GroupDialog({
                         type="button"
                         aria-label={`${mod.label} nach unten`}
                         disabled={index === activeModules.length - 1}
-                        onClick={() => apply(moveModule(activeModules, id, 1))}
+                        onClick={() => applyModules(moveModule(activeModules, id, 1))}
                         className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
                       >
                         <ChevronDown className="h-3.5 w-3.5" />
@@ -497,7 +572,7 @@ export function GroupDialog({
                         type="button"
                         aria-label={`${mod.label} deaktivieren`}
                         disabled={isOnly}
-                        onClick={() => apply(activeModules.filter((m) => m !== id))}
+                        onClick={() => applyModules(activeModules.filter((m) => m !== id))}
                         className="rounded p-1 text-muted-foreground hover:text-destructive disabled:opacity-30"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -516,13 +591,7 @@ export function GroupDialog({
                         <button
                           key={mod.id}
                           type="button"
-                          onClick={() => {
-                            const next = [...activeModules, mod.id]
-                            setActiveModules(next)
-                            if (mode.type === "edit") {
-                              void onUpdateGroup(mode.group.id, { data: { ...mode.group.data, modules: next } })
-                            }
-                          }}
+                          onClick={() => applyModules([...activeModules, mod.id])}
                           className="flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs text-muted-foreground hover:border-primary hover:text-foreground"
                         >
                           <Icon className="h-3 w-3" />

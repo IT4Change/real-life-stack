@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
-import { moveModule } from "../src/components/layout/group-dialog"
+import { createLatestWinsSaver, moveModule } from "../src/components/layout/group-dialog"
 
 /**
  * `data.modules` is an ORDERED array and the nav renders it verbatim —
@@ -27,5 +27,83 @@ describe("moveModule", () => {
     const input = ["a", "b"]
     moveModule(input, "a", 1)
     expect(input).toEqual(["a", "b"])
+  })
+})
+
+/** A save whose settlement the test controls explicitly. */
+function controlledSave() {
+  const calls: Array<{ value: string[]; resolve: () => void; reject: (e: Error) => void }> = []
+  const save = (value: string[]) =>
+    new Promise<void>((resolve, reject) => {
+      calls.push({ value, resolve, reject })
+    })
+  return { calls, save }
+}
+
+const flush = () => new Promise<void>((r) => setTimeout(r, 0))
+
+describe("createLatestWinsSaver", () => {
+  it("runs at most one save and collapses bursts to the latest state", async () => {
+    const { calls, save } = controlledSave()
+    const onError = vi.fn()
+    const push = createLatestWinsSaver(save, onError)
+
+    push(["a"])
+    push(["a", "b"])
+    push(["b", "a"]) // three rapid clicks while the first save hangs
+    expect(calls).toHaveLength(1)
+
+    calls[0].resolve()
+    await flush()
+    // Intermediate state ["a","b"] is never sent — only the latest.
+    expect(calls.map((c) => c.value)).toEqual([["a"], ["b", "a"]])
+
+    calls[1].resolve()
+    await flush()
+    expect(calls).toHaveLength(2)
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it("a slow older save cannot finish after (and thus overwrite) a newer one", async () => {
+    const { calls, save } = controlledSave()
+    const push = createLatestWinsSaver(save, vi.fn())
+
+    push(["old"])
+    push(["new"])
+    // The newer state is not even dispatched until the older save settles —
+    // out-of-order completion is impossible by construction.
+    expect(calls).toHaveLength(1)
+    calls[0].resolve()
+    await flush()
+    expect(calls[1].value).toEqual(["new"])
+  })
+
+  it("surfaces a failure only when nothing newer is pending", async () => {
+    const { calls, save } = controlledSave()
+    const onError = vi.fn()
+    const push = createLatestWinsSaver(save, onError)
+
+    push(["a"])
+    calls[0].reject(new Error("offline"))
+    await flush()
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0][1]).toEqual(["a"])
+  })
+
+  it("retries with the newer queued state instead of reporting an obsolete failure", async () => {
+    const { calls, save } = controlledSave()
+    const onError = vi.fn()
+    const push = createLatestWinsSaver(save, onError)
+
+    push(["a"])
+    push(["b"])
+    calls[0].reject(new Error("flaky"))
+    await flush()
+    expect(calls[1].value).toEqual(["b"])
+    expect(onError).not.toHaveBeenCalled()
+
+    calls[1].resolve()
+    await flush()
+    expect(onError).not.toHaveBeenCalled()
   })
 })
