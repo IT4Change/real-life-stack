@@ -16,7 +16,10 @@ import {
   type RelationRecord,
   type User,
 } from "@real-life-stack/data-interface"
+import { ReactionBar } from "@real-life-stack/toolkit"
 import { useItemFocus } from "../hooks/use-item-focus"
+import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
+import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { useModulePanel } from "@real-life-stack/toolkit"
 
 /**
@@ -148,6 +151,20 @@ export function GraphViewWrapper({ groupId }: { groupId: string }) {
   const { focusItem, itemId: focusedItemId, clearFocus } = useItemFocus()
   const modulePanel = useModulePanel()
   const graphRef = useRef<GraphViewHandle>(null)
+
+  // The detail host only opens the shared panel when the ACTIVE module has
+  // registered a config — without this, a node click sets the URL focus and
+  // nothing visible happens.
+  const editConfig = useItemDetailEdit(members)
+  const detailConfig = useMemo<DetailConfig>(
+    () => ({
+      ...editConfig,
+      renderCommentReactions: (id) => <ReactionBar itemId={id} />,
+      onShare: () => void navigator.clipboard?.writeText(window.location.href),
+    }),
+    [editConfig],
+  )
+  useRegisterDetail("graph", detailConfig)
 
   const resolveLabel = useCallback((typeId: string) => resolveTypePresentation(typeId).label, [])
 
