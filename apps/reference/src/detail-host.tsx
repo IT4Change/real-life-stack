@@ -26,7 +26,7 @@ import type { Item, User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "./hooks/use-item-focus"
 
 /** Modules whose detail (read↔edit) is owned by the host. */
-const HOST_MODULES = ["feed", "calendar", "map", "kanban", "collection", "resonance"]
+const HOST_MODULES = ["feed", "calendar", "map", "kanban", "collection", "resonance", "graph"]
 
 /**
  * Per-item detail config a module registers with the host. Mirrors the old
