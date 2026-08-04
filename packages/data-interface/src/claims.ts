@@ -43,9 +43,22 @@ export type ClaimVerdict = "valid" | "invalid" | "trusted"
 
 /** JCS (RFC 8785) for I-JSON values: recursive key sort; JSON.stringify's
     IEEE-754 number serialisation matches JCS for JS numbers. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+
+function assertWellFormedString(value: string): void {
+  // RFC 8785 requires aborting on lone surrogates: TextEncoder would replace
+  // them with U+FFFD, so two implementations could sign DIFFERENT bytes for
+  // the "same" string.
+  if (LONE_SURROGATE.test(value)) throw new Error("JCS: lone UTF-16 surrogate is not well-formed")
+}
+
 export function jcsCanonicalize(value: unknown): string {
   if (value === null) return "null"
   const kind = typeof value
+  if (kind === "string") {
+    assertWellFormedString(value as string)
+    return JSON.stringify(value)
+  }
   if (kind === "number") {
     // I-JSON (RFC 7493): only finite numbers exist. JSON.stringify would
     // silently coerce NaN/Infinity to null — a claim over a DIFFERENT value
@@ -53,7 +66,7 @@ export function jcsCanonicalize(value: unknown): string {
     if (!Number.isFinite(value)) throw new Error("JCS: non-finite number is not I-JSON")
     return JSON.stringify(value)
   }
-  if (kind === "string" || kind === "boolean") return JSON.stringify(value)
+  if (kind === "boolean") return JSON.stringify(value)
   if (kind === "undefined" || kind === "function" || kind === "symbol" || kind === "bigint") {
     throw new Error(`JCS: ${kind} is not I-JSON`)
   }
@@ -62,6 +75,7 @@ export function jcsCanonicalize(value: unknown): string {
   const keys = Object.keys(record).sort()
   const members: string[] = []
   for (const key of keys) {
+    assertWellFormedString(key)
     const member = record[key]
     // Ambiguity guard: JSON.stringify would DROP undefined members, so two
     // different objects would canonicalise identically. Refuse.

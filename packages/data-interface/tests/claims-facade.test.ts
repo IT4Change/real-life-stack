@@ -161,6 +161,44 @@ describe("relation-store facade — SignedClaims write rules", () => {
     await expect(store.updateRelationRecord(legacy.id, { fields: { note: "x" } })).rejects.toThrow(/catalog|Katalog/i)
   })
 
+  it("REJECTS instead of persisting when the signer cannot produce a verifiable claim (non-did:key kid)", async () => {
+    // A contract-shaped signer whose identity the verifier cannot resolve:
+    // success would return a record whose claim is immediately invalid.
+    const { connector, items } = memoryConnector("user:alice")
+    const store = createDefaultRelationStore(connector, {
+      claimSigner: { kid: "user:alice#sig-0", signEd25519: async () => new Uint8Array(64) },
+    })
+    await expect(
+      store.createRelationRecord({ predicate: "votesOn", from: "global:user:alice", to: "item:s1" }),
+    ).rejects.toThrow(/verif/i)
+    // No half-claimed record may remain claimed-looking: the claim write is gated.
+    for (const item of items.values()) expect(item.data.claim).toBeUndefined()
+  })
+
+  it("REJECTS when a did:key signer returns wrong signature bytes", async () => {
+    const { did } = await testSigner()
+    const { connector } = memoryConnector(did)
+    const store = createDefaultRelationStore(connector, {
+      claimSigner: { kid: `${did}#sig-0`, signEd25519: async () => new Uint8Array(64) },
+    })
+    await expect(
+      store.createRelationRecord({ predicate: "votesOn", from: `global:${did}`, to: "item:s1" }),
+    ).rejects.toThrow(/verif/i)
+  })
+
+  it("repair with a broken signer FAILS LOUDLY instead of silently re-writing invalid claims", async () => {
+    const { did } = await testSigner()
+    const { connector } = memoryConnector(did)
+    const plain = createDefaultRelationStore(connector)
+    await plain.createRelationRecord({ predicate: "votesOn", from: `global:${did}`, to: "item:s1" })
+    const broken = createDefaultRelationStore(connector, {
+      claimSigner: { kid: `${did}#sig-0`, signEd25519: async () => new Uint8Array(64) },
+    })
+    await expect(
+      broken.createRelationRecord({ predicate: "votesOn", from: `global:${did}`, to: "item:s1" }),
+    ).rejects.toThrow(/verif/i)
+  })
+
   it("without a signer, behaviour is unchanged — no claim, no refusal", async () => {
     const { did } = await testSigner()
     const { connector } = memoryConnector(did)

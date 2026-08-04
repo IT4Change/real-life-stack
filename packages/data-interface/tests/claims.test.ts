@@ -220,6 +220,17 @@ describe("SignedClaims — reviewer counterproofs (#230 round 1)", () => {
   })
 })
 
+describe("SignedClaims — I-JSON well-formedness (#230 round 2)", () => {
+  it("rejects lone surrogates in string values and keys (RFC 8785)", () => {
+    expect(() => jcsCanonicalize("\uD800")).toThrow(/surrogate/i)
+    expect(() => jcsCanonicalize("ok\uDC00")).toThrow(/surrogate/i)
+    expect(() => jcsCanonicalize({ "\uD800key": 1 })).toThrow(/surrogate/i)
+    expect(() => jcsCanonicalize({ nested: ["fine", "\uDBFF"] })).toThrow(/surrogate/i)
+    // Well-formed pairs stay fine.
+    expect(jcsCanonicalize("😀")).toBe(JSON.stringify("😀"))
+  })
+})
+
 describe("SignedClaims — authorial catalog (closed, v0.1)", () => {
   it("contains exactly the spec catalog", () => {
     expect([...AUTHORIAL_PREDICATES].sort()).toEqual(["connectedWith", "knows", "takesPlaceAt", "votesOn"])

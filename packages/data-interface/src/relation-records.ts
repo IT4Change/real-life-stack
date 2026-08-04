@@ -363,6 +363,13 @@ async function claimAndPersist(
     throw new Error("Signed relation store requires updateItem on the create connector")
   }
   const claim = await signRelationClaim(record, signer)
+  // Gate BEFORE persisting: a signer whose identity the verifier cannot
+  // resolve (non-did:key) or that returns wrong bytes must yield a loud
+  // reject — never a "successful" record whose claim is instantly invalid
+  // (spec 08 Schreibregel 2: repair MUST end in a VALID claim).
+  if ((await verifyRelationClaim({ ...record, claim })) !== "valid") {
+    throw new Error(`Claim signer produced a claim that fails verification for record ${record.id}`)
+  }
   const data = {
     ...buildRelationData(record.predicate, record.fields, record.confirmationRef),
     claim,
@@ -370,6 +377,10 @@ async function claimAndPersist(
   const updated = await connector.updateItem(record.id, { data })
   const projected = relationRecordFromItem(updated)
   if (!projected) throw new Error(`Claiming corrupted relation record ${record.id}`)
+  // The connector's write path must not have mutated the claimed state.
+  if ((await verifyRelationClaim(projected)) !== "valid") {
+    throw new Error(`Persisted relation record ${record.id} does not verify against its claim`)
+  }
   return projected
 }
 
