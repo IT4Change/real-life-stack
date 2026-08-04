@@ -36,11 +36,10 @@ export function CollectionView({
   const editConfig = useItemDetailEdit(members)
 
   const detailConfig = useMemo<DetailConfig>(() => ({
-    groupId,
     ...editConfig,
     renderCommentReactions: (id) => <ReactionBar itemId={id} />,
     onShare: () => void navigator.clipboard?.writeText(window.location.href),
-  }), [currentUser, editConfig, groupId, members, resolveGroupColor])
+  }), [currentUser, editConfig, members, resolveGroupColor])
   useRegisterDetail("collection", detailConfig)
 
   // The collection shows every item, so create offers the full type registry —

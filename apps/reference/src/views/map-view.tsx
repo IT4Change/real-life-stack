@@ -49,9 +49,8 @@ export function MapView({ groupId, active = true }: { groupId: string; active?: 
   }), [editConfig.composerProps, groupId, groups, isOverview, personalGroupId])
   useRegisterCreate("map", createConfig)
   const detailConfig = useMemo<DetailConfig>(() => ({
-    groupId,
     ...editConfig, renderCommentReactions: (id) => <ReactionBar itemId={id} />, onShare: () => void navigator.clipboard?.writeText(window.location.href), backdrop: false,
-  }), [currentUser, editConfig, groupId, isOverview, members])
+  }), [currentUser, editConfig, isOverview, members])
   useRegisterDetail("map", detailConfig)
   const createAdapter = useCallback(() => new MapLibreMapAdapter(), [])
   const onCreate = useCallback(() => startCreate("place"), [startCreate])

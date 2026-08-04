@@ -98,14 +98,13 @@ export function CalendarViewWrapper({ groupId }: { groupId: string }) {
   // the date, and a multi-day event read as a bare "Ganztägig".
   const detailConfig = useMemo<DetailConfig>(
     () => ({
-      groupId,
       ...editConfig,
       renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
       onShare: () => {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, editConfig, groupId, isOverview],
+    [resolveAuthor, editConfig, isOverview],
   )
   useRegisterDetail("calendar", detailConfig)
 

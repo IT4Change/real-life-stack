@@ -201,7 +201,6 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
   // type-driven config + the board's tag suggestions.
   const detailConfig = useMemo<DetailConfig>(
     () => ({
-      groupId: activeWorkspaceId,
       ...editConfig,
       composerProps: {
         ...editConfig.composerProps,
@@ -213,7 +212,7 @@ function KanbanViewInner({ activeWorkspaceId, groups }: KanbanViewProps) {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, members, activeWorkspaceId, isAggregate, editConfig, availableTags],
+    [resolveAuthor, members, isAggregate, editConfig, availableTags],
   )
   useRegisterDetail("kanban", detailConfig)
 

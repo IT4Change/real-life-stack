@@ -6,6 +6,7 @@ import { MockConnector } from "@real-life-stack/mock-connector"
 import { ConnectorProvider } from "@real-life-stack/toolkit"
 
 import { ItemDetailRead } from "./detail-host"
+import { feedFooter } from "./views/feed-view"
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -142,5 +143,28 @@ describe("shared detail read view", () => {
 
   it("carries the item's type badge", async () => {
     expect(await textOf(connector, task(), SPACE_A)).toContain("Task")
+  })
+})
+
+describe("feed card footer", () => {
+  it("offers reactions on a task too", async () => {
+    // Same rule as in the detail panel: reactions do not depend on the type.
+    // The feed card excluded tasks until that was corrected.
+    const { connector } = await connectorWith({})
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(
+        createElement(ConnectorProvider, {
+          connector: connector as never,
+          children: feedFooter(task() as never, () => {}),
+        }),
+      )
+    })
+    await act(async () => { await Promise.resolve() })
+    expect(container.querySelectorAll('[aria-label="Add reaction"]').length).toBe(1)
+    await act(async () => { root.unmount() })
+    container.remove()
   })
 })

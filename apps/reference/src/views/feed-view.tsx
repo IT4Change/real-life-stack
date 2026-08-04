@@ -131,14 +131,13 @@ export function FeedView({ groupId }: { groupId: string }) {
   // when author resolution changes.
   const detailConfig = useMemo<DetailConfig>(
     () => ({
-      groupId,
       ...editConfig,
       renderCommentReactions: (commentId) => <ReactionBar itemId={commentId} />,
       onShare: () => {
         void navigator.clipboard?.writeText(window.location.href)
       },
     }),
-    [resolveAuthor, editConfig, groupId, isOverview],
+    [resolveAuthor, editConfig, isOverview],
   )
   useRegisterDetail("feed", detailConfig)
 
@@ -193,24 +192,7 @@ export function FeedView({ groupId }: { groupId: string }) {
   )
   useRegisterCreate("feed", createConfig)
 
-  // Feed footer convention: a ReactionBar on the left and a comment
-  // count on the right. Reactions are NOT type-dependent — tasks were excluded
-  // here until Anton corrected that: reactable is a property of the surface and
-  // the connector's capability, not of the item's type.
-  const renderFeedFooter = useCallback((item: Item, onCommentClick: () => void) => {
-    const commentCount = (item.data as Record<string, unknown>).commentCount
-    const count = typeof commentCount === "number" ? commentCount : 0
-    return (
-      <>
-        <ReactionBar itemId={item.id} />
-        {count > 0 && (
-          <div className="ml-auto">
-            <ItemCommentCount count={count} onClick={onCommentClick} />
-          </div>
-        )}
-      </>
-    )
-  }, [])
+  const renderFeedFooter = useCallback(feedFooter, [])
 
   return (
     <div className="space-y-4">
@@ -291,5 +273,30 @@ export function FeedView({ groupId }: { groupId: string }) {
       </div>
 
     </div>
+  )
+}
+
+/**
+ * Feed card footer: a ReactionBar on the left, the comment count on the right.
+ *
+ * Reactions are NOT type-dependent. Tasks were excluded here ("Tasks
+ * intentionally don't get reactions in the feed view today"); Anton corrected
+ * that — an item is reactable regardless of its type.
+ *
+ * Exported as a plain function so the rule is testable without mounting the
+ * whole feed.
+ */
+export function feedFooter(item: Item, onCommentClick: () => void) {
+  const commentCount = (item.data as Record<string, unknown>).commentCount
+  const count = typeof commentCount === "number" ? commentCount : 0
+  return (
+    <>
+      <ReactionBar itemId={item.id} />
+      {count > 0 && (
+        <div className="ml-auto">
+          <ItemCommentCount count={count} onClick={onCommentClick} />
+        </div>
+      )}
+    </>
   )
 }

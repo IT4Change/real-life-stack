@@ -35,13 +35,6 @@ const HOST_MODULES = ["feed", "calendar", "map", "kanban", "collection"]
  * panel and the read↔edit lifecycle now.
  */
 export interface DetailConfig {
-  /**
-   * Space the module is showing, or `"__overview__"` for the cross-space
-   * aggregate, or `null` when no space is active. The ONLY thing a module
-   * contributes to the read view — the body itself is derived from the item,
-   * see {@link ItemDetailRead}.
-   */
-  groupId: string | null
   /** Composer types for editing (full list; the view locks to the item's type). */
   contentTypes: ContentTypeConfig[]
   /** Edit-aware submission mapper. */
@@ -71,13 +64,17 @@ export interface DetailConfig {
 interface ConfigStore {
   setConfig: (module: string, config: DetailConfig | null) => void
   setActiveModule: (module: string) => void
+  /** The space the shell is showing. Read by the host, never by a module. */
+  setActiveGroupId: (groupId: string | null) => void
   getActiveConfig: () => DetailConfig | null
+  getActiveGroupId: () => string | null
   subscribe: (listener: () => void) => () => void
 }
 
 function createConfigStore(): ConfigStore {
   const configs = new Map<string, DetailConfig>()
   let activeModule = ""
+  let activeGroupId: string | null = null
   const listeners = new Set<() => void>()
   const notify = () => {
     for (const l of listeners) l()
@@ -99,8 +96,16 @@ function createConfigStore(): ConfigStore {
       activeModule = module
       notify()
     },
+    setActiveGroupId(groupId) {
+      if (groupId === activeGroupId) return
+      activeGroupId = groupId
+      notify()
+    },
     getActiveConfig() {
       return configs.get(activeModule) ?? null
+    },
+    getActiveGroupId() {
+      return activeGroupId
     },
     subscribe(listener) {
       listeners.add(listener)
@@ -120,6 +125,11 @@ function useConfigStore(): ConfigStore {
 function useActiveDetailConfig(): DetailConfig | null {
   const store = useConfigStore()
   return useSyncExternalStore(store.subscribe, store.getActiveConfig, store.getActiveConfig)
+}
+
+function useActiveGroupId(): string | null {
+  const store = useConfigStore()
+  return useSyncExternalStore(store.subscribe, store.getActiveGroupId, store.getActiveGroupId)
 }
 
 /**
@@ -234,6 +244,7 @@ export function ItemDetailRead({
 function DetailHostOutlet() {
   const { itemId: focusedId, isEditing, clearFocus, editItem, stopEditing } = useItemFocus()
   const config = useActiveDetailConfig()
+  const groupId = useActiveGroupId()
   if (!focusedId || !config) return null
   return (
     <ItemDetailView
@@ -243,7 +254,7 @@ function DetailHostOutlet() {
       mode={isEditing ? "edit" : "read"}
       onModeChange={(next) => (next === "edit" ? editItem() : stopEditing())}
       renderRead={(item, actions) => (
-        <ItemDetailRead item={item} actions={actions} groupId={config.groupId} />
+        <ItemDetailRead item={item} actions={actions} groupId={groupId} />
       )}
       contentTypes={config.contentTypes}
       mapper={config.mapper}
@@ -263,7 +274,14 @@ function DetailHostOutlet() {
  * (not a host module) keeps its own panel; `panelOwnedRef` keeps the two from
  * closing each other's content.
  */
-export function DetailHostController({ activeModule }: { activeModule: string }) {
+export function DetailHostController({
+  activeModule,
+  activeGroupId,
+}: {
+  activeModule: string
+  /** Comes from the shell, not from a module — see {@link ItemDetailRead}. */
+  activeGroupId: string | null
+}) {
   const modulePanel = useModulePanel()
   const { itemId: focusedId, clearFocus } = useItemFocus()
   const store = useConfigStore()
@@ -277,6 +295,10 @@ export function DetailHostController({ activeModule }: { activeModule: string })
   useEffect(() => {
     store.setActiveModule(activeModule)
   }, [store, activeModule])
+
+  useEffect(() => {
+    store.setActiveGroupId(activeGroupId)
+  }, [store, activeGroupId])
 
   useEffect(() => {
     if (hostOwns && focusedId) {
