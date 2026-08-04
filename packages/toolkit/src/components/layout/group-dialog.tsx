@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react"
-import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon, Waves } from "lucide-react"
+import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon, Waves, List, Share2, ChevronUp, ChevronDown } from "lucide-react"
 import type { Group, ContactInfo } from "@real-life-stack/data-interface"
 import { useMembers } from "../../hooks/use-groups"
 import { resolveAdminView } from "../../lib/group-admin-view"
@@ -32,7 +32,24 @@ const AVAILABLE_MODULES = [
   { id: "map", label: "Karte", icon: MapIcon },
   // Opt-in only (not in DEFAULT_MODULES) — spec: docs/spec/modules/resonance.md.
   { id: "resonance", label: "Resonanz", icon: Waves },
+  { id: "collection", label: "Liste", icon: List },
+  { id: "graph", label: "Graph", icon: Share2 },
 ] as const
+
+/**
+ * Move a module one position within the active list. `data.modules` is an
+ * ORDERED array — the nav renders it verbatim — so this IS the surface for
+ * "which module comes first". Out-of-range moves return the list unchanged.
+ */
+export function moveModule(modules: readonly string[], id: string, direction: -1 | 1): string[] {
+  const from = modules.indexOf(id)
+  const to = from + direction
+  if (from === -1 || to < 0 || to >= modules.length) return [...modules]
+  const next = [...modules]
+  next.splice(from, 1)
+  next.splice(to, 0, id)
+  return next
+}
 
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
 
@@ -435,39 +452,87 @@ export function GroupDialog({
             </p>
           )}
 
-          {/* Module Toggles (admin only) */}
+          {/* Modules (admin only): the ACTIVE list is ordered — data.modules
+              is what the nav renders, top row = first tab. Reorder via ↑/↓,
+              deactivate via ✕; available modules append at the end. */}
           {isCurrentUserAdmin && (
             <div className="mt-3 pt-3 border-t border-border/50">
-              <Label className="text-xs text-muted-foreground">Module</Label>
-              <div className="mt-2 grid grid-cols-2 gap-1">
-                {AVAILABLE_MODULES.map((mod) => {
-                  const isActive = activeModules.includes(mod.id)
-                  const isLast = isActive && activeModules.length === 1
+              <Label className="text-xs text-muted-foreground">Module (Reihenfolge = Navigation)</Label>
+              <div className="mt-2 space-y-0.5">
+                {activeModules.map((id, index) => {
+                  const mod = AVAILABLE_MODULES.find((m) => m.id === id)
+                  if (!mod) return null
                   const Icon = mod.icon
+                  const isOnly = activeModules.length === 1
+                  const apply = (next: string[]) => {
+                    setActiveModules(next)
+                    if (mode.type === "edit") {
+                      void onUpdateGroup(mode.group.id, { data: { ...mode.group.data, modules: next } })
+                    }
+                  }
                   return (
-                    <button
-                      key={mod.id}
-                      type="button"
-                      disabled={isLast}
-                      onClick={() => {
-                        if (mode.type !== "edit") return
-                        const newModules = isActive
-                          ? activeModules.filter((m) => m !== mod.id)
-                          : [...activeModules, mod.id]
-                        setActiveModules(newModules)
-                        void onUpdateGroup(mode.group.id, { data: { ...mode.group.data, modules: newModules } })
-                      }}
-                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <div className={`h-4 w-8 shrink-0 rounded-full transition-colors ${isActive ? "bg-primary" : "bg-muted"} relative`}>
-                        <div className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${isActive ? "translate-x-4" : "translate-x-0.5"}`} />
-                      </div>
+                    <div key={id} className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted/50">
+                      <span className="w-4 text-right text-xs tabular-nums text-muted-foreground">{index + 1}</span>
                       <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-sm">{mod.label}</span>
-                    </button>
+                      <span className="flex-1 text-sm">{mod.label}</span>
+                      <button
+                        type="button"
+                        aria-label={`${mod.label} nach oben`}
+                        disabled={index === 0}
+                        onClick={() => apply(moveModule(activeModules, id, -1))}
+                        className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${mod.label} nach unten`}
+                        disabled={index === activeModules.length - 1}
+                        onClick={() => apply(moveModule(activeModules, id, 1))}
+                        className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${mod.label} deaktivieren`}
+                        disabled={isOnly}
+                        onClick={() => apply(activeModules.filter((m) => m !== id))}
+                        className="rounded p-1 text-muted-foreground hover:text-destructive disabled:opacity-30"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   )
                 })}
               </div>
+              {AVAILABLE_MODULES.some((m) => !activeModules.includes(m.id)) && (
+                <div className="mt-2">
+                  <Label className="text-xs text-muted-foreground">Verfügbar</Label>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {AVAILABLE_MODULES.filter((m) => !activeModules.includes(m.id)).map((mod) => {
+                      const Icon = mod.icon
+                      return (
+                        <button
+                          key={mod.id}
+                          type="button"
+                          onClick={() => {
+                            const next = [...activeModules, mod.id]
+                            setActiveModules(next)
+                            if (mode.type === "edit") {
+                              void onUpdateGroup(mode.group.id, { data: { ...mode.group.data, modules: next } })
+                            }
+                          }}
+                          className="flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs text-muted-foreground hover:border-primary hover:text-foreground"
+                        >
+                          <Icon className="h-3 w-3" />
+                          {mod.label} +
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
