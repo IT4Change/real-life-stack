@@ -193,7 +193,9 @@ describe("Activity log — WoT transaction boundaries", () => {
     expect(entries).toHaveLength(500)
     expect(entries.map((entry) => entry.id)).not.toContain("write-000")
     expect(entries.every((entry) => entry.action === "create")).toBe(true)
-  })
+    // 501 serielle Writes sind CPU-gebunden und reißen unter paralleler Last
+    // das 5s-Default-Timeout (beobachtet: 9s bei parallelem pnpm-Build).
+  }, 30_000)
 
   it("15. reconciles a non-current overview handle through bootstrap's CrossGroupIndex onHandle wiring", async () => {
     const active = handle()

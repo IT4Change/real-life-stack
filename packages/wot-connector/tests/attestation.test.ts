@@ -132,13 +132,13 @@ describe("Sync-003 attestation inbox wire", () => {
     // Feld nicht diagnostizierbar. Empfänger-Uhr 25h vor → deterministischer
     // "created_time too old"-Reject einer frisch gesendeten Nachricht.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const host = new InboxReceptionHost({
+      messaging: bobMessaging,
+      identity: bob,
+      crypto: protocolCrypto,
+      now: () => new Date(Date.now() + 25 * 60 * 60 * 1000),
+    })
     try {
-      const host = new InboxReceptionHost({
-        messaging: bobMessaging,
-        identity: bob,
-        crypto: protocolCrypto,
-        now: () => new Date(Date.now() + 25 * 60 * 60 * 1000),
-      })
       host.start()
       const attestation = await new AttestationWorkflow({ crypto: protocolCrypto }).createAttestation({
         issuer: alice,
@@ -156,10 +156,10 @@ describe("Sync-003 attestation inbox wire", () => {
       expect(warn).toHaveBeenCalledWith(
         "[wot-connector] rejected inbox/1.0 message:",
         "invalid-inner-jws",
-        expect.any(String),
+        "Inner JWS created_time too old",
       )
-      host.stop()
     } finally {
+      host.stop()
       warn.mockRestore()
     }
   })

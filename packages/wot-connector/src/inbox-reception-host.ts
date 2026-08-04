@@ -138,10 +138,8 @@ export class InboxReceptionHost {
         )
       } else {
         // `detail` trägt den konkreten Inner-JWS-Fehler (z.B. "created_time
-        // too old"); der Cast überbrückt core-Versionen, die das Feld noch
-        // nicht deklarieren (ab @web_of_trust/core > 0.5.2 im Reject-Typ).
-        const detail = (result as { detail?: string }).detail ?? ""
-        console.warn("[wot-connector] rejected inbox/1.0 message:", result.reason, detail)
+        // too old") — ohne ihn ist der Sammelgrund im Feld nicht diagnostizierbar.
+        console.warn("[wot-connector] rejected inbox/1.0 message:", result.reason, result.detail ?? "")
       }
       return
     }
