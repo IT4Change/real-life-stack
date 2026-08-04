@@ -79,7 +79,11 @@ jobs:
             # released ist das AUTORITATIVE Signal — nur bei true dispatchen. Ein
             # nichtleerer Tag allein reicht nicht (release-please liefert Tag-Namen
             # teils auch ohne neues Release).
-            [ "$released" = "true" ] || return
+            # WICHTIG: `return 0`, nicht nacktes `return`. Ein blosses `return`
+            # liefert den Status des letzten Kommandos — hier des fehlgeschlagenen
+            # Tests — also 1. Unter `set -e` bricht damit der ganze Job ab. Genau
+            # das hat den ersten App-only-Release rot gemacht.
+            [ "$released" = "true" ] || return 0
             if [ -z "$tag" ]; then
               echo "ABBRUCH-Kandidat: $label als released gemeldet, aber kein Tag-Output." >&2
               missing=1
