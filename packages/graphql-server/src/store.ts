@@ -1,4 +1,5 @@
-import type { CreateItemInput, Item, Group, User, AuthState, Relation } from "@real-life-stack/data-interface"
+import type { CreateItemInput, Item, ItemFilter, Group, User, AuthState, Relation } from "@real-life-stack/data-interface"
+import { applyPagination, matchesFilter } from "@real-life-stack/data-interface"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers } from "@real-life-stack/data-interface/demo-data"
 import { publish } from "./pubsub.js"
 
@@ -25,22 +26,26 @@ let nextItemId = 100
 
 // --- Items ---
 
-export function getItems(filter?: { type?: string; hasField?: string[]; hasSchema?: string[]; createdBy?: string }): Item[] {
-  let result = items
-  if (filter?.type) result = result.filter((i) => i.type === filter.type)
-  if (filter?.createdBy) result = result.filter((i) => i.createdBy === filter.createdBy)
-  if (filter?.hasField) {
-    for (const field of filter.hasField) {
-      result = result.filter((i) => field in i.data)
-    }
+/** GraphQL delivers bbox as number[]; the contract type is a 4-tuple. */
+type WireItemFilter = Omit<ItemFilter, "bbox"> & { bbox?: number[] }
+
+export function getItems(wireFilter?: WireItemFilter): Item[] {
+  // The SHARED filter implementation — the server must accept exactly what
+  // the DataInterface contract defines, or parameters silently vanish at
+  // this boundary (rls#214).
+  if (!wireFilter) return items
+  const { bbox, ...rest } = wireFilter
+  if (bbox && bbox.length !== 4) {
+    // Fail CLOSED: silently dropping an invalid bbox would return everything
+    // as if no filter were set.
+    throw new Error(`bbox must be [west, south, east, north] (4 numbers), got ${bbox.length}`)
   }
-  if (filter?.hasSchema) {
-    // Spec 06: every listed @context vocabulary must be active.
-    for (const vocab of filter.hasSchema) {
-      result = result.filter((i) => (i["@context"] ?? []).includes(vocab))
-    }
+  const filter: ItemFilter = {
+    ...rest,
+    ...(bbox ? { bbox: bbox as [number, number, number, number] } : {}),
   }
-  return result
+  const filtered = items.filter((item) => matchesFilter(item, filter))
+  return applyPagination(filtered, filter.limit, filter.offset)
 }
 
 export function getItem(id: string): Item | null {
@@ -49,7 +54,7 @@ export function getItem(id: string): Item | null {
 
 type StoreCreateItemInput = Pick<
   CreateItemInput,
-  "id" | "type" | "createdBy" | "data" | "relations" | "@context"
+  "id" | "type" | "createdBy" | "data" | "relations" | "@context" | "tags"
 >
 
 function allocateItemId(): string {
@@ -72,6 +77,7 @@ export function createItem(input: StoreCreateItemInput): Item {
     createdAt: new Date().toISOString(),
     createdBy: input.createdBy,
     ...(input["@context"] ? { "@context": input["@context"] } : {}),
+    ...(input.tags ? { tags: input.tags } : {}),
     data: input.data,
     relations: input.relations,
   }
@@ -81,7 +87,7 @@ export function createItem(input: StoreCreateItemInput): Item {
   return item
 }
 
-export function updateItem(id: string, updates: { data?: Record<string, unknown>; relations?: Item["relations"]; "@context"?: string[] }): Item {
+export function updateItem(id: string, updates: { data?: Record<string, unknown>; relations?: Item["relations"]; "@context"?: string[]; tags?: string[] }): Item {
   const idx = items.findIndex((i) => i.id === id)
   if (idx === -1) throw new Error(`Item not found: ${id}`)
   items[idx] = { ...items[idx], ...updates, id }

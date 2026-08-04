@@ -72,6 +72,14 @@ describe("GraphQL — @context and hasSchema end-to-end", () => {
     expect(negativeItems.map(({ id }) => id)).not.toContain("stmt-ctx-2")
   })
 
+  it("rejects a bbox of invalid wire length — fail closed, not silently unfiltered", async () => {
+    // number[] on the wire vs. the contract's 4-tuple: dropping an invalid
+    // bbox would return EVERYTHING as if no filter were set (fail open).
+    const result = await graphql({ schema, source: ITEMS, variableValues: { filter: { bbox: [1, 2, 3] } } })
+    expect(result.errors).toBeDefined()
+    expect(String(result.errors?.[0])).toMatch(/bbox/i)
+  })
+
   it("filters the itemsChanged subscription by hasSchema", async () => {
     await createStatement("stmt-ctx-3")
     const iterator = await subscribe({

@@ -45,10 +45,19 @@ import {
 
 function parseItem(raw: Record<string, unknown>): Item {
   // GraphQL cannot name a field "@context" — the wire field is `context`.
-  const { context, ...rest } = raw
+  // Nullable wire fields normalise to absent, matching the Item type.
+  const { context, tags, relations, ...rest } = raw
+  const normalizedRelations = Array.isArray(relations)
+    ? relations.map(({ meta, ...relation }: { meta?: unknown }) => ({
+        ...relation,
+        ...(meta != null ? { meta } : {}),
+      }))
+    : relations
   return {
     ...rest,
     ...(context != null ? { "@context": context } : {}),
+    ...(tags != null ? { tags } : {}),
+    ...(normalizedRelations != null ? { relations: normalizedRelations } : {}),
   } as unknown as Item
 }
 
@@ -63,8 +72,10 @@ export class GraphQLConnector implements FullConnector {
   private currentGroupObs = createObservable<Group | null>(null)
   private cleanupFns: (() => void)[] = []
 
-  constructor(url = "http://localhost:4000/graphql") {
-    this.client = new GraphQLClient(url)
+  constructor(url = "http://localhost:4000/graphql", options?: { fetch?: typeof fetch }) {
+    // Injectable fetch so contract tests can run the REAL connector against
+    // an in-process server (fastify inject) without sockets.
+    this.client = new GraphQLClient(url, options?.fetch ? { fetch: options.fetch } : undefined)
     // Derive WebSocket URL from HTTP URL
     this.wsUrl = url.replace(/^http/, "ws")
   }
@@ -202,7 +213,7 @@ export class GraphQLConnector implements FullConnector {
   // --- Items ---
 
   async getItems(filter?: ItemFilter): Promise<Item[]> {
-    const gqlFilter = filter ? { type: filter.type, hasField: filter.hasField, hasSchema: filter.hasSchema, createdBy: filter.createdBy, limit: filter.limit, offset: filter.offset } : undefined
+    const gqlFilter = filter ? { type: filter.type, hasField: filter.hasField, hasSchema: filter.hasSchema, hasTag: filter.hasTag, bbox: filter.bbox, createdBy: filter.createdBy, limit: filter.limit, offset: filter.offset } : undefined
     const { items } = await this.client.request<{ items: Record<string, unknown>[] }>(ITEMS_QUERY, { filter: gqlFilter })
     return items.map(parseItem)
   }
@@ -224,7 +235,7 @@ export class GraphQLConnector implements FullConnector {
       .finally(() => observable.markLoaded())
 
     // SSE subscription for live updates
-    const gqlFilter = filter ? { type: filter.type, hasField: filter.hasField, hasSchema: filter.hasSchema, createdBy: filter.createdBy, limit: filter.limit, offset: filter.offset } : undefined
+    const gqlFilter = filter ? { type: filter.type, hasField: filter.hasField, hasSchema: filter.hasSchema, hasTag: filter.hasTag, bbox: filter.bbox, createdBy: filter.createdBy, limit: filter.limit, offset: filter.offset } : undefined
     this.subscribeWs<{ itemsChanged: Record<string, unknown>[] }>(
       ITEMS_CHANGED_SUBSCRIPTION,
       { filter: gqlFilter },
@@ -257,7 +268,7 @@ export class GraphQLConnector implements FullConnector {
 
   async createItem(item: CreateItemInput): Promise<Item> {
     const { createItem } = await this.client.request<{ createItem: Record<string, unknown> }>(CREATE_ITEM_MUTATION, {
-      input: { id: item.id, type: item.type, createdBy: item.createdBy, context: item["@context"], data: item.data, relations: item.relations },
+      input: { id: item.id, type: item.type, createdBy: item.createdBy, context: item["@context"], tags: item.tags, data: item.data, relations: item.relations },
     })
     return parseItem(createItem)
   }
@@ -265,7 +276,7 @@ export class GraphQLConnector implements FullConnector {
   async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
     const { updateItem } = await this.client.request<{ updateItem: Record<string, unknown> }>(UPDATE_ITEM_MUTATION, {
       id,
-      input: { context: updates["@context"], data: updates.data, relations: updates.relations },
+      input: { context: updates["@context"], tags: updates.tags, data: updates.data, relations: updates.relations },
     })
     return parseItem(updateItem)
   }
