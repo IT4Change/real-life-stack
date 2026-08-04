@@ -7,14 +7,23 @@ import {
   type ReactNode,
 } from "react"
 import {
+  getItemPreviewAdornments,
+  ItemAssignees,
   ItemDetailView,
+  ItemMetaRow,
+  ItemPreview,
+  ItemScopeBadge,
+  ItemTypeBadge,
+  ReactionBar,
+  useCurrentUser,
+  useMembers,
   useModulePanel,
   type ContentComposerProps,
   type ContentTypeConfig,
   type ItemEditorMapper,
   type WidgetData,
 } from "@real-life-stack/toolkit"
-import type { Item } from "@real-life-stack/data-interface"
+import { isTask, type Item, type User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "./hooks/use-item-focus"
 
 /** Modules whose detail (read↔edit) is owned by the host. */
@@ -26,8 +35,6 @@ const HOST_MODULES = ["feed", "calendar", "map", "kanban", "collection"]
  * panel and the read↔edit lifecycle now.
  */
 export interface DetailConfig {
-  /** Read-view body: the live item + the gated action menu (⋮ + „Bearbeiten"). */
-  renderRead: (item: Item, actions: ReactNode) => ReactNode
   /** Composer types for editing (full list; the view locks to the item's type). */
   contentTypes: ContentTypeConfig[]
   /** Edit-aware submission mapper. */
@@ -57,13 +64,17 @@ export interface DetailConfig {
 interface ConfigStore {
   setConfig: (module: string, config: DetailConfig | null) => void
   setActiveModule: (module: string) => void
+  /** The space the shell is showing. Read by the host, never by a module. */
+  setActiveGroupId: (groupId: string | null) => void
   getActiveConfig: () => DetailConfig | null
+  getActiveGroupId: () => string | null
   subscribe: (listener: () => void) => () => void
 }
 
 function createConfigStore(): ConfigStore {
   const configs = new Map<string, DetailConfig>()
   let activeModule = ""
+  let activeGroupId: string | null = null
   const listeners = new Set<() => void>()
   const notify = () => {
     for (const l of listeners) l()
@@ -85,8 +96,16 @@ function createConfigStore(): ConfigStore {
       activeModule = module
       notify()
     },
+    setActiveGroupId(groupId) {
+      if (groupId === activeGroupId) return
+      activeGroupId = groupId
+      notify()
+    },
     getActiveConfig() {
       return configs.get(activeModule) ?? null
+    },
+    getActiveGroupId() {
+      return activeGroupId
     },
     subscribe(listener) {
       listeners.add(listener)
@@ -106,6 +125,11 @@ function useConfigStore(): ConfigStore {
 function useActiveDetailConfig(): DetailConfig | null {
   const store = useConfigStore()
   return useSyncExternalStore(store.subscribe, store.getActiveConfig, store.getActiveConfig)
+}
+
+function useActiveGroupId(): string | null {
+  const store = useConfigStore()
+  return useSyncExternalStore(store.subscribe, store.getActiveGroupId, store.getActiveGroupId)
 }
 
 /**
@@ -141,9 +165,86 @@ export function useRegisterDetail(module: string, config: DetailConfig): void {
  * rendering without remounting (edit state survives). Keyed on the item id, so a
  * *different* item starts fresh in read mode.
  */
+/**
+ * The read view of the shared detail panel.
+ *
+ * **What it shows follows the ITEM, not the module.** The panel is one surface;
+ * a task is a task whether it was opened from Kanban or from the collection.
+ * The module only says which space we are in (`groupId`) — for the author
+ * lookup, the scope badge and the group colour.
+ *
+ * This used to be a per-module `renderRead` callback. Feed, map, collection and
+ * calendar held near-identical copies that drifted (#183, #196), and Kanban's
+ * "own" body turned out to be a **type** rule in disguise: it showed assignees
+ * because tasks have assignees, not because Kanban is Kanban. The same task
+ * opened from the collection therefore silently lost them.
+ */
+export function ItemDetailRead({
+  item,
+  actions,
+  groupId,
+}: {
+  item: Item
+  actions: ReactNode
+  groupId: string | null
+}) {
+  // No space (or the aggregate) → `null` asks for the union of all known
+  // members, so an author from another space still resolves.
+  const isOverview = groupId === "__overview__"
+  const scopedGroupId = isOverview ? null : groupId
+  const { data: members } = useMembers(scopedGroupId)
+  const { data: currentUser } = useCurrentUser()
+
+  // Space members first, then the signed-in user — who is not in `members` for
+  // their own personal space. Same lookup for authors and relation targets:
+  // a task you assigned to yourself in your personal space would otherwise
+  // resolve to nobody.
+  const resolveUser = (userId: string): User | undefined =>
+    members.find((member) => member.id === userId) ??
+    (currentUser?.id === userId ? currentUser : undefined)
+
+  const author = resolveUser(item.createdBy)
+
+  // Type-driven body. The same resolver the list and grid lenses already use,
+  // so a person/project/resource reads the same in the panel as in a lens.
+  const { metaAdornment } = getItemPreviewAdornments(item)
+
+  // Assignees are a property of the TYPE, so they belong here and not in
+  // whichever module happens to show tasks. They come IN ADDITION to reactions:
+  // an item is reactable regardless of its type.
+  const assignees = isTask(item)
+    ? (item.relations ?? [])
+        .filter((relation) => relation.predicate === "assignedTo")
+        .map((relation) => resolveUser(relation.target.replace(/^global:/, "")))
+        .filter((user): user is User => !!user)
+    : []
+
+  return (
+    <ItemPreview
+      item={item}
+      author={author}
+      headerAdornment={
+        <>
+          <ItemTypeBadge type={item.type} />
+          {isOverview && <ItemScopeBadge item={item} />}
+        </>
+      }
+      actions={actions}
+      metaAdornment={metaAdornment ?? <ItemMetaRow item={item} />}
+      footerAdornment={
+        <>
+          {assignees.length > 0 && <ItemAssignees users={assignees} />}
+          <ReactionBar itemId={item.id} />
+        </>
+      }
+    />
+  )
+}
+
 function DetailHostOutlet() {
   const { itemId: focusedId, isEditing, clearFocus, editItem, stopEditing } = useItemFocus()
   const config = useActiveDetailConfig()
+  const groupId = useActiveGroupId()
   if (!focusedId || !config) return null
   return (
     <ItemDetailView
@@ -152,7 +253,9 @@ function DetailHostOutlet() {
       // Read↔edit is URL-driven (`?edit`): browser-back peels edit → read → module.
       mode={isEditing ? "edit" : "read"}
       onModeChange={(next) => (next === "edit" ? editItem() : stopEditing())}
-      renderRead={config.renderRead}
+      renderRead={(item, actions) => (
+        <ItemDetailRead item={item} actions={actions} groupId={groupId} />
+      )}
       contentTypes={config.contentTypes}
       mapper={config.mapper}
       editInitialData={config.editInitialData}
@@ -171,7 +274,14 @@ function DetailHostOutlet() {
  * (not a host module) keeps its own panel; `panelOwnedRef` keeps the two from
  * closing each other's content.
  */
-export function DetailHostController({ activeModule }: { activeModule: string }) {
+export function DetailHostController({
+  activeModule,
+  activeGroupId,
+}: {
+  activeModule: string
+  /** Comes from the shell, not from a module — see {@link ItemDetailRead}. */
+  activeGroupId: string | null
+}) {
   const modulePanel = useModulePanel()
   const { itemId: focusedId, clearFocus } = useItemFocus()
   const store = useConfigStore()
@@ -185,6 +295,10 @@ export function DetailHostController({ activeModule }: { activeModule: string })
   useEffect(() => {
     store.setActiveModule(activeModule)
   }, [store, activeModule])
+
+  useEffect(() => {
+    store.setActiveGroupId(activeGroupId)
+  }, [store, activeGroupId])
 
   useEffect(() => {
     if (hostOwns && focusedId) {
