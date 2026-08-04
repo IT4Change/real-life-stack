@@ -126,6 +126,44 @@ describe("Sync-003 attestation inbox wire", () => {
     host.stop()
   })
 
+  it("logs the specific inner-JWS failure next to the opaque reject reason", async () => {
+    // Live-Vorfall 04.08.: invalid-inner-jws bündelt Uhr-Skew, 24h-Fenster,
+    // Signatur und Binding — ohne den konkreten Fehlertext ist der Reject im
+    // Feld nicht diagnostizierbar. Empfänger-Uhr 25h vor → deterministischer
+    // "created_time too old"-Reject einer frisch gesendeten Nachricht.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const host = new InboxReceptionHost({
+        messaging: bobMessaging,
+        identity: bob,
+        crypto: protocolCrypto,
+        now: () => new Date(Date.now() + 25 * 60 * 60 * 1000),
+      })
+      host.start()
+      const attestation = await new AttestationWorkflow({ crypto: protocolCrypto }).createAttestation({
+        issuer: alice,
+        subjectDid: bob.getDid(),
+        claim: "hat geholfen",
+        tags: ["commons"],
+      })
+      await sendAttestationInbox({
+        identity: alice,
+        attestation,
+        recipientEncryptionPublicKey: await bob.getEncryptionPublicKeyBytes(),
+        messaging: aliceMessaging,
+        crypto: protocolCrypto,
+      })
+      expect(warn).toHaveBeenCalledWith(
+        "[wot-connector] rejected inbox/1.0 message:",
+        "invalid-inner-jws",
+        expect.any(String),
+      )
+      host.stop()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it("derives the verification marker from the verified VC type", async () => {
     const verification = await new VerificationWorkflow({ crypto: protocolCrypto })
       .createVerificationAttestation({
