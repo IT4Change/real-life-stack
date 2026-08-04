@@ -385,6 +385,12 @@ export async function createRelationRecordWith(
       `Predicate "${input.predicate}" is outside the authorial claim catalog (spec 08) — signed connectors refuse such writes`,
     )
   }
+  if (signer && typeof connector.updateItem !== "function") {
+    // Precondition, not post-hoc: claiming happens as a second write after
+    // create — discovering the missing capability only then would leave a
+    // claimless authorial record behind.
+    throw new Error("Signed relation store requires updateItem on the create connector")
+  }
   const user = await connector.getCurrentUser()
   if (!user) throw new Error("Relation record creation requires an authenticated user")
 
@@ -485,6 +491,11 @@ export function createDefaultRelationStore(
     const item = await connector.getItem(id)
     const current = item ? relationRecordFromItem(item) : null
     if (!item || !current) throw new Error(`Relation record not found: ${id}`)
+    if (stableOptions.claimSigner && !isAuthorialPredicate(current.predicate)) {
+      throw new Error(
+        `Predicate "${current.predicate}" is outside the authorial claim catalog (spec 08) — signed connectors refuse such writes`,
+      )
+    }
     await assertCanMutate(connector, "item/edit", item)
 
     const fields = updates.fields === undefined ? current.fields : updates.fields

@@ -44,11 +44,31 @@ export type ClaimVerdict = "valid" | "invalid" | "trusted"
 /** JCS (RFC 8785) for I-JSON values: recursive key sort; JSON.stringify's
     IEEE-754 number serialisation matches JCS for JS numbers. */
 export function jcsCanonicalize(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value)
+  if (value === null) return "null"
+  const kind = typeof value
+  if (kind === "number") {
+    // I-JSON (RFC 7493): only finite numbers exist. JSON.stringify would
+    // silently coerce NaN/Infinity to null — a claim over a DIFFERENT value
+    // than the record holds. Refuse instead of signing a lie.
+    if (!Number.isFinite(value)) throw new Error("JCS: non-finite number is not I-JSON")
+    return JSON.stringify(value)
+  }
+  if (kind === "string" || kind === "boolean") return JSON.stringify(value)
+  if (kind === "undefined" || kind === "function" || kind === "symbol" || kind === "bigint") {
+    throw new Error(`JCS: ${kind} is not I-JSON`)
+  }
   if (Array.isArray(value)) return `[${value.map(jcsCanonicalize).join(",")}]`
   const record = value as Record<string, unknown>
   const keys = Object.keys(record).sort()
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${jcsCanonicalize(record[key])}`).join(",")}}`
+  const members: string[] = []
+  for (const key of keys) {
+    const member = record[key]
+    // Ambiguity guard: JSON.stringify would DROP undefined members, so two
+    // different objects would canonicalise identically. Refuse.
+    if (member === undefined) throw new Error("JCS: undefined object member is not I-JSON")
+    members.push(`${JSON.stringify(key)}:${jcsCanonicalize(member)}`)
+  }
+  return `{${members.join(",")}}`
 }
 
 const encoder = new TextEncoder()
@@ -121,8 +141,11 @@ export function relationAuthorialPayload(record: RelationRecord): Record<string,
  * at create time, mirroring the inbox-JWS convention.
  */
 export async function signRelationClaim(record: RelationRecord, signer: ClaimSigner): Promise<string> {
-  if (didFromKid(signer.kid) !== record.createdBy) {
-    throw new Error(`Claim signer ${signer.kid} does not match record createdBy ${record.createdBy}`)
+  if (signer.kid !== `${record.createdBy}#sig-0`) {
+    throw new Error(`Claim signer ${signer.kid} does not match record createdBy ${record.createdBy} (kid MUST be <createdBy>#sig-0)`)
+  }
+  if (!isAuthorialPredicate(record.predicate)) {
+    throw new Error(`Predicate "${record.predicate}" is outside the authorial claim catalog (spec 08)`)
   }
   const header = { alg: "EdDSA", kid: signer.kid, typ: CLAIM_JWS_TYP }
   const payload = relationAuthorialPayload(record)
@@ -156,9 +179,15 @@ export async function verifyRelationClaim(record: RelationRecord): Promise<"vali
     const header = JSON.parse(new TextDecoder().decode(fromBase64Url(headerB64))) as Record<string, unknown>
     if (header.alg !== "EdDSA" || header.typ !== CLAIM_JWS_TYP || typeof header.kid !== "string") return "invalid"
 
+    // relation-authorial exists ONLY for catalog predicates (spec 08) — a
+    // formally correct claim on e.g. "blocks" is invalid.
+    if (!isAuthorialPredicate(record.predicate)) return "invalid"
+
     const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(payloadB64))) as Record<string, unknown>
     if (payload.v !== RLS_CLAIM_V1 || payload.profile !== RELATION_AUTHORIAL_PROFILE) return "invalid"
-    if (didFromKid(header.kid) !== payload.createdBy) return "invalid"
+    // Exact kid convention: `<createdBy>#sig-0` — a matching DID with a
+    // different fragment is NOT the specified signer reference.
+    if (header.kid !== `${payload.createdBy}#sig-0`) return "invalid"
 
     // Structural payload ↔ record equality over the exact wire shape.
     const expected = relationAuthorialPayload(record)

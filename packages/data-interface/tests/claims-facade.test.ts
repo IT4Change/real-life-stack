@@ -137,6 +137,30 @@ describe("relation-store facade — SignedClaims write rules", () => {
     ).rejects.toThrow(/catalog|Katalog/i)
   })
 
+  it("fails BEFORE any write when signing is active but the connector lacks updateItem", async () => {
+    const { signer, did } = await testSigner()
+    const { connector, items } = memoryConnector(did)
+    const crippled = { ...(connector as Record<string, unknown>) }
+    delete crippled.updateItem
+    const { createRelationRecordWith } = await import("../src/index")
+    await expect(
+      createRelationRecordWith(crippled as never, {
+        predicate: "votesOn", from: `global:${did}`, to: "item:s1",
+      }, { claimSigner: signer }),
+    ).rejects.toThrow(/updateItem/i)
+    // Precondition, not post-hoc: no claimless record may be left behind.
+    expect(items.size).toBe(0)
+  })
+
+  it("refuses to UPDATE a non-catalog record in signed mode", async () => {
+    const { signer, did } = await testSigner()
+    const { connector } = memoryConnector(did)
+    const plain = createDefaultRelationStore(connector)
+    const legacy = await plain.createRelationRecord({ predicate: "blocks", from: "item:a", to: "item:b" })
+    const store = createDefaultRelationStore(connector, { claimSigner: signer })
+    await expect(store.updateRelationRecord(legacy.id, { fields: { note: "x" } })).rejects.toThrow(/catalog|Katalog/i)
+  })
+
   it("without a signer, behaviour is unchanged — no claim, no refusal", async () => {
     const { did } = await testSigner()
     const { connector } = memoryConnector(did)

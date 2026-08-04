@@ -99,6 +99,127 @@ describe("SignedClaims — sign/verify roundtrip", () => {
   })
 })
 
+describe("SignedClaims — reviewer counterproofs (#230 round 1)", () => {
+  /** Hand-rolled claim builder that BYPASSES signRelationClaim's own guards,
+      so the verifier's strictness is tested independently. */
+  async function handSign(payload: Record<string, unknown>, kid: string, privateKey: CryptoKey): Promise<string> {
+    const b64u = (bytes: Uint8Array) => {
+      let binary = ""
+      for (const byte of bytes) binary += String.fromCharCode(byte)
+      return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+    }
+    const enc = new TextEncoder()
+    const header = { alg: "EdDSA", kid, typ: "rls-claim+jws" }
+    const input = `${b64u(enc.encode(jcsCanonicalize(header)))}.${b64u(enc.encode(jcsCanonicalize(payload)))}`
+    const sig = new Uint8Array(await crypto.subtle.sign("Ed25519", privateKey, enc.encode(input) as BufferSource))
+    return `${input}.${b64u(sig)}`
+  }
+
+  async function rawSigner() {
+    const keyPair = (await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])) as CryptoKeyPair
+    const raw = new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey))
+    const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    const bytes = new Uint8Array([0xed, 0x01, ...raw])
+    let n = 0n
+    for (const byte of bytes) n = (n << 8n) | BigInt(byte)
+    let encoded = ""
+    while (n > 0n) { encoded = B58[Number(n % 58n)] + encoded; n /= 58n }
+    return { did: `did:key:z${encoded}`, privateKey: keyPair.privateKey }
+  }
+
+  async function canonicalId(createdBy: string, predicate: string, from: string, to: string): Promise<string> {
+    const bytes = new TextEncoder().encode(jcsCanonicalize([createdBy, predicate, from, to]))
+    const digest = await crypto.subtle.digest("SHA-256", bytes)
+    return "rel-" + Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("")
+  }
+
+  it("rejects a formally correct claim on a NON-CATALOG predicate (blocks)", async () => {
+    const { did, privateKey } = await rawSigner()
+    const from = "item:a"
+    const to = "item:b"
+    const record: RelationRecord = {
+      id: await canonicalId(did, "blocks", from, to),
+      predicate: "blocks", from, to,
+      createdBy: did, createdAt: "2026-08-05T09:00:00.000Z",
+    }
+    const payload = {
+      v: "rls-claim/1", profile: "relation-authorial",
+      id: record.id, predicate: "blocks", from, to,
+      fields: {}, confirmationRef: null, createdBy: did, createdAt: record.createdAt,
+    }
+    record.claim = await handSign(payload, `${did}#sig-0`, privateKey)
+    expect(await verifyRelationClaim(record)).toBe("invalid")
+  })
+
+  it("rejects a kid with a wrong fragment (#not-sig-0) even when the DID matches", async () => {
+    const { did, privateKey } = await rawSigner()
+    const from = `global:${did}`
+    const to = "item:s1"
+    const record: RelationRecord = {
+      id: await canonicalId(did, "votesOn", from, to),
+      predicate: "votesOn", from, to,
+      fields: { value: "green" },
+      createdBy: did, createdAt: "2026-08-05T09:00:00.000Z",
+    }
+    const payload = {
+      v: "rls-claim/1", profile: "relation-authorial",
+      id: record.id, predicate: "votesOn", from, to,
+      fields: { value: "green" }, confirmationRef: null, createdBy: did, createdAt: record.createdAt,
+    }
+    record.claim = await handSign(payload, `${did}#not-sig-0`, privateKey)
+    expect(await verifyRelationClaim(record)).toBe("invalid")
+  })
+
+  it("refuses to SIGN non-I-JSON values (NaN) instead of silently signing null", async () => {
+    const { signer, did } = await (async () => {
+      const keyPair = (await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])) as CryptoKeyPair
+      const raw = new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey))
+      const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+      const bytes = new Uint8Array([0xed, 0x01, ...raw])
+      let n = 0n
+      for (const byte of bytes) n = (n << 8n) | BigInt(byte)
+      let encoded = ""
+      while (n > 0n) { encoded = B58[Number(n % 58n)] + encoded; n /= 58n }
+      const did = `did:key:z${encoded}`
+      return {
+        did,
+        signer: {
+          kid: `${did}#sig-0`,
+          signEd25519: async (input: Uint8Array) =>
+            new Uint8Array(await crypto.subtle.sign("Ed25519", keyPair.privateKey, input as BufferSource)),
+        } satisfies ClaimSigner,
+      }
+    })()
+    const record: RelationRecord = {
+      id: "rel-x", predicate: "votesOn",
+      from: `global:${did}`, to: "item:s1",
+      fields: { value: Number.NaN },
+      createdBy: did, createdAt: "2026-08-05T09:00:00.000Z",
+    }
+    await expect(signRelationClaim(record, signer)).rejects.toThrow(/I-JSON|finite/i)
+  })
+
+  it("rejects at VERIFY time when the record carries non-I-JSON values", async () => {
+    const { did, privateKey } = await rawSigner()
+    const from = `global:${did}`
+    const to = "item:s1"
+    const id = await canonicalId(did, "votesOn", from, to)
+    // Claim signs the JSON-coerced null; the stored record still holds NaN.
+    const payload = {
+      v: "rls-claim/1", profile: "relation-authorial",
+      id, predicate: "votesOn", from, to,
+      fields: { value: null }, confirmationRef: null, createdBy: did, createdAt: "2026-08-05T09:00:00.000Z",
+    }
+    const record: RelationRecord = {
+      id, predicate: "votesOn", from, to,
+      fields: { value: Number.NaN },
+      createdBy: did, createdAt: "2026-08-05T09:00:00.000Z",
+      claim: await handSign(payload, `${did}#sig-0`, privateKey),
+    }
+    expect(await verifyRelationClaim(record)).toBe("invalid")
+  })
+})
+
 describe("SignedClaims — authorial catalog (closed, v0.1)", () => {
   it("contains exactly the spec catalog", () => {
     expect([...AUTHORIAL_PREDICATES].sort()).toEqual(["connectedWith", "knows", "takesPlaceAt", "votesOn"])
