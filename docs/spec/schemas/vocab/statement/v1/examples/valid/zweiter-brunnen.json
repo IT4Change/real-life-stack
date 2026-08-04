@@ -1,0 +1,15 @@
+{
+  "id": "statement-zweiter-brunnen",
+  "type": "statement",
+  "@context": [
+    "https://real-life-stack.org/vocab/base/v1",
+    "https://real-life-stack.org/vocab/statement/v1"
+  ],
+  "createdAt": "2026-08-04T10:00:00.000Z",
+  "createdBy": "did:key:z6MkExampleAuthor",
+  "data": {
+    "title": "Wir brauchen einen zweiten Brunnen",
+    "description": "Der eine Brunnen reicht im Sommer nicht für Garten und Küche."
+  },
+  "tags": ["infrastruktur"]
+}

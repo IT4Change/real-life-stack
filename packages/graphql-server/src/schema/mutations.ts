@@ -26,6 +26,7 @@ builder.mutationType({
           id: args.input.id == null ? undefined : String(args.input.id),
           type: args.input.type,
           createdBy: args.input.createdBy,
+          ...(args.input.context ? { "@context": args.input.context } : {}),
           data: args.input.data as Record<string, unknown>,
           relations: castRelations(args.input.relations),
         }),
@@ -39,6 +40,7 @@ builder.mutationType({
       },
       resolve: (_root, args) =>
         store.updateItem(String(args.id), {
+          ...(args.input.context ? { "@context": args.input.context } : {}),
           data: (args.input.data as Record<string, unknown>) ?? undefined,
           relations: castRelations(args.input.relations),
         }),

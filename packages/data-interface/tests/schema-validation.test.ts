@@ -18,6 +18,7 @@ const REQUIRED_VOCAB_NAMES = [
   "relation",
   "project",
   "resource",
+  "statement",
 ] as const
 
 interface VocabEntry {
