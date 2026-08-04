@@ -58,18 +58,23 @@ const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
  * at most one save runs at a time; states arriving meanwhile collapse to the
  * LATEST one, sent exactly once after the running save settles. A failure
  * retries with the newer queued state if there is one; only a failure with
- * nothing newer surfaces via `onError` (with the value that was lost).
+ * nothing newer surfaces via `onError`, which receives the value that was
+ * lost AND the last CONFIRMED value — the correct rollback anchor. (The
+ * caller's props may still show an older baseline while a store round-trip
+ * is in flight; only the saver knows what was actually acknowledged.)
  */
 export function createLatestWinsSaver<T>(
   save: (value: T) => Promise<void>,
-  onError: (error: unknown, failedValue: T) => void,
+  onError: (error: unknown, failedValue: T, lastSavedValue: T | undefined) => void,
 ): (value: T) => void {
   let inFlight = false
   let queued: { value: T } | null = null
+  let lastSaved: T | undefined
   const run = (value: T) => {
     inFlight = true
     save(value).then(
       () => {
+        lastSaved = value
         inFlight = false
         if (queued) {
           const next = queued.value
@@ -85,7 +90,7 @@ export function createLatestWinsSaver<T>(
           queued = null
           run(next)
         } else {
-          onError(error, value)
+          onError(error, value, lastSaved)
         }
       },
     )
@@ -181,14 +186,17 @@ export function GroupDialog({
           data: { ...current.group.data, modules },
         })
       },
-      (err, failed) => {
-        // Roll the UI back to the last persisted order — a silently divergent
-        // list would suggest the reorder stuck when it didn't.
+      (err, _failed, lastSaved) => {
+        // Roll the UI back to the last CONFIRMED order — a silently divergent
+        // list would suggest the reorder stuck when it didn't. The saver's
+        // lastSaved beats the prop: after "A saved, B failed" the group prop
+        // may still show the state before A (store round-trip in flight).
         const current = modeRef.current
         setActiveModules(
-          current.type === "edit"
-            ? ((current.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES)
-            : failed,
+          lastSaved ??
+            (current.type === "edit"
+              ? ((current.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES)
+              : DEFAULT_MODULES),
         )
         setError(err instanceof Error ? err.message : "Module konnten nicht gespeichert werden")
       },

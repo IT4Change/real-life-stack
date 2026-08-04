@@ -107,3 +107,35 @@ describe("createLatestWinsSaver", () => {
     expect(onError).not.toHaveBeenCalled()
   })
 })
+
+describe("createLatestWinsSaver rollback anchor", () => {
+  it("hands onError the last CONFIRMED state, not an older baseline", async () => {
+    const { calls, save } = controlledSave()
+    const onError = vi.fn()
+    const push = createLatestWinsSaver(save, onError)
+
+    push(["a"])
+    calls[0].resolve() // A ist bestätigt gespeichert
+    await flush()
+    push(["a", "b"])
+    calls[1].reject(new Error("offline")) // B scheitert
+    await flush()
+
+    // Rollback-Anker ist A — der Prop-Stand des Aufrufers kann noch auf dem
+    // Zustand VOR A hängen (Store-Roundtrip), der Saver weiss es besser.
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0][1]).toEqual(["a", "b"]) // failed
+    expect(onError.mock.calls[0][2]).toEqual(["a"]) // lastSaved
+  })
+
+  it("lastSaved is undefined when nothing was ever confirmed", async () => {
+    const { calls, save } = controlledSave()
+    const onError = vi.fn()
+    const push = createLatestWinsSaver(save, onError)
+
+    push(["a"])
+    calls[0].reject(new Error("offline"))
+    await flush()
+    expect(onError.mock.calls[0][2]).toBeUndefined()
+  })
+})
