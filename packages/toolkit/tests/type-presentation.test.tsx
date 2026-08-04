@@ -13,7 +13,19 @@ import {
   renderTypeFooter,
   resetTypePresentationForTests,
   resolveTypePresentation,
+  setTypeManifest,
 } from "../src/components/preview/type-presentation"
+import {
+  composeTypeManifest,
+  CORE_TYPE_LAYER,
+  STATEMENT_TYPE_DEFINITION,
+} from "@real-life-stack/data-interface"
+
+/** Manifest wie in der App komponiert: Core + statement. */
+const APP_MANIFEST = composeTypeManifest([
+  CORE_TYPE_LAYER,
+  { name: "app", definitions: [STATEMENT_TYPE_DEFINITION] },
+])
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -47,21 +59,77 @@ describe("type presentation registry", () => {
   })
 
   it("lets the same layer re-register itself (Vite HMR re-executes modules)", () => {
+    setTypeManifest(APP_MANIFEST)
     registerTypePresentation("app", [{ id: "statement", label: "Aussage" }])
     registerTypePresentation("app", [{ id: "statement", label: "These" }])
     expect(resolveTypePresentation("statement").label).toBe("These")
   })
 
   it("still rejects an id owned by ANOTHER layer", () => {
+    setTypeManifest(APP_MANIFEST)
     registerTypePresentation("app", [{ id: "statement", label: "Aussage" }])
     expect(() => registerTypePresentation("space", [{ id: "statement", label: "X" }]))
       .toThrow(/bereits in Layer "app"/)
   })
 
-  it("lets an app layer add a type that then resolves everywhere", () => {
+  it("extends a core type additively — a space fills an empty footer slot", () => {
+    // #220-Review Blocker 4: without presentation fragments, the Core→App→
+    // Space contract was only half implemented.
+    const Footer = () => createElement("span", null, "Space-Fußzeile")
+    registerTypePresentation("space", { extensions: [{ id: "place", footer: Footer }] })
+    expect(resolveTypePresentation("place").footer).toBe(Footer)
+    // The base entry stays intact.
+    expect(resolveTypePresentation("place").label).toBe("Ort")
+  })
+
+  it("rejects a fragment setting a scalar the base already sets", () => {
+    const Footer = () => null
+    // task already ships a footer (assignees) — a fragment may not shadow it.
+    expect(() => registerTypePresentation("space", { extensions: [{ id: "task", footer: Footer }] }))
+      .toThrow(/Basis bereits setzt/)
+    // The failed registration leaves no partial layer behind.
+    expect(resolveTypePresentation("task").footer).not.toBe(Footer)
+  })
+
+  it("shows the type badge in lenses for registered types WITHOUT a preview slot", () => {
+    // #220-Review Blocker 1: task/place/statement lost their badge in
+    // list/grid because getItemPreviewAdornments returned {} for them.
+    const adornments = getItemPreviewAdornments(item("task", { title: "T", status: "open" }))
+    const markup = renderToStaticMarkup(createElement("div", null, adornments.headerAdornment))
+    expect(markup).toContain("Task")
+  })
+
+  it("shows a neutral badge for unknown types even WITHOUT the fallback prop (rule 5)", () => {
+    // #220-Review Blocker 2: detail/feed call ItemTypeBadge without
+    // `fallback`; an unknown connector type rendered nothing there.
+    const markup = renderToStaticMarkup(createElement(ItemTypeBadge, { type: "recipe" }))
+    expect(markup).toContain("recipe")
+    // A REGISTERED type without badge style (post) still renders nothing —
+    // that is a deliberate design decision, not a gap.
+    const post = renderToStaticMarkup(createElement("div", null, createElement(ItemTypeBadge, { type: "post" })))
+    expect(post).toBe("<div></div>")
+  })
+
+  it("lets an app layer present a MANIFEST-known type that then resolves everywhere", () => {
+    setTypeManifest(APP_MANIFEST)
     registerTypePresentation("app", [{ id: "statement", label: "Aussage" }])
     expect(resolveTypePresentation("statement").label).toBe("Aussage")
     expect(resolveTypePresentation("statement").generic).toBe(false)
+  })
+
+  it("rejects orphan presentation — the register cannot introduce types (rules 1/6)", () => {
+    // #220-Review Blocker 3: without manifest binding any id slipped through
+    // and resolved with generic:false despite having no identity anywhere.
+    expect(() => registerTypePresentation("app", [{ id: "recipe", label: "Rezept" }]))
+      .toThrow(/führt keine Typen ein/)
+  })
+
+  it("resolves a manifest entry WITHOUT presentation as generic (rule 5)", () => {
+    setTypeManifest(APP_MANIFEST)
+    // statement is in the manifest, but no presentation layer registered it.
+    const resolved = resolveTypePresentation("statement")
+    expect(resolved.generic).toBe(true)
+    expect(resolved.detail).toBeTruthy()
   })
 
   it("routes getItemPreviewAdornments through the registry (person keeps its profile meta)", () => {

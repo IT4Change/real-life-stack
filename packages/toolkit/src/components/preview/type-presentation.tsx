@@ -6,14 +6,19 @@
 //
 // Entries attach DISPLAY concerns (label, icon, badge, composer widgets, and
 // the preview/detail/footer slot contents for the shared ItemPreview shell)
-// to type ids owned by the type manifest in `data-interface`. This layer
-// MUST NOT introduce types — an id without a manifest entry is a registration
-// error at the app layer, and an item whose type has no entry here falls back
-// to the generic presentation (spec rule 5: visible and generic, never broken).
+// to type ids owned by the type manifest in `data-interface`.
 //
-// Registration is layered like the manifest (core → app → space) and happens
-// once at app startup. A second entry for the same id is a conflict and
-// throws — no override in v0.1, silent or otherwise.
+// The register is BOUND to the manifest: registering presentation for an id
+// the manifest does not know throws — this layer cannot introduce types
+// (spec rules 1 and 6). A manifest entry without presentation resolves to the
+// generic fallback: visible and neutral, never broken (rule 5).
+//
+// Layers contribute like the manifest (spec "Erweiterung und Merge"):
+// *definitions* present a type for the first time, *extensions* additively
+// fill fields the base left unset — scalar fields only where the base has
+// none, `relationWidgets` united by key. Conflicts throw; no override in
+// v0.1. Re-registering the SAME layer replaces it wholesale (Vite HMR
+// re-executes registering modules on edit; throwing would break dev).
 
 import type { ComponentType, ReactNode } from "react"
 import { createElement } from "react"
@@ -24,7 +29,15 @@ import {
   Shapes,
   User as UserIcon,
 } from "lucide-react"
-import { isTask, type Item, type User } from "@real-life-stack/data-interface"
+import {
+  composeTypeManifest,
+  CORE_TYPE_LAYER,
+  isTask,
+  relationAffordanceKey,
+  type ComposedTypeManifest,
+  type Item,
+  type User,
+} from "@real-life-stack/data-interface"
 
 import { useMembers } from "../../hooks/use-groups"
 import { useCurrentUser } from "../../hooks/use-auth"
@@ -44,27 +57,43 @@ export interface TypeBadgeStyle {
   className: string
 }
 
-/** One presentation entry per type id (spec: Darstellungs-Register). */
+/** Presents a type for the first time (spec: Typdefinition, Darstellungsseite). */
 export interface TypePresentationEntry {
   /** Must match a manifest id — this layer never introduces types. */
   id: string
   /** Display name; the manifest deliberately carries none (SRP). */
   label: string
-  /** Badge styling. Absent = no badge for this type (e.g. plain posts),
-   *  matching the previous ItemTypeBadge behaviour. */
+  /** Badge styling. Absent = deliberately no badge (e.g. plain posts). */
   badge?: TypeBadgeStyle
   /** Widget set the composer opens with (ContentTypeConfig.defaultWidgets). */
   composerWidgets?: readonly string[]
-  /** Composer widget per declared edge, keyed `"${predicate} ${itemRole}"` —
-   *  same key as the manifest's relation affordances. */
+  /** Composer widget per declared edge, keyed by `relationAffordanceKey`. */
   relationWidgets?: Readonly<Record<string, string>>
   /** Compact slot for cards and rows (metaAdornment). */
   preview?: ComponentType<ItemSlotProps>
   /** Panel slot (metaAdornment); defaults to `preview`, then ItemMetaRow. */
   detail?: ComponentType<ItemSlotProps>
-  /** Type-own footer, rendered IN ADDITION to surface footers (reactions,
-   *  comment counts). Task → assignees, statement → vote bar. */
+  /** Type-own footer, rendered IN ADDITION to surface footers. */
   footer?: ComponentType<ItemSlotProps>
+}
+
+/** Additively fills fields an existing presentation left unset
+ *  (spec: Erweiterungsfragment, Darstellungsseite). */
+export interface TypePresentationFragment {
+  /** Must address an id already presented by an earlier layer. */
+  id: string
+  badge?: TypeBadgeStyle
+  composerWidgets?: readonly string[]
+  /** United by key; an existing key is a conflict. */
+  relationWidgets?: Readonly<Record<string, string>>
+  preview?: ComponentType<ItemSlotProps>
+  detail?: ComponentType<ItemSlotProps>
+  footer?: ComponentType<ItemSlotProps>
+}
+
+export interface TypePresentationLayer {
+  definitions?: readonly TypePresentationEntry[]
+  extensions?: readonly TypePresentationFragment[]
 }
 
 /** What surfaces consume: entry with every fallback already applied. */
@@ -77,7 +106,8 @@ export interface ResolvedTypePresentation {
   preview?: ComponentType<ItemSlotProps>
   detail: ComponentType<ItemSlotProps>
   footer?: ComponentType<ItemSlotProps>
-  /** True when this is the generic fallback (unknown/unregistered type). */
+  /** True when rendering generically: the type is unknown to the manifest OR
+   *  has no presentation yet (spec rule 5 — visible, neutral, never broken). */
   generic: boolean
 }
 
@@ -118,7 +148,7 @@ export const GENERIC_BADGE: TypeBadgeStyle = {
 }
 
 // ---------------------------------------------------------------------------
-// Registry
+// Registry state
 
 /** The seven core types RLS ships (spec 06, "Core-Typ"). Labels and badge
  *  styles are verbatim from the previous ItemTypeBadge DEFAULT_CONFIG; the
@@ -130,7 +160,7 @@ const CORE_PRESENTATION: readonly TypePresentationEntry[] = [
     label: "Event",
     badge: { icon: Calendar, className: "bg-blue-50 text-blue-700 border-blue-200" },
     composerWidgets: ["title", "text", "date", "location"],
-    relationWidgets: { "invited from": "people" },
+    relationWidgets: { [relationAffordanceKey({ predicate: "invited", itemRole: "from" })]: "people" },
     preview: EventPreview,
   },
   {
@@ -144,7 +174,7 @@ const CORE_PRESENTATION: readonly TypePresentationEntry[] = [
     label: "Task",
     badge: { icon: CheckSquare, className: "bg-amber-50 text-amber-700 border-amber-200" },
     composerWidgets: ["title", "text", "status", "people", "tags"],
-    relationWidgets: { "assignedTo from": "people" },
+    relationWidgets: { [relationAffordanceKey({ predicate: "assignedTo", itemRole: "from" })]: "people" },
     footer: TaskAssigneesFooter,
   },
   {
@@ -157,60 +187,154 @@ const CORE_PRESENTATION: readonly TypePresentationEntry[] = [
   { id: "resource", label: "Ressource", preview: ItemResourceMeta },
 ]
 
-const layers = new Map<string, readonly TypePresentationEntry[]>([["core", CORE_PRESENTATION]])
+/** Toolkit default: core manifest only. Apps composing more layers hand the
+ *  result in via {@link setTypeManifest} BEFORE registering presentation. */
+const CORE_ONLY_MANIFEST = composeTypeManifest([CORE_TYPE_LAYER])
+
+let manifest: ComposedTypeManifest = CORE_ONLY_MANIFEST
+const layers = new Map<string, TypePresentationLayer>([
+  ["core", { definitions: CORE_PRESENTATION }],
+])
+/** Composed view, invalidated on every registration. */
+let composedCache: Map<string, TypePresentationEntry> | null = null
 
 /**
- * Register a presentation layer (app or space) at startup. Layered like the
- * manifest; an id already presented by ANOTHER layer is a conflict and throws
- * (no override in v0.1).
+ * Bind the register to the app's composed manifest (the authoritative type
+ * identity, spec rule 1). Call once at startup, before app/space layers
+ * register presentation. Existing layers are re-validated against the new
+ * manifest so a narrower manifest cannot leave orphans behind.
+ */
+export function setTypeManifest(next: ComposedTypeManifest): void {
+  for (const [name, layer] of layers) {
+    for (const entry of layer.definitions ?? []) {
+      if (!next.has(entry.id)) {
+        throw new Error(
+          `Typ-Register: Manifest kennt "${entry.id}" nicht, Layer "${name}" präsentiert es aber — das Darstellungs-Register führt keine Typen ein (Spec 06, Regel 1/6).`,
+        )
+      }
+    }
+  }
+  manifest = next
+}
+
+/** Test seam: core-only manifest, core-only presentation. Deliberately NOT
+ *  exported via the package barrel — tests import this module directly. */
+export function resetTypePresentationForTests(): void {
+  manifest = CORE_ONLY_MANIFEST
+  for (const key of [...layers.keys()]) if (key !== "core") layers.delete(key)
+  composedCache = null
+}
+
+/**
+ * Register a presentation layer (app or space) at startup.
  *
- * Re-registering the SAME layer name replaces that layer wholesale. That is
- * not an override between layers but a layer updating itself — required for
- * Vite HMR, which re-executes the registering module on edit; throwing here
- * would break every dev session that touches the registration file.
+ * - *Definitions* present a manifest-known type for the first time. An id the
+ *   manifest does not know throws (no type introduction, spec rules 1/6); an
+ *   id already presented by ANOTHER layer throws (no override in v0.1).
+ * - *Extensions* additively fill fields of an already-presented type: scalar
+ *   fields only where the base left them unset, `relationWidgets` united by
+ *   key. Collisions throw.
+ * - Re-registering the SAME layer name replaces that layer wholesale — a
+ *   layer updating itself (Vite HMR), not an override between layers.
+ *
+ * A plain entry array is shorthand for `{ definitions }`.
  */
 export function registerTypePresentation(
   layerName: string,
-  entries: readonly TypePresentationEntry[],
+  layer: TypePresentationLayer | readonly TypePresentationEntry[],
 ): void {
-  const taken = new Map<string, string>()
-  for (const [name, layerEntries] of layers) {
+  const normalized: TypePresentationLayer = Array.isArray(layer)
+    ? { definitions: layer as readonly TypePresentationEntry[] }
+    : (layer as TypePresentationLayer)
+
+  const ownedElsewhere = new Map<string, string>()
+  for (const [name, existing] of layers) {
     if (name === layerName) continue
-    for (const e of layerEntries) taken.set(e.id, name)
+    for (const e of existing.definitions ?? []) ownedElsewhere.set(e.id, name)
   }
-  for (const entry of entries) {
-    const owner = taken.get(entry.id)
+
+  for (const entry of normalized.definitions ?? []) {
+    if (!manifest.has(entry.id)) {
+      throw new Error(
+        `Typ-Register [${layerName}]: Manifest kennt "${entry.id}" nicht — das Darstellungs-Register führt keine Typen ein (Spec 06, Regel 1/6). Erst setTypeManifest() mit der App-Komposition aufrufen.`,
+      )
+    }
+    const owner = ownedElsewhere.get(entry.id)
     if (owner) {
       throw new Error(
-        `Typ-Register [${layerName}]: Darstellung für "${entry.id}" ist bereits in Layer "${owner}" vergeben — kein Override in v0.1 (Spec 06, Erweiterung und Merge).`,
+        `Typ-Register [${layerName}]: Darstellung für "${entry.id}" ist bereits in Layer "${owner}" vergeben — kein Override in v0.1; zum Ergänzen einzelner Felder Extensions verwenden (Spec 06, Erweiterung und Merge).`,
       )
     }
   }
-  layers.set(layerName, entries)
-}
 
-/** Test seam: drop every non-core layer. */
-export function resetTypePresentationForTests(): void {
-  for (const key of [...layers.keys()]) if (key !== "core") layers.delete(key)
-}
-
-function findEntry(typeId: string): TypePresentationEntry | undefined {
-  for (const entries of layers.values()) {
-    const hit = entries.find((e) => e.id === typeId)
-    if (hit) return hit
+  const previous = layers.get(layerName)
+  layers.set(layerName, normalized)
+  composedCache = null
+  try {
+    composePresentation() // fail fast: extension conflicts surface at registration
+  } catch (err) {
+    if (previous) layers.set(layerName, previous)
+    else layers.delete(layerName)
+    composedCache = null
+    throw err
   }
-  return undefined
+}
+
+const SCALAR_SLOTS = ["badge", "composerWidgets", "preview", "detail", "footer"] as const
+
+function composePresentation(): Map<string, TypePresentationEntry> {
+  if (composedCache) return composedCache
+  const composed = new Map<string, TypePresentationEntry>()
+  // Pass 1: definitions. Deterministic — ids are unique across layers by the
+  // registration checks, so order cannot change the outcome.
+  for (const [, layer] of layers) {
+    for (const def of layer.definitions ?? []) {
+      composed.set(def.id, { ...def, relationWidgets: { ...(def.relationWidgets ?? {}) } })
+    }
+  }
+  // Pass 2: extensions — additive only (spec: Erweiterungsfragment).
+  for (const [name, layer] of layers) {
+    for (const frag of layer.extensions ?? []) {
+      const base = composed.get(frag.id)
+      if (!base) {
+        throw new Error(
+          `Typ-Register [${name}]: Fragment adressiert "${frag.id}", das keine Darstellung hat — Fragmente erweitern vorhandene Einträge (Spec 06, Erweiterung und Merge).`,
+        )
+      }
+      for (const field of SCALAR_SLOTS) {
+        const incoming = frag[field]
+        if (incoming === undefined) continue
+        if (base[field] !== undefined) {
+          throw new Error(
+            `Typ-Register [${name}]: Fragment setzt "${field}" an "${frag.id}", das die Basis bereits setzt — Skalare sind nur setzbar, wo die Basis schweigt (Spec 06).`,
+          )
+        }
+        ;(base as unknown as Record<string, unknown>)[field] = incoming
+      }
+      for (const [key, widget] of Object.entries(frag.relationWidgets ?? {})) {
+        const widgets = base.relationWidgets as Record<string, string>
+        if (key in widgets) {
+          throw new Error(
+            `Typ-Register [${name}]: relationWidgets["${key}"] an "${frag.id}" ist bereits vergeben (Spec 06, Erweiterung und Merge).`,
+          )
+        }
+        widgets[key] = widget
+      }
+    }
+  }
+  composedCache = composed
+  return composed
 }
 
 /**
- * Resolve the presentation for a type, generic fallback included (spec rule
- * 5: an item with an unknown type is never invisible or broken — it renders
- * title, description and a neutral badge on every surface).
+ * Resolve the presentation for a type. Generic (spec rule 5) when the type is
+ * unknown to the manifest OR has a manifest entry without presentation —
+ * visible with title, meta row and neutral badge, never invisible or broken.
  */
 export function resolveTypePresentation(typeId: string): ResolvedTypePresentation {
-  const entry = findEntry(typeId)
-  if (!entry) {
-    return { id: typeId, label: typeId, badge: undefined, detail: GENERIC_DETAIL, generic: true }
+  const entry = composePresentation().get(typeId)
+  if (!entry || !manifest.has(typeId)) {
+    return { id: typeId, label: typeId, detail: GENERIC_DETAIL, generic: true }
   }
   return {
     ...entry,

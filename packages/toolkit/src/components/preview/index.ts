@@ -28,10 +28,12 @@ export {
   registerTypePresentation,
   resolveTypePresentation,
   renderTypeFooter,
-  resetTypePresentationForTests,
+  setTypeManifest,
   GENERIC_BADGE,
   type ItemSlotProps,
   type TypeBadgeStyle,
   type TypePresentationEntry,
+  type TypePresentationFragment,
+  type TypePresentationLayer,
   type ResolvedTypePresentation,
 } from "./type-presentation"

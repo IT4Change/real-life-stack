@@ -26,7 +26,7 @@
 // documentation and a foundation for future typing.
 
 import type { Item } from "./index.js"
-import type { CoreItemTypeId } from "./type-manifest"
+import type { CoreItemTypeId, STATEMENT_TYPE_DEFINITION } from "./type-manifest"
 
 // --- Shared Types ---
 
@@ -455,12 +455,12 @@ export const SYSTEM_ITEM_TYPES = ["relation", "reaction", "comment"] as const
  * Known item types. Connectors may define additional ones.
  *
  * The core members DERIVE from the type manifest (spec 06: the manifest is
- * the single source of type identity — no parallel list). `feature` and
- * `statement` are non-core: `feature` is a data-level marker without a card,
- * `statement` is registered by the app layer (Resonance module).
+ * the single source of type identity — no parallel list). `feature` is a
+ * data-level marker without a card; `statement` derives from its exported
+ * manifest definition (registered by the app layer).
  */
 export type KnownItemType =
   | CoreItemTypeId
   | (typeof SYSTEM_ITEM_TYPES)[number]
   | "feature"
-  | "statement"
+  | (typeof STATEMENT_TYPE_DEFINITION)["id"]

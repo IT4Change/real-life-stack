@@ -1,4 +1,5 @@
 import { defaultColumns, resolveTypePresentation, type ContentTypeConfig } from "@real-life-stack/toolkit"
+import { relationAffordanceKey } from "@real-life-stack/data-interface"
 
 import { TYPE_MANIFEST } from "./type-register"
 
@@ -39,7 +40,7 @@ function contentTypeFromRegister(id: string): ContentTypeConfig {
   const presentation = resolveTypePresentation(id)
   // peopleRelation = the manifest edge whose composer widget is "people".
   const peopleEdge = (TYPE_MANIFEST.get(id)?.relations ?? []).find(
-    (rel) => presentation.relationWidgets?.[`${rel.predicate} ${rel.itemRole}`] === "people",
+    (rel) => presentation.relationWidgets?.[relationAffordanceKey(rel)] === "people",
   )
   return {
     id,

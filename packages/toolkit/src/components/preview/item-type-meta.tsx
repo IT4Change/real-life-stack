@@ -110,8 +110,9 @@ export function getItemPreviewAdornments(item: Item): ItemPreviewAdornments {
   if (resolved.preview) {
     return { metaAdornment: createElement(resolved.preview, { item }) }
   }
-  if (resolved.generic) {
-    return { headerAdornment: <ItemTypeBadge type={item.type} fallback /> }
-  }
-  return {}
+  // No meta slot -> the badge is the type cue, exactly as before the register:
+  // registered types show THEIR badge (task, place, statement), unknown types
+  // the neutral fallback (spec rule 5). Losing this made typed cards read as
+  // plain posts in the lenses.
+  return { headerAdornment: <ItemTypeBadge type={item.type} fallback /> }
 }

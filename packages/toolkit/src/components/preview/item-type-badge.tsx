@@ -38,13 +38,22 @@ export function ItemTypeBadge({ type, config, fallback = false, className }: Ite
   // Label, icon and styling come from the type register (spec 06) — the
   // previous DEFAULT_CONFIG here was one of the four parallel type lists.
   // The `config` prop remains as a caller override for special surfaces.
+  //
+  // Rule 5 lives HERE, prop-independent: a type the register does not know
+  // renders the neutral fallback badge on EVERY surface — an unknown type may
+  // never be invisible. Only a REGISTERED type without badge style (plain
+  // posts) deliberately renders nothing; `fallback` forces a badge even then.
   const resolved = resolveTypePresentation(type)
   const registryCfg: ItemTypeBadgeConfig | undefined = resolved.badge
     ? { icon: resolved.badge.icon, label: resolved.label, className: resolved.badge.className }
     : undefined
-  const cfg = config?.[type] ?? registryCfg ?? (fallback
-    ? { icon: GENERIC_BADGE.icon, label: resolved.label, className: GENERIC_BADGE.className }
-    : undefined)
+  const genericCfg: ItemTypeBadgeConfig = {
+    icon: GENERIC_BADGE.icon,
+    label: resolved.label,
+    className: GENERIC_BADGE.className,
+  }
+  const cfg =
+    config?.[type] ?? registryCfg ?? (resolved.generic || fallback ? genericCfg : undefined)
   if (!cfg) return null
   const Icon = cfg.icon
   return (
