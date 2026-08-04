@@ -22,6 +22,7 @@ import type {
   ProtocolCryptoAdapter,
 } from "@real-life/wot-core/protocol"
 import type { IdentitySession } from "@real-life/wot-core/types"
+import { logReceptionDropTrace, traceReceptionDrop } from "./reception-trace.js"
 
 export interface IncomingAttestationDelivery {
   vcJws: string
@@ -140,6 +141,11 @@ export class InboxReceptionHost {
         // `detail` trägt den konkreten Inner-JWS-Fehler (z.B. "created_time
         // too old") — ohne ihn ist der Sammelgrund im Feld nicht diagnostizierbar.
         console.warn("[wot-connector] rejected inbox/1.0 message:", result.reason, result.detail ?? "")
+        logReceptionDropTrace(
+          "inbox/1.0 rejected",
+          result.detail === undefined ? result.reason : `${result.reason} — ${result.detail}`,
+          { reason: result.reason, messageId: message.id },
+        )
       }
       return
     }
@@ -171,6 +177,11 @@ export class InboxReceptionHost {
       }
     } catch (error) {
       console.warn("[wot-connector] invalid attestation inbox body:", error)
+      logReceptionDropTrace(
+        "invalid attestation inbox body",
+        error instanceof Error ? error.message : String(error),
+        { outerId: result.outerId, senderDid: result.senderDid },
+      )
       await this.conclude(
         result.outerId,
         { kind: "invalid-rejected", rejection: "malformed", authoritativeStateChanged: false },
@@ -217,7 +228,13 @@ export class InboxReceptionHost {
       for (const listener of [...this.attestationListeners]) await listener(delivery)
       return { kind: "applied", durable: true }
     } catch (error) {
-      console.debug("[wot-connector] attestation inbox apply incomplete:", error)
+      // Zurückgestellt OHNE Ack: die Relay-Redelivery ist der Heilungspfad —
+      // trotzdem eine Disposition, die im Trace sichtbar sein muss (#226).
+      traceReceptionDrop(
+        "attestation apply deferred (no ack, redelivery heals)",
+        error instanceof Error ? error.message : String(error),
+        { outerId: delivery.outerId, senderDid: delivery.senderDid },
+      )
       return { kind: "processing-incomplete", waitingOn: "durable-apply" }
     }
   }
@@ -227,7 +244,11 @@ export class InboxReceptionHost {
       for (const listener of [...this.receiptListeners]) await listener(receipt)
       return { kind: "applied", durable: true }
     } catch (error) {
-      console.debug("[wot-connector] attestation receipt apply incomplete:", error)
+      traceReceptionDrop(
+        "receipt apply deferred (no ack, redelivery heals)",
+        error instanceof Error ? error.message : String(error),
+        { outerId: receipt.outerId, senderDid: receipt.senderDid },
+      )
       return { kind: "processing-incomplete", waitingOn: "durable-apply" }
     }
   }
