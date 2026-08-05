@@ -355,7 +355,12 @@ describe("SupabaseConnector — ProfileCapable (WoT-Parität)", () => {
           const builder = originalSelect(columns)
           const originalMaybeSingle = builder.maybeSingle.bind(builder)
           return Object.assign(builder, {
-            maybeSingle: () => new Promise((resolve) => { release = () => resolve(originalMaybeSingle()) }),
+            // Snapshot AT CALL TIME: the held read must carry the data of the
+            // moment it was issued — that is what makes it dangerously stale.
+            maybeSingle: () => {
+              const result = originalMaybeSingle()
+              return new Promise((resolve) => { release = () => resolve(result) })
+            },
           })
         },
       }
@@ -397,6 +402,85 @@ describe("SupabaseConnector — ProfileCapable (WoT-Parität)", () => {
     await flush()
     expect(connector.observeMyProfile().current?.id).toBe(userB.id)
     expect(connector.observeMyProfile().current?.data.displayName).toBe("Berta")
+  })
+
+  it("eine ALTE applySession(A)-Fortsetzung überschreibt Session B nicht (Runde-2-Review)", async () => {
+    // A meldet sich an, aber As resolveUser-Read hängt; währenddessen wechselt
+    // die Session komplett zu B. Löst As Fortsetzung danach auf, darf sie
+    // weder currentUser noch AuthState auf A zurückdrehen.
+    const client = new FakeSupabaseClient()
+    const connector = new SupabaseConnector(client)
+    await connector.init()
+    const gate = gateNextProfilesRead(client)
+    const loginA = connector.authenticate("anonymous", {})
+    await flush()
+    const userB = await connector.authenticate("anonymous", {})
+    await connector.updateMyProfile({ name: "Berta" })
+    await flush()
+    gate.release()
+    await flush()
+    await loginA.catch(() => {})
+    expect((await connector.getCurrentUser())?.id).toBe(userB.id)
+    expect(connector.observeCurrentUser().current?.id).toBe(userB.id)
+    expect(connector.observeMyProfile().current?.id).toBe(userB.id)
+  })
+
+  it("zwei Refreshes derselben Session überholen sich nicht — der NEUE Wert gewinnt (Single-Flight)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    await connector.updateMyProfile({ name: "Alt" })
+    await flush()
+    // Read #1 hängt; währenddessen ändert sich das Profil UND ein weiteres
+    // Realtime-Event kommt an. Nach Freigabe darf am Ende NICHT der alte
+    // Read-Wert stehen bleiben.
+    const gate = gateNextProfilesRead(client)
+    client.emit("profiles", { eventType: "UPDATE", new: {}, old: {} })
+    await flush()
+    const row = client.tables.get("profiles")!.find((r) => r.id === userId)!
+    row.display_name = "Neu"
+    client.emit("profiles", { eventType: "UPDATE", new: { ...row }, old: { ...row } })
+    await flush()
+    gate.release()
+    await flush()
+    await flush()
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Neu")
+  })
+
+  it("beim DIREKTEN A→B-Wechsel (ohne Logout) bleibt As Profil nicht sichtbar, während Bs Fetch läuft", async () => {
+    const { client, connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Alice", bio: "As Geheimnis" })
+    await flush()
+    // Direkter Kontowechsel: Bs Reads hängen — in diesem Fenster darf As
+    // Item (samt Bio) nicht mehr stehen.
+    const gate = gateNextProfilesRead(client)
+    const loginB = connector.authenticate("anonymous", {})
+    await flush()
+    const during = connector.observeMyProfile().current
+    expect(during?.data.bio).not.toBe("As Geheimnis")
+    gate.release()
+    await flush()
+    gate.release()
+    const userB = await loginB
+    await flush()
+    await flush()
+    expect(connector.observeMyProfile().current?.id).toBe(userB.id)
+  })
+
+  it("TOKEN_REFRESHED derselben Identität ist KEIN Sessionwechsel — kein Profil-Flackern", async () => {
+    const { client, connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Stabil" })
+    await flush()
+    const emitted: Array<string | null> = []
+    const stop = connector.observeMyProfile().subscribe((item) => {
+      emitted.push(item ? (item.data.displayName as string) : null)
+    })
+    client.auth.fireAuthEvent("TOKEN_REFRESHED")
+    await flush()
+    await flush()
+    stop()
+    // Kein null-Zwischenzustand, Profil bleibt gesetzt.
+    expect(emitted).not.toContain(null)
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Stabil")
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Stabil")
   })
 
   it("observeMyProfile erfüllt den Async-Observable-Vertrag (loaded)", async () => {

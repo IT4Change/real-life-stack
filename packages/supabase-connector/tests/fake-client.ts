@@ -406,6 +406,12 @@ class FakeAuth implements AuthLike {
     for (const listener of this.listeners) listener("SIGNED_OUT", null)
     return { error: null }
   }
+
+  /** Test hook: fire an auth event without changing the session —
+      e.g. TOKEN_REFRESHED for the same identity. */
+  fireAuthEvent(event: string, session: AuthSessionLike | null = this.session): void {
+    for (const listener of this.listeners) listener(event, session)
+  }
 }
 
 export class FakeSupabaseClient implements SupabaseClientLike {
