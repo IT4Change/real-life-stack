@@ -1,4 +1,5 @@
 import { deriveContext } from "./vocab.js"
+import { isAuthorialPredicate, signRelationClaim, verifyRelationClaim, type ClaimSigner } from "./claims.js"
 import type {
   Ability,
   Authenticatable,
@@ -19,6 +20,13 @@ import type {
 
 export interface DefaultRelationStoreOptions {
   symmetricPredicates?: Iterable<string>
+  /**
+   * SignedClaims (spec 08 → Autorbindung): when present, the facade operates
+   * in `signed` mode — authorial creates are claimed, updates re-sign,
+   * claimless own slots are repaired, and non-catalog predicates are refused.
+   * Absent = authoritative/none: behaviour unchanged, no claims.
+   */
+  claimSigner?: ClaimSigner
 }
 
 export interface RelationPredicateDefinition {
@@ -49,12 +57,19 @@ export interface RelationRecordCreateConnector {
   getItem(id: string): Promise<Item | null>
   createItem(input: CreateItemInput): Promise<Item>
   getCurrentUser(): Promise<User | null>
+  /** Required in `signed` mode: claiming persists the JWS after create
+      (createdAt is connector-assigned, so the claim is written second;
+      a crash in between is healed by the repair rule). */
+  updateItem?(id: string, updates: Partial<Item>): Promise<Item>
 }
 
-const RESERVED_FIELD_KEYS = new Set(["predicate", "confirmationRef"])
+const RESERVED_FIELD_KEYS = new Set(["predicate", "confirmationRef", "claim"])
 
 function normalizedOptions(options?: DefaultRelationStoreOptions): DefaultRelationStoreOptions {
-  return { symmetricPredicates: new Set(options?.symmetricPredicates ?? []) }
+  return {
+    symmetricPredicates: new Set(options?.symmetricPredicates ?? []),
+    ...(options?.claimSigner ? { claimSigner: options.claimSigner } : {}),
+  }
 }
 
 function isSymmetricPredicate(predicate: string, options?: DefaultRelationStoreOptions): boolean {
@@ -132,6 +147,9 @@ export function relationRecordFromItem(item: Item): RelationRecord | null {
     if (!RESERVED_FIELD_KEYS.has(key)) fields[key] = value
   }
 
+  const claim = item.data.claim
+  if (claim !== undefined && typeof claim !== "string") return null
+
   return {
     id: item.id,
     predicate,
@@ -139,6 +157,7 @@ export function relationRecordFromItem(item: Item): RelationRecord | null {
     to: toRelations[0].target,
     ...(Object.keys(fields).length > 0 ? { fields } : {}),
     ...(confirmationRef !== undefined ? { confirmationRef } : {}),
+    ...(claim !== undefined ? { claim } : {}),
     createdBy: item.createdBy,
     createdAt: item.createdAt,
   }
@@ -332,12 +351,57 @@ function buildRelationData(
  * store delegates here; connectors reuse it to create a record inside the
  * resolved owner scope of the item the relation targets.
  */
+/** Sign the record's CURRENT persisted state and store the claim (spec 08:
+    the claim binds connector-assigned createdAt, so it is written after
+    create; the repair rule heals a crash between the two writes). */
+async function claimAndPersist(
+  connector: RelationRecordCreateConnector,
+  record: RelationRecord,
+  signer: ClaimSigner,
+): Promise<RelationRecord> {
+  if (!connector.updateItem) {
+    throw new Error("Signed relation store requires updateItem on the create connector")
+  }
+  const claim = await signRelationClaim(record, signer)
+  // Gate BEFORE persisting: a signer whose identity the verifier cannot
+  // resolve (non-did:key) or that returns wrong bytes must yield a loud
+  // reject — never a "successful" record whose claim is instantly invalid
+  // (spec 08 Schreibregel 2: repair MUST end in a VALID claim).
+  if ((await verifyRelationClaim({ ...record, claim })) !== "valid") {
+    throw new Error(`Claim signer produced a claim that fails verification for record ${record.id}`)
+  }
+  const data = {
+    ...buildRelationData(record.predicate, record.fields, record.confirmationRef),
+    claim,
+  }
+  const updated = await connector.updateItem(record.id, { data })
+  const projected = relationRecordFromItem(updated)
+  if (!projected) throw new Error(`Claiming corrupted relation record ${record.id}`)
+  // The connector's write path must not have mutated the claimed state.
+  if ((await verifyRelationClaim(projected)) !== "valid") {
+    throw new Error(`Persisted relation record ${record.id} does not verify against its claim`)
+  }
+  return projected
+}
+
 export async function createRelationRecordWith(
   connector: RelationRecordCreateConnector,
   input: RelationRecordInput,
   options?: DefaultRelationStoreOptions,
 ): Promise<RelationRecord> {
   assertInput(input)
+  const signer = options?.claimSigner
+  if (signer && !isAuthorialPredicate(input.predicate)) {
+    throw new Error(
+      `Predicate "${input.predicate}" is outside the authorial claim catalog (spec 08) — signed connectors refuse such writes`,
+    )
+  }
+  if (signer && typeof connector.updateItem !== "function") {
+    // Precondition, not post-hoc: claiming happens as a second write after
+    // create — discovering the missing capability only then would leave a
+    // claimless authorial record behind.
+    throw new Error("Signed relation store requires updateItem on the create connector")
+  }
   const user = await connector.getCurrentUser()
   if (!user) throw new Error("Relation record creation requires an authenticated user")
 
@@ -356,7 +420,15 @@ export async function createRelationRecordWith(
   )
   const expected = { id, predicate: input.predicate, ...endpoints, createdBy: user.id }
   const existing = await connector.getItem(id)
-  if (existing) return assertSameIdentity(existing, expected)
+  if (existing) {
+    const record = assertSameIdentity(existing, expected)
+    // Repair an OWN slot without a valid claim (spec 08, Schreibregel 2):
+    // idempotent create must not return an unclaimed record unchanged.
+    if (signer && (await verifyRelationClaim(record)) !== "valid") {
+      return claimAndPersist(connector, record, signer)
+    }
+    return record
+  }
 
   const data = buildRelationData(input.predicate, input.fields, input.confirmationRef)
   const itemInput: CreateItemInput = {
@@ -371,7 +443,9 @@ export async function createRelationRecordWith(
     ],
   }
   const created = await connector.createItem(itemInput)
-  return assertSameIdentity(created, expected)
+  const record = assertSameIdentity(created, expected)
+  if (!signer) return record
+  return claimAndPersist(connector, record, signer)
 }
 
 export function createDefaultRelationStore(
@@ -428,16 +502,41 @@ export function createDefaultRelationStore(
     const item = await connector.getItem(id)
     const current = item ? relationRecordFromItem(item) : null
     if (!item || !current) throw new Error(`Relation record not found: ${id}`)
+    if (stableOptions.claimSigner && !isAuthorialPredicate(current.predicate)) {
+      throw new Error(
+        `Predicate "${current.predicate}" is outside the authorial claim catalog (spec 08) — signed connectors refuse such writes`,
+      )
+    }
     await assertCanMutate(connector, "item/edit", item)
 
     const fields = updates.fields === undefined ? current.fields : updates.fields
     const confirmationRef = updates.confirmationRef === null
       ? undefined
       : updates.confirmationRef ?? current.confirmationRef
-    const updated = await connector.updateItem(id, {
-      data: buildRelationData(current.predicate, fields, confirmationRef),
-    })
-    return assertSameIdentity(updated, current)
+    const data = buildRelationData(current.predicate, fields, confirmationRef)
+    // Signed mode: every mutation of the semantic state (fields AND
+    // confirmationRef) re-signs — the claim always matches what is stored.
+    const signer = stableOptions.claimSigner
+    if (signer) {
+      const nextState: RelationRecord = {
+        ...current,
+        ...(fields !== undefined && Object.keys(fields).length > 0 ? { fields } : { fields: undefined }),
+        ...(confirmationRef !== undefined ? { confirmationRef } : { confirmationRef: undefined }),
+      }
+      const claim = await signRelationClaim(nextState, signer)
+      // Same gate as claimAndPersist: a broken signer must reject loudly,
+      // never persist a state whose claim is instantly invalid.
+      if ((await verifyRelationClaim({ ...nextState, claim })) !== "valid") {
+        throw new Error(`Claim signer produced a claim that fails verification for record ${id}`)
+      }
+      data.claim = claim
+    }
+    const updated = await connector.updateItem(id, { data })
+    const result = assertSameIdentity(updated, current)
+    if (signer && (await verifyRelationClaim(result)) !== "valid") {
+      throw new Error(`Persisted relation record ${id} does not verify against its claim`)
+    }
+    return result
   }
 
   const deleteRelationRecord = async (id: string): Promise<void> => {

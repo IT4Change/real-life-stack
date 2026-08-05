@@ -17,6 +17,7 @@ export {
 } from "./relation-records.js"
 export * from "./item-types.js"
 export * from "./votes.js"
+export * from "./claims.js"
 export * from "./vocab.js"
 export * from "./type-manifest.js"
 export { EMPTY_NOTIFICATION_STATE, cloneNotificationState, applyNotificationStatePatch, maxTs, pruneReadEntryKeys } from "./notification-state.js"
@@ -367,6 +368,8 @@ export interface RelationRecord {
   to: string
   fields?: Record<string, unknown>
   confirmationRef?: string
+  /** Compact SignedClaim JWS (spec 08 → Autorbindung) — own field, never in fields. */
+  claim?: string
   createdBy: string
   createdAt: string
 }
@@ -397,6 +400,22 @@ export interface RelationRecordCapable {
   observeRelationRecords(filter?: RelationRecordFilter): Observable<RelationRecord[]>
   getRelationNeighbors(endpoint: string, predicate?: string): Promise<Item[]>
   observeRelationNeighbors(endpoint: string, predicate?: string): Observable<Item[]>
+}
+
+/**
+ * SignedClaims verification boundary (spec 08 → Autorbindung): `signed`
+ * connectors verify cryptographically (valid/invalid), `authoritative`
+ * connectors answer constant "trusted" — which they may only claim when
+ * EVERY ingress path binds createdBy to the authenticated identity.
+ * Connectors without this capability yield no verdict; their records are
+ * unverified in authorial aggregates (fail closed).
+ */
+export interface ClaimVerificationCapable {
+  verifyRecordClaim(record: RelationRecord): Promise<import("./claims.js").ClaimVerdict>
+}
+
+export function hasClaimVerification(c: DataInterface): c is DataInterface & ClaimVerificationCapable {
+  return typeof (c as Partial<ClaimVerificationCapable>).verifyRecordClaim === "function"
 }
 
 export interface RelationRecordWriterCapable {
