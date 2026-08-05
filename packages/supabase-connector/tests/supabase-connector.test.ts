@@ -190,6 +190,29 @@ describe("SupabaseConnector — realtime reactivity (WoT-grade observe)", () => 
     void userId
   })
 
+  it("re-joins the realtime channels on auth change — subscriptions carry the session claims", async () => {
+    // A channel joined as `anon` yields no events under `to authenticated`
+    // RLS (live finding): after login the connector must join FRESH channels.
+    const client = new FakeSupabaseClient()
+    const connector = new SupabaseConnector(client)
+    await connector.init()
+    const preAuthChannels = [...client.channels]
+    await connector.authenticate("anonymous", {})
+    expect(client.channels.length).toBe(preAuthChannels.length)
+    for (const channel of client.channels) {
+      expect(preAuthChannels).not.toContain(channel)
+    }
+    // And the re-joined channels still drive observe() refreshes.
+    const observable = connector.observe({ type: "note" })
+    await flush()
+    client.externalInsert("items", {
+      id: "post-login-1", type: "note", created_by: "someone",
+      context: null, schema: null, schema_version: null, data: {}, relations: null, tags: null, group_id: null,
+    })
+    await flush()
+    expect(observable.current.map(({ id }) => id)).toEqual(["post-login-1"])
+  })
+
   it("many realtime events in one tick coalesce into one refresh round", async () => {
     const { client, connector, userId } = await makeConnector()
     let fetches = 0

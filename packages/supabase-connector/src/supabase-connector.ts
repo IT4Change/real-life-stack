@@ -112,8 +112,19 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     })
     this.authUnsubscribe = () => authSub.subscription.unsubscribe()
 
-    // Realtime: any change on items refreshes the registered item
-    // observables; group/membership changes refresh groups + members.
+    this.setupRealtimeChannels()
+  }
+
+  /**
+   * (Re)join the realtime channels. postgres_changes subscriptions carry the
+   * JWT CLAIMS OF THE JOIN — a channel joined before login runs as `anon`
+   * and our RLS (`select to authenticated`) yields no events. applySession
+   * re-joins on auth transitions so the subscription matches the session.
+   */
+  private setupRealtimeChannels(): void {
+    for (const channel of this.channels) this.client.removeChannel(channel)
+    this.channels = []
+
     const itemsChannel = this.client
       .channel("rls-items")
       .on("postgres_changes", { event: "*", schema: "public", table: "items" }, () => {
@@ -225,7 +236,10 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       ? (item.createdBy ?? user?.id)
       : user?.id
     if (!createdBy) throw new Error("[SupabaseConnector] createItem requires an authenticated user")
-    const row = itemToInsertRow({ ...item, createdBy }, groupId)
+    // items.id has NO db-side default (canonical relation-record ids are
+    // caller-supplied) — generate here when the caller brings none.
+    const id = item.id ?? crypto.randomUUID()
+    const row = itemToInsertRow({ ...item, id, createdBy }, groupId)
     const result = await this.client.from("items").insert(row).select().single()
     const created = rowToItem(throwOnError(result, "createItem"))
     this.scheduleItemsRefresh()
@@ -495,7 +509,17 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
 
   // --- Users / Auth ---
 
+  /** Identity the realtime channels were joined with (rejoin on change). */
+  private realtimeAuthUserId: string | null = null
+
   private async applySession(session: AuthSessionLike | null): Promise<void> {
+    const nextUserId = session?.user?.id ?? null
+    if (this.channels.length > 0 && nextUserId !== this.realtimeAuthUserId) {
+      this.realtimeAuthUserId = nextUserId
+      this.setupRealtimeChannels()
+    } else {
+      this.realtimeAuthUserId = nextUserId
+    }
     if (!session?.user) {
       this.currentUser = null
       this.currentUserObs.set(null)

@@ -165,10 +165,15 @@ class FakeTable implements TableLike {
 
   insert(row: Row): { select(): { single(): PromiseLike<SupabaseResult<Row>> } } {
     const insertAndCheck = (): SupabaseResult<Row> => {
+      // Parity with the real schema: groups has a DB-side id default,
+      // items does NOT (0001) — a null item id must fail like Postgres.
       const withDefaults: Row = {
-        id: row.id ?? nextId(this.name),
+        ...(this.name === "groups" || this.name === "profiles" ? { id: nextId(this.name) } : {}),
         created_at: new Date().toISOString(),
         ...row,
+      }
+      if (this.name === "items" && (withDefaults.id === undefined || withDefaults.id === null)) {
+        return { data: null, error: { message: `null value in column "id" of relation "items" violates not-null constraint`, code: "23502" } }
       }
       // Primary-key / composite-key conflicts mirror Postgres 23505.
       const keyColumns = this.name === "group_members" ? ["group_id", "user_id"] : ["id"]
