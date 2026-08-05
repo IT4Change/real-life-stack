@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/primitives/dialog"
+import { challengeRemainingMs, formatCountdown } from "./challenge-countdown"
 
 type VerificationStep = "ready" | "confirm" | "done" | "error"
 
@@ -23,6 +24,13 @@ export interface VerificationDialogProps {
   isProcessing: boolean
   error: string | null
   onCreateChallenge: () => Promise<unknown>
+  /**
+   * Erstbefüllung beim Öffnen: restore-dann-create (Entscheidung 1c) — nach
+   * einem Reload mit offenem Dialog lebt die persistierte Challenge weiter.
+   * Ohne diese Prop fällt der Dialog auf onCreateChallenge zurück. Das
+   * Auto-Regenerate nach TTL-Ablauf nutzt IMMER onCreateChallenge (frisch).
+   */
+  onEnsureChallenge?: () => Promise<unknown>
   onScanChallenge: (code: string) => Promise<unknown>
   onConfirmVerification: (code: string) => Promise<void>
   onReset: () => void
@@ -36,6 +44,7 @@ export function VerificationDialog({
   isProcessing,
   error,
   onCreateChallenge,
+  onEnsureChallenge,
   onScanChallenge,
   onConfirmVerification,
   onReset,
@@ -53,17 +62,44 @@ export function VerificationDialog({
   // the dialog was closed (or scanning stopped) while getUserMedia() was pending.
   const scanTokenRef = useRef(0)
   const challengeCreated = useRef(false)
+  const [remainingMs, setRemainingMs] = useState<number | null>(null)
+  // Auto-Regenerate höchstens einmal pro Code: schlägt das Neu-Erzeugen fehl,
+  // darf der abgelaufene Code nicht sekündlich weitere Versuche auslösen.
+  const regeneratedForCode = useRef<string | null>(null)
 
-  // Auto-create challenge when dialog opens
+  // Countdown + Auto-Regenerate (Entscheidung 3, 04.08.): der Code trägt
+  // seine 5-Minuten-TTL — ein stehengelassener QR wäre sonst ein garantiert
+  // stiller Fehlschlag. Bei Ablauf wird automatisch ein frischer erzeugt.
+  useEffect(() => {
+    const code = challenge?.code
+    if (!open || !code) {
+      setRemainingMs(null)
+      return
+    }
+    const tick = () => {
+      const remaining = challengeRemainingMs(code, Date.now())
+      setRemainingMs(remaining)
+      if (remaining !== null && remaining <= 0 && regeneratedForCode.current !== code) {
+        regeneratedForCode.current = code
+        void onCreateChallenge()
+      }
+    }
+    tick()
+    const interval = setInterval(tick, 1000)
+    return () => clearInterval(interval)
+  }, [open, challenge?.code, onCreateChallenge])
+
+  // Auto-fill challenge when dialog opens: restore-dann-create wenn der Host
+  // onEnsureChallenge anbietet (Reload mit offenem Dialog), sonst create.
   useEffect(() => {
     if (open && !challenge && !challengeCreated.current) {
       challengeCreated.current = true
-      onCreateChallenge()
+      void (onEnsureChallenge ?? onCreateChallenge)()
     }
     if (!open) {
       challengeCreated.current = false
     }
-  }, [open, challenge, onCreateChallenge])
+  }, [open, challenge, onCreateChallenge, onEnsureChallenge])
 
   // Generate QR code when challenge changes
   useEffect(() => {
@@ -268,6 +304,13 @@ export function VerificationDialog({
                     <><Copy className="h-3 w-3" /> Code kopieren</>
                   )}
                 </button>
+                {remainingMs !== null && (
+                  <span className="text-xs text-muted-foreground tabular-nums" aria-live="polite">
+                    {remainingMs > 0
+                      ? <>Code gültig für {formatCountdown(remainingMs)}</>
+                      : <>Code abgelaufen — neuer wird erzeugt…</>}
+                  </span>
+                )}
               </div>
             ) : (
               <div className="flex justify-center">

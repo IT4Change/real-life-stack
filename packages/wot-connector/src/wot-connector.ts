@@ -81,6 +81,7 @@ import {
 import {
   decodeBase64Url,
   encryptionKeyMultibaseFromDidDocument,
+  isActiveQrChallengeValid,
   isDidcommMessage,
   parseQrChallenge,
   x25519MultibaseToPublicKeyBytes,
@@ -2845,6 +2846,22 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       { broker: this.config.relayUrl },
     )
     return { code: rawJson, nonce: challenge.nonce }
+  }
+
+  /**
+   * Entscheidung 1c: die persistierte aktive QR-Challenge nach Reload/Re-Login
+   * wiederherstellen — nur solange ihre 5-Minuten-TTL läuft; eine stale
+   * Challenge wird dabei aufgeräumt. Liefert dieselbe {code, nonce}-Form wie
+   * createVerificationChallenge, damit die UI den Dialog nahtlos re-öffnet.
+   */
+  async restoreVerificationChallenge(): Promise<VerificationChallenge | null> {
+    const restored = await this.verificationWorkflow.restoreActiveQrChallenge()
+    if (!restored) return null
+    if (!isActiveQrChallengeValid(restored, { now: new Date() })) {
+      this.verificationWorkflow.resetActiveQrChallenge()
+      return null
+    }
+    return { code: JSON.stringify(restored), nonce: restored.nonce }
   }
 
   override async prepareVerificationResponse(challengeCode: string): Promise<EncounterPeerInfo> {

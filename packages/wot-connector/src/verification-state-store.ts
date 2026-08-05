@@ -3,7 +3,10 @@ import { InMemoryVerificationStateStore } from "@real-life/wot-core/adapters"
 
 const NONCES_STORE = "nonces"
 const PENDING_STORE = "pending"
-const DB_VERSION = 1
+const CHALLENGE_STORE = "challenge"
+const CHALLENGE_KEY = "active"
+// v2: challenge-Store für die durable aktive QR-Challenge (Entscheidung 1c).
+const DB_VERSION = 2
 
 export interface IndexedDbVerificationStateStoreOptions {
   /**
@@ -22,6 +25,27 @@ interface StoredNonce {
 function isStoredNonce(value: unknown): value is StoredNonce {
   return typeof value === "object" && value !== null
     && typeof (value as StoredNonce).consumedAt === "string"
+}
+
+/** Wire-Form der Trust-002-Challenge (ActiveQrChallengeRecord aus dem Port). */
+interface StoredChallenge {
+  did: string
+  name: string
+  enc: string
+  nonce: string
+  ts: string
+  broker?: string
+}
+
+function isStoredChallenge(value: unknown): value is StoredChallenge {
+  if (typeof value !== "object" || value === null) return false
+  const record = value as StoredChallenge
+  return typeof record.did === "string"
+    && typeof record.name === "string"
+    && typeof record.enc === "string"
+    && typeof record.nonce === "string"
+    && typeof record.ts === "string"
+    && (record.broker === undefined || typeof record.broker === "string")
 }
 
 function isPendingRecord(value: unknown): value is PendingCounterVerificationRecord {
@@ -71,7 +95,7 @@ export class IndexedDbVerificationStateStore implements VerificationStateStore {
   }
 
   private async withTransaction<T>(
-    storeName: typeof NONCES_STORE | typeof PENDING_STORE,
+    storeName: typeof NONCES_STORE | typeof PENDING_STORE | typeof CHALLENGE_STORE,
     mode: IDBTransactionMode,
     work: (store: IDBObjectStore) => Promise<T>,
   ): Promise<T> {
@@ -79,8 +103,9 @@ export class IndexedDbVerificationStateStore implements VerificationStateStore {
       const request = indexedDB.open(this.options.databaseName(), DB_VERSION)
       request.onupgradeneeded = () => {
         const database = request.result
-        if (!database.objectStoreNames.contains(NONCES_STORE)) database.createObjectStore(NONCES_STORE)
-        if (!database.objectStoreNames.contains(PENDING_STORE)) database.createObjectStore(PENDING_STORE)
+        for (const name of [NONCES_STORE, PENDING_STORE, CHALLENGE_STORE]) {
+          if (!database.objectStoreNames.contains(name)) database.createObjectStore(name)
+        }
       }
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"))
@@ -220,6 +245,42 @@ export class IndexedDbVerificationStateStore implements VerificationStateStore {
           await requestResult(store.delete(keys[i]))
         }
       }
+    })
+  }
+
+  // --- Aktive-QR-Challenge-Capability (Entscheidung 1c, core ≥ 0.5.4) ---
+
+  async recordActiveQrChallenge(challenge: StoredChallenge): Promise<void> {
+    const fallback = this.fallback()
+    if (fallback) return fallback.recordActiveQrChallenge?.(challenge)
+    await this.withTransaction(CHALLENGE_STORE, "readwrite", async (store) => {
+      await requestResult(store.put({ ...challenge }, CHALLENGE_KEY))
+    })
+  }
+
+  async getActiveQrChallenge(): Promise<StoredChallenge | null> {
+    const fallback = this.fallback()
+    if (fallback) return (await fallback.getActiveQrChallenge?.()) ?? null
+    return this.withTransaction(CHALLENGE_STORE, "readonly", async (store) => {
+      const record = await requestResult(store.get(CHALLENGE_KEY))
+      return isStoredChallenge(record) ? { ...record } : null
+    })
+  }
+
+  /**
+   * Compare-and-delete in EINER readwrite-Transaktion: mit expectedNonce wird
+   * atomar nur die erwartete Challenge gelöscht — ein verspätetes oder
+   * instanzfremdes Clear kann eine neuere nie entfernen (Port-Vertrag).
+   */
+  async clearActiveQrChallenge(expectedNonce?: string): Promise<void> {
+    const fallback = this.fallback()
+    if (fallback) return fallback.clearActiveQrChallenge?.(expectedNonce)
+    await this.withTransaction(CHALLENGE_STORE, "readwrite", async (store) => {
+      if (expectedNonce !== undefined) {
+        const record = await requestResult(store.get(CHALLENGE_KEY))
+        if (!isStoredChallenge(record) || record.nonce !== expectedNonce) return
+      }
+      await requestResult(store.delete(CHALLENGE_KEY))
     })
   }
 }
