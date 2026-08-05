@@ -286,7 +286,7 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
  * default so an avatar click inside an open item-detail sidebar stacks
  * above it instead of replacing it.
  */
-function ProfilePanelHost({
+export function ProfilePanelHost({
   userId,
   currentUser,
   connector,
@@ -303,6 +303,24 @@ function ProfilePanelHost({
 }) {
   const isOwn = userId != null && userId === currentUser?.id
   const [foreign, setForeign] = useState<User | null>(null)
+
+  // Own bio lives in the connector's profile item (person/v1), not in the
+  // User object — without this the editor reopens with an empty bio even
+  // though updateMyProfile persisted it (applies to WoT and Supabase alike).
+  const [myBio, setMyBio] = useState("")
+  useEffect(() => {
+    if (!isOwn || !hasProfile(connector)) {
+      setMyBio("")
+      return
+    }
+    const observable = connector.observeMyProfile()
+    const apply = (item: import("@real-life-stack/data-interface").Item | null) => {
+      setMyBio(typeof item?.data.bio === "string" ? item.data.bio : "")
+    }
+    apply(observable.current)
+    void connector.getMyProfile().then(apply)
+    return observable.subscribe(apply)
+  }, [isOwn, connector])
 
   useEffect(() => {
     // Clear any previously loaded user first, so switching from one
@@ -324,7 +342,7 @@ function ProfilePanelHost({
       return {
         did: currentUser?.id ?? "",
         name: currentUser?.displayName ?? "",
-        bio: "",
+        bio: myBio,
         avatar: currentUser?.avatarUrl,
       }
     }
@@ -336,7 +354,7 @@ function ProfilePanelHost({
       name: foreign?.displayName ?? userId,
       avatar: foreign?.avatarUrl,
     }
-  }, [userId, isOwn, currentUser, foreign])
+  }, [userId, isOwn, currentUser, foreign, myBio])
 
   return (
     <AdaptivePanel
