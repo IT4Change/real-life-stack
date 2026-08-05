@@ -303,9 +303,16 @@ describe("VerificationWorkflow mit IndexedDbVerificationStateStore (Reload-Szena
     })
     const payload = await new AttestationWorkflow({ crypto: protocolCrypto }).verifyAttestationVcJws(verification.vcJws)
 
+    // Feste Uhr für consumedAt UND Workflow (#239): die 24h-Nonce-Retention
+    // prunt sonst ab dem Folgetag den fixen Zeitstempel weg und der Test
+    // kippt zeitabhängig — Echtzeit und fixe Stempel nie mischen.
     await store().recordConsumedNonce(nonce, "2026-08-04T10:00:00Z")
 
-    const after = workflow()
+    const after = new VerificationWorkflow({
+      crypto: protocolCrypto,
+      now: () => new Date("2026-08-04T10:30:00Z"),
+      stateStore: store(),
+    })
     expect(await after.acceptVerifiedVerificationAttestation(ownerIdentity, payload)).toEqual({
       decision: "reject",
       reason: "nonce-consumed",
