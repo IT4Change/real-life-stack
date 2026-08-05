@@ -17,10 +17,12 @@ import type {
   Source,
   User,
 } from "@real-life-stack/data-interface"
+import type { PublicProfileData } from "@real-life-stack/data-interface"
 import {
   createDefaultRelationStore,
   createObservable,
   createRelationRecordWith,
+  deriveContext,
 } from "@real-life-stack/data-interface"
 import type {
   AuthSessionLike,
@@ -142,6 +144,12 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, () => {
         this.scheduleGroupsRefresh()
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+        // Profile edits (this or another device): own profile item + the
+        // display names in member lists.
+        void this.refreshMyProfile()
+        this.scheduleGroupsRefresh()
+      })
     groupsChannel.subscribe()
     this.channels.push(groupsChannel)
   }
@@ -162,6 +170,8 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     this.authState.destroy()
     this.currentUserObs.destroy()
     this.currentGroupObs.destroy()
+    this.profileObs.destroy()
+    this.profileSyncPendingObs.destroy()
   }
 
   // --- Items ---
@@ -598,6 +608,106 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     this.scheduleGroupsRefresh()
   }
 
+  // --- Profile (ProfileCapable, WoT-Parität) ---
+
+  private profileObs = createObservable<Item | null>(null)
+  private profileSyncPendingObs = createObservable<boolean>(false)
+
+  /** profiles-Row → person-Item (person/v1), same projection idea as WoT. */
+  private profileRowToPersonItem(row: Record<string, unknown>): Item {
+    const id = row.id as string
+    const data: Record<string, unknown> = {
+      displayName: (row.display_name as string | null) ?? id,
+      ...(row.bio ? { bio: row.bio } : {}),
+      ...(row.avatar_url ? { avatarUrl: row.avatar_url } : {}),
+    }
+    return {
+      id,
+      "@context": deriveContext("person", data),
+      type: "person",
+      createdAt: typeof row.created_at === "string" ? new Date(row.created_at).toISOString() : new Date(0).toISOString(),
+      createdBy: id,
+      data,
+    }
+  }
+
+  private async fetchProfileRow(id: string): Promise<Record<string, unknown> | null> {
+    const result = await this.client.from("profiles").select("*").eq("id", id).maybeSingle()
+    return throwOnError(result, "getProfile")
+  }
+
+  private async refreshMyProfile(): Promise<void> {
+    const userId = this.currentUser?.id
+    if (!userId) {
+      this.profileObs.set(null)
+      return
+    }
+    try {
+      const row = await this.fetchProfileRow(userId)
+      this.profileObs.set(row ? this.profileRowToPersonItem(row) : null)
+    } catch (error) {
+      console.error("[SupabaseConnector] profile refresh failed", error)
+    }
+  }
+
+  async getMyProfile(): Promise<Item | null> {
+    if (!this.profileObs.current) await this.refreshMyProfile()
+    return this.profileObs.current
+  }
+
+  observeMyProfile(): Observable<Item | null> {
+    if (!this.profileObs.current) void this.refreshMyProfile()
+    return this.profileObs
+  }
+
+  async updateMyProfile(updates: Partial<Record<string, unknown>>): Promise<Item> {
+    const user = await this.getCurrentUser()
+    if (!user) throw new Error("[SupabaseConnector] updateMyProfile requires an authenticated user")
+    const patch: Record<string, unknown> = {
+      ...(updates.name !== undefined ? { display_name: (updates.name as string) || null } : {}),
+      ...(updates.bio !== undefined ? { bio: (updates.bio as string) || null } : {}),
+      ...(updates.avatar !== undefined ? { avatar_url: (updates.avatar as string) || null } : {}),
+    }
+    const result = await this.client.from("profiles").update(patch).eq("id", user.id).select().single()
+    const row = throwOnError(result, "updateMyProfile")
+    const item = this.profileRowToPersonItem(row)
+    this.profileObs.set(item)
+    // The navbar reads currentUser — reflect the new name/avatar immediately.
+    const nextUser: User = {
+      id: user.id,
+      ...(row.display_name ? { displayName: row.display_name as string } : {}),
+      ...(row.avatar_url ? { avatarUrl: row.avatar_url as string } : {}),
+    }
+    this.currentUser = nextUser
+    this.currentUserObs.set(nextUser)
+    if (this.authState.current.status === "authenticated") {
+      this.authState.set({ status: "authenticated", user: nextUser })
+    }
+    return item
+  }
+
+  async getPublicProfile(id: string): Promise<PublicProfileData | null> {
+    const row = await this.fetchProfileRow(id)
+    if (!row) return null
+    return {
+      id,
+      ...(row.display_name ? { name: row.display_name as string } : {}),
+      ...(row.bio ? { bio: row.bio as string } : {}),
+      ...(row.avatar_url ? { avatar: row.avatar_url as string } : {}),
+    }
+  }
+
+  /** v1: every profile field is instance-visible — there is no discovery
+      split like WoT's public profile server, so this is a documented no-op. */
+  async setFieldVisibility(_field: string, _isPublic: boolean): Promise<void> {}
+
+  /** The server IS the source of truth — nothing to publish. */
+  async syncProfile(): Promise<void> {}
+
+  isProfileSyncPending(): Observable<boolean> {
+    return this.profileSyncPendingObs
+  }
+
   // --- Users / Auth ---
 
   /** Identity the realtime channels were joined with (rejoin on change). */
@@ -614,6 +724,7 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     if (!session?.user) {
       this.currentUser = null
       this.currentUserObs.set(null)
+      this.profileObs.set(null)
       this.authState.set({ status: "unauthenticated" })
       return
     }
@@ -621,6 +732,7 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     this.currentUser = user
     this.currentUserObs.set(user)
     this.authState.set({ status: "authenticated", user })
+    void this.refreshMyProfile()
   }
 
   private async resolveUser(id: string, session?: AuthSessionLike | null): Promise<User> {

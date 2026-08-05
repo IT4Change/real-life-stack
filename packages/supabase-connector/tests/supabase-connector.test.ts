@@ -299,6 +299,62 @@ describe("SupabaseConnector — group scope on read paths (#238 review)", () => 
   })
 })
 
+describe("SupabaseConnector — ProfileCapable (WoT-Parität)", () => {
+  it("hasProfile greift; updateMyProfile persistiert Name/Bio/Avatar und projiziert ein person-Item", async () => {
+    const { connector, userId } = await makeConnector()
+    const { hasProfile } = await import("@real-life-stack/data-interface")
+    expect(hasProfile(connector)).toBe(true)
+    await connector.updateMyProfile({ name: "Anton", bio: "Baut Netze", avatar: "data:image/png;base64,abc" })
+    const profile = (await connector.getMyProfile())!
+    expect(profile).toMatchObject({
+      id: userId,
+      type: "person",
+      createdBy: userId,
+      data: { displayName: "Anton", bio: "Baut Netze", avatarUrl: "data:image/png;base64,abc" },
+    })
+    expect(profile["@context"]).toContain("https://real-life-stack.org/vocab/person/v1")
+  })
+
+  it("updateMyProfile aktualisiert auch den currentUser (Navbar-Name/-Avatar sofort)", async () => {
+    const { connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Neuer Name", avatar: "data:image/png;base64,xyz" })
+    const user = (await connector.getCurrentUser())!
+    expect(user.displayName).toBe("Neuer Name")
+    expect(user.avatarUrl).toBe("data:image/png;base64,xyz")
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Neuer Name")
+  })
+
+  it("observeMyProfile emittet nach Update und folgt externen profiles-Änderungen (Realtime)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    const observable = connector.observeMyProfile()
+    await flush()
+    await connector.updateMyProfile({ name: "Erste" })
+    await flush()
+    expect(observable.current?.data.displayName).toBe("Erste")
+    // Anderes Gerät ändert das Profil → Realtime-Event auf profiles.
+    const row = client.tables.get("profiles")!.find((r) => r.id === userId)!
+    row.display_name = "Vom anderen Gerät"
+    client.emit("profiles", { eventType: "UPDATE", new: { ...row }, old: { ...row } })
+    await flush()
+    expect(observable.current?.data.displayName).toBe("Vom anderen Gerät")
+  })
+
+  it("getPublicProfile liefert Fremdprofil-Daten; leeres Feld bleibt absent", async () => {
+    const { client, connector } = await makeConnector()
+    client.tables.get("profiles")!.push({ id: "user-berta", display_name: "Berta", avatar_url: null, bio: "Hallo", created_at: "t" })
+    const publicProfile = (await connector.getPublicProfile("user-berta"))!
+    expect(publicProfile).toMatchObject({ name: "Berta", bio: "Hallo" })
+    expect("avatar" in publicProfile && publicProfile.avatar ? "gesetzt" : "absent").toBe("absent")
+    expect(await connector.getPublicProfile("user-unbekannt")).toBeNull()
+  })
+
+  it("syncProfile ist ein ehrlicher No-op (Server ist die Quelle), Pending konstant false", async () => {
+    const { connector } = await makeConnector()
+    await connector.syncProfile()
+    expect(connector.isProfileSyncPending().current).toBe(false)
+  })
+})
+
 describe("SupabaseConnector — groups and auth", () => {
   it("createGroup binds the creator, joins them as member, isAdmin follows created_by", async () => {
     const { connector, userId } = await makeConnector()
