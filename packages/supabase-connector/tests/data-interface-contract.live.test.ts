@@ -170,6 +170,71 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
+    it("membership visibility: non-members see nothing, cannot join or write; invitation opens the door", { timeout: 30_000 }, async () => {
+      const alice = await makeAuthoritative()
+      const mallory = await makeAuthoritative()
+      try {
+        const probeType = `member-probe-${Date.now()}`
+        const group = await alice.connector.createGroup(`Membership ${Date.now()}`)
+        alice.connector.setCurrentGroup(group.id)
+        const secret = await alice.connector.createItem({ type: probeType, createdBy: alice.userId, data: { title: "nur für Mitglieder" } })
+
+        // Non-member: no item, no group, no membership row.
+        expect((await mallory.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([])
+        expect(await mallory.connector.getItem(secret.id)).toBeNull()
+        expect((await mallory.connector.getGroups()).map(({ id }) => id)).not.toContain(group.id)
+
+        // Self-join bounces off RLS (the pre-0003 gap).
+        const joinAttempt = await mallory.client.from("group_members").insert({ group_id: group.id, user_id: mallory.userId })
+        expect(joinAttempt.error).not.toBeNull()
+
+        // Writing into the group bounces off RLS even with a bound author.
+        const writeAttempt = await mallory.client.from("items").insert({
+          id: `mallory-write-${Date.now()}`, type: probeType, created_by: mallory.userId, data: {}, group_id: group.id,
+        })
+        expect(writeAttempt.error).not.toBeNull()
+
+        // Invitation by a member opens the door.
+        await alice.connector.inviteMember(group.id, mallory.userId)
+        expect((await mallory.connector.getGroups()).map(({ id }) => id)).toContain(group.id)
+        mallory.connector.setCurrentGroup(group.id)
+        expect((await mallory.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([secret.id])
+      } finally {
+        await alice.connector.dispose()
+        await mallory.connector.dispose()
+      }
+    })
+
+    it("realtime still delivers GROUP items to members (WALRUS evaluates the definer-based policy)", { timeout: 25_000 }, async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        const probeType = `member-rt-${Date.now()}`
+        const group = await alice.connector.createGroup(`RT ${Date.now()}`)
+        await alice.connector.inviteMember(group.id, berta.userId)
+        berta.connector.setCurrentGroup(group.id)
+        const observable = berta.connector.observe({ type: probeType })
+        await new Promise((resolve) => setTimeout(resolve, 2_000))
+        alice.connector.setCurrentGroup(group.id)
+        const created = await alice.connector.createItem({ type: probeType, createdBy: alice.userId, data: { title: "im Space" } })
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("realtime group event did not arrive within 15s")), 15_000)
+          const check = () => {
+            if (observable.current.some(({ id }) => id === created.id)) {
+              clearTimeout(timer)
+              stop()
+              resolve()
+            }
+          }
+          const stop = observable.subscribe(check)
+          check()
+        })
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
     it("observe() is LIVE: an insert from a second client arrives via realtime", { timeout: 20_000 }, async () => {
       const observerSide = await makeAuthoritative()
       const writerSide = await makeAuthoritative()

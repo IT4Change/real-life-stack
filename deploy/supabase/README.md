@@ -42,6 +42,17 @@ docker compose up -d
 - **Admin-Zugriff:** `docker exec -it supabase-db psql -U postgres` (kein
   Studio deployed).
 
+## Sichtbarkeitsmodell (seit Migration 0003)
+
+- **items:** `group_id IS NULL` → instanzweit sichtbar; Gruppen-Items nur
+  für Mitglieder (lesen UND schreiben)
+- **groups / group_members:** nur Creator + Mitglieder; **einladen dürfen
+  nur Mitglieder** (der frühere Selbst-Beitritt Beliebiger ist zu)
+- **profiles:** instanzweit lesbar (Mitgliederauswahl beim Einladen)
+- Mitgliedschafts-Checks als `security definer`-Funktionen im
+  `private`-Schema (Standard-Muster gegen die RLS-Rekursionsfalle
+  groups ↔ group_members); Realtime (WALRUS) wertet dieselben Policies aus
+
 ## Smoke-Tests
 
 ```bash
