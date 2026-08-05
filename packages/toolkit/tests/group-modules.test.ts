@@ -159,3 +159,29 @@ describe("createLatestWinsSaver success signal", () => {
     expect(onSaved.mock.calls[0][0]).toEqual(["a", "b"])
   })
 })
+
+describe("createLatestWinsSaver sync throw", () => {
+  it("a synchronous throw from save() does not lock the saver", async () => {
+    let threw = false
+    const { calls, save } = controlledSave()
+    const onError = vi.fn()
+    const push = createLatestWinsSaver((value: string[]) => {
+      if (!threw) {
+        threw = true
+        throw new Error("sync kaputt") // wirft VOR Rueckgabe eines Promise
+      }
+      return save(value)
+    }, onError)
+
+    push(["a"]) // darf nicht nach aussen werfen und nicht verriegeln
+    await flush()
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    push(["b"]) // Saver muss wieder frei sein
+    expect(calls).toHaveLength(1)
+    expect(calls[0].value).toEqual(["b"])
+    calls[0].resolve()
+    await flush()
+    expect(onError).toHaveBeenCalledTimes(1)
+  })
+})

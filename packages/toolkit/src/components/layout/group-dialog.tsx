@@ -74,7 +74,15 @@ export function createLatestWinsSaver<T>(
   let lastSaved: T | undefined
   const run = (value: T) => {
     inFlight = true
-    save(value).then(
+    // A synchronous throw from save() must flow into the SAME failure path as
+    // a rejection — otherwise inFlight never resets and the saver locks up.
+    let settling: Promise<void>
+    try {
+      settling = save(value)
+    } catch (error) {
+      settling = Promise.reject(error)
+    }
+    settling.then(
       () => {
         lastSaved = value
         inFlight = false
@@ -179,9 +187,12 @@ export function GroupDialog({
   modeRef.current = mode
   const onUpdateGroupRef = useRef(onUpdateGroup)
   onUpdateGroupRef.current = onUpdateGroup
-  // Whether the currently shown error came from a MODULE save — only then may
-  // a later successful module save clear it (a rename error must survive).
-  const moduleErrorShownRef = useRef(false)
+  // The exact error message the last failed MODULE save put into the shared
+  // error state. A later successful module save clears the error only while
+  // THAT message is still showing — a boolean "module error shown" flag would
+  // stay stale once another operation (e.g. a failed rename) overwrote the
+  // state, and the clear would swallow the foreign error.
+  const moduleErrorMessageRef = useRef<string | null>(null)
   const saveModulesRef = useRef<((modules: string[]) => void) | null>(null)
   if (!saveModulesRef.current) {
     saveModulesRef.current = createLatestWinsSaver<string[]>(
@@ -204,14 +215,17 @@ export function GroupDialog({
               ? ((current.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES)
               : DEFAULT_MODULES),
         )
-        moduleErrorShownRef.current = true
-        setError(err instanceof Error ? err.message : "Module konnten nicht gespeichert werden")
+        const message = err instanceof Error ? err.message : "Module konnten nicht gespeichert werden"
+        moduleErrorMessageRef.current = message
+        setError(message)
       },
       () => {
-        // A confirmed save supersedes an earlier module-save failure notice.
-        if (moduleErrorShownRef.current) {
-          moduleErrorShownRef.current = false
-          setError(null)
+        // A confirmed save supersedes an earlier module-save failure notice —
+        // but only if that notice is still the one on display.
+        const message = moduleErrorMessageRef.current
+        if (message !== null) {
+          moduleErrorMessageRef.current = null
+          setError((current) => (current === message ? null : current))
         }
       },
     )
