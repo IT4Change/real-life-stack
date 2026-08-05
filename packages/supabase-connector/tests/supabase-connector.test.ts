@@ -299,6 +299,354 @@ describe("SupabaseConnector — group scope on read paths (#238 review)", () => 
   })
 })
 
+describe("SupabaseConnector — ProfileCapable (WoT-Parität)", () => {
+  it("hasProfile greift; updateMyProfile persistiert Name/Bio/Avatar und projiziert ein person-Item", async () => {
+    const { connector, userId } = await makeConnector()
+    const { hasProfile } = await import("@real-life-stack/data-interface")
+    expect(hasProfile(connector)).toBe(true)
+    await connector.updateMyProfile({ name: "Anton", bio: "Baut Netze", avatar: "data:image/png;base64,abc" })
+    const profile = (await connector.getMyProfile())!
+    expect(profile).toMatchObject({
+      id: userId,
+      type: "person",
+      createdBy: userId,
+      data: { displayName: "Anton", bio: "Baut Netze", avatarUrl: "data:image/png;base64,abc" },
+    })
+    expect(profile["@context"]).toContain("https://real-life-stack.org/vocab/person/v1")
+  })
+
+  it("updateMyProfile aktualisiert auch den currentUser (Navbar-Name/-Avatar sofort)", async () => {
+    const { connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Neuer Name", avatar: "data:image/png;base64,xyz" })
+    const user = (await connector.getCurrentUser())!
+    expect(user.displayName).toBe("Neuer Name")
+    expect(user.avatarUrl).toBe("data:image/png;base64,xyz")
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Neuer Name")
+  })
+
+  it("observeMyProfile emittet nach Update und folgt externen profiles-Änderungen (Realtime)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    const observable = connector.observeMyProfile()
+    await flush()
+    await connector.updateMyProfile({ name: "Erste" })
+    await flush()
+    expect(observable.current?.data.displayName).toBe("Erste")
+    // Anderes Gerät ändert das Profil → Realtime-Event auf profiles.
+    const row = client.tables.get("profiles")!.find((r) => r.id === userId)!
+    row.display_name = "Vom anderen Gerät"
+    client.emit("profiles", { eventType: "UPDATE", new: { ...row }, old: { ...row } })
+    await flush()
+    expect(observable.current?.data.displayName).toBe("Vom anderen Gerät")
+  })
+
+  /** Gate the NEXT profiles read: resolves only when release() is called. */
+  function gateNextProfilesRead(client: FakeSupabaseClient): { release: () => void } {
+    const originalFrom = client.from.bind(client)
+    let armed = true
+    let release: () => void = () => {}
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      const tableApi = originalFrom(table)
+      if (table !== "profiles" || !armed) return tableApi
+      armed = false
+      const originalSelect = tableApi.select.bind(tableApi)
+      return {
+        insert: tableApi.insert.bind(tableApi),
+        update: tableApi.update.bind(tableApi),
+        delete: tableApi.delete.bind(tableApi),
+        select: (columns?: string) => {
+          const builder = originalSelect(columns)
+          const originalMaybeSingle = builder.maybeSingle.bind(builder)
+          return Object.assign(builder, {
+            // Snapshot AT CALL TIME: the held read must carry the data of the
+            // moment it was issued — that is what makes it dangerously stale.
+            maybeSingle: () => {
+              const result = originalMaybeSingle()
+              return new Promise((resolve) => { release = () => resolve(result) })
+            },
+          })
+        },
+      }
+    }
+    return { get release() { return release }, set release(_v) {} } as { release: () => void }
+  }
+
+  it("ein nach Logout auflösender Profil-Read reanimiert das alte Profil NICHT (Review-Race)", async () => {
+    const { client, connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Alice", bio: "Geheim" })
+    await flush()
+    // Read für die ALTE Session gaten (Realtime-Event stößt den Refresh an) …
+    const gate = gateNextProfilesRead(client)
+    client.emit("profiles", { eventType: "UPDATE", new: {}, old: {} })
+    await flush()
+    // … dann Logout: Observable korrekt leer.
+    await connector.logout()
+    await flush()
+    expect(connector.observeMyProfile().current).toBeNull()
+    // Alten Read freigeben — er darf die entzogene Session nicht überleben.
+    gate.release()
+    await flush()
+    expect(connector.observeMyProfile().current).toBeNull()
+  })
+
+  it("bei A→B-Sessionwechsel überschreibt ein später A-Read das B-Profil nicht", async () => {
+    const { client, connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Alice" })
+    await flush()
+    const gate = gateNextProfilesRead(client)
+    client.emit("profiles", { eventType: "UPDATE", new: {}, old: {} })
+    await flush()
+    await connector.logout()
+    const userB = await connector.authenticate("anonymous", {})
+    await connector.updateMyProfile({ name: "Berta" })
+    await flush()
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Berta")
+    gate.release()
+    await flush()
+    expect(connector.observeMyProfile().current?.id).toBe(userB.id)
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Berta")
+  })
+
+  it("eine ALTE applySession(A)-Fortsetzung überschreibt Session B nicht (Runde-2-Review)", async () => {
+    // A meldet sich an, aber As resolveUser-Read hängt; währenddessen wechselt
+    // die Session komplett zu B. Löst As Fortsetzung danach auf, darf sie
+    // weder currentUser noch AuthState auf A zurückdrehen.
+    const client = new FakeSupabaseClient()
+    const connector = new SupabaseConnector(client)
+    await connector.init()
+    const gate = gateNextProfilesRead(client)
+    const loginA = connector.authenticate("anonymous", {})
+    await flush()
+    const userB = await connector.authenticate("anonymous", {})
+    await connector.updateMyProfile({ name: "Berta" })
+    await flush()
+    gate.release()
+    await flush()
+    await loginA.catch(() => {})
+    expect((await connector.getCurrentUser())?.id).toBe(userB.id)
+    expect(connector.observeCurrentUser().current?.id).toBe(userB.id)
+    expect(connector.observeMyProfile().current?.id).toBe(userB.id)
+  })
+
+  it("zwei Refreshes derselben Session überholen sich nicht — der NEUE Wert gewinnt (Single-Flight)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    await connector.updateMyProfile({ name: "Alt" })
+    await flush()
+    // Read #1 hängt; währenddessen ändert sich das Profil UND ein weiteres
+    // Realtime-Event kommt an. Nach Freigabe darf am Ende NICHT der alte
+    // Read-Wert stehen bleiben.
+    const gate = gateNextProfilesRead(client)
+    client.emit("profiles", { eventType: "UPDATE", new: {}, old: {} })
+    await flush()
+    const row = client.tables.get("profiles")!.find((r) => r.id === userId)!
+    row.display_name = "Neu"
+    client.emit("profiles", { eventType: "UPDATE", new: { ...row }, old: { ...row } })
+    await flush()
+    gate.release()
+    await flush()
+    await flush()
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Neu")
+  })
+
+  it("beim DIREKTEN A→B-Wechsel (ohne Logout) bleibt As Profil nicht sichtbar, während Bs Fetch läuft", async () => {
+    const { client, connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Alice", bio: "As Geheimnis" })
+    await flush()
+    // Direkter Kontowechsel: Bs Reads hängen — in diesem Fenster darf As
+    // Item (samt Bio) nicht mehr stehen.
+    const gate = gateNextProfilesRead(client)
+    const loginB = connector.authenticate("anonymous", {})
+    await flush()
+    const during = connector.observeMyProfile().current
+    expect(during?.data.bio).not.toBe("As Geheimnis")
+    gate.release()
+    await flush()
+    gate.release()
+    const userB = await loginB
+    await flush()
+    await flush()
+    expect(connector.observeMyProfile().current?.id).toBe(userB.id)
+  })
+
+  it("eine ALTE Anreicherung derselben Session dreht ein bestätigtes updateMyProfile NICHT zurück (Runde-3-Review)", async () => {
+    // Session startet mit gegateten Reads (Anreicherung + Worker tragen den
+    // ALTEN Stand als Snapshot). updateMyProfile ist danach vollständig
+    // bestätigt — die später auflösenden alten Reads dürfen weder Navbar-
+    // noch Auth- noch Profil-State zurückdrehen.
+    const client = new FakeSupabaseClient()
+    await client.auth.signInAnonymously()
+    const releases: Array<() => void> = []
+    const originalFrom = client.from.bind(client)
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      const tableApi = originalFrom(table)
+      if (table !== "profiles") return tableApi
+      const originalSelect = tableApi.select.bind(tableApi)
+      return {
+        insert: tableApi.insert.bind(tableApi),
+        update: tableApi.update.bind(tableApi),
+        delete: tableApi.delete.bind(tableApi),
+        select: (columns?: string) => {
+          const builder = originalSelect(columns)
+          const originalMaybeSingle = builder.maybeSingle.bind(builder)
+          return Object.assign(builder, {
+            maybeSingle: () => {
+              const result = originalMaybeSingle() // Snapshot at call time
+              return new Promise((resolve) => { releases.push(() => resolve(result)) })
+            },
+          })
+        },
+      }
+    }
+    const connector = new SupabaseConnector(client)
+    const initPromise = connector.init() // hängt an den gegateten Reads
+    await flush()
+    const updated = await connector.updateMyProfile({ name: "Neu", avatar: "data:image/png;base64,neu" })
+    expect(updated.data.displayName).toBe("Neu")
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Neu")
+    // Alte Reads (Alt-Snapshots) freigeben — mehrere Runden für Reruns.
+    for (let round = 0; round < 5; round += 1) {
+      releases.splice(0).forEach((release) => release())
+      await flush()
+    }
+    await initPromise
+    await flush()
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Neu")
+    expect(connector.observeCurrentUser().current?.avatarUrl).toBe("data:image/png;base64,neu")
+    const authUser = connector.getAuthState().current
+    expect(authUser.status === "authenticated" && authUser.user.displayName).toBe("Neu")
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Neu")
+  })
+
+  it("updateMyProfile({}) ist ein No-op und liefert das aktuelle Profil (kein leerer PostgREST-Body)", async () => {
+    const { connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Bestand" })
+    await flush()
+    const unchanged = await connector.updateMyProfile({})
+    expect(unchanged.data.displayName).toBe("Bestand")
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Bestand")
+  })
+
+  it("fremde profiles-Realtime-Events lösen KEINEN eigenen Profil-Read aus (Members-Refresh läuft)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    await flush()
+    let profileReads = 0
+    const originalFrom = client.from.bind(client)
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      if (table === "profiles") profileReads += 1
+      return originalFrom(table)
+    }
+    const members = connector.observeMembers(null)
+    await flush()
+    const baseline = profileReads
+    // Fremdes Profil ändert sich → Mitgliederliste ja, eigener Profil-Read nein.
+    client.tables.get("profiles")!.push({ id: "user-fremd", display_name: "Fremd", avatar_url: null, bio: null, created_at: "t" })
+    client.emit("profiles", { eventType: "INSERT", new: { id: "user-fremd" }, old: null })
+    await flush()
+    await flush()
+    expect(members.current.map(({ id }) => id)).toContain("user-fremd")
+    // Nur der Members-Refresh liest profiles (genau 1 zusätzlicher Read).
+    expect(profileReads - baseline).toBe(1)
+    // Eigenes Profil-Event → eigener Read läuft zusätzlich.
+    client.emit("profiles", { eventType: "UPDATE", new: { id: userId }, old: { id: userId } })
+    await flush()
+    await flush()
+    expect(profileReads - baseline).toBeGreaterThan(2)
+  })
+
+  it("ein Remote-Profilupdate (anderes Gerät) erreicht AUCH currentUser und AuthState (Runde-4-Review)", async () => {
+    // Alle profilabgeleiteten Flächen — Profil-Item, Navbar-User, AuthState —
+    // müssen gemeinsam durch die Commit-Grenze laufen; observeMyProfile
+    // allein reicht nicht.
+    const { client, connector, userId } = await makeConnector()
+    await connector.updateMyProfile({ name: "Vorher" })
+    await flush()
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Vorher")
+    // Anderes Gerät ändert Name + Avatar.
+    const row = client.tables.get("profiles")!.find((r) => r.id === userId)!
+    row.display_name = "Vom anderen Gerät"
+    row.avatar_url = "data:image/png;base64,remote"
+    client.emit("profiles", { eventType: "UPDATE", new: { ...row }, old: { ...row } })
+    await flush()
+    await flush()
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Vom anderen Gerät")
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Vom anderen Gerät")
+    expect(connector.observeCurrentUser().current?.avatarUrl).toBe("data:image/png;base64,remote")
+    const state = connector.getAuthState().current
+    expect(state.status === "authenticated" && state.user.displayName).toBe("Vom anderen Gerät")
+  })
+
+  it("TOKEN_REFRESHED derselben Identität ist KEIN Sessionwechsel — kein Profil-Flackern", async () => {
+    const { client, connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Stabil" })
+    await flush()
+    const emitted: Array<string | null> = []
+    const stop = connector.observeMyProfile().subscribe((item) => {
+      emitted.push(item ? (item.data.displayName as string) : null)
+    })
+    client.auth.fireAuthEvent("TOKEN_REFRESHED")
+    await flush()
+    await flush()
+    stop()
+    // Kein null-Zwischenzustand, Profil bleibt gesetzt.
+    expect(emitted).not.toContain(null)
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Stabil")
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Stabil")
+  })
+
+  it("observeMyProfile erfüllt den Async-Observable-Vertrag (loaded)", async () => {
+    // Frischer Client MIT bestehender Session; ALLE profiles-Reads hängen am
+    // Gate — vor dem ersten Settle muss loaded false sein, danach true.
+    const client = new FakeSupabaseClient()
+    await client.auth.signInAnonymously()
+    const releases: Array<() => void> = []
+    const originalFrom = client.from.bind(client)
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      const tableApi = originalFrom(table)
+      if (table !== "profiles") return tableApi
+      const originalSelect = tableApi.select.bind(tableApi)
+      return {
+        insert: tableApi.insert.bind(tableApi),
+        update: tableApi.update.bind(tableApi),
+        delete: tableApi.delete.bind(tableApi),
+        select: (columns?: string) => {
+          const builder = originalSelect(columns)
+          const originalMaybeSingle = builder.maybeSingle.bind(builder)
+          return Object.assign(builder, {
+            maybeSingle: () => new Promise((resolve) => { releases.push(() => resolve(originalMaybeSingle())) }),
+          })
+        },
+      }
+    }
+    const fresh = new SupabaseConnector(client)
+    const initPromise = fresh.init()
+    const observable = fresh.observeMyProfile()
+    expect(observable.loaded).toBe(false)
+    // Freigeben (auch nachgelagerte Reads), bis init + Refresh settled sind.
+    for (let round = 0; round < 5; round += 1) {
+      releases.splice(0).forEach((release) => release())
+      await flush()
+    }
+    await initPromise
+    await flush()
+    expect(observable.loaded).toBe(true)
+    expect(observable.current?.id).toBe(client.auth.session!.user.id)
+  })
+
+  it("getPublicProfile liefert Fremdprofil-Daten; leeres Feld bleibt absent", async () => {
+    const { client, connector } = await makeConnector()
+    client.tables.get("profiles")!.push({ id: "user-berta", display_name: "Berta", avatar_url: null, bio: "Hallo", created_at: "t" })
+    const publicProfile = (await connector.getPublicProfile("user-berta"))!
+    expect(publicProfile).toMatchObject({ name: "Berta", bio: "Hallo" })
+    expect("avatar" in publicProfile && publicProfile.avatar ? "gesetzt" : "absent").toBe("absent")
+    expect(await connector.getPublicProfile("user-unbekannt")).toBeNull()
+  })
+
+  it("syncProfile ist ein ehrlicher No-op (Server ist die Quelle), Pending konstant false", async () => {
+    const { connector } = await makeConnector()
+    await connector.syncProfile()
+    expect(connector.isProfileSyncPending().current).toBe(false)
+  })
+})
+
 describe("SupabaseConnector — groups and auth", () => {
   it("createGroup binds the creator, joins them as member, isAdmin follows created_by", async () => {
     const { connector, userId } = await makeConnector()

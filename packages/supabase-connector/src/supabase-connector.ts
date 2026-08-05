@@ -17,10 +17,12 @@ import type {
   Source,
   User,
 } from "@real-life-stack/data-interface"
+import type { PublicProfileData } from "@real-life-stack/data-interface"
 import {
   createDefaultRelationStore,
   createObservable,
   createRelationRecordWith,
+  deriveContext,
 } from "@real-life-stack/data-interface"
 import type {
   AuthSessionLike,
@@ -142,6 +144,17 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, () => {
         this.scheduleGroupsRefresh()
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, (payload) => {
+        // Member-list display names refresh on ANY profile change; the own
+        // profile read only runs when the OWN row changed (no read
+        // amplification on foreign edits; unknown id → refresh defensively).
+        const changedId = (payload.new as { id?: string } | null)?.id
+          ?? (payload.old as { id?: string } | null)?.id
+        if (changedId === undefined || changedId === this.sessionUserId) {
+          void this.requestProfileRefresh()
+        }
+        this.scheduleGroupsRefresh()
+      })
     groupsChannel.subscribe()
     this.channels.push(groupsChannel)
   }
@@ -162,6 +175,8 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     this.authState.destroy()
     this.currentUserObs.destroy()
     this.currentGroupObs.destroy()
+    this.profileObs.destroy()
+    this.profileSyncPendingObs.destroy()
   }
 
   // --- Items ---
@@ -598,29 +613,257 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     this.scheduleGroupsRefresh()
   }
 
+  // --- Profile (ProfileCapable, WoT-Parität) ---
+
+  // Starts unloaded (async source): consumers can tell "still loading"
+  // from "loaded, no profile" (Observable contract, spec 02).
+  private profileObs = createObservable<Item | null>(null, false)
+  private profileSyncPendingObs = createObservable<boolean>(false)
+  /**
+   * Session generation — THE transaction guard for the whole session
+   * lifecycle (round-2 review): every IDENTITY change bumps it before any
+   * await; every async continuation (applySession tail, profile reads,
+   * profile writes) re-checks it after each await boundary. A
+   * TOKEN_REFRESHED of the same identity is NOT a session change.
+   */
+  private sessionGeneration = 0
+  /** Identity of the current generation (null = signed out). */
+  private sessionUserId: string | null = null
+  /** Single-flight profile refresh: at most one read per session in
+      flight; further requests set the rerun flag and run EXACTLY once
+      afterwards — responses can neither overtake nor get lost. */
+  private profileFlight: Promise<void> | null = null
+  private profileRerunRequested = false
+  /**
+   * Monotonic revision of profile-derived state WITHIN a session (round-3
+   * review): the generation orders identity switches, this orders the
+   * writers of the SAME identity. A confirmed local update bumps it; every
+   * async continuation captures both and may only commit when both still
+   * hold — an older enrichment can never roll back a newer local write.
+   */
+  private profileRevision = 0
+
+  private captureProfileGuard(): { generation: number; revision: number } {
+    return { generation: this.sessionGeneration, revision: this.profileRevision }
+  }
+
+  private profileGuardHolds(captured: { generation: number; revision: number }): boolean {
+    return captured.generation === this.sessionGeneration && captured.revision === this.profileRevision
+  }
+
+  /**
+   * THE commit boundary for ALL profile-derived state (round-4 review):
+   * session bootstrap, worker/realtime reads and local updates land here —
+   * profile item, currentUser projection and auth-state update TOGETHER,
+   * guard-checked, then the revision advances. Three surfaces, one owner.
+   */
+  private commitOwnProfileRow(
+    row: Record<string, unknown> | null,
+    guard: { generation: number; revision: number },
+  ): boolean {
+    if (!this.profileGuardHolds(guard)) return false
+    const userId = this.sessionUserId
+    if (!userId) return false
+    this.profileObs.set(row ? this.profileRowToPersonItem(row) : null)
+    this.profileObs.markLoaded()
+    // Project the profile-OWNED fields (displayName/avatarUrl) into the
+    // user; other user fields are preserved.
+    const base = this.currentUser?.id === userId ? this.currentUser : { id: userId }
+    const next: User = { ...base, id: userId }
+    if (row?.display_name) next.displayName = row.display_name as string
+    else delete next.displayName
+    if (row?.avatar_url) next.avatarUrl = row.avatar_url as string
+    else delete next.avatarUrl
+    this.currentUser = next
+    this.currentUserObs.set(next)
+    if (this.authState.current.status === "authenticated") {
+      this.authState.set({ status: "authenticated", user: next })
+    }
+    this.profileRevision += 1
+    return true
+  }
+
+  /** profiles-Row → person-Item (person/v1), same projection idea as WoT. */
+  private profileRowToPersonItem(row: Record<string, unknown>): Item {
+    const id = row.id as string
+    const data: Record<string, unknown> = {
+      displayName: (row.display_name as string | null) ?? id,
+      ...(row.bio ? { bio: row.bio } : {}),
+      ...(row.avatar_url ? { avatarUrl: row.avatar_url } : {}),
+    }
+    return {
+      id,
+      "@context": deriveContext("person", data),
+      type: "person",
+      createdAt: typeof row.created_at === "string" ? new Date(row.created_at).toISOString() : new Date(0).toISOString(),
+      createdBy: id,
+      data,
+    }
+  }
+
+  private async fetchProfileRow(id: string): Promise<Record<string, unknown> | null> {
+    const result = await this.client.from("profiles").select("*").eq("id", id).maybeSingle()
+    return throwOnError(result, "getProfile")
+  }
+
+  /** Request a profile refresh; coalesces into the single flight. */
+  private requestProfileRefresh(): Promise<void> {
+    if (this.profileFlight) {
+      this.profileRerunRequested = true
+      return this.profileFlight
+    }
+    this.profileFlight = this.runProfileRefresh().finally(() => {
+      this.profileFlight = null
+      if (this.profileRerunRequested) void this.requestProfileRefresh()
+    })
+    return this.profileFlight
+  }
+
+  private async runProfileRefresh(): Promise<void> {
+    do {
+      this.profileRerunRequested = false
+      const generation = this.sessionGeneration
+      const userId = this.sessionUserId
+      if (!userId) {
+        // While auth is still resolving (init in flight), "no user" is
+        // UNKNOWN, not final — the session transition triggers the next run.
+        if (this.authState.current.status !== "loading") {
+          this.profileObs.set(null)
+          this.profileObs.markLoaded()
+        }
+        return
+      }
+      const guard = this.captureProfileGuard()
+      try {
+        const row = await this.fetchProfileRow(userId)
+        // Session gone → this flight is void entirely.
+        if (generation !== this.sessionGeneration) return
+        // Commit through THE boundary. A false return means a local write
+        // advanced the revision meanwhile: this response is stale — read
+        // again instead of applying it.
+        if (!this.commitOwnProfileRow(row, guard)) {
+          this.profileRerunRequested = true
+          continue
+        }
+      } catch (error) {
+        if (generation === this.sessionGeneration) this.profileObs.markLoaded()
+        console.error("[SupabaseConnector] profile refresh failed", error)
+      }
+    } while (this.profileRerunRequested)
+  }
+
+  async getMyProfile(): Promise<Item | null> {
+    if (!this.profileObs.loaded) await this.requestProfileRefresh()
+    return this.profileObs.current
+  }
+
+  observeMyProfile(): Observable<Item | null> {
+    if (!this.profileObs.loaded) void this.requestProfileRefresh()
+    return this.profileObs
+  }
+
+  async updateMyProfile(updates: Partial<Record<string, unknown>>): Promise<Item> {
+    const user = await this.getCurrentUser()
+    if (!user) throw new Error("[SupabaseConnector] updateMyProfile requires an authenticated user")
+    const patch: Record<string, unknown> = {
+      ...(updates.name !== undefined ? { display_name: (updates.name as string) || null } : {}),
+      ...(updates.bio !== undefined ? { bio: (updates.bio as string) || null } : {}),
+      ...(updates.avatar !== undefined ? { avatar_url: (updates.avatar as string) || null } : {}),
+    }
+    // Empty patch: a no-op, never an empty PostgREST body (400).
+    if (Object.keys(patch).length === 0) {
+      const current = await this.getMyProfile()
+      if (current) return current
+      throw new Error("[SupabaseConnector] updateMyProfile: no profile row for the current user")
+    }
+    const generation = this.sessionGeneration
+    const result = await this.client.from("profiles").update(patch).eq("id", user.id).select().single()
+    const row = throwOnError(result, "updateMyProfile")
+    const item = this.profileRowToPersonItem(row)
+    // Session changed mid-write: the server-side write stands, but the
+    // observables belong to the NEW session — leave them alone.
+    if (generation !== this.sessionGeneration || this.sessionUserId !== user.id) return item
+    // Confirmed local write = the newest truth of this session: commit
+    // through THE boundary with a FRESH revision capture (the commit's own
+    // bump then voids every older in-flight read).
+    this.commitOwnProfileRow(row, { generation, revision: this.profileRevision })
+    return item
+  }
+
+  async getPublicProfile(id: string): Promise<PublicProfileData | null> {
+    const row = await this.fetchProfileRow(id)
+    if (!row) return null
+    return {
+      id,
+      ...(row.display_name ? { name: row.display_name as string } : {}),
+      ...(row.bio ? { bio: row.bio as string } : {}),
+      ...(row.avatar_url ? { avatar: row.avatar_url as string } : {}),
+    }
+  }
+
+  /** v1: every profile field is instance-visible — there is no discovery
+      split like WoT's public profile server, so this is a documented no-op. */
+  async setFieldVisibility(_field: string, _isPublic: boolean): Promise<void> {}
+
+  /** The server IS the source of truth — nothing to publish. */
+  async syncProfile(): Promise<void> {}
+
+  isProfileSyncPending(): Observable<boolean> {
+    return this.profileSyncPendingObs
+  }
+
   // --- Users / Auth ---
 
   /** Identity the realtime channels were joined with (rejoin on change). */
   private realtimeAuthUserId: string | null = null
 
+  /**
+   * SINGLE authority for session state: currentUser, authState and the
+   * profile observable change only here (authenticate/logout merely run the
+   * Supabase auth operations and route through this method; the auth-event
+   * callback routes here too — same-identity events collapse to a no-op).
+   */
   private async applySession(session: AuthSessionLike | null): Promise<void> {
     const nextUserId = session?.user?.id ?? null
+    const identityChanged = nextUserId !== this.sessionUserId
+    if (!identityChanged) {
+      // Same identity (e.g. TOKEN_REFRESHED) — not a session change. Only
+      // the very first resolution (init) still has to settle the state.
+      if (this.authState.current.status !== "loading") return
+    }
+
+    // --- synchronous transition: bump generation, flip identity, clear the
+    // previous session's views. No awaits follow — enrichment is the profile
+    // worker's job (commit boundary), not a parallel tail here.
+    this.sessionGeneration += 1
+    this.sessionUserId = nextUserId
     if (this.channels.length > 0 && nextUserId !== this.realtimeAuthUserId) {
       this.realtimeAuthUserId = nextUserId
       this.setupRealtimeChannels()
     } else {
       this.realtimeAuthUserId = nextUserId
     }
-    if (!session?.user) {
+
+    if (nextUserId === null) {
       this.currentUser = null
       this.currentUserObs.set(null)
+      this.profileObs.set(null)
+      // No session is a SETTLED profile state: loaded, genuinely empty.
+      this.profileObs.markLoaded()
       this.authState.set({ status: "unauthenticated" })
       return
     }
-    const user = await this.resolveUser(session.user.id, session)
-    this.currentUser = user
-    this.currentUserObs.set(user)
-    this.authState.set({ status: "authenticated", user })
+
+    // Identity switch A→B: A's profile must never stay visible while B's
+    // data is still loading.
+    if (identityChanged && this.profileObs.current !== null) this.profileObs.set(null)
+    // Minimal user IMMEDIATELY (the id IS the identity). Enrichment happens
+    // EXCLUSIVELY through the profile worker's commit boundary — no parallel
+    // resolveUser tail that could compete with it (round-4 review).
+    this.currentUser = { id: nextUserId }
+    this.currentUserObs.set(this.currentUser)
+    this.authState.set({ status: "authenticated", user: this.currentUser })
+    this.requestProfileRefresh()
   }
 
   private async resolveUser(id: string, session?: AuthSessionLike | null): Promise<User> {
@@ -688,19 +931,21 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     if (!data.session) {
       throw new Error("[SupabaseConnector] Registrierung angelegt, aber E-Mail-Bestätigung steht aus — noch keine aktive Sitzung")
     }
-    const user = await this.resolveUser(authUser.id)
-    this.currentUser = user
-    this.currentUserObs.set(user)
-    this.authState.set({ status: "authenticated", user })
-    return user
+    // Route through the single session authority. The auth-event callback
+    // fires applySession for the same identity too — that collapses to a
+    // no-op, so this stays deterministic regardless of event timing.
+    await this.applySession(data.session)
+    // Return contract: the ENRICHED user (display name from the profile).
+    // Read-only — state ownership stays with applySession's own tail.
+    return this.resolveUser(authUser.id)
   }
 
   async logout(): Promise<void> {
     const { error } = await this.client.auth.signOut()
     if (error) throw new Error(`[SupabaseConnector] logout: ${error.message}`)
-    this.currentUser = null
-    this.currentUserObs.set(null)
-    this.authState.set({ status: "unauthenticated" })
+    // Single authority: the sign-out event routes here as well and
+    // collapses to a no-op for the already-cleared identity.
+    await this.applySession(null)
   }
 
   // --- Sources ---

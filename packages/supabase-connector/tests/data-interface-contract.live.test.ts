@@ -152,6 +152,24 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
+    it("profile roundtrip: updateMyProfile persists, second session reads it, foreign write bounces off RLS", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        const item = await alice.connector.updateMyProfile({ name: "Alice Live", bio: "Testet Profile", avatar: "data:image/png;base64,live" })
+        expect(item.data).toMatchObject({ displayName: "Alice Live", bio: "Testet Profile" })
+        // Second session sees the public profile.
+        const publicProfile = (await berta.connector.getPublicProfile(alice.userId))!
+        expect(publicProfile).toMatchObject({ name: "Alice Live", bio: "Testet Profile" })
+        // RLS: a foreign session cannot write someone else's profile row.
+        await berta.client.from("profiles").update({ display_name: "Gekapert" }).eq("id", alice.userId)
+        expect((await berta.connector.getPublicProfile(alice.userId))!.name).toBe("Alice Live")
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
     it("observe() is LIVE: an insert from a second client arrives via realtime", { timeout: 20_000 }, async () => {
       const observerSide = await makeAuthoritative()
       const writerSide = await makeAuthoritative()
