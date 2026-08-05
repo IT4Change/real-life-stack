@@ -1,14 +1,82 @@
 import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react"
-import type { RelationRecord, VoteRecord, VoteValue } from "@real-life-stack/data-interface"
+import type { ClaimVerdict, DataInterface, RelationRecord, VoteRecord, VoteValue } from "@real-life-stack/data-interface"
 import {
   VOTE_PREDICATE,
+  hasClaimVerification,
   hasRelationRecords,
   hasRelationRecordWriter,
   isAuthenticatable,
+  jcsCanonicalize,
+  relationAuthorialPayload,
   voteRecordInput,
   votesFromRelationRecords,
 } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
+
+/**
+ * Claim-verdict filter (spec 08 L1–L3): returns only records the connector
+ * vouches for (`valid` or `trusted`) — FAIL CLOSED from the first frame:
+ * pending verification counts like invalid, connectors without the
+ * verification capability yield an empty authorial aggregate, and the
+ * transition is monotone (unverified → counted, never back for unchanged
+ * records). The aggregator owns re-emission: state updates re-render
+ * consumers once verification settles.
+ */
+/** Verdict key binds id + claim + SEMANTIC CONTENT — a stale id-keyed
+    verdict must never carry over to changed content (a manipulated peer
+    write would briefly count with the old "valid"). Null = unverifiable. */
+function verdictKey(record: RelationRecord): string | null {
+  try {
+    return `${record.id}|${record.claim ?? ""}|${jcsCanonicalize(relationAuthorialPayload(record))}`
+  } catch {
+    return null
+  }
+}
+
+const EMPTY_VERDICTS: ReadonlyMap<string, ClaimVerdict> = new Map()
+
+export function useVerifiedRelationRecords(records: RelationRecord[]): RelationRecord[] {
+  const connector = useConnector()
+  const canVerify = hasClaimVerification(connector)
+  // Verdicts are bound to the CONNECTOR INSTANCE (verification epoch): a
+  // connector switch must not let the previous instance's verdicts count
+  // for even one frame — the pair is read synchronously below.
+  const [state, setState] = useState<{ source: DataInterface | null; verdicts: ReadonlyMap<string, ClaimVerdict> }>({ source: null, verdicts: EMPTY_VERDICTS })
+
+  useEffect(() => {
+    if (!canVerify || records.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      const entries: Array<readonly [string, ClaimVerdict]> = []
+      for (const record of records) {
+        const key = verdictKey(record)
+        if (key === null) continue
+        let verdict: ClaimVerdict
+        try {
+          verdict = await (connector as DataInterface & { verifyRecordClaim(r: RelationRecord): Promise<ClaimVerdict> }).verifyRecordClaim(record)
+        } catch {
+          // A rejecting verifier is an invalid record, never an unhandled gap.
+          verdict = "invalid"
+        }
+        entries.push([key, verdict])
+      }
+      if (!cancelled) startTransition(() => setState({ source: connector, verdicts: new Map(entries) }))
+    })()
+    return () => { cancelled = true }
+  }, [connector, canVerify, records])
+
+  return useMemo(() => {
+    if (!canVerify) return []
+    // Epoch check: verdicts from a different connector instance are void.
+    const verdicts = state.source === connector ? state.verdicts : EMPTY_VERDICTS
+    return records.filter((record) => {
+      const key = verdictKey(record)
+      if (key === null) return false
+      const verdict = verdicts.get(key)
+      return verdict === "valid" || verdict === "trusted"
+    })
+  }, [canVerify, connector, records, state])
+}
 
 /** Aggregated vote distribution for a statement. */
 export interface VoteSummary {
@@ -69,7 +137,8 @@ export function useVotes(statementId: string): UseVotesResult {
   const canWrite = hasRelationRecordWriter(connector)
   const canVote = canWrite && canRead && isAuthenticatable(connector) && currentUserId !== undefined
 
-  const votes = useMemo(() => votesFromRelationRecords(records), [records])
+  const verifiedRecords = useVerifiedRelationRecords(records)
+  const votes = useMemo(() => votesFromRelationRecords(verifiedRecords), [verifiedRecords])
 
   // Optimistic overlay for the own vote: applied on click, dropped as soon as
   // the records observable reflects the write.
@@ -195,10 +264,11 @@ export function useVoteUsers(statementId: string, enabled = true): UseVoteUsersR
     return recordsObservable.subscribe((next) => startTransition(() => setRecords(next)))
   }, [recordsObservable])
 
+  const verifiedRecords = useVerifiedRelationRecords(records)
   const votes = useMemo(
-    () => votesFromRelationRecords(records)
+    () => votesFromRelationRecords(verifiedRecords)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [records],
+    [verifiedRecords],
   )
 
   const [users, setUsers] = useState<VoteUser[]>([])

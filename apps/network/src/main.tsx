@@ -40,6 +40,9 @@ async function bootstrap() {
   }
   const connector = new MockConnector(networkSeed, {
     symmetricRelationPredicates: NETWORK_RELATION_STORE_OPTIONS.symmetricPredicates,
+    // Demo app with foreign-authored seed data injected at runtime — the
+    // marked fixture mode (spec 08): no authoritative claim verdict.
+    allowFixtureAuthors: true,
   })
   await connector.init()
   connector.injectSeedItems(dwebCampSeedItems, DWEB_CAMP_GROUP_ID)

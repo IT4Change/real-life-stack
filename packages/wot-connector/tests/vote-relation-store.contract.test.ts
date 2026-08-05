@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeAll, describe, expect, it, vi } from "vitest"
 import {
   createObservable,
   deriveRelationRecordId,
+  verifyRelationClaim,
   voteRecordInput,
   votesFromRelationRecords,
   VOTE_PREDICATE,
@@ -17,8 +18,36 @@ import type { RlsSpaceDoc } from "../src/types.js"
  * idempotently, and update/delete require authorship.
  */
 
-const ALICE = "did:key:alice"
-const BOB = "did:key:bob"
+// Real Ed25519 identities: the signed mode verifies claims for real, so the
+// harness needs resolvable did:key DIDs and a working signer.
+interface TestIdentity { did: string; signEd25519(bytes: Uint8Array): Promise<Uint8Array> }
+let alice: TestIdentity
+let bob: TestIdentity
+let ALICE: string
+let BOB: string
+
+async function makeIdentity(): Promise<TestIdentity> {
+  const keyPair = (await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])) as CryptoKeyPair
+  const raw = new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey))
+  const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+  const bytes = new Uint8Array([0xed, 0x01, ...raw])
+  let n = 0n
+  for (const byte of bytes) n = (n << 8n) | BigInt(byte)
+  let encoded = ""
+  while (n > 0n) { encoded = B58[Number(n % 58n)] + encoded; n /= 58n }
+  return {
+    did: `did:key:z${encoded}`,
+    signEd25519: async (input: Uint8Array) =>
+      new Uint8Array(await crypto.subtle.sign("Ed25519", keyPair.privateKey, input as BufferSource)),
+  }
+}
+
+beforeAll(async () => {
+  alice = await makeIdentity()
+  bob = await makeIdentity()
+  ALICE = alice.did
+  BOB = bob.did
+})
 
 function doc(): RlsSpaceDoc {
   return { _type: "rls", items: {}, metadata: { name: "test", modules: [] } }
@@ -42,6 +71,7 @@ function connector(current = handle()) {
   value.currentHandle = current
   value.currentGroupId = "space"
   value.currentUserObs = createObservable({ id: ALICE, displayName: "Alice" })
+  value.identity = { getDid: () => ALICE, signEd25519: alice.signEd25519 }
   value.activityObservables = new Map()
   value.activityDirty = false
   value.activityReconciliations = new Map()
@@ -169,6 +199,39 @@ describe("WotConnector — vote relation store contract", () => {
     expect(statementSpace.value.items[canonicalId]).toMatchObject({ type: "relation", createdBy: ALICE })
     // The legacy edge in the other space is left untouched.
     expect((privateSpace.value.items[canonicalId] as { data: { value: string } }).data.value).toBe("green")
+  })
+
+  it("signed mode: a created vote carries a claim that verifies as valid", async () => {
+    const { connector: c } = connector()
+    const record = await c.createRelationRecord(voteRecordInput(ALICE, "s1", "green"))
+    expect(typeof record.claim).toBe("string")
+    expect(await verifyRelationClaim(record)).toBe("valid")
+    expect(await c.verifyRecordClaim(record)).toBe("valid")
+  })
+
+  it("signed mode WITHOUT an identity refuses authorial writes — never writes unsigned", async () => {
+    const { connector: c, handle: h } = connector()
+    const anyC = c as any
+    anyC.currentUserObs = createObservable(null)
+    await expect(c.createRelationRecord(voteRecordInput(ALICE, "s1", "green"))).rejects.toThrow(/sign|identity|authenticated/i)
+    expect(Object.keys(h.value.items)).toHaveLength(0)
+  })
+
+  it("verifyRecordClaim: a raw-seeded unsigned record is invalid (fail closed)", async () => {
+    const { connector: c, handle: h } = connector()
+    const id = await deriveRelationRecordId(BOB, VOTE_PREDICATE, `global:${BOB}`, "item:s1")
+    h.value.items[id] = {
+      id, type: "relation", createdBy: BOB,
+      createdAt: "2026-08-05T09:00:00.000Z",
+      data: { predicate: VOTE_PREDICATE, value: "red" },
+      relations: [
+        { predicate: "from", target: `global:${BOB}` },
+        { predicate: "to", target: "item:s1" },
+      ],
+    }
+    const records = await c.getRelationRecords({ predicate: VOTE_PREDICATE })
+    const seeded = records.find((candidate) => candidate.id === id)!
+    expect(await c.verifyRecordClaim(seeded)).toBe("invalid")
   })
 
   it("refuses to update or delete another author's record", async () => {

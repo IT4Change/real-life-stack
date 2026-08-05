@@ -181,3 +181,69 @@ describe("MockConnector RelationRecord capabilities", () => {
     expect(await mock.getRelationRecords()).toEqual([])
   })
 })
+
+describe("MockConnector — authoritative claim mode (spec 08)", () => {
+  it("binds createdBy to the session on the regular ingress and answers trusted", async () => {
+    const { hasClaimVerification } = await import("@real-life-stack/data-interface")
+    const connector = new MockConnector({
+      items: [],
+      groups: [{ id: "g1", name: "G", data: {} }],
+      users: [{ id: "user-1", displayName: "One" }],
+      groupMembers: { g1: ["user-1"] },
+      groupItems: {},
+    } as never)
+    await connector.init()
+    const item = await connector.createItem({ type: "note", createdBy: "user-mallory", data: {} })
+    expect(item.createdBy).toBe("user-1")
+    expect(hasClaimVerification(connector)).toBe(true)
+    const record = await connector.createRelationRecord({ predicate: "votesOn", from: "global:user-1", to: "item:s1" })
+    expect(await connector.verifyRecordClaim!(record)).toBe("trusted")
+  })
+
+  it("updateItem cannot forge createdBy on the regular ingress (#235 review)", async () => {
+    const connector = new MockConnector({
+      items: [],
+      groups: [{ id: "g1", name: "G", data: {} }],
+      users: [{ id: "user-1", displayName: "One" }],
+      groupMembers: { g1: ["user-1"] },
+      groupItems: {},
+    } as never)
+    await connector.init()
+    const item = await connector.createItem({ type: "note", createdBy: "user-1", data: {} })
+    const updated = await connector.updateItem(item.id, { createdBy: "user-mallory" } as never)
+    expect(updated.createdBy).toBe("user-1")
+  })
+
+  it("injectSeedItems is a fixture-only ingress — a trusted instance refuses it (#235 round 2)", async () => {
+    const trusted = new MockConnector({
+      items: [], groups: [{ id: "g1", name: "G", data: {} }],
+      users: [{ id: "user-1", displayName: "One" }],
+      groupMembers: { g1: ["user-1"] }, groupItems: {},
+    } as never)
+    await trusted.init()
+    expect(() => trusted.injectSeedItems([{ id: "m1", type: "relation", createdBy: "user-mallory", createdAt: "t", data: { predicate: "votesOn", value: "green" }, relations: [{ predicate: "from", target: "global:user-mallory" }, { predicate: "to", target: "item:s1" }] }] as never)).toThrow(/fixture/i)
+
+    const fixture = new MockConnector({
+      items: [], groups: [{ id: "g1", name: "G", data: {} }],
+      users: [{ id: "user-1", displayName: "One" }],
+      groupMembers: { g1: ["user-1"] }, groupItems: {},
+    } as never, { allowFixtureAuthors: true })
+    await fixture.init()
+    expect(() => fixture.injectSeedItems([{ id: "m1", type: "note", createdBy: "user-mallory", createdAt: "t", data: {} }] as never)).not.toThrow()
+  })
+
+  it("fixture mode keeps foreign authors and drops the capability", async () => {
+    const { hasClaimVerification } = await import("@real-life-stack/data-interface")
+    const connector = new MockConnector({
+      items: [],
+      groups: [{ id: "g1", name: "G", data: {} }],
+      users: [{ id: "user-1", displayName: "One" }],
+      groupMembers: { g1: ["user-1"] },
+      groupItems: {},
+    } as never, { allowFixtureAuthors: true })
+    await connector.init()
+    const item = await connector.createItem({ type: "note", createdBy: "user-mallory", data: {} })
+    expect(item.createdBy).toBe("user-mallory")
+    expect(hasClaimVerification(connector)).toBe(false)
+  })
+})

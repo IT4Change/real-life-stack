@@ -43,13 +43,13 @@ describe("MockConnector item IDs", () => {
     const connector = new MockConnector(seed([
       item("duplicate", "first"),
       item("duplicate", "second"),
-    ]))
+    ]), { allowFixtureAuthors: true })
 
     expect(await connector.getItems()).toEqual([item("duplicate", "first")])
   })
 
   it("preserves a supplied ID and returns an existing item unchanged", async () => {
-    const connector = new MockConnector(seed())
+    const connector = new MockConnector(seed(), { allowFixtureAuthors: true })
     connector.setCurrentGroup("group-a")
 
     const created = await connector.createItem({
@@ -72,7 +72,7 @@ describe("MockConnector item IDs", () => {
   })
 
   it("skips collisions when allocating generated IDs", async () => {
-    const connector = new MockConnector(seed([item("item-100", "reserved")]))
+    const connector = new MockConnector(seed([item("item-100", "reserved")]), { allowFixtureAuthors: true })
     connector.setCurrentGroup("group-a")
 
     const created = await connector.createItem({
@@ -85,7 +85,7 @@ describe("MockConnector item IDs", () => {
   })
 
   it("removes group mappings before a deterministic ID is recreated elsewhere", async () => {
-    const connector = new MockConnector(seed())
+    const connector = new MockConnector(seed(), { allowFixtureAuthors: true })
     connector.setCurrentGroup("group-a")
     await connector.createItem({
       id: "reusable",
@@ -110,7 +110,7 @@ describe("MockConnector item IDs", () => {
   })
 
   it("does not move over an existing space-local ID", async () => {
-    const connector = new MockConnector(seed())
+    const connector = new MockConnector(seed(), { allowFixtureAuthors: true })
     connector.setCurrentGroup("group-a")
     await connector.createItem({
       id: "shared",
@@ -136,7 +136,7 @@ describe("MockConnector item IDs", () => {
   it("moves an unassigned non-feature item into a group", async () => {
     const unassignedSeed = seed([item("unassigned", "Unassigned")])
     unassignedSeed.groupItems = { "group-a": [], "group-b": [] }
-    const connector = new MockConnector(unassignedSeed)
+    const connector = new MockConnector(unassignedSeed, { allowFixtureAuthors: true })
 
     connector.moveItemToGroup("unassigned", "group-a")
     connector.setCurrentGroup("group-a")
@@ -146,7 +146,7 @@ describe("MockConnector item IDs", () => {
   })
 
   it("keeps runtime-created and injected feature items global", async () => {
-    const connector = new MockConnector(seed())
+    const connector = new MockConnector(seed(), { allowFixtureAuthors: true })
     connector.setCurrentGroup("group-a")
     const created = await connector.createItem({
       id: "feature-created",
@@ -169,7 +169,7 @@ describe("MockConnector item IDs", () => {
   })
 
   it("reserves global feature IDs across space-local item scopes", async () => {
-    const connector = new MockConnector(seed())
+    const connector = new MockConnector(seed(), { allowFixtureAuthors: true })
     connector.setCurrentGroup("group-a")
     const local = await connector.createItem({
       id: "reserved",
@@ -206,7 +206,7 @@ describe("MockConnector item IDs", () => {
   })
 
   it("avoids local IDs when allocating IDs for global features", async () => {
-    const connector = new MockConnector(seed([item("item-100", "local")]))
+    const connector = new MockConnector(seed([item("item-100", "local")]), { allowFixtureAuthors: true })
     connector.setCurrentGroup("group-b")
 
     const feature = await connector.createItem({
@@ -219,7 +219,7 @@ describe("MockConnector item IDs", () => {
   })
 
   it("does not promote a duplicated space-local ID into the global feature scope", async () => {
-    const connector = new MockConnector(seed())
+    const connector = new MockConnector(seed(), { allowFixtureAuthors: true })
     connector.injectSeedItems([item("shared", "a")], "group-a")
     connector.injectSeedItems([item("shared", "b")], "group-b")
     connector.setCurrentGroup("group-a")
@@ -230,7 +230,7 @@ describe("MockConnector item IDs", () => {
   })
 
   it("does not promote an unassigned ID that also exists in a space", async () => {
-    const connector = new MockConnector(seed())
+    const connector = new MockConnector(seed(), { allowFixtureAuthors: true })
     const unassigned = await connector.createItem({
       id: "shared",
       type: "note",
@@ -256,7 +256,7 @@ describe("MockConnector item IDs", () => {
 
 describe("MockConnector fixture injection", () => {
   it("is idempotent across a real second import and keeps the first item unchanged", async () => {
-    const connector = new MockConnector(seed())
+    const connector = new MockConnector(seed(), { allowFixtureAuthors: true })
     connector.setCurrentGroup("group-a")
     await flushNotifications()
     const observable = connector.observe({})
@@ -279,7 +279,7 @@ describe("MockConnector fixture injection", () => {
   })
 
   it("deduplicates repeated IDs within one injected batch", async () => {
-    const connector = new MockConnector(seed())
+    const connector = new MockConnector(seed(), { allowFixtureAuthors: true })
 
     connector.injectSeedItems([
       item("seed-a", "first"),
@@ -291,7 +291,7 @@ describe("MockConnector fixture injection", () => {
   })
 
   it("deduplicates fixture IDs independently in each space", async () => {
-    const connector = new MockConnector(seed())
+    const connector = new MockConnector(seed(), { allowFixtureAuthors: true })
 
     connector.injectSeedItems([item("shared-seed", "a-first")], "group-a")
     connector.injectSeedItems([item("shared-seed", "a-replacement")], "group-a")

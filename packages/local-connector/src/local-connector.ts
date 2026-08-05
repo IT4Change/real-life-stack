@@ -50,6 +50,10 @@ interface StoredState {
   nextItemId: number
   /** Seed version the store was last seeded with (see SEED_VERSION). */
   seedVersion: number
+  /** True when every runtime ingress that wrote this state bound createdBy
+      to the session (spec 08). Absent/false = legacy or fixture-written —
+      a trusted instance discards such state (SEED_VERSION pattern). */
+  authorBindingEnforced?: boolean
   /** Additive: legacy states are read as an empty map. */
   activityByScope?: Record<string, Record<string, ActivityEntry>>
   /** Additive: old local stores start with an empty notification state. */
@@ -126,13 +130,33 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
   private store = createStore("rls-local-connector", "state")
   private seedData: StoredState | null
 
+  /**
+   * SignedClaims verdict (spec 08): the Local store is `authoritative` — it
+   * binds createdBy to the session on every regular ingress, so records are
+   * "trusted" without cryptographic claims. Defined as a property so the
+   * FIXTURE mode (allowFixtureAuthors) can omit the capability entirely:
+   * a store that accepts foreign authors may not claim trusted.
+   */
+  verifyRecordClaim?: (record: RelationRecord) => Promise<"trusted">
+
   constructor(seed?: {
     items: Item[]
     groups: Group[]
     users: User[]
     groupMembers: Record<string, string[]>
     groupItems?: Record<string, string[]>
+  }, options?: {
+    /**
+     * FIXTURE PATH (spec 08 exception, marked and dev-only): keep
+     * caller-supplied createdBy for simulating multi-user states in tests
+     * and demos. Disables the authoritative claim verdict.
+     */
+    allowFixtureAuthors?: boolean
   }) {
+    this.allowFixtureAuthors = options?.allowFixtureAuthors === true
+    if (!this.allowFixtureAuthors) {
+      this.verifyRecordClaim = async () => "trusted"
+    }
     this.seedData = seed
       ? {
           items: seed.items.map(i => ({ ...i })),
@@ -144,6 +168,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
           currentGroupId: seed.groups[0]?.id ?? null,
           nextItemId: 100,
           seedVersion: SEED_VERSION,
+      authorBindingEnforced: !this.allowFixtureAuthors,
         }
       : null
   }
@@ -156,7 +181,15 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
     // without a manual reset. A store stamped with a *newer* version
     // (e.g. after checking out an older branch) is left intact rather
     // than discarded.
-    const stored = await get<StoredState>("state", this.store)
+    const loaded = await get<StoredState>("state", this.store)
+    // Trusted instances must not vouch for state written without the ingress
+    // binding (legacy or fixture-mode). The discard is INDEPENDENT of the
+    // seed path — a seedless `new LocalConnector()` must not load such state
+    // either (and a later persist would otherwise retroactively stamp it as
+    // enforced). Discarding follows the dev connector's documented
+    // SEED_VERSION behaviour: local state is expendable.
+    const discardedUnenforced = !this.allowFixtureAuthors && loaded !== undefined && loaded.authorBindingEnforced !== true
+    const stored = discardedUnenforced ? undefined : loaded
     const shouldSeed = this.seedData && (
       !stored ||
       stored.seedVersion === undefined ||
@@ -203,6 +236,14 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
     )
     this.groupsObs.set([...this.groups])
     this.currentGroupObs.set(this.currentGroup)
+
+    if (discardedUnenforced) {
+      // The discard must be DURABLE: later persists read IndexedDB fresh
+      // (updateStoredValue merge path) and would resurrect the legacy blob —
+      // stamping it as enforced on the way. Replace it with the fresh
+      // enforced state now.
+      await this.persist({ replaceItemState: true })
+    }
 
     // Set up cross-tab sync
     this.channel = new BroadcastChannel("rls-local-connector")
@@ -394,8 +435,13 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
     return this.createItemInGroup(item, this.currentGroup?.id ?? null)
   }
 
+  private allowFixtureAuthors = false
+
   private async createItemInGroup(item: CreateItemInput, targetGroupId: string | null): Promise<Item> {
     const actor = this.requireCurrentUser().id
+    // Authoritative ingress binding (spec 08): createdBy comes from the
+    // session, never the caller — except in the marked fixture mode.
+    const boundItem: CreateItemInput = this.allowFixtureAuthors ? item : { ...item, createdBy: actor }
     let result: Item | undefined
     let committedState: StoredState | undefined
     let created = false
@@ -420,7 +466,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
       }
 
       const newItem: Item = {
-        ...item,
+        ...boundItem,
         id,
         createdAt: new Date().toISOString(),
       }
@@ -453,6 +499,13 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
 
   async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
     const actor = this.requireCurrentUser().id
+    // Authoritative ingress binding also on UPDATE: createdBy is immutable
+    // through the regular path (spec 08 — trusted requires it on EVERY
+    // ingress); the marked fixture mode keeps the old behaviour.
+    if (!this.allowFixtureAuthors && "createdBy" in updates) {
+      const { createdBy: _ignored, ...rest } = updates
+      updates = rest
+    }
     let result: Item | undefined
     let committedState: StoredState | undefined
     await updateStoredValue<StoredState>("state", (stored) => {
@@ -799,6 +852,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
       currentGroupId: this.currentGroup?.id ?? null,
       nextItemId: this.nextItemId,
       seedVersion: SEED_VERSION,
+      authorBindingEnforced: !this.allowFixtureAuthors,
       activityByScope: this.activityByScope,
       notificationState: this.notificationState,
     }

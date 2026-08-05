@@ -33,9 +33,13 @@ const BOB = "user-bob"
  */
 describe("LocalConnector — vote relation store contract", () => {
   let connector: LocalConnector
+  /** Fixture-mode twin for cases that SEED foreign-author records — the
+      authoritative default binds createdBy, so "manipulated client" states
+      can only exist through the marked fixture path. */
+  let fixtureConnector: LocalConnector
 
-  beforeEach(async () => {
-    connector = new LocalConnector({
+  async function makeConnector(options?: { allowFixtureAuthors?: boolean }): Promise<LocalConnector> {
+    const instance = new LocalConnector({
       items: [],
       groups: [{ id: "g1", name: "Test Group" }],
       users: [
@@ -43,9 +47,15 @@ describe("LocalConnector — vote relation store contract", () => {
         { id: BOB, displayName: "Bob" },
       ],
       groupMembers: { g1: [ALICE, BOB] },
-    })
-    await connector.init()
-    await connector.authenticate("local", {})
+    }, options)
+    await instance.init()
+    await instance.authenticate("local", {})
+    return instance
+  }
+
+  beforeEach(async () => {
+    connector = await makeConnector()
+    fixtureConnector = await makeConnector({ allowFixtureAuthors: true })
   })
 
   async function currentUserId(): Promise<string> {
@@ -76,10 +86,11 @@ describe("LocalConnector — vote relation store contract", () => {
   })
 
   it("fails on a pre-seeded canonical id with a foreign identity — no idempotent takeover", async () => {
-    const me = await currentUserId()
+    const connector = fixtureConnector
+    const me = (await connector.getCurrentUser())!.id
     const id = await deriveRelationRecordId(me, VOTE_PREDICATE, `global:${me}`, "item:s1")
     // A manipulated client squatted the canonical key with different content
-    // via the raw item API.
+    // via the raw item API (only reachable through the fixture path).
     await connector.createItem({
       id,
       type: "relation",
@@ -109,8 +120,126 @@ describe("LocalConnector — vote relation store contract", () => {
     expect(connector.getItemGroupId(record.id)).toBe("g1")
   })
 
-  it("refuses to update or delete another author's record", async () => {
+  it("authoritative mode: binds createdBy to the session on the regular ingress and answers trusted", async () => {
     const me = await currentUserId()
+    // Regular ingress: a caller-supplied foreign createdBy is BOUND to the
+    // session (spec 08: trusted requires every ingress path to bind).
+    const item = await connector.createItem({ type: "note", createdBy: "user-mallory", data: { title: "x" } })
+    expect(item.createdBy).toBe(me)
+    const record = await connector.createRelationRecord(voteRecordInput(me, "s-trust", "green"))
+    expect(await connector.verifyRecordClaim(record)).toBe("trusted")
+  })
+
+  it("updateItem cannot forge createdBy on the regular ingress (#235 review)", async () => {
+    const me = await currentUserId()
+    const item = await connector.createItem({ type: "note", createdBy: me, data: { title: "mine" } })
+    const updated = await connector.updateItem(item.id, { createdBy: "user-mallory", data: { title: "renamed" } } as never)
+    expect(updated.createdBy).toBe(me)
+    expect((await connector.getItem(item.id))!.createdBy).toBe(me)
+  })
+
+  it("fixture mode (allowFixtureAuthors) keeps foreign authors but has NO claim verdict", async () => {
+    const fixture = new LocalConnector({
+      items: [],
+      groups: [{ id: "g1", name: "Fixture" }],
+      users: [{ id: ALICE, displayName: "Alice" }],
+      groupMembers: { g1: [ALICE] },
+    }, { allowFixtureAuthors: true })
+    await fixture.init()
+    await fixture.authenticate("local", {})
+    const item = await fixture.createItem({ type: "note", createdBy: "user-mallory", data: {} })
+    expect(item.createdBy).toBe("user-mallory")
+    const { hasClaimVerification } = await import("@real-life-stack/data-interface")
+    expect(hasClaimVerification(fixture)).toBe(false)
+  })
+
+  it("a persisted store WITHOUT the author-binding marker is discarded on trusted init (#235 round 2)", async () => {
+    // Legacy/fixture-written state may contain foreign-authored records; a
+    // trusted instance must not vouch for it. Following the SEED_VERSION
+    // pattern of this dev connector, such state is discarded and re-seeded.
+    const idb = await import("idb-keyval")
+    ;(idb.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: [{ id: "mallory-legacy", type: "relation", createdBy: "user-mallory", createdAt: "t", data: { predicate: VOTE_PREDICATE, value: "green" }, relations: [{ predicate: "from", target: "global:user-mallory" }, { predicate: "to", target: "item:s1" }] }],
+      groups: [{ id: "g1", name: "Legacy" }],
+      users: [{ id: ALICE, displayName: "Alice" }],
+      groupMembers: { g1: [ALICE] },
+      groupItems: { g1: ["mallory-legacy"] },
+      currentUserId: ALICE, currentGroupId: "g1", nextItemId: 100,
+      seedVersion: 999, // survives the seed-version check — the MARKER must catch it
+    })
+    const restored = await makeConnector()
+    expect(await restored.getItem("mallory-legacy")).toBeNull()
+  })
+
+  it("a SEEDLESS trusted instance also discards marker-less legacy state (#235 round 3)", async () => {
+    // new LocalConnector() without seed data: the marker guard must not
+    // depend on the seed path — and later persists must not retroactively
+    // stamp foreign legacy content as enforced.
+    const idb = await import("idb-keyval")
+    ;(idb.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: [{ id: "mallory-legacy", type: "relation", createdBy: "user-mallory", createdAt: "t", data: { predicate: VOTE_PREDICATE, value: "green" }, relations: [{ predicate: "from", target: "global:user-mallory" }, { predicate: "to", target: "item:s1" }] }],
+      groups: [{ id: "g1", name: "Legacy" }],
+      users: [{ id: ALICE, displayName: "Alice" }],
+      groupMembers: { g1: [ALICE] },
+      groupItems: { g1: ["mallory-legacy"] },
+      currentUserId: ALICE, currentGroupId: "g1", nextItemId: 100,
+      seedVersion: 999,
+      // no authorBindingEnforced marker → legacy/fixture-written
+    })
+    const restored = new LocalConnector()
+    await restored.init()
+    expect(await restored.getItem("mallory-legacy")).toBeNull()
+    const { hasClaimVerification } = await import("@real-life-stack/data-interface")
+    expect(hasClaimVerification(restored)).toBe(true)
+  })
+
+  it("discarded legacy state cannot RESURRECT through a later persist (#235 round 4)", async () => {
+    // The discard must be DURABLE: updateStoredValue-based persists (e.g.
+    // createGroup) read IndexedDB fresh — if the legacy blob is still there,
+    // the mallory record returns and even gets stamped as enforced.
+    const idb = await import("idb-keyval")
+    const legacy = {
+      items: [{ id: "mallory-legacy", type: "relation", createdBy: "user-mallory", createdAt: "t", data: { predicate: VOTE_PREDICATE, value: "green" }, relations: [{ predicate: "from", target: "global:user-mallory" }, { predicate: "to", target: "item:s1" }] }],
+      groups: [{ id: "g1", name: "Legacy" }],
+      users: [{ id: ALICE, displayName: "Alice" }],
+      groupMembers: { g1: [ALICE] },
+      groupItems: { g1: ["mallory-legacy"] },
+      currentUserId: ALICE, currentGroupId: "g1", nextItemId: 100,
+      seedVersion: 999,
+    }
+    let state: unknown = legacy
+    const getMock = idb.get as ReturnType<typeof vi.fn>
+    const setMock = idb.set as ReturnType<typeof vi.fn>
+    const updateMock = idb.update as ReturnType<typeof vi.fn>
+    getMock.mockImplementation(async () => state)
+    setMock.mockImplementation(async (_key: string, value: unknown) => { state = value })
+    updateMock.mockImplementation(async (_key: string, updater: (value: unknown) => unknown) => { state = updater(state) })
+    try {
+      const restored = new LocalConnector()
+      await restored.init()
+      expect(await restored.getItem("mallory-legacy")).toBeNull()
+
+      // Follow-up persist through the merge path.
+      await restored.createGroup("Fresh Group")
+
+      // Durable: the blob holds the fresh enforced state, not the legacy items.
+      const persisted = state as { items: Array<{ id: string }>; authorBindingEnforced?: boolean }
+      expect(persisted.items.map(({ id }) => id)).not.toContain("mallory-legacy")
+      expect(persisted.authorBindingEnforced).toBe(true)
+
+      // And a freshly constructed trusted instance never sees mallory again.
+      const fresh = new LocalConnector()
+      await fresh.init()
+      expect(await fresh.getItem("mallory-legacy")).toBeNull()
+    } finally {
+      getMock.mockReset(); getMock.mockResolvedValue(undefined)
+      setMock.mockReset(); setMock.mockResolvedValue(undefined)
+      updateMock.mockReset(); updateMock.mockImplementation(async (_key: string, updater: (value: unknown) => unknown) => { updater(undefined) })
+    }
+  })
+
+  it("refuses to update or delete another author's record", async () => {
+    const connector = fixtureConnector
     const bobsId = await deriveRelationRecordId(BOB, VOTE_PREDICATE, `global:${BOB}`, "item:s1")
     await connector.createItem({
       id: bobsId,

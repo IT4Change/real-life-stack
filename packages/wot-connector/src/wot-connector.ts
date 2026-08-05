@@ -10,6 +10,8 @@ import type {
   RelatedItemsOptions,
   RelationRecord,
   RelationRecordCreateConnector,
+  ClaimVerdict,
+  ClaimSigner,
   RelationRecordFilter,
   RelationRecordInput,
   RelationRecordUpdate,
@@ -35,6 +37,9 @@ import {
   BaseConnector,
   createDefaultRelationStore,
   createRelationRecordWith,
+  jcsCanonicalize,
+  relationAuthorialPayload,
+  verifyRelationClaim,
   createObservable,
   deriveContext,
   matchesFilter,
@@ -1194,11 +1199,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     return result
   }
 
-  override async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
-    await this.handleReady
-
-    const handle = await this.resolveHandleForItem(id)
-
+  private applyItemUpdate(handle: SpaceHandle<RlsSpaceDoc>, id: string, updates: Partial<Item>): void {
     this.requireActivityActor()
     handle.transact((doc) => {
       const existing = doc.items[id]
@@ -1229,6 +1230,13 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       if (updates["@context"] !== undefined) existing["@context"] = updates["@context"]
       this.appendActivity(doc, "update", deserializeItem(existing))
     })
+  }
+
+  override async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
+    await this.handleReady
+
+    const handle = await this.resolveHandleForItem(id)
+    this.applyItemUpdate(handle, id, updates)
 
     // Reindex the affected group so CrossGroupIndex reflects local writes
     // (handle.onRemoteUpdate only fires for origin === 'remote')
@@ -1570,11 +1578,51 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   // (docs/spec/08-relation-records.md): createdBy comes from the authenticated
   // identity, ids are canonical hashes, mutations check authorship. Lazily
   // created so contract harnesses that bypass the constructor still work.
-  private relationRecordStore: ReturnType<typeof createDefaultRelationStore> | null = null
+  private relationRecordStore: { did: string | null; store: ReturnType<typeof createDefaultRelationStore> } | null = null
+
+  /** SignedClaims signer bound to the authenticated identity, or null when
+      logged out. The WoT connector is a `signed`-mode connector (spec 08):
+      without a signer, authorial writes are REFUSED — never written unsigned. */
+  private claimSignerForIdentity(): ClaimSigner | null {
+    const did = this.currentUserObs.current?.id
+    if (!did) return null
+    return {
+      kid: `${did}#sig-0`,
+      signEd25519: (bytes: Uint8Array) => this.identity.signEd25519(bytes),
+    }
+  }
 
   private relationStoreInstance(): ReturnType<typeof createDefaultRelationStore> {
-    this.relationRecordStore ??= createDefaultRelationStore(this)
-    return this.relationRecordStore
+    const signer = this.claimSignerForIdentity()
+    const did = signer ? this.currentUserObs.current!.id : null
+    if (!this.relationRecordStore || this.relationRecordStore.did !== did) {
+      this.relationRecordStore = {
+        did,
+        store: createDefaultRelationStore(this, signer ? { claimSigner: signer } : undefined),
+      }
+    }
+    return this.relationRecordStore.store
+  }
+
+  // Verdict cache: (id, semantic content, claim) → verdict. Deterministic —
+  // for an unchanged record the verdict never changes (spec 08). Lazy so
+  // contract harnesses that bypass the constructor still work.
+  private claimVerdictCache: Map<string, ClaimVerdict> | null = null
+
+  async verifyRecordClaim(record: RelationRecord): Promise<ClaimVerdict> {
+    this.claimVerdictCache ??= new Map()
+    let key: string
+    try {
+      key = `${record.id}|${record.claim ?? ""}|${jcsCanonicalize(relationAuthorialPayload(record))}`
+    } catch {
+      // Non-I-JSON record state can never verify.
+      return "invalid"
+    }
+    const cached = this.claimVerdictCache.get(key)
+    if (cached) return cached
+    const verdict = await verifyRelationClaim(record)
+    this.claimVerdictCache.set(key, verdict)
+    return verdict
   }
 
   getRelationRecords(filter?: RelationRecordFilter): Promise<RelationRecord[]> {
@@ -1613,9 +1661,20 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
           return serialized ? deserializeItem(serialized) : null
         },
         createItem: async (item: CreateItemInput) => this.createItemOnHandle(handle, item, targetSpaceId),
+        updateItem: async (id: string, updates: Partial<Item>) => {
+          // Claiming writes against the TARGET space handle, not the current
+          // scope — resolveHandleForItem would miss it from the overview.
+          this.applyItemUpdate(handle, id, updates)
+          this.crossGroupIndex?.reindexGroup(targetSpaceId)
+          this.notifyAllObservers(true)
+          const serialized = handle.getDoc().items?.[id]
+          if (!serialized) throw new Error(`Item ${id} disappeared after update`)
+          return deserializeItem(serialized)
+        },
         getCurrentUser: () => this.getCurrentUser(),
       }
-      return await createRelationRecordWith(scoped, input)
+      const signer = this.claimSignerForIdentity()
+      return await createRelationRecordWith(scoped, input, signer ? { claimSigner: signer } : undefined)
     } finally {
       handle.close()
     }

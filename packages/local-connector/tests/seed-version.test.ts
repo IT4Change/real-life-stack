@@ -38,6 +38,8 @@ function storedWith(version: number | undefined, displayName: string) {
     nextItemId: 100,
   }
   if (version !== undefined) state.seedVersion = version
+  // Persisted-by-a-trusted-instance fixture: carries the ingress-binding marker.
+  state.authorBindingEnforced = true
   return state
 }
 
