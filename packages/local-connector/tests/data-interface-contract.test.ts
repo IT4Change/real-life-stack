@@ -21,12 +21,17 @@ import { LocalConnector } from "../src/local-connector.js"
 
 describeDataInterfaceContract("LocalConnector", {
   async makeConnector() {
+    // Fixture mode: the shared suite seeds foreign-author records to probe
+    // the facade's collision/authorship rules — impossible through the
+    // authoritative default ingress (it binds createdBy to the session).
+    // The authoritative/trusted contract itself is covered in
+    // vote-relation-store.contract.test.ts.
     const connector = new LocalConnector({
       items: [],
       groups: [{ id: "g1", name: "Contract Group" }],
       users: [{ id: "user-contract", displayName: "Contract User" }],
       groupMembers: { g1: ["user-contract"] },
-    })
+    }, { allowFixtureAuthors: true })
     await connector.init()
     const user = await connector.authenticate("local", {})
     return { connector, currentUserId: user.id }

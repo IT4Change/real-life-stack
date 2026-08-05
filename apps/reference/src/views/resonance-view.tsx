@@ -21,6 +21,7 @@ import {
   usePersonalGroupId,
   useRelationRecords,
   useResolvedUsers,
+  useVerifiedRelationRecords,
   type FilterBarValue,
   Button,
   DropdownMenu,
@@ -60,6 +61,9 @@ export function ResonanceView({ groupId }: { groupId: string }) {
   // All votes of the scope in one query — the per-statement sort keys (count,
   // approval, last activity) need the full picture, not per-card subscriptions.
   const { data: voteRecords } = useRelationRecords({ predicate: VOTE_PREDICATE })
+  // Spec 08 L1: authorial aggregates count only records the connector vouches
+  // for — fail closed, also for the sort keys.
+  const verifiedVoteRecords = useVerifiedRelationRecords(voteRecords)
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
   const modulePanel = useModulePanel()
@@ -84,7 +88,7 @@ export function ResonanceView({ groupId }: { groupId: string }) {
   const [filterBarValue, setFilterBarValue] = useState<FilterBarValue>(emptyFilterBarValue)
   const [sortMode, setSortMode] = useState<ResonanceSortMode>("newest")
   const filteredStatements = useFilterableItems(statements, filterBarValue)
-  const voteStats = useMemo(() => aggregateVoteStats(voteRecords), [voteRecords])
+  const voteStats = useMemo(() => aggregateVoteStats(verifiedVoteRecords), [verifiedVoteRecords])
   const sortedStatements = useMemo(
     () => sortStatements(filteredStatements, voteStats, sortMode),
     [filteredStatements, voteStats, sortMode],

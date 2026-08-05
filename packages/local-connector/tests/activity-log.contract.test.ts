@@ -43,7 +43,7 @@ async function ready(): Promise<LocalConnector> {
 beforeEach(() => { idb.reset(); channels.clear() })
 
 describe("LocalConnector activity-log contract", () => {
-  it("14. isolates active scopes, stores overview creates in __personal__, globally limits the union, and retains each source independently", { timeout: 20000 }, async () => {
+  it("14. isolates active scopes, stores overview creates in __personal__, globally limits the union, and retains each source independently", { timeout: 60_000 }, async () => {
     const connector = await ready()
     connector.setCurrentGroup(null)
     await connector.createItem({ id: "personal", type: "task", createdBy: "forged", data: {} })

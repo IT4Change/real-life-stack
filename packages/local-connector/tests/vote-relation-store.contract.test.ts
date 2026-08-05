@@ -33,9 +33,13 @@ const BOB = "user-bob"
  */
 describe("LocalConnector — vote relation store contract", () => {
   let connector: LocalConnector
+  /** Fixture-mode twin for cases that SEED foreign-author records — the
+      authoritative default binds createdBy, so "manipulated client" states
+      can only exist through the marked fixture path. */
+  let fixtureConnector: LocalConnector
 
-  beforeEach(async () => {
-    connector = new LocalConnector({
+  async function makeConnector(options?: { allowFixtureAuthors?: boolean }): Promise<LocalConnector> {
+    const instance = new LocalConnector({
       items: [],
       groups: [{ id: "g1", name: "Test Group" }],
       users: [
@@ -43,9 +47,15 @@ describe("LocalConnector — vote relation store contract", () => {
         { id: BOB, displayName: "Bob" },
       ],
       groupMembers: { g1: [ALICE, BOB] },
-    })
-    await connector.init()
-    await connector.authenticate("local", {})
+    }, options)
+    await instance.init()
+    await instance.authenticate("local", {})
+    return instance
+  }
+
+  beforeEach(async () => {
+    connector = await makeConnector()
+    fixtureConnector = await makeConnector({ allowFixtureAuthors: true })
   })
 
   async function currentUserId(): Promise<string> {
@@ -76,10 +86,11 @@ describe("LocalConnector — vote relation store contract", () => {
   })
 
   it("fails on a pre-seeded canonical id with a foreign identity — no idempotent takeover", async () => {
-    const me = await currentUserId()
+    const connector = fixtureConnector
+    const me = (await connector.getCurrentUser())!.id
     const id = await deriveRelationRecordId(me, VOTE_PREDICATE, `global:${me}`, "item:s1")
     // A manipulated client squatted the canonical key with different content
-    // via the raw item API.
+    // via the raw item API (only reachable through the fixture path).
     await connector.createItem({
       id,
       type: "relation",
@@ -109,8 +120,33 @@ describe("LocalConnector — vote relation store contract", () => {
     expect(connector.getItemGroupId(record.id)).toBe("g1")
   })
 
-  it("refuses to update or delete another author's record", async () => {
+  it("authoritative mode: binds createdBy to the session on the regular ingress and answers trusted", async () => {
     const me = await currentUserId()
+    // Regular ingress: a caller-supplied foreign createdBy is BOUND to the
+    // session (spec 08: trusted requires every ingress path to bind).
+    const item = await connector.createItem({ type: "note", createdBy: "user-mallory", data: { title: "x" } })
+    expect(item.createdBy).toBe(me)
+    const record = await connector.createRelationRecord(voteRecordInput(me, "s-trust", "green"))
+    expect(await connector.verifyRecordClaim(record)).toBe("trusted")
+  })
+
+  it("fixture mode (allowFixtureAuthors) keeps foreign authors but has NO claim verdict", async () => {
+    const fixture = new LocalConnector({
+      items: [],
+      groups: [{ id: "g1", name: "Fixture" }],
+      users: [{ id: ALICE, displayName: "Alice" }],
+      groupMembers: { g1: [ALICE] },
+    }, { allowFixtureAuthors: true })
+    await fixture.init()
+    await fixture.authenticate("local", {})
+    const item = await fixture.createItem({ type: "note", createdBy: "user-mallory", data: {} })
+    expect(item.createdBy).toBe("user-mallory")
+    const { hasClaimVerification } = await import("@real-life-stack/data-interface")
+    expect(hasClaimVerification(fixture)).toBe(false)
+  })
+
+  it("refuses to update or delete another author's record", async () => {
+    const connector = fixtureConnector
     const bobsId = await deriveRelationRecordId(BOB, VOTE_PREDICATE, `global:${BOB}`, "item:s1")
     await connector.createItem({
       id: bobsId,

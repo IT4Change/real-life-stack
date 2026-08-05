@@ -12,7 +12,23 @@ import type { RlsSpaceDoc } from "../src/types.js"
  * reactivity tests — the query/write contract runs here.
  */
 
-const ME = "did:key:contract-user"
+// Real Ed25519 identity: the WoT connector is a signed-mode connector — its
+// relation facade claims authorial writes and REFUSES unverifiable signers.
+async function makeIdentity() {
+  const keyPair = (await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])) as CryptoKeyPair
+  const raw = new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey))
+  const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+  const bytes = new Uint8Array([0xed, 0x01, ...raw])
+  let n = 0n
+  for (const byte of bytes) n = (n << 8n) | BigInt(byte)
+  let encoded = ""
+  while (n > 0n) { encoded = B58[Number(n % 58n)] + encoded; n /= 58n }
+  return {
+    did: `did:key:z${encoded}`,
+    signEd25519: async (input: Uint8Array) =>
+      new Uint8Array(await crypto.subtle.sign("Ed25519", keyPair.privateKey, input as BufferSource)),
+  }
+}
 
 function doc(): RlsSpaceDoc {
   return { _type: "rls", items: {}, metadata: { name: "contract", modules: [] } }
@@ -31,12 +47,14 @@ function handle(value = doc()) {
 
 describeDataInterfaceContract("WotConnector", {
   async makeConnector() {
+    const identity = await makeIdentity()
     const current = handle()
     const value = Object.create(WotConnector.prototype) as any
     value.handleReady = Promise.resolve()
     value.currentHandle = current
     value.currentGroupId = "space"
-    value.currentUserObs = createObservable({ id: ME, displayName: "Contract User" })
+    value.currentUserObs = createObservable({ id: identity.did, displayName: "Contract User" })
+    value.identity = { getDid: () => identity.did, signEd25519: identity.signEd25519 }
     value.activityObservables = new Map()
     value.activityDirty = false
     value.activityReconciliations = new Map()
@@ -48,6 +66,6 @@ describeDataInterfaceContract("WotConnector", {
     value.relatedObservables = new Map()
     value.relatedObservableParams = new Map()
     value.notifyAllObservers = vi.fn(() => { value.itemCache = null })
-    return { connector: value as WotConnector, currentUserId: ME }
+    return { connector: value as WotConnector, currentUserId: identity.did }
   },
 })

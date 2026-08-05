@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react"
-import type { RelationRecord, VoteRecord, VoteValue } from "@real-life-stack/data-interface"
+import type { ClaimVerdict, DataInterface, RelationRecord, VoteRecord, VoteValue } from "@real-life-stack/data-interface"
 import {
   VOTE_PREDICATE,
+  hasClaimVerification,
   hasRelationRecords,
   hasRelationRecordWriter,
   isAuthenticatable,
@@ -9,6 +10,41 @@ import {
   votesFromRelationRecords,
 } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
+
+/**
+ * Claim-verdict filter (spec 08 L1–L3): returns only records the connector
+ * vouches for (`valid` or `trusted`) — FAIL CLOSED from the first frame:
+ * pending verification counts like invalid, connectors without the
+ * verification capability yield an empty authorial aggregate, and the
+ * transition is monotone (unverified → counted, never back for unchanged
+ * records). The aggregator owns re-emission: state updates re-render
+ * consumers once verification settles.
+ */
+export function useVerifiedRelationRecords(records: RelationRecord[]): RelationRecord[] {
+  const connector = useConnector()
+  const canVerify = hasClaimVerification(connector)
+  const [verdicts, setVerdicts] = useState<Map<string, ClaimVerdict>>(new Map())
+
+  useEffect(() => {
+    if (!canVerify || records.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      const entries = await Promise.all(
+        records.map(async (record) => [record.id, await (connector as DataInterface & { verifyRecordClaim(r: RelationRecord): Promise<ClaimVerdict> }).verifyRecordClaim(record)] as const),
+      )
+      if (!cancelled) startTransition(() => setVerdicts(new Map(entries)))
+    })()
+    return () => { cancelled = true }
+  }, [connector, canVerify, records])
+
+  return useMemo(() => {
+    if (!canVerify) return []
+    return records.filter((record) => {
+      const verdict = verdicts.get(record.id)
+      return verdict === "valid" || verdict === "trusted"
+    })
+  }, [canVerify, records, verdicts])
+}
 
 /** Aggregated vote distribution for a statement. */
 export interface VoteSummary {
@@ -69,7 +105,8 @@ export function useVotes(statementId: string): UseVotesResult {
   const canWrite = hasRelationRecordWriter(connector)
   const canVote = canWrite && canRead && isAuthenticatable(connector) && currentUserId !== undefined
 
-  const votes = useMemo(() => votesFromRelationRecords(records), [records])
+  const verifiedRecords = useVerifiedRelationRecords(records)
+  const votes = useMemo(() => votesFromRelationRecords(verifiedRecords), [verifiedRecords])
 
   // Optimistic overlay for the own vote: applied on click, dropped as soon as
   // the records observable reflects the write.
@@ -195,10 +232,11 @@ export function useVoteUsers(statementId: string, enabled = true): UseVoteUsersR
     return recordsObservable.subscribe((next) => startTransition(() => setRecords(next)))
   }, [recordsObservable])
 
+  const verifiedRecords = useVerifiedRelationRecords(records)
   const votes = useMemo(
-    () => votesFromRelationRecords(records)
+    () => votesFromRelationRecords(verifiedRecords)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [records],
+    [verifiedRecords],
   )
 
   const [users, setUsers] = useState<VoteUser[]>([])

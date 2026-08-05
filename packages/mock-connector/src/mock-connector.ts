@@ -49,6 +49,12 @@ export interface MockConnectorSeed {
 
 export interface MockConnectorOptions {
   symmetricRelationPredicates?: DefaultRelationStoreOptions["symmetricPredicates"]
+  /**
+   * FIXTURE PATH (spec 08 exception, marked and dev-only): keep
+   * caller-supplied createdBy for simulating multi-user states in tests,
+   * stories and demos. Disables the authoritative claim verdict.
+   */
+  allowFixtureAuthors?: boolean
 }
 
 function deduplicateItems(items: readonly Item[]): Item[] {
@@ -96,7 +102,16 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
   private notificationState: NotificationState = { readEntryKeys: {}, mutedGroupIds: {} }
   private notificationStateObs = createObservable<NotificationState>(this.notificationState)
 
+  /** SignedClaims verdict (spec 08): authoritative — trusted — unless the
+      fixture mode disables the binding and with it the capability. */
+  verifyRecordClaim?: (record: RelationRecord) => Promise<"trusted">
+  private allowFixtureAuthors = false
+
   constructor(seed?: MockConnectorSeed, options: MockConnectorOptions = {}) {
+    this.allowFixtureAuthors = options.allowFixtureAuthors === true
+    if (!this.allowFixtureAuthors) {
+      this.verifyRecordClaim = async () => "trusted"
+    }
     const data = seed ?? {
       items: demoItems,
       groups: demoGroups,
@@ -327,7 +342,10 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
   }
 
   async createItem(item: CreateItemInput): Promise<Item> {
-    this.requireCurrentUser()
+    const sessionUser = this.requireCurrentUser()
+    // Authoritative ingress binding (spec 08): createdBy comes from the
+    // session, never the caller — except in the marked fixture mode.
+    if (!this.allowFixtureAuthors) item = { ...item, createdBy: sessionUser.id }
     const scopeId = item.type === "feature" ? null : this.currentGroup?.id ?? null
     const scopeItems = this.getScopeItems(scopeId, true)
     if (item.id !== undefined) {

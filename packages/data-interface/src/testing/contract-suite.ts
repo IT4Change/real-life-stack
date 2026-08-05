@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest"
 import type { DataInterface, Item, RelationRecord } from "../index.js"
 import {
   deriveRelationRecordId,
+  hasClaimVerification,
   hasRelationRecords,
   hasRelationRecordWriter,
   isWritable,
@@ -309,6 +310,21 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
           await expect(
             connector.createRelationRecord({ predicate: "votesOn", from: `global:${currentUserId}`, to: `item:${statementId}` }),
           ).rejects.toThrow(/collision/i)
+        })
+      })
+
+      it("claim verdict: a facade-written authorial record is vouched for (valid or trusted)", async () => {
+        await withConnector(async ({ connector, currentUserId }) => {
+          if (!hasRelationRecordWriter(connector) || !hasClaimVerification(connector)) return
+          const statementId = unique("ct-verdict")
+          const record = await connector.createRelationRecord({
+            predicate: "votesOn",
+            from: `global:${currentUserId}`,
+            to: `item:${statementId}`,
+            fields: { value: "green" },
+          })
+          const verdict = await connector.verifyRecordClaim(record)
+          expect(["valid", "trusted"]).toContain(verdict)
         })
       })
 

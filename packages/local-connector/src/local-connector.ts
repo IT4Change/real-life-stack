@@ -126,13 +126,33 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
   private store = createStore("rls-local-connector", "state")
   private seedData: StoredState | null
 
+  /**
+   * SignedClaims verdict (spec 08): the Local store is `authoritative` — it
+   * binds createdBy to the session on every regular ingress, so records are
+   * "trusted" without cryptographic claims. Defined as a property so the
+   * FIXTURE mode (allowFixtureAuthors) can omit the capability entirely:
+   * a store that accepts foreign authors may not claim trusted.
+   */
+  verifyRecordClaim?: (record: RelationRecord) => Promise<"trusted">
+
   constructor(seed?: {
     items: Item[]
     groups: Group[]
     users: User[]
     groupMembers: Record<string, string[]>
     groupItems?: Record<string, string[]>
+  }, options?: {
+    /**
+     * FIXTURE PATH (spec 08 exception, marked and dev-only): keep
+     * caller-supplied createdBy for simulating multi-user states in tests
+     * and demos. Disables the authoritative claim verdict.
+     */
+    allowFixtureAuthors?: boolean
   }) {
+    this.allowFixtureAuthors = options?.allowFixtureAuthors === true
+    if (!this.allowFixtureAuthors) {
+      this.verifyRecordClaim = async () => "trusted"
+    }
     this.seedData = seed
       ? {
           items: seed.items.map(i => ({ ...i })),
@@ -394,8 +414,13 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
     return this.createItemInGroup(item, this.currentGroup?.id ?? null)
   }
 
+  private allowFixtureAuthors = false
+
   private async createItemInGroup(item: CreateItemInput, targetGroupId: string | null): Promise<Item> {
     const actor = this.requireCurrentUser().id
+    // Authoritative ingress binding (spec 08): createdBy comes from the
+    // session, never the caller — except in the marked fixture mode.
+    const boundItem: CreateItemInput = this.allowFixtureAuthors ? item : { ...item, createdBy: actor }
     let result: Item | undefined
     let committedState: StoredState | undefined
     let created = false
@@ -420,7 +445,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
       }
 
       const newItem: Item = {
-        ...item,
+        ...boundItem,
         id,
         createdAt: new Date().toISOString(),
       }

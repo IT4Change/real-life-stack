@@ -9,7 +9,7 @@ describeDataInterfaceContract("MockConnector", {
       users: [{ id: "user-contract", displayName: "Contract User" }],
       groupMembers: { g1: ["user-contract"] },
       groupItems: {},
-    } as never)
+    } as never, { allowFixtureAuthors: true })
     await connector.init()
     const user = await connector.getCurrentUser()
     if (!user) throw new Error("MockConnector should start authenticated")
