@@ -50,6 +50,10 @@ interface StoredState {
   nextItemId: number
   /** Seed version the store was last seeded with (see SEED_VERSION). */
   seedVersion: number
+  /** True when every runtime ingress that wrote this state bound createdBy
+      to the session (spec 08). Absent/false = legacy or fixture-written —
+      a trusted instance discards such state (SEED_VERSION pattern). */
+  authorBindingEnforced?: boolean
   /** Additive: legacy states are read as an empty map. */
   activityByScope?: Record<string, Record<string, ActivityEntry>>
   /** Additive: old local stores start with an empty notification state. */
@@ -164,6 +168,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
           currentGroupId: seed.groups[0]?.id ?? null,
           nextItemId: 100,
           seedVersion: SEED_VERSION,
+      authorBindingEnforced: !this.allowFixtureAuthors,
         }
       : null
   }
@@ -180,7 +185,11 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
     const shouldSeed = this.seedData && (
       !stored ||
       stored.seedVersion === undefined ||
-      stored.seedVersion < SEED_VERSION
+      stored.seedVersion < SEED_VERSION ||
+      // Trusted instances must not vouch for state written without the
+      // ingress binding (legacy or fixture-mode): discard and re-seed —
+      // this is the dev connector's documented SEED_VERSION behaviour.
+      (!this.allowFixtureAuthors && stored.authorBindingEnforced !== true)
     )
 
     if (shouldSeed) {
@@ -831,6 +840,7 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
       currentGroupId: this.currentGroup?.id ?? null,
       nextItemId: this.nextItemId,
       seedVersion: SEED_VERSION,
+      authorBindingEnforced: !this.allowFixtureAuthors,
       activityByScope: this.activityByScope,
       notificationState: this.notificationState,
     }

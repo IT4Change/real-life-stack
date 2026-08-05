@@ -214,6 +214,24 @@ describe("MockConnector — authoritative claim mode (spec 08)", () => {
     expect(updated.createdBy).toBe("user-1")
   })
 
+  it("injectSeedItems is a fixture-only ingress — a trusted instance refuses it (#235 round 2)", async () => {
+    const trusted = new MockConnector({
+      items: [], groups: [{ id: "g1", name: "G", data: {} }],
+      users: [{ id: "user-1", displayName: "One" }],
+      groupMembers: { g1: ["user-1"] }, groupItems: {},
+    } as never)
+    await trusted.init()
+    expect(() => trusted.injectSeedItems([{ id: "m1", type: "relation", createdBy: "user-mallory", createdAt: "t", data: { predicate: "votesOn", value: "green" }, relations: [{ predicate: "from", target: "global:user-mallory" }, { predicate: "to", target: "item:s1" }] }] as never)).toThrow(/fixture/i)
+
+    const fixture = new MockConnector({
+      items: [], groups: [{ id: "g1", name: "G", data: {} }],
+      users: [{ id: "user-1", displayName: "One" }],
+      groupMembers: { g1: ["user-1"] }, groupItems: {},
+    } as never, { allowFixtureAuthors: true })
+    await fixture.init()
+    expect(() => fixture.injectSeedItems([{ id: "m1", type: "note", createdBy: "user-mallory", createdAt: "t", data: {} }] as never)).not.toThrow()
+  })
+
   it("fixture mode keeps foreign authors and drops the capability", async () => {
     const { hasClaimVerification } = await import("@real-life-stack/data-interface")
     const connector = new MockConnector({

@@ -428,6 +428,12 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
    * timestamps and authors, so they deliberately bypass the auth-bound writers.
    */
   injectSeedItems(items: readonly Item[], groupId?: string): Item[] {
+    if (!this.allowFixtureAuthors) {
+      // Runtime seed injection is an OPEN ingress that bypasses the author
+      // binding — a trusted instance must not offer it (spec 08: fixture
+      // paths must be unreachable in the production path).
+      throw new Error("injectSeedItems is a fixture-only ingress — construct the MockConnector with { allowFixtureAuthors: true }")
+    }
     const targetGroupId = groupId ?? this.currentGroup?.id
     const injected: Item[] = []
     let changed = false

@@ -33,10 +33,15 @@ function verdictKey(record: RelationRecord): string | null {
   }
 }
 
+const EMPTY_VERDICTS: ReadonlyMap<string, ClaimVerdict> = new Map()
+
 export function useVerifiedRelationRecords(records: RelationRecord[]): RelationRecord[] {
   const connector = useConnector()
   const canVerify = hasClaimVerification(connector)
-  const [verdicts, setVerdicts] = useState<Map<string, ClaimVerdict>>(new Map())
+  // Verdicts are bound to the CONNECTOR INSTANCE (verification epoch): a
+  // connector switch must not let the previous instance's verdicts count
+  // for even one frame — the pair is read synchronously below.
+  const [state, setState] = useState<{ source: DataInterface | null; verdicts: ReadonlyMap<string, ClaimVerdict> }>({ source: null, verdicts: EMPTY_VERDICTS })
 
   useEffect(() => {
     if (!canVerify || records.length === 0) return
@@ -46,22 +51,31 @@ export function useVerifiedRelationRecords(records: RelationRecord[]): RelationR
       for (const record of records) {
         const key = verdictKey(record)
         if (key === null) continue
-        entries.push([key, await (connector as DataInterface & { verifyRecordClaim(r: RelationRecord): Promise<ClaimVerdict> }).verifyRecordClaim(record)])
+        let verdict: ClaimVerdict
+        try {
+          verdict = await (connector as DataInterface & { verifyRecordClaim(r: RelationRecord): Promise<ClaimVerdict> }).verifyRecordClaim(record)
+        } catch {
+          // A rejecting verifier is an invalid record, never an unhandled gap.
+          verdict = "invalid"
+        }
+        entries.push([key, verdict])
       }
-      if (!cancelled) startTransition(() => setVerdicts(new Map(entries)))
+      if (!cancelled) startTransition(() => setState({ source: connector, verdicts: new Map(entries) }))
     })()
     return () => { cancelled = true }
   }, [connector, canVerify, records])
 
   return useMemo(() => {
     if (!canVerify) return []
+    // Epoch check: verdicts from a different connector instance are void.
+    const verdicts = state.source === connector ? state.verdicts : EMPTY_VERDICTS
     return records.filter((record) => {
       const key = verdictKey(record)
       if (key === null) return false
       const verdict = verdicts.get(key)
       return verdict === "valid" || verdict === "trusted"
     })
-  }, [canVerify, records, verdicts])
+  }, [canVerify, connector, records, state])
 }
 
 /** Aggregated vote distribution for a statement. */

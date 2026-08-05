@@ -68,6 +68,7 @@ describe("DWebCamp seed importer", () => {
       groupItems: { dwebcamp: [], "my-network": [] },
     }, {
       symmetricRelationPredicates: NETWORK_RELATION_STORE_OPTIONS.symmetricPredicates,
+      allowFixtureAuthors: true,
     })
 
     connector.injectSeedItems(await buildDwebCampSeedItems(), "dwebcamp")

@@ -29,7 +29,7 @@ describe("network task board", () => {
       users: [],
       groupMembers: { dwebcamp: [] },
       groupItems: { dwebcamp: [] },
-    })
+    }, { allowFixtureAuthors: true })
     connector.injectSeedItems(await buildDwebCampSeedItems(), "dwebcamp")
     connector.setCurrentGroup("dwebcamp")
     const visibleTasks = networkTaskBoardItems(await connector.getItems())

@@ -391,6 +391,24 @@ describe("useVotes — verdict binds CONTENT, not just the record id (#235 revie
   })
 })
 
+describe("useVotes — verdicts are bound to the connector instance (#235 round 2)", () => {
+  it("a connector switch drops prior verdicts synchronously — fail closed on the first frame", async () => {
+    const records = [voteRecord("rel-1", OTHER, "green")]
+    harness.connector = connector(records).connector
+    const counted = await renderHookVerified(() => hooks.useVotes(STATEMENT))
+    expect(counted.summary.total).toBe(1)
+
+    // New connector instance, same records: the previous instance's verdicts
+    // must not carry over for even one frame.
+    harness.connector = connector(records).connector
+    const early = renderHook(() => hooks.useVotes(STATEMENT))
+    expect(early.summary.total).toBe(0)
+
+    const settled = await renderHookVerified(() => hooks.useVotes(STATEMENT))
+    expect(settled.summary.total).toBe(1)
+  })
+})
+
 describe("useVoteUsers — transparent voter list", () => {
   it("subscribes to the records observable instead of a one-shot read", () => {
     const { connector: c } = connector([voteRecord("rel-1", OTHER, "green")])

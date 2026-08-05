@@ -153,6 +153,24 @@ describe("LocalConnector — vote relation store contract", () => {
     expect(hasClaimVerification(fixture)).toBe(false)
   })
 
+  it("a persisted store WITHOUT the author-binding marker is discarded on trusted init (#235 round 2)", async () => {
+    // Legacy/fixture-written state may contain foreign-authored records; a
+    // trusted instance must not vouch for it. Following the SEED_VERSION
+    // pattern of this dev connector, such state is discarded and re-seeded.
+    const idb = await import("idb-keyval")
+    ;(idb.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: [{ id: "mallory-legacy", type: "relation", createdBy: "user-mallory", createdAt: "t", data: { predicate: VOTE_PREDICATE, value: "green" }, relations: [{ predicate: "from", target: "global:user-mallory" }, { predicate: "to", target: "item:s1" }] }],
+      groups: [{ id: "g1", name: "Legacy" }],
+      users: [{ id: ALICE, displayName: "Alice" }],
+      groupMembers: { g1: [ALICE] },
+      groupItems: { g1: ["mallory-legacy"] },
+      currentUserId: ALICE, currentGroupId: "g1", nextItemId: 100,
+      seedVersion: 999, // survives the seed-version check — the MARKER must catch it
+    })
+    const restored = await makeConnector()
+    expect(await restored.getItem("mallory-legacy")).toBeNull()
+  })
+
   it("refuses to update or delete another author's record", async () => {
     const connector = fixtureConnector
     const bobsId = await deriveRelationRecordId(BOB, VOTE_PREDICATE, `global:${BOB}`, "item:s1")
