@@ -58,15 +58,36 @@ class FakeFilterBuilder implements FilterBuilderLike {
   }
 
   or(filters: string): this {
-    // Supports the subset the connector emits: "col.eq.val,col.eq.val,…"
-    const branches = filters.split(",").map((branch) => {
-      const match = /^([^.]+)\.eq\.(.+)$/.exec(branch)
-      if (!match) throw new Error(`fake: unsupported or() branch: ${branch}`)
-      return { column: match[1]!, value: match[2]! }
+    // Supports the subset the connector emits:
+    //   "col.eq.val" | "col.is.null" | "and(cond,cond,…)" — comma-joined.
+    const parseCondition = (raw: string): ((row: Row) => boolean) => {
+      const eq = /^([^.]+)\.eq\.(.+)$/.exec(raw)
+      if (eq) return (row) => String(jsonPath(row, eq[1]!)) === eq[2]!
+      const isNull = /^([^.]+)\.is\.null$/.exec(raw)
+      if (isNull) return (row) => jsonPath(row, isNull[1]!) == null
+      throw new Error(`fake: unsupported or() condition: ${raw}`)
+    }
+    const splitTopLevel = (value: string): string[] => {
+      const parts: string[] = []
+      let depth = 0
+      let current = ""
+      for (const char of value) {
+        if (char === "(") depth += 1
+        if (char === ")") depth -= 1
+        if (char === "," && depth === 0) { parts.push(current); current = "" } else current += char
+      }
+      if (current) parts.push(current)
+      return parts
+    }
+    const branches = splitTopLevel(filters).map((branch): ((row: Row) => boolean) => {
+      const and = /^and\((.+)\)$/.exec(branch)
+      if (and) {
+        const conditions = splitTopLevel(and[1]!).map(parseCondition)
+        return (row) => conditions.every((condition) => condition(row))
+      }
+      return parseCondition(branch)
     })
-    this.conditions.push({
-      matches: (row) => branches.some(({ column, value }) => String(jsonPath(row, column)) === value),
-    })
+    this.conditions.push({ matches: (row) => branches.some((branch) => branch(row)) })
     return this
   }
 

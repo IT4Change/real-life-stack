@@ -188,32 +188,35 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     if (!SupabaseConnector.SAFE_SCOPE_ID.test(groupId)) {
       throw new Error(`[SupabaseConnector] unsupported group id for server-side scoping: ${JSON.stringify(groupId)}`)
     }
-    return query.or(`group_id.eq.${groupId},type.eq.feature`) as Q
+    // GLOBAL features only (group_id IS NULL): a feature created inside a
+    // group is that group's feature and must not leak elsewhere.
+    return query.or(`group_id.eq.${groupId},and(type.eq.feature,group_id.is.null)`) as Q
   }
 
   /** PostgREST caps unbounded queries at max_rows (config.toml: 1000). */
   private static readonly SERVER_PAGE = 1000
 
   async getItems(filter?: ItemFilter): Promise<Item[]> {
-    // Explicit caller limit → single window, exactly as requested.
-    if (filter?.limit !== undefined) {
-      const query = applyItemFilter(this.applyGroupScope(this.client.from("items").select("*")), filter)
-      return throwOnError(await query, "getItems").map(rowToItem)
-    }
-    // Unbounded read: page past the server's silent max_rows cap — for a
-    // remote connector "everything" must never quietly mean "first 1000".
+    // Page past the server's silent max_rows cap in EVERY case: unbounded
+    // reads fetch everything, and an explicit limit above the cap is honored
+    // window by window — never quietly truncated to the first 1000.
+    const target = filter?.limit
     const results: Item[] = []
     let offset = filter?.offset ?? 0
     for (;;) {
+      const window = target === undefined
+        ? SupabaseConnector.SERVER_PAGE
+        : Math.min(SupabaseConnector.SERVER_PAGE, target - results.length)
+      if (window <= 0) break
       const query = applyItemFilter(this.applyGroupScope(this.client.from("items").select("*")), {
         ...(filter ?? {}),
-        limit: SupabaseConnector.SERVER_PAGE,
+        limit: window,
         offset,
       })
       const rows = throwOnError(await query, "getItems")
       results.push(...rows.map(rowToItem))
-      if (rows.length < SupabaseConnector.SERVER_PAGE) break
-      offset += SupabaseConnector.SERVER_PAGE
+      if (rows.length < window) break
+      offset += rows.length
     }
     return results
   }
@@ -222,7 +225,8 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     const row = await this.getItemRowUnscoped(id)
     if (!row) return null
     const scopeGroupId = this.currentReadScopeGroupId()
-    if (scopeGroupId !== null && row.group_id !== scopeGroupId && row.type !== "feature") return null
+    if (scopeGroupId !== null && row.group_id !== scopeGroupId
+      && !(row.type === "feature" && row.group_id === null)) return null
     return rowToItem(row)
   }
 

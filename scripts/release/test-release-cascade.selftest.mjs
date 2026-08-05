@@ -48,6 +48,33 @@ const VALID = () => ({
   'packages/core/package.json': { name: '@scope/core', version: '1.0.0' },
   'apps/demo/android/version.properties':
     '# x-release-please-start-version\nVERSION_NAME=0.2.7\n# x-release-please-end\n',
+  // Minimale Workflows, strukturgleich zum echten Repo: die Dispatch-
+  // Vollstaendigkeits-Invariante prueft die Kette Output→Env→dispatch→publish.
+  '.github/workflows/release-please.yml': [
+    'jobs:',
+    '  release-please:',
+    '    outputs:',
+    "      core_released: ${{ steps.release.outputs['packages/core--release_created'] }}",
+    "      core_tag: ${{ steps.release.outputs['packages/core--tag_name'] }}",
+    '  trigger-publish:',
+    '    steps:',
+    '      - env:',
+    '          CORE_RELEASED: ${{ needs.release-please.outputs.core_released }}',
+    '          CORE_TAG: ${{ needs.release-please.outputs.core_tag }}',
+    '        run: |',
+    '          dispatch "$CORE_RELEASED" "$CORE_TAG" "core"',
+    '',
+  ].join('\n'),
+  '.github/workflows/publish.yml': [
+    'jobs:',
+    '  publish:',
+    '    steps:',
+    '      - run: |',
+    '          case "$TAG" in',
+    '            core-v*) kind=package; dir=packages/core ;;',
+    '          esac',
+    '',
+  ].join('\n'),
 })
 
 function buildFixture(mutate) {
@@ -74,6 +101,14 @@ function runChecker(root) {
 // ------------------------------------------------------------------ Faelle
 // Jeder Fall bricht GENAU eine Invariante. Erwartung: der Checker wird rot.
 const MUTATIONS = [
+  ['Paket ohne dispatch-Verdrahtung im Release-Workflow', (f) => {
+    f['.github/workflows/release-please.yml'] = f['.github/workflows/release-please.yml']
+      .replace('          dispatch "$CORE_RELEASED" "$CORE_TAG" "core"', '')
+  }],
+  ['Paket ohne Tag-Mapping in publish.yml', (f) => {
+    f['.github/workflows/publish.yml'] = f['.github/workflows/publish.yml']
+      .replace('            core-v*) kind=package; dir=packages/core ;;', '')
+  }],
   ['App auf release-type simple (faellt aus dem node-workspace-Graphen)', (f) => {
     f['release-please-config.json'].packages['apps/demo']['release-type'] = 'simple'
   }],

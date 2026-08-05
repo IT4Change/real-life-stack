@@ -272,6 +272,21 @@ describe("SupabaseConnector — group scope on read paths (#238 review)", () => 
     expect(await connector.getItem(inA.id)).toBeNull()
   })
 
+  it("a GROUP-LOCAL feature item does NOT leak into other groups (round-2 review)", async () => {
+    // The global-feature exception is bound to group_id IS NULL — a feature
+    // created INSIDE group A is A's feature, invisible in group B.
+    const { connector, userId, groupA, groupB } = await makeTwoGroupWorld()
+    connector.setCurrentGroup(groupA.id)
+    const localFeature = await connector.createItem({ type: "feature", createdBy: userId, data: { name: "graph" } })
+    connector.setCurrentGroup(groupB.id)
+    expect((await connector.getItems({ type: "feature" })).map(({ id }) => id)).not.toContain(localFeature.id)
+    expect(await connector.getItem(localFeature.id)).toBeNull()
+    // In its own group it stays visible.
+    connector.setCurrentGroup(groupA.id)
+    expect((await connector.getItems({ type: "feature" })).map(({ id }) => id)).toContain(localFeature.id)
+    expect(await connector.getItem(localFeature.id)).not.toBeNull()
+  })
+
   it("an EXISTING observation switches its content on group change", async () => {
     const { connector, groupA, groupB, inA, inB } = await makeTwoGroupWorld()
     connector.setCurrentGroup(groupA.id)
@@ -375,8 +390,16 @@ describe("SupabaseConnector — CodeRabbit findings (#238 review)", () => {
     }
     const items = await connector.getItems({ type: "bulk" })
     expect(items).toHaveLength(2345)
-    // An explicit caller limit stays a single window.
+    // A small explicit limit stays a single window.
     expect(await connector.getItems({ type: "bulk", limit: 7 })).toHaveLength(7)
+    // An explicit limit ABOVE the server cap is honored via pagination
+    // (round-2 review: 1500 must not silently become 1000).
+    expect(await connector.getItems({ type: "bulk", limit: 1500 })).toHaveLength(1500)
+    // Limit + offset window near the tail: exactly the remaining rows.
+    const tail = await connector.getItems({ type: "bulk", limit: 1500, offset: 1345 })
+    expect(tail).toHaveLength(1000)
+    expect(tail[0]!.id).toBe("bulk-01345")
+    expect(tail[999]!.id).toBe("bulk-02344")
   })
 })
 
