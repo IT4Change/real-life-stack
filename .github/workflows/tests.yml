@@ -51,6 +51,12 @@ jobs:
       - name: Waechter-Selbsttest (Negativfaelle)
         run: node scripts/release/test-release-cascade.selftest.mjs
 
+      # Fail-closed-Vertrag des Supabase-Migrationspfads (docker-Shim, kein
+      # echtes Postgres): ein fehlgeschlagener Datei-Read darf NIE einen
+      # Journal-Marker ohne Schema committen (#238 CodeRabbit-Finding).
+      - name: Migrations-Selbsttest (fail-closed)
+        run: sh deploy/supabase/apply-migrations.selftest.sh
+
       # Die Schutzwaelle des npm-Bootstraps (Argumentpruefung, Tarball-Identitaet,
       # Registry-Bindung) gegen Regression sichern. Laeuft OFFLINE — npm und pnpm
       # sind gestubbt, es wird nichts publiziert und kein Konto gebraucht.

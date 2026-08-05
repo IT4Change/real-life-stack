@@ -25,6 +25,10 @@
       "package-name": "@real-life-stack/graphql-connector",
       "changelog-path": "CHANGELOG.md"
     },
+    "packages/supabase-connector": {
+      "package-name": "@real-life-stack/supabase-connector",
+      "changelog-path": "CHANGELOG.md"
+    },
     "apps/reference": {
       "release-type": "node",
       "component": "app",

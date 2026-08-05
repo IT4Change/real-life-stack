@@ -181,6 +181,43 @@ if (vpExists) {
   }
 }
 
+
+// == Dispatch-Vollstaendigkeit: jede publizierbare Komponente erreicht publish.yml ==
+//
+// Runde-2-Finding auf PR #238: supabase-connector stand in Config+Manifest,
+// aber release-please.yml kannte weder Outputs noch Env noch dispatch-Zeile —
+// Tag/Release waeren entstanden, publish.yml aber nie gestartet. Diese
+// Invariante prueft fuer JEDE packages/*-Komponente die komplette Kette
+// Output → Env-Bindung → dispatch-Aufruf → publish.yml-Tag-Mapping.
+console.log('== Dispatch-Vollstaendigkeit: Release → publish.yml ==')
+{
+  const releaseWorkflow = read('.github/workflows/release-please.yml')
+  const publishWorkflow = read('.github/workflows/publish.yml')
+  const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  for (const pkgPath of Object.keys(packages)) {
+    if (!pkgPath.startsWith('packages/')) continue
+    const base = pkgPath.split('/').pop()
+    // 1) Output-Deklarationen fuer released-Flag und Tag.
+    const releasedOut = new RegExp(`(\\w+):\\s*\\$\\{\\{\\s*steps\\.release\\.outputs\\['${escape(pkgPath)}--release_created'\\]`).exec(releaseWorkflow)
+    const tagOut = new RegExp(`(\\w+):\\s*\\$\\{\\{\\s*steps\\.release\\.outputs\\['${escape(pkgPath)}--tag_name'\\]`).exec(releaseWorkflow)
+    check(!!releasedOut, `${pkgPath}: release_created-Output deklariert`)
+    check(!!tagOut, `${pkgPath}: tag_name-Output deklariert`)
+    if (!releasedOut || !tagOut) continue
+    // 2) Env-Bindung im trigger-publish-Job.
+    const releasedEnv = new RegExp(`(\\w+):\\s*\\$\\{\\{\\s*needs\\.release-please\\.outputs\\.${releasedOut[1]}\\s*\\}\\}`).exec(releaseWorkflow)
+    const tagEnv = new RegExp(`(\\w+):\\s*\\$\\{\\{\\s*needs\\.release-please\\.outputs\\.${tagOut[1]}\\s*\\}\\}`).exec(releaseWorkflow)
+    check(!!releasedEnv, `${pkgPath}: released-Output an Env gebunden`)
+    check(!!tagEnv, `${pkgPath}: tag-Output an Env gebunden`)
+    if (!releasedEnv || !tagEnv) continue
+    // 3) dispatch-Aufruf mit exakt diesen Env-Variablen.
+    const dispatched = new RegExp(`dispatch\\s+"\\$${releasedEnv[1]}"\\s+"\\$${tagEnv[1]}"`).test(releaseWorkflow)
+    check(dispatched, `${pkgPath}: dispatch-Aufruf verdrahtet (${releasedEnv[1]}/${tagEnv[1]})`)
+    // 4) publish.yml kennt den Tag-Praefix und mappt auf das Paketverzeichnis.
+    const mapped = new RegExp(`${escape(base)}-v\\*\\)[^\\n]*dir=${escape(pkgPath)}`).test(publishWorkflow)
+    check(mapped, `${pkgPath}: publish.yml mappt ${base}-v* auf ${pkgPath}`)
+  }
+}
+
 console.log(
   failed === 0
     ? '\nAlle Kaskaden-Invarianten erfuellt.'

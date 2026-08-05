@@ -22,6 +22,7 @@
     "@real-life-stack/data-interface": "workspace:*",
     "@real-life-stack/local-connector": "workspace:*",
     "@real-life-stack/mock-connector": "workspace:*",
+    "@real-life-stack/supabase-connector": "workspace:*",
     "@real-life-stack/toolkit": "workspace:*",
     "@real-life-stack/wot-connector": "workspace:*",
     "leaflet": "^1.9.4",

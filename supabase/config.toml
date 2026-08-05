@@ -1,0 +1,31 @@
+# Supabase local development config (npx supabase start — requires Docker).
+project_id = "real-life-stack"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+enable_signup = true
+# Anonymous sign-ins carry the local contract-suite harness and quick demos.
+enable_anonymous_sign_ins = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+[realtime]
+enabled = true

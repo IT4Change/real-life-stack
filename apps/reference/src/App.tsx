@@ -193,6 +193,7 @@ const CONNECTOR_OPTIONS: ConnectorOption[] = [
   { id: "mock", name: "Mock", description: "In-Memory, kein Speichern" },
   { id: "local", name: "Local", description: "IndexedDB, persistent" },
   { id: "wot", name: "Web of Trust", description: "E2E-verschlüsselt, Multi-Device" },
+  { id: "supabase", name: "Supabase", description: "PostgreSQL-Backend, Realtime" },
 ]
 
 function RelayStatusBadgeWrapper() {
@@ -755,6 +756,21 @@ async function createConnector(type: string): Promise<DataInterface> {
     const c = new LocalConnector(demoData)
     await c.init()
     return c
+  }
+  if (type === "supabase") {
+    const { createSupabaseConnector } = await import("@real-life-stack/supabase-connector")
+    const connector = createSupabaseConnector(
+      import.meta.env.VITE_SUPABASE_URL ?? "http://127.0.0.1:54321",
+      import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+    )
+    await connector.init()
+    // v1: anonymous session so the (WoT-specific) auth gate never engages;
+    // supabase-js persists the session, so identity survives reloads.
+    // A proper Supabase login screen is follow-up work.
+    if (connector.getAuthState().current.status !== "authenticated") {
+      await connector.authenticate("anonymous", {})
+    }
+    return connector
   }
   const c = new MockConnector()
   await c.init()

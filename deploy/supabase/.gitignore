@@ -1,0 +1,2 @@
+# Server-side secrets live only on the host
+.env
