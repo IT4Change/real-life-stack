@@ -10,6 +10,7 @@ const NOOP_VERIFICATION = {
   isProcessing: false,
   error: null,
   createChallenge: async () => null,
+  restoreChallenge: async () => null,
   scanChallenge: async (_code: string) => null,
   confirmVerification: async (_code: string) => {},
   reset: () => {},
@@ -38,6 +39,22 @@ export function useVerification() {
       return null
     } finally {
       setIsProcessing(false)
+    }
+  }, [connector, supported])
+
+  const restoreChallenge = useCallback(async () => {
+    if (!supported) return null
+    // Feature-Detection statt Interface-Erweiterung: die Restore-Fähigkeit ist
+    // eine optionale Connector-Capability (Entscheidung 1c); der Nachzug ins
+    // EncounterVerificationCapable-Interface ist ein separater Spec-Schritt.
+    const candidate = connector as Partial<{ restoreVerificationChallenge: () => Promise<VerificationChallenge | null> }>
+    if (typeof candidate.restoreVerificationChallenge !== "function") return null
+    try {
+      const restored = await candidate.restoreVerificationChallenge()
+      if (restored) setChallenge(restored)
+      return restored
+    } catch {
+      return null
     }
   }, [connector, supported])
 
@@ -90,6 +107,7 @@ export function useVerification() {
     isProcessing,
     error,
     createChallenge,
+    restoreChallenge,
     scanChallenge,
     confirmVerification,
     reset,
