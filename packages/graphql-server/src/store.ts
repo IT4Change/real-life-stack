@@ -1,5 +1,5 @@
 import type { CreateItemInput, Item, ItemFilter, Group, User, AuthState, Relation } from "@real-life-stack/data-interface"
-import { applyPagination, matchesFilter } from "@real-life-stack/data-interface"
+import { applyGroupDataPatch, applyPagination, matchesFilter } from "@real-life-stack/data-interface"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers } from "@real-life-stack/data-interface/demo-data"
 import { publish } from "./pubsub.js"
 
@@ -143,7 +143,8 @@ export function updateGroup(id: string, updates: { name?: string; data?: Record<
   const group = groups.find((g) => g.id === id)
   if (!group) throw new Error(`Group not found: ${id}`)
   if (updates.name) group.name = updates.name
-  if (updates.data) group.data = { ...group.data, ...updates.data }
+  // Shallow patch, null removes — the shared GroupManager contract (rls#234).
+  if (updates.data) group.data = applyGroupDataPatch(group.data, updates.data)
   return group
 }
 

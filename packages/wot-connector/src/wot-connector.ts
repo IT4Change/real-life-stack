@@ -45,6 +45,7 @@ import {
   matchesFilter,
   findRelatedItems,
   applyPagination,
+  applyGroupDataPatch,
   itemDisplayTitle,
   moduleHintsFor,
   maxTs,
@@ -975,7 +976,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       this.groupsCache[idx] = {
         ...group,
         name: updates.name ?? group.name,
-        data: updates.data ? { ...group.data, ...updates.data } : group.data,
+        // Same shallow-patch semantics as every other connector (null removes)
+        // — the cache must not drift from the GroupManager contract (rls#234).
+        data: updates.data ? applyGroupDataPatch(group.data, updates.data) : group.data,
       }
       this.groupsObservable.set([...this.groupsCache])
       return this.groupsCache[idx]

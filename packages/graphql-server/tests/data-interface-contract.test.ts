@@ -47,4 +47,9 @@ describeDataInterfaceContract("GraphQLConnector ↔ graphql-server", {
     if (!user) throw new Error("graphql demo store should have a current user")
     return { connector, currentUserId: user.id, dispose: () => app.close() }
   },
+  async updatableGroup(context) {
+    // Fresh group per case — the shared demo store survives across cases.
+    const group = await context.connector.createGroup(`contract-patch-${Date.now().toString(36)}`)
+    return group.id
+  },
 })

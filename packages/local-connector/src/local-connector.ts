@@ -23,7 +23,7 @@ import type {
   RelationRecordUpdate,
   Source,
 } from "@real-life-stack/data-interface"
-import { createObservable, createDefaultRelationStore, createRelationRecordWith, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
+import { applyGroupDataPatch, createObservable, createDefaultRelationStore, createRelationRecordWith, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
 import { get, set, del, createStore, update as updateStoredValue } from "idb-keyval"
 
 // --- Types ---
@@ -325,7 +325,12 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
   async updateGroup(id: string, updates: Partial<Group>): Promise<Group> {
     const group = this.groups.find((g) => g.id === id)
     if (!group) throw new Error(`Group not found: ${id}`)
-    Object.assign(group, updates)
+    // `data` is a shallow PATCH (null removes), never a replacement — see the
+    // GroupManager contract; wholesale replace let partial writers erase each
+    // other's fields (rls#234).
+    const { data, ...rest } = updates
+    Object.assign(group, rest)
+    if (data) group.data = applyGroupDataPatch(group.data, data)
     this.notifyGroupObservers()
     await this.persist()
     this.broadcast({ type: "groups-changed" })
