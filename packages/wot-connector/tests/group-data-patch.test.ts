@@ -89,3 +89,28 @@ describe("updateGroup — data-Patch → Replikation", () => {
     })
   })
 })
+
+describe("updateGroup — Cache-Patch (rls#245)", () => {
+  it("laesst scope nicht in den Cache — es wird in spaceToGroup ABGELEITET", async () => {
+    const { connector } = fakeConnector()
+
+    await connector.updateGroup("space-1", { data: { scope: "aggregate", theme: "forest" } })
+
+    const cached = (await connector.getGroups()).find((candidate) => candidate.id === "space-1")
+    // Der persistierte Zustand kennt kein scope; ein cache-only "aggregate"
+    // wuerde beim naechsten spaceToGroup wieder auf "group" zurueckspringen.
+    expect(cached?.data?.scope).toBe("group")
+    expect(cached?.data?.theme).toBe("forest")
+  })
+
+  it("schreibt undefined-Werte nicht in den Cache", async () => {
+    const { connector } = fakeConnector()
+
+    await connector.updateGroup("space-1", { data: { primaryColor: undefined, theme: "forest" } })
+
+    const cached = (await connector.getGroups()).find((candidate) => candidate.id === "space-1")
+    // undefined heisst "nicht mitgeschickt" — der Bestand bleibt, nur null loescht.
+    expect(cached?.data?.primaryColor).toBe("#old")
+    expect(cached?.data?.theme).toBe("forest")
+  })
+})

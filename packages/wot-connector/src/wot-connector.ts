@@ -968,14 +968,22 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // and vanished on reload / on the second device (rls#234, wot#341).
     const metaUpdate: Record<string, unknown> = {}
     if (updates.name) metaUpdate.name = updates.name
+    // ONE accepted patch feeds both replication and cache. Deriving the cache
+    // from the raw `updates.data` instead let a rejected field (`scope`) or an
+    // `undefined` land in the cache only — the cache would then claim state
+    // that neither the persisted doc nor spaceToGroup can reproduce (rls#245).
+    const acceptedPatch: Record<string, unknown> = {}
     const appData: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(updates.data ?? {})) {
+      // `undefined` means "not sent" — only `null` deletes (patch contract).
       if (value === undefined) continue
+      // `scope` is an RLS presentation field DERIVED in spaceToGroup — it
+      // never belongs to the space meta, and thus never to the cache either.
+      if (key === "scope") continue
+      acceptedPatch[key] = value
       if (key === "image") metaUpdate.image = value as string
       else if (key === "modules") metaUpdate.modules = value as string[]
-      // `scope` is an RLS presentation field DERIVED in spaceToGroup — it
-      // never belongs to the space meta.
-      else if (key !== "scope") appData[key] = value
+      else appData[key] = value
     }
     if (Object.keys(appData).length > 0) metaUpdate.appData = appData
     if (Object.keys(metaUpdate).length > 0) {
@@ -990,7 +998,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
         name: updates.name ?? group.name,
         // Same shallow-patch semantics as every other connector (null removes)
         // — the cache must not drift from the GroupManager contract (rls#234).
-        data: updates.data ? applyGroupDataPatch(group.data, updates.data) : group.data,
+        data: applyGroupDataPatch(group.data, acceptedPatch),
       }
       this.groupsObservable.set([...this.groupsCache])
       return this.groupsCache[idx]
