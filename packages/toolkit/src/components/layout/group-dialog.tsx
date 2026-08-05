@@ -253,6 +253,11 @@ export function GroupDialog({
   // between two rows means — reorderModule corrects for the removal shift.
   const [draggedModule, setDraggedModule] = useState<string | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
+  // Which row currently holds keyboard focus on its reorder buttons. Explicit
+  // state instead of a `focus-visible:` utility: the arrows must be INVISIBLE
+  // for mouse users (they drag) yet VISIBLE the moment a keyboard reaches
+  // them — an invisible focused control is worse than a noisy one.
+  const [keyboardRow, setKeyboardRow] = useState<string | null>(null)
 
   const handleModuleDragOver = useCallback((event: React.DragEvent, rowIndex: number) => {
     event.preventDefault()
@@ -620,8 +625,9 @@ export function GroupDialog({
               is what the nav renders, top row = first tab. Reorder by DRAGGING
               a row (one gesture, any distance), deactivate via ✕; available
               modules append at the end. The ↑/↓ buttons stay as the keyboard
-              path (they only appear on focus/hover) — dragging alone would
-              lock out keyboard and screen-reader users. */}
+              path and appear ONLY on keyboard focus — with the mouse you
+              drag, so showing them on hover was pure noise. Dragging alone
+              would lock out keyboard and screen-reader users. */}
           {isCurrentUserAdmin && (
             <div className="mt-3 pt-3 border-t border-border/50">
               <Label className="text-xs text-muted-foreground">Module (ziehen zum Sortieren)</Label>
@@ -655,13 +661,18 @@ export function GroupDialog({
                       <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
                       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="flex-1 text-sm">{mod.label}</span>
-                      {/* Keyboard path — visible on hover/focus so the row stays calm. */}
+                      {/* Keyboard path — appears only while focused (see keyboardRow). */}
                       <button
                         type="button"
                         aria-label={`${mod.label} nach oben`}
                         disabled={index === 0}
                         onClick={() => applyModules(moveModule(activeModules, id, -1))}
-                        className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-hover:disabled:opacity-30"
+                        onFocus={() => setKeyboardRow(id)}
+                        onBlur={() => setKeyboardRow((prev) => (prev === id ? null : prev))}
+                        className={cn(
+                          "rounded p-1 text-muted-foreground transition-opacity hover:text-foreground",
+                          keyboardRow === id ? "opacity-100 disabled:opacity-30" : "opacity-0",
+                        )}
                       >
                         <ChevronUp className="h-3.5 w-3.5" />
                       </button>
@@ -670,7 +681,12 @@ export function GroupDialog({
                         aria-label={`${mod.label} nach unten`}
                         disabled={index === activeModules.length - 1}
                         onClick={() => applyModules(moveModule(activeModules, id, 1))}
-                        className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-hover:disabled:opacity-30"
+                        onFocus={() => setKeyboardRow(id)}
+                        onBlur={() => setKeyboardRow((prev) => (prev === id ? null : prev))}
+                        className={cn(
+                          "rounded p-1 text-muted-foreground transition-opacity hover:text-foreground",
+                          keyboardRow === id ? "opacity-100 disabled:opacity-30" : "opacity-0",
+                        )}
                       >
                         <ChevronDown className="h-3.5 w-3.5" />
                       </button>
