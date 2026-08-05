@@ -171,6 +171,28 @@ describe("LocalConnector — vote relation store contract", () => {
     expect(await restored.getItem("mallory-legacy")).toBeNull()
   })
 
+  it("a SEEDLESS trusted instance also discards marker-less legacy state (#235 round 3)", async () => {
+    // new LocalConnector() without seed data: the marker guard must not
+    // depend on the seed path — and later persists must not retroactively
+    // stamp foreign legacy content as enforced.
+    const idb = await import("idb-keyval")
+    ;(idb.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: [{ id: "mallory-legacy", type: "relation", createdBy: "user-mallory", createdAt: "t", data: { predicate: VOTE_PREDICATE, value: "green" }, relations: [{ predicate: "from", target: "global:user-mallory" }, { predicate: "to", target: "item:s1" }] }],
+      groups: [{ id: "g1", name: "Legacy" }],
+      users: [{ id: ALICE, displayName: "Alice" }],
+      groupMembers: { g1: [ALICE] },
+      groupItems: { g1: ["mallory-legacy"] },
+      currentUserId: ALICE, currentGroupId: "g1", nextItemId: 100,
+      seedVersion: 999,
+      // no authorBindingEnforced marker → legacy/fixture-written
+    })
+    const restored = new LocalConnector()
+    await restored.init()
+    expect(await restored.getItem("mallory-legacy")).toBeNull()
+    const { hasClaimVerification } = await import("@real-life-stack/data-interface")
+    expect(hasClaimVerification(restored)).toBe(true)
+  })
+
   it("refuses to update or delete another author's record", async () => {
     const connector = fixtureConnector
     const bobsId = await deriveRelationRecordId(BOB, VOTE_PREDICATE, `global:${BOB}`, "item:s1")

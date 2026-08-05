@@ -181,15 +181,20 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
     // without a manual reset. A store stamped with a *newer* version
     // (e.g. after checking out an older branch) is left intact rather
     // than discarded.
-    const stored = await get<StoredState>("state", this.store)
+    const loaded = await get<StoredState>("state", this.store)
+    // Trusted instances must not vouch for state written without the ingress
+    // binding (legacy or fixture-mode). The discard is INDEPENDENT of the
+    // seed path — a seedless `new LocalConnector()` must not load such state
+    // either (and a later persist would otherwise retroactively stamp it as
+    // enforced). Discarding follows the dev connector's documented
+    // SEED_VERSION behaviour: local state is expendable.
+    const stored = (!this.allowFixtureAuthors && loaded && loaded.authorBindingEnforced !== true)
+      ? undefined
+      : loaded
     const shouldSeed = this.seedData && (
       !stored ||
       stored.seedVersion === undefined ||
-      stored.seedVersion < SEED_VERSION ||
-      // Trusted instances must not vouch for state written without the
-      // ingress binding (legacy or fixture-mode): discard and re-seed —
-      // this is the dev connector's documented SEED_VERSION behaviour.
-      (!this.allowFixtureAuthors && stored.authorBindingEnforced !== true)
+      stored.seedVersion < SEED_VERSION
     )
 
     if (shouldSeed) {
