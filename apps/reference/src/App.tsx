@@ -389,6 +389,16 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   const { activeContacts, pendingContacts, contacts: allContacts, isLoading: contactsLoading, removeContact, updateContactName, supportsContacts } = useContacts()
   const verification = useVerification()
 
+  // Erstbefüllung des Verify-Dialogs: restore-dann-create (Entscheidung 1c).
+  // Der Dialog-Stack ist reload-fest (?dialog=verify) — nach einem Reload mit
+  // offenem QR lebt die persistierte Challenge weiter, statt dass eine neue
+  // die alte (vom Freund evtl. schon gescannte) still ersetzt.
+  const ensureVerificationChallenge = useCallback(async () => {
+    const restored = await verification.restoreChallenge()
+    if (restored) return restored
+    return verification.createChallenge()
+  }, [verification.restoreChallenge, verification.createChallenge])
+
   // Dialog-Ebene (Ebene 2) als Back-Stack, an die Browser-History gekoppelt:
   // der Stack lebt im ?dialog=-Query (Komma-Liste, letztes = oben). Öffnen
   // pusht einen History-Eintrag; Schließen (X/Esc/Backdrop) und Browser-Zurück
@@ -691,6 +701,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         isProcessing={verification.isProcessing}
         error={verification.error}
         onCreateChallenge={verification.createChallenge}
+        onEnsureChallenge={ensureVerificationChallenge}
         onScanChallenge={verification.scanChallenge}
         onConfirmVerification={verification.confirmVerification}
         onReset={verification.reset}
