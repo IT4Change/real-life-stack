@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef } from "react"
-import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon, Waves, List, Share2, ChevronUp, ChevronDown } from "lucide-react"
+import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon, Waves, List, Share2, ChevronUp, ChevronDown, GripVertical } from "lucide-react"
 import type { Group, ContactInfo } from "@real-life-stack/data-interface"
 import { useMembers } from "../../hooks/use-groups"
 import { resolveAdminView } from "../../lib/group-admin-view"
+import { cn } from "../../lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,28 @@ export function moveModule(modules: readonly string[], id: string, direction: -1
   const next = [...modules]
   next.splice(from, 1)
   next.splice(to, 0, id)
+  return next
+}
+
+/**
+ * Move `id` to the drop position `toIndex`, counted in the list AS SHOWN
+ * (i.e. including the dragged element). That is what a drop indicator between
+ * two rows means, so the caller can pass the indicator index verbatim; once
+ * the element is removed, everything behind it shifts by one, which is
+ * corrected here. Out-of-range positions clamp, unknown ids are ignored.
+ *
+ * This is the whole ordering contract for drag & drop — one gesture instead
+ * of N clicks on a button that moves away under the finger after each click.
+ */
+export function reorderModule(modules: readonly string[], id: string, toIndex: number): string[] {
+  const from = modules.indexOf(id)
+  if (from === -1) return [...modules]
+  const clamped = Math.max(0, Math.min(toIndex, modules.length))
+  const target = clamped > from ? clamped - 1 : clamped
+  if (target === from) return [...modules]
+  const next = [...modules]
+  next.splice(from, 1)
+  next.splice(target, 0, id)
   return next
 }
 
@@ -224,6 +247,35 @@ export function GroupDialog({
     setActiveModules(next)
     saveModulesRef.current?.(next)
   }, [])
+
+  // Drag & drop reordering. `dropIndex` is the position in the list AS SHOWN
+  // (0 = above the first row), which is exactly what the indicator line
+  // between two rows means — reorderModule corrects for the removal shift.
+  const [draggedModule, setDraggedModule] = useState<string | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+
+  const handleModuleDragOver = useCallback((event: React.DragEvent, rowIndex: number) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "move"
+    // Above the row's midpoint means "in front of it", below means "after it".
+    const rect = event.currentTarget.getBoundingClientRect()
+    const next = event.clientY < rect.top + rect.height / 2 ? rowIndex : rowIndex + 1
+    setDropIndex((prev) => (prev === next ? prev : next))
+  }, [])
+
+  const handleModuleDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault()
+    const id = draggedModule
+    const target = dropIndex
+    setDraggedModule(null)
+    setDropIndex(null)
+    if (!id || target === null) return
+    const next = reorderModule(activeModules, id, target)
+    // An unchanged order must not trigger a save — a drop onto the row's own
+    // position is a no-op, not an edit.
+    if (next.length === activeModules.length && next.every((mod, i) => mod === activeModules[i])) return
+    applyModules(next)
+  }, [draggedModule, dropIndex, activeModules, applyModules])
 
   // Invite state
   const [invitingId, setInvitingId] = useState<string | null>(null)
@@ -565,28 +617,51 @@ export function GroupDialog({
           )}
 
           {/* Modules (admin only): the ACTIVE list is ordered — data.modules
-              is what the nav renders, top row = first tab. Reorder via ↑/↓,
-              deactivate via ✕; available modules append at the end. */}
+              is what the nav renders, top row = first tab. Reorder by DRAGGING
+              a row (one gesture, any distance), deactivate via ✕; available
+              modules append at the end. The ↑/↓ buttons stay as the keyboard
+              path (they only appear on focus/hover) — dragging alone would
+              lock out keyboard and screen-reader users. */}
           {isCurrentUserAdmin && (
             <div className="mt-3 pt-3 border-t border-border/50">
-              <Label className="text-xs text-muted-foreground">Module (Reihenfolge = Navigation)</Label>
-              <div className="mt-2 space-y-0.5">
+              <Label className="text-xs text-muted-foreground">Module (ziehen zum Sortieren)</Label>
+              <div className="mt-2 space-y-0.5" onDragOver={(e) => e.preventDefault()} onDrop={handleModuleDrop}>
                 {activeModules.map((id, index) => {
                   const mod = AVAILABLE_MODULES.find((m) => m.id === id)
                   if (!mod) return null
                   const Icon = mod.icon
                   const isOnly = activeModules.length === 1
+                  const isDragged = draggedModule === id
                   return (
-                    <div key={id} className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted/50">
-                      <span className="w-4 text-right text-xs tabular-nums text-muted-foreground">{index + 1}</span>
-                      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                    <div
+                      key={id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "move"
+                        // Firefox starts no drag without payload.
+                        e.dataTransfer.setData("text/plain", id)
+                        setDraggedModule(id)
+                      }}
+                      onDragEnd={() => { setDraggedModule(null); setDropIndex(null) }}
+                      onDragOver={(e) => handleModuleDragOver(e, index)}
+                      className={cn(
+                        "group relative flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/50 active:cursor-grabbing",
+                        isDragged && "opacity-40",
+                        // Drop indicator: a line on the edge the row would land on.
+                        dropIndex === index && "before:absolute before:inset-x-2 before:-top-px before:h-0.5 before:rounded-full before:bg-primary",
+                        dropIndex === index + 1 && "after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary",
+                      )}
+                    >
+                      <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="flex-1 text-sm">{mod.label}</span>
+                      {/* Keyboard path — visible on hover/focus so the row stays calm. */}
                       <button
                         type="button"
                         aria-label={`${mod.label} nach oben`}
                         disabled={index === 0}
                         onClick={() => applyModules(moveModule(activeModules, id, -1))}
-                        className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                        className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-hover:disabled:opacity-30"
                       >
                         <ChevronUp className="h-3.5 w-3.5" />
                       </button>
@@ -595,7 +670,7 @@ export function GroupDialog({
                         aria-label={`${mod.label} nach unten`}
                         disabled={index === activeModules.length - 1}
                         onClick={() => applyModules(moveModule(activeModules, id, 1))}
-                        className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                        className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-hover:disabled:opacity-30"
                       >
                         <ChevronDown className="h-3.5 w-3.5" />
                       </button>

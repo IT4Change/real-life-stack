@@ -561,8 +561,10 @@ export function KanbanBoard({
       </div>
 
       {/* Floating Drop Bar — visible during drag for quick column changes.
-          NOTE: HTML Drag & Drop API does not work on mobile touch devices.
-          For Capacitor/mobile, @dnd-kit or manual touch handling will be needed. */}
+          NOTE on touch: Chromium on Android DOES start a native drag via
+          long-press, so this works in the Android app; WebKit/iOS fires no
+          drag events on touch. Only an iOS target would need @dnd-kit or
+          manual touch handling. */}
       {!readOnly && draggedItemId !== null && (
         <div className="fixed bottom-20 left-4 right-4 z-40 animate-in slide-in-from-bottom-4 fade-in @3xl:hidden">
           <div className="flex flex-wrap gap-2 p-2 rounded-xl border bg-background/95 backdrop-blur shadow-lg">

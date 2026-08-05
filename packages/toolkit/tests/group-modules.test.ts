@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { createLatestWinsSaver, moveModule } from "../src/components/layout/group-dialog"
+import { createLatestWinsSaver, moveModule, reorderModule } from "../src/components/layout/group-dialog"
 
 /**
  * `data.modules` is an ORDERED array and the nav renders it verbatim —
@@ -183,5 +183,43 @@ describe("createLatestWinsSaver sync throw", () => {
     calls[0].resolve()
     await flush()
     expect(onError).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("reorderModule (Drag & Drop)", () => {
+  const mods = ["feed", "kanban", "calendar", "map"]
+
+  it("zieht ein Modul von unten an die erste Stelle — in EINER Geste", () => {
+    // Genau der Fall, der mit ↑-Buttons drei Klicks auf ein wanderndes
+    // Ziel gekostet hat.
+    expect(reorderModule(mods, "map", 0)).toEqual(["map", "feed", "kanban", "calendar"])
+  })
+
+  it("zieht ein Modul von oben ans Ende", () => {
+    expect(reorderModule(mods, "feed", 4)).toEqual(["kanban", "calendar", "map", "feed"])
+  })
+
+  it("rechnet den Zielindex korrekt, wenn das Element von OBEN kommt", () => {
+    // Die Drop-Position zaehlt in der Liste MIT dem gezogenen Element; nach
+    // dem Entfernen verschiebt sich alles dahinter um eins.
+    expect(reorderModule(mods, "feed", 2)).toEqual(["kanban", "feed", "calendar", "map"])
+    expect(reorderModule(mods, "kanban", 3)).toEqual(["feed", "calendar", "kanban", "map"])
+  })
+
+  it("ist ein No-op, wenn das Modul auf seiner eigenen Position landet", () => {
+    expect(reorderModule(mods, "kanban", 1)).toEqual(mods)
+    expect(reorderModule(mods, "kanban", 2)).toEqual(mods)
+  })
+
+  it("klemmt Zielindizes ausserhalb der Liste und ignoriert unbekannte Ids", () => {
+    expect(reorderModule(mods, "map", 99)).toEqual(["feed", "kanban", "calendar", "map"])
+    expect(reorderModule(mods, "map", -3)).toEqual(["map", "feed", "kanban", "calendar"])
+    expect(reorderModule(mods, "ghost", 0)).toEqual(mods)
+  })
+
+  it("mutiert die Eingabe nicht", () => {
+    const input = ["a", "b", "c"]
+    reorderModule(input, "c", 0)
+    expect(input).toEqual(["a", "b", "c"])
   })
 })
