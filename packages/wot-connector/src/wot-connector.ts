@@ -961,11 +961,23 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     if (id === null) throw new Error("Cannot update personal view")
     if (!this.replication) throw new Error("Not authenticated")
 
-    // All metadata via updateSpace (framework level — syncs via _meta)
+    // The WHOLE data patch replicates via updateSpace (framework level —
+    // syncs via _meta): image/modules map onto the fixed SpaceDocMeta keys,
+    // every other app field travels in the appData merge patch (null
+    // deletes). Fields the catalog didn't know used to stay RAM-cache-only
+    // and vanished on reload / on the second device (rls#234, wot#341).
     const metaUpdate: Record<string, unknown> = {}
     if (updates.name) metaUpdate.name = updates.name
-    if (updates.data?.image !== undefined) metaUpdate.image = updates.data.image as string
-    if (updates.data?.modules !== undefined) metaUpdate.modules = updates.data.modules as string[]
+    const appData: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(updates.data ?? {})) {
+      if (value === undefined) continue
+      if (key === "image") metaUpdate.image = value as string
+      else if (key === "modules") metaUpdate.modules = value as string[]
+      // `scope` is an RLS presentation field DERIVED in spaceToGroup — it
+      // never belongs to the space meta.
+      else if (key !== "scope") appData[key] = value
+    }
+    if (Object.keys(appData).length > 0) metaUpdate.appData = appData
     if (Object.keys(metaUpdate).length > 0) {
       await this.replication.updateSpace(id, metaUpdate as any)
     }
@@ -2553,6 +2565,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       members: space.members,
       data: {
         scope: "group",
+        // App fields (appData projection) first — the framework fields below
+        // stay authoritative for their keys.
+        ...(space.appData ?? {}),
         modules: space.modules ?? DEFAULT_MODULES,
         ...(space.image ? { image: space.image } : {}),
       },
