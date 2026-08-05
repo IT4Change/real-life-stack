@@ -49,11 +49,17 @@ for file in migrations/*.sql; do
     continue
   fi
   echo "apply $name"
+  # Fail closed: assemble the COMPLETE payload (schema + marker) into a temp
+  # file FIRST — a failed read aborts here, before psql ever starts. A
+  # `{ cat; printf; } | psql` pipe would mask a cat failure behind the
+  # succeeding printf and could commit the marker without the schema.
+  payload=$(mktemp)
+  trap 'rm -f "$payload"' EXIT
+  cat "$file" > "$payload"
+  printf "\ninsert into public.schema_migrations_rls (name) values ('%s');\n" "$name" >> "$payload"
   # Schema + marker in the SAME transaction.
-  {
-    cat "$file"
-    printf "\ninsert into public.schema_migrations_rls (name) values ('%s');\n" "$name"
-  } | docker exec -i supabase-db psql -U postgres -d postgres -v ON_ERROR_STOP=1 --single-transaction
+  docker exec -i supabase-db psql -U postgres -d postgres -v ON_ERROR_STOP=1 --single-transaction < "$payload"
+  rm -f "$payload"
 done
 
 echo "Migrationen angewendet."
