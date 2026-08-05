@@ -794,14 +794,25 @@ const LazyDIDAuthScreen = lazy(() =>
 /** Methods the generic AuthScreen can actually present. */
 const GENERIC_AUTH_METHODS = new Set(["email", "email-signup", "anonymous"])
 
-function AuthGate({ connector, wot, children }: { connector: DataInterface; wot: boolean; children: React.ReactNode }) {
-  // Only check auth state once at mount — do NOT subscribe to changes.
-  // The DIDAuthScreen controls when onAuthenticated fires (after seed backup etc.),
-  // so reacting to auth state changes would skip the onboarding wizard.
+export function AuthGate({ connector, wot, children }: { connector: DataInterface; wot: boolean; children: React.ReactNode }) {
+  // WoT: check auth state once at mount and LATCH — the DIDAuthScreen controls
+  // when onAuthenticated fires (after seed backup etc.), so reacting to auth
+  // state changes would skip the onboarding wizard.
   const [authenticated, setAuthenticated] = useState(() => {
     if (!isAuthenticatable(connector)) return true
     return connector.getAuthState().current.status === "authenticated"
   })
+
+  // Generic backend path: the gate FOLLOWS the auth observable (spec
+  // architektur2 → AuthState als Observable). A later session loss — expiry,
+  // refresh failure, logout in another tab — must close the app again, and an
+  // external login must open it.
+  useEffect(() => {
+    if (wot || !isAuthenticatable(connector)) return
+    const observable = connector.getAuthState()
+    setAuthenticated(observable.current.status === "authenticated")
+    return observable.subscribe((state) => setAuthenticated(state.status === "authenticated"))
+  }, [connector, wot])
 
   if (authenticated) {
     return <>{children}</>

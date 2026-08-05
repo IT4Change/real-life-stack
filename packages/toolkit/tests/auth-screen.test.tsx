@@ -73,6 +73,10 @@ describe("AuthScreen — capability-getriebener Login/Registrierung", () => {
     render(<AuthScreen connector={connector} onAuthenticated={() => {}} />)
     expect(input("email")).toBeFalsy()
     expect(byText("Anonym ausprobieren")).toBeTruthy()
+    // Anonymous-only darf nirgends "Registrieren" behaupten (Copilot-Finding):
+    // ohne signup-Methode gibt es weder den Titel noch den Umschalter.
+    expect(document.body.textContent).not.toContain("Registrieren")
+    expect(byText("Anmelden")).toBeTruthy()
   })
 
   it("Login submit → authenticate('email') → onAuthenticated", async () => {

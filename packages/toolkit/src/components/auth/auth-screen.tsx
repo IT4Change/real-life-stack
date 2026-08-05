@@ -29,7 +29,9 @@ export function AuthScreen({ connector, onAuthenticated, title = "Anmelden", cla
   const hasSignup = methods.has("email-signup")
   const anonymous = methods.get("anonymous")
 
-  const [mode, setMode] = React.useState<"login" | "signup">(hasEmail ? "login" : "signup")
+  // "signup" only when signup actually exists — an anonymous-only connector
+  // must not present itself as "Registrieren" (there is nothing to register).
+  const [mode, setMode] = React.useState<"login" | "signup">(!hasEmail && hasSignup ? "signup" : "login")
   const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
   const [displayName, setDisplayName] = React.useState("")
@@ -70,8 +72,8 @@ export function AuthScreen({ connector, onAuthenticated, title = "Anmelden", cla
     <div className={cn("flex min-h-full items-center justify-center p-4", className)}>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>{mode === "signup" ? "Registrieren" : title}</CardTitle>
-          {mode === "signup" ? (
+          <CardTitle>{showForm && mode === "signup" ? "Registrieren" : title}</CardTitle>
+          {showForm && mode === "signup" ? (
             <CardDescription>Neues Konto mit E-Mail und Passwort anlegen.</CardDescription>
           ) : (
             <CardDescription>Mit deinem Konto fortfahren.</CardDescription>
