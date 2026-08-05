@@ -8,6 +8,7 @@ function recordingBuilder(): { builder: FilterBuilderLike; calls: Array<[string,
   const builder = {
     eq: (column: string, value: unknown) => { calls.push(["eq", column, value]); return builder },
     in: (column: string, values: unknown[]) => { calls.push(["in", column, values]); return builder },
+    or: (filters: string) => { calls.push(["or", filters]); return builder },
     contains: (column: string, value: unknown) => { calls.push(["contains", column, value]); return builder },
     not: (column: string, operator: string, value: unknown) => { calls.push(["not", column, operator, value]); return builder },
     gte: (column: string, value: unknown) => { calls.push(["gte", column, value]); return builder },

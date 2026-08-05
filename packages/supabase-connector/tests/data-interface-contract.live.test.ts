@@ -121,6 +121,37 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
+    it("group scope binds reads AND an existing observation follows a group switch", { timeout: 20_000 }, async () => {
+      const { connector, userId } = await makeAuthoritative()
+      try {
+        const probeType = `scope-probe-${Date.now()}`
+        const groupA = await connector.createGroup(`Scope A ${Date.now()}`)
+        const groupB = await connector.createGroup(`Scope B ${Date.now()}`)
+        connector.setCurrentGroup(groupA.id)
+        const inA = await connector.createItem({ type: probeType, createdBy: userId, data: { title: "a" } })
+        connector.setCurrentGroup(groupB.id)
+        const inB = await connector.createItem({ type: probeType, createdBy: userId, data: { title: "b" } })
+
+        expect((await connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([inB.id])
+        expect(await connector.getItem(inA.id)).toBeNull()
+
+        connector.setCurrentGroup(groupA.id)
+        const observable = connector.observe({ type: probeType })
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        expect(observable.current.map(({ id }) => id)).toEqual([inA.id])
+        // Existing observation must switch its content with the group.
+        connector.setCurrentGroup(groupB.id)
+        await new Promise((resolve) => setTimeout(resolve, 1_000))
+        expect(observable.current.map(({ id }) => id)).toEqual([inB.id])
+
+        connector.setCurrentGroup(null)
+        expect((await connector.getItems({ type: probeType })).map(({ id }) => id).sort())
+          .toEqual([inA.id, inB.id].sort())
+      } finally {
+        await connector.dispose()
+      }
+    })
+
     it("observe() is LIVE: an insert from a second client arrives via realtime", { timeout: 20_000 }, async () => {
       const observerSide = await makeAuthoritative()
       const writerSide = await makeAuthoritative()

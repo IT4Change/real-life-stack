@@ -25,6 +25,7 @@ import {
 import type {
   AuthSessionLike,
   ChannelLike,
+  FilterBuilderLike,
   SupabaseClientLike,
   SupabaseResult,
 } from "./client-types.js"
@@ -165,15 +166,75 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
 
   // --- Items ---
 
+  /** Group ids are server-generated UUIDs; anything else cannot be embedded
+      safely in a PostgREST `or=` expression — fail closed. */
+  private static readonly SAFE_SCOPE_ID = /^[A-Za-z0-9_-]+$/
+
+  /**
+   * Read scope (Local parity): inside a group only that group's rows plus
+   * global `feature` items are visible; the overview (no group) and
+   * `aggregate`-scoped groups see everything.
+   */
+  private currentReadScopeGroupId(): string | null {
+    if (this.currentGroupId === null) return null
+    const scope = this.currentGroup?.data?.scope
+    if (scope === "aggregate") return null
+    return this.currentGroupId
+  }
+
+  private applyGroupScope<Q extends FilterBuilderLike>(query: Q): Q {
+    const groupId = this.currentReadScopeGroupId()
+    if (groupId === null) return query
+    if (!SupabaseConnector.SAFE_SCOPE_ID.test(groupId)) {
+      throw new Error(`[SupabaseConnector] unsupported group id for server-side scoping: ${JSON.stringify(groupId)}`)
+    }
+    return query.or(`group_id.eq.${groupId},type.eq.feature`) as Q
+  }
+
+  /** PostgREST caps unbounded queries at max_rows (config.toml: 1000). */
+  private static readonly SERVER_PAGE = 1000
+
   async getItems(filter?: ItemFilter): Promise<Item[]> {
-    const query = applyItemFilter(this.client.from("items").select("*"), filter)
-    const rows = throwOnError(await query, "getItems")
-    return rows.map(rowToItem)
+    // Explicit caller limit → single window, exactly as requested.
+    if (filter?.limit !== undefined) {
+      const query = applyItemFilter(this.applyGroupScope(this.client.from("items").select("*")), filter)
+      return throwOnError(await query, "getItems").map(rowToItem)
+    }
+    // Unbounded read: page past the server's silent max_rows cap — for a
+    // remote connector "everything" must never quietly mean "first 1000".
+    const results: Item[] = []
+    let offset = filter?.offset ?? 0
+    for (;;) {
+      const query = applyItemFilter(this.applyGroupScope(this.client.from("items").select("*")), {
+        ...(filter ?? {}),
+        limit: SupabaseConnector.SERVER_PAGE,
+        offset,
+      })
+      const rows = throwOnError(await query, "getItems")
+      results.push(...rows.map(rowToItem))
+      if (rows.length < SupabaseConnector.SERVER_PAGE) break
+      offset += SupabaseConnector.SERVER_PAGE
+    }
+    return results
   }
 
   async getItem(id: string): Promise<Item | null> {
+    const row = await this.getItemRowUnscoped(id)
+    if (!row) return null
+    const scopeGroupId = this.currentReadScopeGroupId()
+    if (scopeGroupId !== null && row.group_id !== scopeGroupId && row.type !== "feature") return null
+    return rowToItem(row)
+  }
+
+  private async getItemRowUnscoped(id: string): Promise<Record<string, unknown> | null> {
     const result = await this.client.from("items").select("*").eq("id", id).maybeSingle()
-    const row = throwOnError(result, "getItem")
+    return throwOnError(result, "getItem")
+  }
+
+  /** Scope-independent single-item read (canonical relation-record ids are
+      globally unique; collision checks must see across groups). */
+  private async getItemUnscoped(id: string): Promise<Item | null> {
+    const row = await this.getItemRowUnscoped(id)
     return row ? rowToItem(row) : null
   }
 
@@ -262,7 +323,12 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   }
 
   async deleteItem(id: string): Promise<void> {
-    throwOnError(await this.client.from("items").delete().eq("id", id), "deleteItem")
+    // Returning delete: RLS silently matches 0 rows — distinguish "already
+    // gone" (idempotent ok) from "denied" (row still visible → error).
+    const deleted = throwOnError(await this.client.from("items").delete().eq("id", id).select(), "deleteItem")
+    if (deleted.length === 0 && (await this.getItemRowUnscoped(id)) !== null) {
+      throw new Error(`[SupabaseConnector] deleteItem: not authorized to delete ${id}`)
+    }
     this.scheduleItemsRefresh()
   }
 
@@ -301,7 +367,9 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       return this.relationStoreInstance().createRelationRecord(input)
     }
     const scoped: RelationRecordCreateConnector = {
-      getItem: (id: string) => this.getItem(id),
+      // Collision check must be scope-independent: item ids are globally
+      // unique, and the canonical record may live outside the current scope.
+      getItem: (id: string) => this.getItemUnscoped(id),
       createItem: (item: CreateItemInput) => this.createItemInGroup(item, targetGroupId),
       getCurrentUser: () => this.getCurrentUser(),
     }
@@ -383,24 +451,32 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     if (id === null) {
       this.currentGroup = null
       this.currentGroupObs.set(null)
+      // Reads are group-scoped: every registered item view changes content.
+      this.scheduleItemsRefresh()
       return
     }
     const cached = this.groupsObs?.current.find((group) => group.id === id)
     if (cached) {
       this.currentGroup = cached
       this.currentGroupObs.set(cached)
+      this.scheduleItemsRefresh()
       return
     }
     // Minimal group immediately (the id IS the scope); full data follows —
     // guarded so a stale fetch never overwrites a newer selection.
     this.currentGroup = { id, name: "", data: {} }
     this.currentGroupObs.set(this.currentGroup)
-    void this.client.from("groups").select("*").eq("id", id).maybeSingle().then((result) => {
+    this.scheduleItemsRefresh()
+    this.client.from("groups").select("*").eq("id", id).maybeSingle().then((result) => {
       if (this.currentGroupId !== id) return
       const row = throwOnError(result, "setCurrentGroup")
       const group = row ? rowToGroup(row) : null
       this.currentGroup = group
       this.currentGroupObs.set(group)
+      // The fetched group may carry scope-changing data (e.g. `aggregate`).
+      this.scheduleItemsRefresh()
+    }).then(undefined, (error) => {
+      console.error("[SupabaseConnector] setCurrentGroup group fetch failed", error)
     })
   }
 
@@ -431,7 +507,13 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   }
 
   async deleteGroup(id: string): Promise<void> {
-    throwOnError(await this.client.from("groups").delete().eq("id", id), "deleteGroup")
+    const deleted = throwOnError(await this.client.from("groups").delete().eq("id", id).select(), "deleteGroup")
+    if (deleted.length === 0) {
+      const still = await this.client.from("groups").select("*").eq("id", id).maybeSingle()
+      if (throwOnError(still, "deleteGroup") !== null) {
+        throw new Error(`[SupabaseConnector] deleteGroup: not authorized to delete ${id}`)
+      }
+    }
     if (this.currentGroupId === id) {
       this.currentGroupId = null
       this.currentGroup = null
@@ -499,11 +581,16 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   }
 
   async removeMember(groupId: string, userId: string): Promise<void> {
-    const deletion = this.client.from("group_members").delete().eq("group_id", groupId)
-    // The delete builder chains eq twice (composite key) — the structural
-    // type exposes one eq, so chain through the returned builder.
-    const result = await (deletion as unknown as { eq(column: string, value: unknown): PromiseLike<SupabaseResult<unknown>> }).eq("user_id", userId)
-    throwOnError(result, "removeMember")
+    const deleted = throwOnError(
+      await this.client.from("group_members").delete().eq("group_id", groupId).eq("user_id", userId).select(),
+      "removeMember",
+    )
+    if (deleted.length === 0) {
+      const still = await this.client.from("group_members").select("*").eq("group_id", groupId).eq("user_id", userId).maybeSingle()
+      if (throwOnError(still, "removeMember") !== null) {
+        throw new Error(`[SupabaseConnector] removeMember: not authorized to remove ${userId} from ${groupId}`)
+      }
+    }
     this.scheduleGroupsRefresh()
   }
 
@@ -572,7 +659,7 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
 
   async authenticate(method: string, credentials: unknown): Promise<User> {
     const creds = (credentials ?? {}) as { email?: string; password?: string; displayName?: string }
-    let result: SupabaseResult<{ user: { id: string } | null }>
+    let result: SupabaseResult<{ user: { id: string } | null; session: AuthSessionLike | null }>
     if (method === "anonymous") {
       result = await this.client.auth.signInAnonymously()
     } else if (method === "email") {
@@ -588,8 +675,15 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     } else {
       throw new Error(`[SupabaseConnector] unknown auth method: ${method}`)
     }
-    const authUser = throwOnError(result, `authenticate(${method})`).user
+    const data = throwOnError(result, `authenticate(${method})`)
+    const authUser = data.user
     if (!authUser) throw new Error(`[SupabaseConnector] authenticate(${method}): no user returned`)
+    // No session = no server-side auth.uid() — the account exists but is NOT
+    // logged in (e-mail confirmations on). Publishing "authenticated" here
+    // would break every RLS-bound write.
+    if (!data.session) {
+      throw new Error("[SupabaseConnector] Registrierung angelegt, aber E-Mail-Bestätigung steht aus — noch keine aktive Sitzung")
+    }
     const user = await this.resolveUser(authUser.id)
     this.currentUser = user
     this.currentUserObs.set(user)

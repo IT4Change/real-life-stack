@@ -57,6 +57,19 @@ class FakeFilterBuilder implements FilterBuilderLike {
     return this
   }
 
+  or(filters: string): this {
+    // Supports the subset the connector emits: "col.eq.val,col.eq.val,…"
+    const branches = filters.split(",").map((branch) => {
+      const match = /^([^.]+)\.eq\.(.+)$/.exec(branch)
+      if (!match) throw new Error(`fake: unsupported or() branch: ${branch}`)
+      return { column: match[1]!, value: match[2]! }
+    })
+    this.conditions.push({
+      matches: (row) => branches.some(({ column, value }) => String(jsonPath(row, column)) === value),
+    })
+    return this
+  }
+
   contains(column: string, value: unknown): this {
     this.conditions.push({
       matches: (row) => {
@@ -110,6 +123,10 @@ class FakeFilterBuilder implements FilterBuilderLike {
     return this
   }
 
+  /** PostgREST max_rows parity (config.toml: 1000) — unbounded queries are
+      silently capped exactly like the real API. */
+  private static readonly MAX_ROWS = 1000
+
   private resolve(): Row[] {
     let result = this.rows().filter((row) => this.conditions.every((c) => c.matches(row)))
     for (const { column, ascending } of [...this.orderings].reverse()) {
@@ -119,7 +136,9 @@ class FakeFilterBuilder implements FilterBuilderLike {
         return ascending ? av.localeCompare(bv) : bv.localeCompare(av)
       })
     }
-    if (this.window) result = result.slice(this.window.from, this.window.to + 1)
+    result = this.window
+      ? result.slice(this.window.from, Math.min(this.window.to + 1, this.window.from + FakeFilterBuilder.MAX_ROWS))
+      : result.slice(0, FakeFilterBuilder.MAX_ROWS)
     return result.map((row) => structuredClone(row))
   }
 
@@ -235,21 +254,41 @@ class FakeTable implements TableLike {
     return chain([]) as never
   }
 
-  delete(): { eq(column: string, value: unknown): PromiseLike<SupabaseResult<unknown>> } {
+  delete(): { eq(column: string, value: unknown): never } {
     const rows = this.rows
     const store = this.store
     const name = this.name
+    const performDelete = (conditions: Array<[string, unknown]>): Row[] => {
+      let matched = rows.filter((row) => conditions.every(([column, v]) => row[column] === v))
+      // RLS parity: relation items are author-only deletable; group_members
+      // deletes need self-leave or group creatorship; groups creator-only.
+      if (!store.serviceRole) {
+        const sessionId = store.auth.session?.user.id
+        matched = matched.filter((row) => {
+          if (name === "items") return row.type !== "relation" || row.created_by === sessionId
+          if (name === "groups") return row.created_by === sessionId
+          if (name === "group_members") {
+            if (row.user_id === sessionId) return true
+            const group = store.tables.get("groups")!.find((g) => g.id === row.group_id)
+            return group?.created_by === sessionId
+          }
+          return true
+        })
+      }
+      for (const row of matched) {
+        rows.splice(rows.indexOf(row), 1)
+        store.emit(name, { eventType: "DELETE", new: null, old: structuredClone(row) })
+      }
+      return matched
+    }
     const chain = (conditions: Array<[string, unknown]>) => ({
       eq: (column: string, value: unknown) => chain([...conditions, [column, value]]),
+      select: () => Promise.resolve({ data: performDelete(conditions).map((row) => structuredClone(row)), error: null }),
       then: <T1, T2>(
         onfulfilled?: ((value: SupabaseResult<unknown>) => T1 | PromiseLike<T1>) | null,
         onrejected?: ((reason: unknown) => T2 | PromiseLike<T2>) | null,
       ) => {
-        const removed = rows.filter((row) => conditions.every(([column, v]) => row[column] === v))
-        for (const row of removed) {
-          rows.splice(rows.indexOf(row), 1)
-          store.emit(name, { eventType: "DELETE", new: null, old: structuredClone(row) })
-        }
+        performDelete(conditions)
         return Promise.resolve({ data: null, error: null } as SupabaseResult<unknown>).then(onfulfilled, onrejected)
       },
     })
@@ -278,6 +317,8 @@ class FakeChannel implements ChannelLike {
 
 class FakeAuth implements AuthLike {
   session: AuthSessionLike | null = null
+  /** Confirmation-required parity: signUp returns a user but NO session. */
+  emailConfirmationRequired = false
   private listeners: Array<(event: string, session: AuthSessionLike | null) => void> = []
   /** Registered email users for signInWithPassword. */
   readonly users = new Map<string, { password: string; user: AuthUserLike }>()
@@ -295,9 +336,7 @@ class FakeAuth implements AuthLike {
     } } } }
   }
 
-  private establish(user: AuthUserLike): SupabaseResult<{ user: AuthUserLike | null }> {
-    this.session = { user }
-    // Signup trigger parity: ensure the profile row exists.
+  private ensureProfile(user: AuthUserLike): void {
     const profiles = this.store.tables.get("profiles")!
     if (!profiles.some((row) => row.id === user.id)) {
       profiles.push({
@@ -308,15 +347,20 @@ class FakeAuth implements AuthLike {
         created_at: new Date().toISOString(),
       })
     }
-    for (const listener of this.listeners) listener("SIGNED_IN", this.session)
-    return { data: { user }, error: null }
   }
 
-  async signInAnonymously(): Promise<SupabaseResult<{ user: AuthUserLike | null }>> {
+  private establish(user: AuthUserLike): SupabaseResult<{ user: AuthUserLike | null; session: AuthSessionLike | null }> {
+    this.session = { user }
+    this.ensureProfile(user)
+    for (const listener of this.listeners) listener("SIGNED_IN", this.session)
+    return { data: { user, session: this.session }, error: null }
+  }
+
+  async signInAnonymously(): Promise<SupabaseResult<{ user: AuthUserLike | null; session: AuthSessionLike | null }>> {
     return this.establish({ id: nextId("anon"), email: null })
   }
 
-  async signInWithPassword({ email, password }: { email: string; password: string }): Promise<SupabaseResult<{ user: AuthUserLike | null }>> {
+  async signInWithPassword({ email, password }: { email: string; password: string }): Promise<SupabaseResult<{ user: AuthUserLike | null; session: AuthSessionLike | null }>> {
     const entry = this.users.get(email)
     if (!entry || entry.password !== password) {
       return { data: null, error: { message: "Invalid login credentials" } }
@@ -324,10 +368,15 @@ class FakeAuth implements AuthLike {
     return this.establish(entry.user)
   }
 
-  async signUp({ email, password, options }: { email: string; password: string; options?: { data?: Record<string, unknown> } }): Promise<SupabaseResult<{ user: AuthUserLike | null }>> {
+  async signUp({ email, password, options }: { email: string; password: string; options?: { data?: Record<string, unknown> } }): Promise<SupabaseResult<{ user: AuthUserLike | null; session: AuthSessionLike | null }>> {
     if (this.users.has(email)) return { data: null, error: { message: "User already registered" } }
     const user: AuthUserLike = { id: nextId("user"), email, user_metadata: options?.data }
     this.users.set(email, { password, user })
+    if (this.emailConfirmationRequired) {
+      // GoTrue with confirmations on: user row exists, no session yet.
+      this.ensureProfile(user)
+      return { data: { user, session: null }, error: null }
+    }
     return this.establish(user)
   }
 

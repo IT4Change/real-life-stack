@@ -17,6 +17,7 @@ export interface SupabaseResult<T> {
 export interface FilterBuilderLike extends PromiseLike<SupabaseResult<Record<string, unknown>[]>> {
   eq(column: string, value: unknown): this
   in(column: string, values: unknown[]): this
+  or(filters: string): this
   contains(column: string, value: unknown): this
   not(column: string, operator: string, value: unknown): this
   gte(column: string, value: unknown): this
@@ -27,6 +28,13 @@ export interface FilterBuilderLike extends PromiseLike<SupabaseResult<Record<str
   maybeSingle(): PromiseLike<SupabaseResult<Record<string, unknown> | null>>
 }
 
+export interface DeleteChainLike extends PromiseLike<SupabaseResult<unknown>> {
+  eq(column: string, value: unknown): DeleteChainLike
+  /** Returning-Variante: liefert die tatsächlich gelöschten Rows — 0 Rows
+      bei RLS-Verweigerung sind damit vom Erfolg unterscheidbar. */
+  select(columns?: string): PromiseLike<SupabaseResult<Record<string, unknown>[]>>
+}
+
 export interface TableLike {
   select(columns?: string): FilterBuilderLike
   insert(row: Record<string, unknown>): { select(): { single(): PromiseLike<SupabaseResult<Record<string, unknown>>> } }
@@ -35,7 +43,7 @@ export interface TableLike {
       select(): { single(): PromiseLike<SupabaseResult<Record<string, unknown>>> }
     } & PromiseLike<SupabaseResult<unknown>>
   }
-  delete(): { eq(column: string, value: unknown): PromiseLike<SupabaseResult<unknown>> }
+  delete(): { eq(column: string, value: unknown): DeleteChainLike }
 }
 
 export interface RealtimePayloadLike {
@@ -68,9 +76,9 @@ export interface AuthLike {
   onAuthStateChange(
     callback: (event: string, session: AuthSessionLike | null) => void,
   ): { data: { subscription: { unsubscribe(): void } } }
-  signInAnonymously(): Promise<SupabaseResult<{ user: AuthUserLike | null }>>
-  signInWithPassword(credentials: { email: string; password: string }): Promise<SupabaseResult<{ user: AuthUserLike | null }>>
-  signUp(credentials: { email: string; password: string; options?: { data?: Record<string, unknown> } }): Promise<SupabaseResult<{ user: AuthUserLike | null }>>
+  signInAnonymously(): Promise<SupabaseResult<{ user: AuthUserLike | null; session: AuthSessionLike | null }>>
+  signInWithPassword(credentials: { email: string; password: string }): Promise<SupabaseResult<{ user: AuthUserLike | null; session: AuthSessionLike | null }>>
+  signUp(credentials: { email: string; password: string; options?: { data?: Record<string, unknown> } }): Promise<SupabaseResult<{ user: AuthUserLike | null; session: AuthSessionLike | null }>>
   signOut(): Promise<{ error: { message: string } | null }>
 }
 

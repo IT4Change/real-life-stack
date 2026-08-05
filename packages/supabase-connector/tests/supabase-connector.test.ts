@@ -230,6 +230,60 @@ describe("SupabaseConnector — realtime reactivity (WoT-grade observe)", () => 
   })
 })
 
+describe("SupabaseConnector — group scope on read paths (#238 review)", () => {
+  async function makeTwoGroupWorld() {
+    const world = await makeConnector()
+    const { connector, userId } = world
+    const groupA = await connector.createGroup("Gruppe A")
+    const groupB = await connector.createGroup("Gruppe B")
+    connector.setCurrentGroup(groupA.id)
+    const inA = await connector.createItem({ type: "scope-probe", createdBy: userId, data: { title: "a" } })
+    connector.setCurrentGroup(groupB.id)
+    const inB = await connector.createItem({ type: "scope-probe", createdBy: userId, data: { title: "b" } })
+    return { ...world, groupA, groupB, inA, inB }
+  }
+
+  it("getItems respects the selected group scope (reviewer counter-repro)", async () => {
+    const { connector, groupB, inB } = await makeTwoGroupWorld()
+    connector.setCurrentGroup(groupB.id)
+    const items = await connector.getItems({ type: "scope-probe" })
+    expect(items.map(({ id }) => id)).toEqual([inB.id])
+  })
+
+  it("the overview (no group) still sees everything", async () => {
+    const { connector, inA, inB } = await makeTwoGroupWorld()
+    connector.setCurrentGroup(null)
+    const items = await connector.getItems({ type: "scope-probe" })
+    expect(items.map(({ id }) => id).sort()).toEqual([inA.id, inB.id].sort())
+  })
+
+  it("global feature items stay visible inside a group scope (Local parity)", async () => {
+    const { connector, userId, groupB } = await makeTwoGroupWorld()
+    connector.setCurrentGroup(null)
+    const feature = await connector.createItem({ type: "feature", createdBy: userId, data: { name: "map" } })
+    connector.setCurrentGroup(groupB.id)
+    const items = await connector.getItems({ type: "feature" })
+    expect(items.map(({ id }) => id)).toContain(feature.id)
+  })
+
+  it("getItem outside the current scope answers null", async () => {
+    const { connector, groupB, inA } = await makeTwoGroupWorld()
+    connector.setCurrentGroup(groupB.id)
+    expect(await connector.getItem(inA.id)).toBeNull()
+  })
+
+  it("an EXISTING observation switches its content on group change", async () => {
+    const { connector, groupA, groupB, inA, inB } = await makeTwoGroupWorld()
+    connector.setCurrentGroup(groupA.id)
+    const observable = connector.observe({ type: "scope-probe" })
+    await flush()
+    expect(observable.current.map(({ id }) => id)).toEqual([inA.id])
+    connector.setCurrentGroup(groupB.id)
+    await flush()
+    expect(observable.current.map(({ id }) => id)).toEqual([inB.id])
+  })
+})
+
 describe("SupabaseConnector — groups and auth", () => {
   it("createGroup binds the creator, joins them as member, isAdmin follows created_by", async () => {
     const { connector, userId } = await makeConnector()
@@ -263,6 +317,66 @@ describe("SupabaseConnector — groups and auth", () => {
     await connector.logout()
     expect(connector.getAuthState().current).toEqual({ status: "unauthenticated" })
     expect(connector.observeCurrentUser().current).toBeNull()
+  })
+})
+
+describe("SupabaseConnector — CodeRabbit findings (#238 review)", () => {
+  it("deleteItem on a foreign relation record FAILS instead of silently succeeding (RLS 0 rows)", async () => {
+    const { client, connector } = await makeConnector()
+    client.tables.get("items")!.push({
+      id: "bobs-vote", type: "relation", created_by: "user-bob", created_at: "t",
+      context: null, schema: null, schema_version: null,
+      data: { predicate: "votesOn", value: "red" }, relations: [], tags: null, group_id: null,
+    })
+    await expect(connector.deleteItem("bobs-vote")).rejects.toThrow(/authoriz|verweigert|not permitted/i)
+    expect(client.tables.get("items")!.some((row) => row.id === "bobs-vote")).toBe(true)
+  })
+
+  it("deleteGroup on a foreign group FAILS instead of silently succeeding", async () => {
+    const { client, connector } = await makeConnector()
+    client.tables.get("groups")!.push({ id: "foreign-g", name: "Fremd", data: {}, created_by: "user-bob", created_at: "t" })
+    await expect(connector.deleteGroup("foreign-g")).rejects.toThrow(/authoriz|verweigert|not permitted/i)
+    expect(client.tables.get("groups")!.some((row) => row.id === "foreign-g")).toBe(true)
+  })
+
+  it("removeMember without permission FAILS instead of silently succeeding", async () => {
+    const { client, connector } = await makeConnector()
+    client.tables.get("groups")!.push({ id: "foreign-g", name: "Fremd", data: {}, created_by: "user-bob", created_at: "t" })
+    client.tables.get("group_members")!.push({ group_id: "foreign-g", user_id: "user-carol", created_at: "t" })
+    await expect(connector.removeMember("foreign-g", "user-carol")).rejects.toThrow(/authoriz|verweigert|not permitted/i)
+    expect(client.tables.get("group_members")!.some((row) => row.user_id === "user-carol")).toBe(true)
+  })
+
+  it("deleteItem on a NONEXISTENT id stays idempotent (no throw)", async () => {
+    const { connector } = await makeConnector()
+    await expect(connector.deleteItem("never-existed")).resolves.toBeUndefined()
+  })
+
+  it("email-signup WITHOUT session (confirmation pending) does not authenticate", async () => {
+    const client = new FakeSupabaseClient()
+    client.auth.emailConfirmationRequired = true
+    const connector = new SupabaseConnector(client)
+    await connector.init()
+    await expect(connector.authenticate("email-signup", { email: "x@y.de", password: "pw" }))
+      .rejects.toThrow(/Bestätigung|confirm/i)
+    expect(connector.getAuthState().current).toEqual({ status: "unauthenticated" })
+    expect(await connector.getCurrentUser()).toBeNull()
+  })
+
+  it("getItems WITHOUT limit pages past the server's max_rows cap (no silent truncation)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    const rows = client.tables.get("items")!
+    for (let i = 0; i < 2345; i += 1) {
+      rows.push({
+        id: `bulk-${String(i).padStart(5, "0")}`, type: "bulk", created_by: userId,
+        created_at: new Date(1700000000000 + i).toISOString(),
+        context: null, schema: null, schema_version: null, data: {}, relations: null, tags: null, group_id: null,
+      })
+    }
+    const items = await connector.getItems({ type: "bulk" })
+    expect(items).toHaveLength(2345)
+    // An explicit caller limit stays a single window.
+    expect(await connector.getItems({ type: "bulk", limit: 7 })).toHaveLength(7)
   })
 })
 
