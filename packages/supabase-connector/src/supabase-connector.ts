@@ -144,10 +144,15 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, () => {
         this.scheduleGroupsRefresh()
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
-        // Profile edits (this or another device): own profile item + the
-        // display names in member lists.
-        void this.requestProfileRefresh()
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, (payload) => {
+        // Member-list display names refresh on ANY profile change; the own
+        // profile read only runs when the OWN row changed (no read
+        // amplification on foreign edits; unknown id → refresh defensively).
+        const changedId = (payload.new as { id?: string } | null)?.id
+          ?? (payload.old as { id?: string } | null)?.id
+        if (changedId === undefined || changedId === this.sessionUserId) {
+          void this.requestProfileRefresh()
+        }
         this.scheduleGroupsRefresh()
       })
     groupsChannel.subscribe()
@@ -629,6 +634,22 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       afterwards — responses can neither overtake nor get lost. */
   private profileFlight: Promise<void> | null = null
   private profileRerunRequested = false
+  /**
+   * Monotonic revision of profile-derived state WITHIN a session (round-3
+   * review): the generation orders identity switches, this orders the
+   * writers of the SAME identity. A confirmed local update bumps it; every
+   * async continuation captures both and may only commit when both still
+   * hold — an older enrichment can never roll back a newer local write.
+   */
+  private profileRevision = 0
+
+  private captureProfileGuard(): { generation: number; revision: number } {
+    return { generation: this.sessionGeneration, revision: this.profileRevision }
+  }
+
+  private profileGuardHolds(captured: { generation: number; revision: number }): boolean {
+    return captured.generation === this.sessionGeneration && captured.revision === this.profileRevision
+  }
 
   /** profiles-Row → person-Item (person/v1), same projection idea as WoT. */
   private profileRowToPersonItem(row: Record<string, unknown>): Item {
@@ -680,10 +701,17 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
         }
         return
       }
+      const guard = this.captureProfileGuard()
       try {
         const row = await this.fetchProfileRow(userId)
-        // Apply only if the session is STILL the one this read started for.
+        // Session gone → this flight is void entirely.
         if (generation !== this.sessionGeneration) return
+        // Same session, but a local write committed meanwhile: this response
+        // is stale — read again instead of applying it.
+        if (!this.profileGuardHolds(guard)) {
+          this.profileRerunRequested = true
+          continue
+        }
         this.profileObs.set(row ? this.profileRowToPersonItem(row) : null)
         this.profileObs.markLoaded()
       } catch (error) {
@@ -711,6 +739,12 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       ...(updates.bio !== undefined ? { bio: (updates.bio as string) || null } : {}),
       ...(updates.avatar !== undefined ? { avatar_url: (updates.avatar as string) || null } : {}),
     }
+    // Empty patch: a no-op, never an empty PostgREST body (400).
+    if (Object.keys(patch).length === 0) {
+      const current = await this.getMyProfile()
+      if (current) return current
+      throw new Error("[SupabaseConnector] updateMyProfile: no profile row for the current user")
+    }
     const generation = this.sessionGeneration
     const result = await this.client.from("profiles").update(patch).eq("id", user.id).select().single()
     const row = throwOnError(result, "updateMyProfile")
@@ -718,6 +752,8 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     // Session changed mid-write: the server-side write stands, but the
     // observables belong to the NEW session — leave them alone.
     if (generation !== this.sessionGeneration || this.sessionUserId !== user.id) return item
+    // Confirmed local write: newer than every in-flight read of this session.
+    this.profileRevision += 1
     this.profileObs.set(item)
     this.profileObs.markLoaded()
     // The navbar reads currentUser — reflect the new name/avatar immediately.
@@ -807,9 +843,12 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     this.authState.set({ status: "authenticated", user: this.currentUser })
     this.requestProfileRefresh()
 
+    const guard = this.captureProfileGuard()
     const user = await this.resolveUser(nextUserId, session)
-    // A newer transition owns the state now — this continuation is void.
-    if (generation !== this.sessionGeneration) return
+    // A newer transition OR a newer same-session write owns the state now —
+    // this continuation is void (round-3: an old enrichment must not roll
+    // back a confirmed updateMyProfile).
+    if (generation !== this.sessionGeneration || !this.profileGuardHolds(guard)) return
     this.currentUser = user
     this.currentUserObs.set(user)
     this.authState.set({ status: "authenticated", user })

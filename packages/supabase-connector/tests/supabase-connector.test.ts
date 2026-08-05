@@ -350,7 +350,9 @@ describe("SupabaseConnector — ProfileCapable (WoT-Parität)", () => {
       armed = false
       const originalSelect = tableApi.select.bind(tableApi)
       return {
-        ...tableApi,
+        insert: tableApi.insert.bind(tableApi),
+        update: tableApi.update.bind(tableApi),
+        delete: tableApi.delete.bind(tableApi),
         select: (columns?: string) => {
           const builder = originalSelect(columns)
           const originalMaybeSingle = builder.maybeSingle.bind(builder)
@@ -465,6 +467,91 @@ describe("SupabaseConnector — ProfileCapable (WoT-Parität)", () => {
     expect(connector.observeMyProfile().current?.id).toBe(userB.id)
   })
 
+  it("eine ALTE Anreicherung derselben Session dreht ein bestätigtes updateMyProfile NICHT zurück (Runde-3-Review)", async () => {
+    // Session startet mit gegateten Reads (Anreicherung + Worker tragen den
+    // ALTEN Stand als Snapshot). updateMyProfile ist danach vollständig
+    // bestätigt — die später auflösenden alten Reads dürfen weder Navbar-
+    // noch Auth- noch Profil-State zurückdrehen.
+    const client = new FakeSupabaseClient()
+    await client.auth.signInAnonymously()
+    const releases: Array<() => void> = []
+    const originalFrom = client.from.bind(client)
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      const tableApi = originalFrom(table)
+      if (table !== "profiles") return tableApi
+      const originalSelect = tableApi.select.bind(tableApi)
+      return {
+        insert: tableApi.insert.bind(tableApi),
+        update: tableApi.update.bind(tableApi),
+        delete: tableApi.delete.bind(tableApi),
+        select: (columns?: string) => {
+          const builder = originalSelect(columns)
+          const originalMaybeSingle = builder.maybeSingle.bind(builder)
+          return Object.assign(builder, {
+            maybeSingle: () => {
+              const result = originalMaybeSingle() // Snapshot at call time
+              return new Promise((resolve) => { releases.push(() => resolve(result)) })
+            },
+          })
+        },
+      }
+    }
+    const connector = new SupabaseConnector(client)
+    const initPromise = connector.init() // hängt an den gegateten Reads
+    await flush()
+    const updated = await connector.updateMyProfile({ name: "Neu", avatar: "data:image/png;base64,neu" })
+    expect(updated.data.displayName).toBe("Neu")
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Neu")
+    // Alte Reads (Alt-Snapshots) freigeben — mehrere Runden für Reruns.
+    for (let round = 0; round < 5; round += 1) {
+      releases.splice(0).forEach((release) => release())
+      await flush()
+    }
+    await initPromise
+    await flush()
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Neu")
+    expect(connector.observeCurrentUser().current?.avatarUrl).toBe("data:image/png;base64,neu")
+    const authUser = connector.getAuthState().current
+    expect(authUser.status === "authenticated" && authUser.user.displayName).toBe("Neu")
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Neu")
+  })
+
+  it("updateMyProfile({}) ist ein No-op und liefert das aktuelle Profil (kein leerer PostgREST-Body)", async () => {
+    const { connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Bestand" })
+    await flush()
+    const unchanged = await connector.updateMyProfile({})
+    expect(unchanged.data.displayName).toBe("Bestand")
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Bestand")
+  })
+
+  it("fremde profiles-Realtime-Events lösen KEINEN eigenen Profil-Read aus (Members-Refresh läuft)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    await flush()
+    let profileReads = 0
+    const originalFrom = client.from.bind(client)
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      if (table === "profiles") profileReads += 1
+      return originalFrom(table)
+    }
+    const members = connector.observeMembers(null)
+    await flush()
+    const baseline = profileReads
+    // Fremdes Profil ändert sich → Mitgliederliste ja, eigener Profil-Read nein.
+    client.tables.get("profiles")!.push({ id: "user-fremd", display_name: "Fremd", avatar_url: null, bio: null, created_at: "t" })
+    client.emit("profiles", { eventType: "INSERT", new: { id: "user-fremd" }, old: null })
+    await flush()
+    await flush()
+    expect(members.current.map(({ id }) => id)).toContain("user-fremd")
+    // Nur der Members-Refresh liest profiles (genau 1 zusätzlicher Read).
+    expect(profileReads - baseline).toBe(1)
+    // Eigenes Profil-Event → eigener Read läuft zusätzlich.
+    client.emit("profiles", { eventType: "UPDATE", new: { id: userId }, old: { id: userId } })
+    await flush()
+    await flush()
+    expect(profileReads - baseline).toBeGreaterThan(2)
+  })
+
   it("TOKEN_REFRESHED derselben Identität ist KEIN Sessionwechsel — kein Profil-Flackern", async () => {
     const { client, connector } = await makeConnector()
     await connector.updateMyProfile({ name: "Stabil" })
@@ -495,7 +582,9 @@ describe("SupabaseConnector — ProfileCapable (WoT-Parität)", () => {
       if (table !== "profiles") return tableApi
       const originalSelect = tableApi.select.bind(tableApi)
       return {
-        ...tableApi,
+        insert: tableApi.insert.bind(tableApi),
+        update: tableApi.update.bind(tableApi),
+        delete: tableApi.delete.bind(tableApi),
         select: (columns?: string) => {
           const builder = originalSelect(columns)
           const originalMaybeSingle = builder.maybeSingle.bind(builder)

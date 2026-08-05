@@ -236,6 +236,17 @@ class FakeTable implements TableLike {
   }
 
   update(patch: Row): TableLike["update"] extends (p: Row) => infer R ? R : never {
+    // PostgREST parity: an empty update body is a 400, not a no-op.
+    if (Object.keys(patch).length === 0) {
+      const err = { data: null, error: { message: "empty or invalid json body", code: "PGRST102" } }
+      const emptyChain = (): unknown => ({
+        eq: () => emptyChain(),
+        select: () => ({ single: () => Promise.resolve(err) }),
+        then: <T1, T2>(onf?: ((v: SupabaseResult<unknown>) => T1 | PromiseLike<T1>) | null, onr?: ((r: unknown) => T2 | PromiseLike<T2>) | null) =>
+          Promise.resolve(err as SupabaseResult<unknown>).then(onf, onr),
+      })
+      return emptyChain() as never
+    }
     const rows = this.rows
     const store = this.store
     const name = this.name
