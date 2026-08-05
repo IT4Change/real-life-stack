@@ -228,7 +228,10 @@ describe("VerificationWorkflow mit IndexedDbVerificationStateStore (Reload-Szena
     })
     const payload = await new AttestationWorkflow({ crypto: protocolCrypto }).verifyAttestationVcJws(verification.vcJws)
 
-    await store().recordConsumedNonce(nonce, "2026-08-04T10:00:00Z")
+    // Relative timestamp: the workflow prunes consumed nonces older than 24h
+    // before checking — a hardcoded date turns this test into a time bomb
+    // (it went red exactly 24h after that date's clock time).
+    await store().recordConsumedNonce(nonce, new Date(Date.now() - 60_000).toISOString())
 
     const after = workflow()
     expect(await after.acceptVerifiedVerificationAttestation(ownerIdentity, payload)).toEqual({
