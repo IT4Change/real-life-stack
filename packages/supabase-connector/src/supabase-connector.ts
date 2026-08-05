@@ -651,6 +651,38 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     return captured.generation === this.sessionGeneration && captured.revision === this.profileRevision
   }
 
+  /**
+   * THE commit boundary for ALL profile-derived state (round-4 review):
+   * session bootstrap, worker/realtime reads and local updates land here —
+   * profile item, currentUser projection and auth-state update TOGETHER,
+   * guard-checked, then the revision advances. Three surfaces, one owner.
+   */
+  private commitOwnProfileRow(
+    row: Record<string, unknown> | null,
+    guard: { generation: number; revision: number },
+  ): boolean {
+    if (!this.profileGuardHolds(guard)) return false
+    const userId = this.sessionUserId
+    if (!userId) return false
+    this.profileObs.set(row ? this.profileRowToPersonItem(row) : null)
+    this.profileObs.markLoaded()
+    // Project the profile-OWNED fields (displayName/avatarUrl) into the
+    // user; other user fields are preserved.
+    const base = this.currentUser?.id === userId ? this.currentUser : { id: userId }
+    const next: User = { ...base, id: userId }
+    if (row?.display_name) next.displayName = row.display_name as string
+    else delete next.displayName
+    if (row?.avatar_url) next.avatarUrl = row.avatar_url as string
+    else delete next.avatarUrl
+    this.currentUser = next
+    this.currentUserObs.set(next)
+    if (this.authState.current.status === "authenticated") {
+      this.authState.set({ status: "authenticated", user: next })
+    }
+    this.profileRevision += 1
+    return true
+  }
+
   /** profiles-Row → person-Item (person/v1), same projection idea as WoT. */
   private profileRowToPersonItem(row: Record<string, unknown>): Item {
     const id = row.id as string
@@ -706,14 +738,13 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
         const row = await this.fetchProfileRow(userId)
         // Session gone → this flight is void entirely.
         if (generation !== this.sessionGeneration) return
-        // Same session, but a local write committed meanwhile: this response
-        // is stale — read again instead of applying it.
-        if (!this.profileGuardHolds(guard)) {
+        // Commit through THE boundary. A false return means a local write
+        // advanced the revision meanwhile: this response is stale — read
+        // again instead of applying it.
+        if (!this.commitOwnProfileRow(row, guard)) {
           this.profileRerunRequested = true
           continue
         }
-        this.profileObs.set(row ? this.profileRowToPersonItem(row) : null)
-        this.profileObs.markLoaded()
       } catch (error) {
         if (generation === this.sessionGeneration) this.profileObs.markLoaded()
         console.error("[SupabaseConnector] profile refresh failed", error)
@@ -752,21 +783,10 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     // Session changed mid-write: the server-side write stands, but the
     // observables belong to the NEW session — leave them alone.
     if (generation !== this.sessionGeneration || this.sessionUserId !== user.id) return item
-    // Confirmed local write: newer than every in-flight read of this session.
-    this.profileRevision += 1
-    this.profileObs.set(item)
-    this.profileObs.markLoaded()
-    // The navbar reads currentUser — reflect the new name/avatar immediately.
-    const nextUser: User = {
-      id: user.id,
-      ...(row.display_name ? { displayName: row.display_name as string } : {}),
-      ...(row.avatar_url ? { avatarUrl: row.avatar_url as string } : {}),
-    }
-    this.currentUser = nextUser
-    this.currentUserObs.set(nextUser)
-    if (this.authState.current.status === "authenticated") {
-      this.authState.set({ status: "authenticated", user: nextUser })
-    }
+    // Confirmed local write = the newest truth of this session: commit
+    // through THE boundary with a FRESH revision capture (the commit's own
+    // bump then voids every older in-flight read).
+    this.commitOwnProfileRow(row, { generation, revision: this.profileRevision })
     return item
   }
 
@@ -812,10 +832,10 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       if (this.authState.current.status !== "loading") return
     }
 
-    // --- synchronous part of the transition: bump generation, flip identity,
-    // clear the previous session's views BEFORE any await.
+    // --- synchronous transition: bump generation, flip identity, clear the
+    // previous session's views. No awaits follow — enrichment is the profile
+    // worker's job (commit boundary), not a parallel tail here.
     this.sessionGeneration += 1
-    const generation = this.sessionGeneration
     this.sessionUserId = nextUserId
     if (this.channels.length > 0 && nextUserId !== this.realtimeAuthUserId) {
       this.realtimeAuthUserId = nextUserId
@@ -837,21 +857,13 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     // Identity switch A→B: A's profile must never stay visible while B's
     // data is still loading.
     if (identityChanged && this.profileObs.current !== null) this.profileObs.set(null)
-    // Minimal user IMMEDIATELY (the id IS the identity); enrichment follows.
+    // Minimal user IMMEDIATELY (the id IS the identity). Enrichment happens
+    // EXCLUSIVELY through the profile worker's commit boundary — no parallel
+    // resolveUser tail that could compete with it (round-4 review).
     this.currentUser = { id: nextUserId }
     this.currentUserObs.set(this.currentUser)
     this.authState.set({ status: "authenticated", user: this.currentUser })
     this.requestProfileRefresh()
-
-    const guard = this.captureProfileGuard()
-    const user = await this.resolveUser(nextUserId, session)
-    // A newer transition OR a newer same-session write owns the state now —
-    // this continuation is void (round-3: an old enrichment must not roll
-    // back a confirmed updateMyProfile).
-    if (generation !== this.sessionGeneration || !this.profileGuardHolds(guard)) return
-    this.currentUser = user
-    this.currentUserObs.set(user)
-    this.authState.set({ status: "authenticated", user })
   }
 
   private async resolveUser(id: string, session?: AuthSessionLike | null): Promise<User> {

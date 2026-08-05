@@ -552,6 +552,28 @@ describe("SupabaseConnector — ProfileCapable (WoT-Parität)", () => {
     expect(profileReads - baseline).toBeGreaterThan(2)
   })
 
+  it("ein Remote-Profilupdate (anderes Gerät) erreicht AUCH currentUser und AuthState (Runde-4-Review)", async () => {
+    // Alle profilabgeleiteten Flächen — Profil-Item, Navbar-User, AuthState —
+    // müssen gemeinsam durch die Commit-Grenze laufen; observeMyProfile
+    // allein reicht nicht.
+    const { client, connector, userId } = await makeConnector()
+    await connector.updateMyProfile({ name: "Vorher" })
+    await flush()
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Vorher")
+    // Anderes Gerät ändert Name + Avatar.
+    const row = client.tables.get("profiles")!.find((r) => r.id === userId)!
+    row.display_name = "Vom anderen Gerät"
+    row.avatar_url = "data:image/png;base64,remote"
+    client.emit("profiles", { eventType: "UPDATE", new: { ...row }, old: { ...row } })
+    await flush()
+    await flush()
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Vom anderen Gerät")
+    expect(connector.observeCurrentUser().current?.displayName).toBe("Vom anderen Gerät")
+    expect(connector.observeCurrentUser().current?.avatarUrl).toBe("data:image/png;base64,remote")
+    const state = connector.getAuthState().current
+    expect(state.status === "authenticated" && state.user.displayName).toBe("Vom anderen Gerät")
+  })
+
   it("TOKEN_REFRESHED derselben Identität ist KEIN Sessionwechsel — kein Profil-Flackern", async () => {
     const { client, connector } = await makeConnector()
     await connector.updateMyProfile({ name: "Stabil" })
