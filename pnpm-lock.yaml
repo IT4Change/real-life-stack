@@ -568,10 +568,10 @@ importers:
         version: link:../toolkit
       '@real-life/adapter-yjs':
         specifier: npm:@web_of_trust/adapter-yjs@^0.2.2
-        version: '@web_of_trust/adapter-yjs@0.2.2(@web_of_trust/core@0.5.3(react@19.2.3))'
+        version: '@web_of_trust/adapter-yjs@0.2.2(@web_of_trust/core@0.5.4(react@19.2.3))'
       '@real-life/wot-core':
-        specifier: npm:@web_of_trust/core@^0.5.3
-        version: '@web_of_trust/core@0.5.3(react@19.2.3)'
+        specifier: npm:@web_of_trust/core@^0.5.4
+        version: '@web_of_trust/core@0.5.4(react@19.2.3)'
       react:
         specifier: ^18 || ^19
         version: 19.2.3
@@ -2543,8 +2543,8 @@ packages:
     peerDependencies:
       '@web_of_trust/core': ^0.5.2
 
-  '@web_of_trust/core@0.5.3':
-    resolution: {integrity: sha512-VuewaXGd6PlwgSIPWjweuwitq5Z8zsabH4VhMX0hHGsCYmQgGnsLYhFMqgAMcEMC6dnftMCitSKFVEH1lb9CIg==}
+  '@web_of_trust/core@0.5.4':
+    resolution: {integrity: sha512-zb92LuiqvB79y4feidSZ7HQTC7yYIVH4UeS31cGSoNXv6ddYvH87DIZbaDtrygaPTehaP0FRIK+9O0FwcPS1xQ==}
     peerDependencies:
       react: ^19.0.0
     peerDependenciesMeta:
@@ -6816,13 +6816,13 @@ snapshots:
 
   '@vue/shared@3.5.26': {}
 
-  '@web_of_trust/adapter-yjs@0.2.2(@web_of_trust/core@0.5.3(react@19.2.3))':
+  '@web_of_trust/adapter-yjs@0.2.2(@web_of_trust/core@0.5.4(react@19.2.3))':
     dependencies:
-      '@web_of_trust/core': 0.5.3(react@19.2.3)
+      '@web_of_trust/core': 0.5.4(react@19.2.3)
       y-protocols: 1.0.7(yjs@13.6.31)
       yjs: 13.6.31
 
-  '@web_of_trust/core@0.5.3(react@19.2.3)':
+  '@web_of_trust/core@0.5.4(react@19.2.3)':
     dependencies:
       '@noble/ed25519': 3.1.0
       '@scure/base': 2.2.0

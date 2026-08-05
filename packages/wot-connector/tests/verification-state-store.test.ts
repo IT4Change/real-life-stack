@@ -26,24 +26,28 @@ const pendingRecord = (overrides: Partial<{
 })
 
 /** Schreibt einen rohen (ggf. ungültigen) Record direkt in die DB. */
-async function seedRawPending(key: string, value: unknown): Promise<void> {
+async function seedRaw(storeName: string, key: string, value: unknown): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1)
+    const request = indexedDB.open(DB_NAME, 2)
     request.onupgradeneeded = () => {
       const db = request.result
-      if (!db.objectStoreNames.contains("nonces")) db.createObjectStore("nonces")
-      if (!db.objectStoreNames.contains("pending")) db.createObjectStore("pending")
+      for (const name of ["nonces", "pending", "challenge"]) {
+        if (!db.objectStoreNames.contains(name)) db.createObjectStore(name)
+      }
     }
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const db = request.result
-      const txn = db.transaction("pending", "readwrite")
-      txn.objectStore("pending").put(value, key)
+      const txn = db.transaction(storeName, "readwrite")
+      txn.objectStore(storeName).put(value, key)
       txn.oncomplete = () => { db.close(); resolve() }
       txn.onerror = () => { db.close(); reject(txn.error) }
     }
   })
 }
+
+const seedRawPending = (key: string, value: unknown) => seedRaw("pending", key, value)
+const seedRawChallenge = (value: unknown) => seedRaw("challenge", "active", value)
 
 beforeEach(() => {
   Object.defineProperty(globalThis, "indexedDB", {
@@ -172,6 +176,54 @@ describe("IndexedDbVerificationStateStore", () => {
     })
   })
 
+  it("Challenge-Capability: record/get/clear mit compare-and-delete in einer Transaktion", async () => {
+    const challenge = {
+      did: "did:key:ztest",
+      name: "Anton",
+      enc: "enc-bytes",
+      nonce: "550e8400-e29b-41d4-a716-446655440000",
+      ts: "2026-08-05T10:00:00Z",
+    }
+    const s = store()
+    expect(await s.getActiveQrChallenge()).toBeNull()
+    await s.recordActiveQrChallenge(challenge)
+    expect(await s.getActiveQrChallenge()).toMatchObject({ nonce: challenge.nonce, name: "Anton" })
+
+    // compare-and-delete: falsche Nonce löscht nicht, richtige schon.
+    await s.clearActiveQrChallenge("andere-nonce")
+    expect(await s.getActiveQrChallenge()).not.toBeNull()
+    await s.clearActiveQrChallenge(challenge.nonce)
+    expect(await s.getActiveQrChallenge()).toBeNull()
+
+    // unconditional clear ohne Nonce
+    await s.recordActiveQrChallenge(challenge)
+    await s.clearActiveQrChallenge()
+    expect(await s.getActiveQrChallenge()).toBeNull()
+  })
+
+  it("Challenge-Capability: überlebt neue Instanz, Cross-Instanz-CAD schützt neuere Challenge", async () => {
+    const challengeA = {
+      did: "did:key:ztest", name: "Anton", enc: "e",
+      nonce: "550e8400-e29b-41d4-a716-446655440000", ts: "2026-08-05T10:00:00Z",
+    }
+    const challengeB = { ...challengeA, nonce: "123e4567-e89b-42d3-a456-426614174000", ts: "2026-08-05T10:01:00Z" }
+    const a = store()
+    const b = store()
+    await a.recordActiveQrChallenge(challengeA)
+    expect(await b.getActiveQrChallenge()).toMatchObject({ nonce: challengeA.nonce })
+    // Instanz B ersetzt durch neuere Challenge; As verspätetes Clear (auf die
+    // alte Nonce) darf sie nicht entfernen.
+    await b.recordActiveQrChallenge(challengeB)
+    await a.clearActiveQrChallenge(challengeA.nonce)
+    expect(await b.getActiveQrChallenge()).toMatchObject({ nonce: challengeB.nonce })
+  })
+
+  it("Challenge-Capability: strukturell ungültiges Blob wird als fehlend behandelt", async () => {
+    await seedRawChallenge({ nonce: 42 })
+    const s = store()
+    expect(await s.getActiveQrChallenge()).toBeNull()
+  })
+
   it("degradiert ohne indexedDB auf volatiles Referenzverhalten statt zu werfen", async () => {
     Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: undefined, writable: true })
     const s = store()
@@ -219,6 +271,29 @@ describe("VerificationWorkflow mit IndexedDbVerificationStateStore (Reload-Szena
     })
   })
 
+  it("Entscheidung 1c: die aktive QR-Challenge übersteht den Workflow-Neuaufbau über den IndexedDB-Store", async () => {
+    const { isActiveQrChallengeValid } = await import("@real-life/wot-core/protocol")
+    const before = new VerificationWorkflow({
+      crypto: protocolCrypto,
+      now: () => new Date("2026-08-05T10:00:00Z"),
+      stateStore: store(),
+    })
+    const { challenge } = await before.createOnlineQrChallenge(ownerIdentity, "Owner")
+
+    // Reload: neue Workflow-Instanz, gleicher Store (gleiche DID-DB).
+    const after = new VerificationWorkflow({
+      crypto: protocolCrypto,
+      now: () => new Date("2026-08-05T10:03:00Z"),
+      stateStore: store(),
+    })
+    const restored = await after.restoreActiveQrChallenge()
+    expect(restored).toMatchObject({ nonce: challenge.nonce, name: "Owner" })
+    // Innerhalb der TTL gültig — genau die Prüfung, die der Connector vor dem
+    // Dialog-Reopen macht.
+    expect(isActiveQrChallengeValid(restored!, { now: new Date("2026-08-05T10:03:00Z") })).toBe(true)
+    expect(isActiveQrChallengeValid(restored!, { now: new Date("2026-08-05T10:05:01Z") })).toBe(false)
+  })
+
   it("erkennt einen Nonce-Replay auch nach Workflow-Neuaufbau als nonce-consumed", async () => {
     const nonce = "123e4567-e89b-42d3-a456-426614174000"
     const verification = await new VerificationWorkflow({ crypto: protocolCrypto }).createVerificationAttestation({
@@ -228,9 +303,16 @@ describe("VerificationWorkflow mit IndexedDbVerificationStateStore (Reload-Szena
     })
     const payload = await new AttestationWorkflow({ crypto: protocolCrypto }).verifyAttestationVcJws(verification.vcJws)
 
+    // Feste Uhr für consumedAt UND Workflow (#239): die 24h-Nonce-Retention
+    // prunt sonst ab dem Folgetag den fixen Zeitstempel weg und der Test
+    // kippt zeitabhängig — Echtzeit und fixe Stempel nie mischen.
     await store().recordConsumedNonce(nonce, "2026-08-04T10:00:00Z")
 
-    const after = workflow()
+    const after = new VerificationWorkflow({
+      crypto: protocolCrypto,
+      now: () => new Date("2026-08-04T10:30:00Z"),
+      stateStore: store(),
+    })
     expect(await after.acceptVerifiedVerificationAttestation(ownerIdentity, payload)).toEqual({
       decision: "reject",
       reason: "nonce-consumed",
