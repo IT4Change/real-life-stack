@@ -200,6 +200,20 @@ describe("MockConnector — authoritative claim mode (spec 08)", () => {
     expect(await connector.verifyRecordClaim!(record)).toBe("trusted")
   })
 
+  it("updateItem cannot forge createdBy on the regular ingress (#235 review)", async () => {
+    const connector = new MockConnector({
+      items: [],
+      groups: [{ id: "g1", name: "G", data: {} }],
+      users: [{ id: "user-1", displayName: "One" }],
+      groupMembers: { g1: ["user-1"] },
+      groupItems: {},
+    } as never)
+    await connector.init()
+    const item = await connector.createItem({ type: "note", createdBy: "user-1", data: {} })
+    const updated = await connector.updateItem(item.id, { createdBy: "user-mallory" } as never)
+    expect(updated.createdBy).toBe("user-1")
+  })
+
   it("fixture mode keeps foreign authors and drops the capability", async () => {
     const { hasClaimVerification } = await import("@real-life-stack/data-interface")
     const connector = new MockConnector({

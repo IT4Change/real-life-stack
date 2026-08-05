@@ -351,6 +351,46 @@ describe("useVotes — claim verdicts (fail closed, spec 08 L1-L3)", () => {
   })
 })
 
+describe("useVotes — verdict binds CONTENT, not just the record id (#235 review)", () => {
+  it("a content change under the same id does NOT reuse the old valid verdict", async () => {
+    const record = voteRecord("rel-1", OTHER, "green")
+    // Emit-capable observable, like the real record stream.
+    let current = [record]
+    const listeners = new Set<(value: RelationRecord[]) => void>()
+    const live = {
+      get current() { return current },
+      loaded: true,
+      subscribe: (callback: (value: RelationRecord[]) => void) => {
+        listeners.add(callback)
+        return () => listeners.delete(callback)
+      },
+    }
+    const { connector: c } = connector([record], {
+      // Content-dependent verdict: green is valid, red is invalid.
+      verdicts: (candidate) => ((candidate.fields as { value?: string }).value === "green" ? "valid" : "invalid"),
+    })
+    ;(c as unknown as { observeRelationRecords: ReturnType<typeof vi.fn> }).observeRelationRecords
+      .mockImplementation(() => live)
+    harness.connector = c
+    const counted = await renderHookVerified(() => hooks.useVotes(STATEMENT))
+    expect(counted.summary.total).toBe(1)
+
+    // A manipulated peer write: SAME id, changed content, emitted as a new
+    // array — exactly what the real observable does.
+    current = [{ ...record, fields: { value: "red" } }]
+    for (const listener of listeners) listener(current)
+
+    // FAIL CLOSED immediately: the stale id-keyed verdict must not carry
+    // over to different content — even BEFORE re-verification settles.
+    const early = renderHook(() => hooks.useVotes(STATEMENT))
+    expect(early.summary.total).toBe(0)
+
+    // And after settling, the invalid verdict keeps it out.
+    const settled = await renderHookVerified(() => hooks.useVotes(STATEMENT))
+    expect(settled.summary.total).toBe(0)
+  })
+})
+
 describe("useVoteUsers — transparent voter list", () => {
   it("subscribes to the records observable instead of a one-shot read", () => {
     const { connector: c } = connector([voteRecord("rel-1", OTHER, "green")])

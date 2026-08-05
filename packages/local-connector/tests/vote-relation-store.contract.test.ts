@@ -130,6 +130,14 @@ describe("LocalConnector — vote relation store contract", () => {
     expect(await connector.verifyRecordClaim(record)).toBe("trusted")
   })
 
+  it("updateItem cannot forge createdBy on the regular ingress (#235 review)", async () => {
+    const me = await currentUserId()
+    const item = await connector.createItem({ type: "note", createdBy: me, data: { title: "mine" } })
+    const updated = await connector.updateItem(item.id, { createdBy: "user-mallory", data: { title: "renamed" } } as never)
+    expect(updated.createdBy).toBe(me)
+    expect((await connector.getItem(item.id))!.createdBy).toBe(me)
+  })
+
   it("fixture mode (allowFixtureAuthors) keeps foreign authors but has NO claim verdict", async () => {
     const fixture = new LocalConnector({
       items: [],

@@ -478,6 +478,13 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
 
   async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
     const actor = this.requireCurrentUser().id
+    // Authoritative ingress binding also on UPDATE: createdBy is immutable
+    // through the regular path (spec 08 — trusted requires it on EVERY
+    // ingress); the marked fixture mode keeps the old behaviour.
+    if (!this.allowFixtureAuthors && "createdBy" in updates) {
+      const { createdBy: _ignored, ...rest } = updates
+      updates = rest
+    }
     let result: Item | undefined
     let committedState: StoredState | undefined
     await updateStoredValue<StoredState>("state", (stored) => {

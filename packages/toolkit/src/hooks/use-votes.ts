@@ -6,6 +6,8 @@ import {
   hasRelationRecords,
   hasRelationRecordWriter,
   isAuthenticatable,
+  jcsCanonicalize,
+  relationAuthorialPayload,
   voteRecordInput,
   votesFromRelationRecords,
 } from "@real-life-stack/data-interface"
@@ -20,6 +22,17 @@ import { useConnector } from "./connector-context"
  * records). The aggregator owns re-emission: state updates re-render
  * consumers once verification settles.
  */
+/** Verdict key binds id + claim + SEMANTIC CONTENT — a stale id-keyed
+    verdict must never carry over to changed content (a manipulated peer
+    write would briefly count with the old "valid"). Null = unverifiable. */
+function verdictKey(record: RelationRecord): string | null {
+  try {
+    return `${record.id}|${record.claim ?? ""}|${jcsCanonicalize(relationAuthorialPayload(record))}`
+  } catch {
+    return null
+  }
+}
+
 export function useVerifiedRelationRecords(records: RelationRecord[]): RelationRecord[] {
   const connector = useConnector()
   const canVerify = hasClaimVerification(connector)
@@ -29,9 +42,12 @@ export function useVerifiedRelationRecords(records: RelationRecord[]): RelationR
     if (!canVerify || records.length === 0) return
     let cancelled = false
     ;(async () => {
-      const entries = await Promise.all(
-        records.map(async (record) => [record.id, await (connector as DataInterface & { verifyRecordClaim(r: RelationRecord): Promise<ClaimVerdict> }).verifyRecordClaim(record)] as const),
-      )
+      const entries: Array<readonly [string, ClaimVerdict]> = []
+      for (const record of records) {
+        const key = verdictKey(record)
+        if (key === null) continue
+        entries.push([key, await (connector as DataInterface & { verifyRecordClaim(r: RelationRecord): Promise<ClaimVerdict> }).verifyRecordClaim(record)])
+      }
       if (!cancelled) startTransition(() => setVerdicts(new Map(entries)))
     })()
     return () => { cancelled = true }
@@ -40,7 +56,9 @@ export function useVerifiedRelationRecords(records: RelationRecord[]): RelationR
   return useMemo(() => {
     if (!canVerify) return []
     return records.filter((record) => {
-      const verdict = verdicts.get(record.id)
+      const key = verdictKey(record)
+      if (key === null) return false
+      const verdict = verdicts.get(key)
       return verdict === "valid" || verdict === "trusted"
     })
   }, [canVerify, records, verdicts])
