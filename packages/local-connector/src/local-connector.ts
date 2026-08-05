@@ -323,18 +323,42 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
   }
 
   async updateGroup(id: string, updates: Partial<Group>): Promise<Group> {
-    const group = this.groups.find((g) => g.id === id)
-    if (!group) throw new Error(`Group not found: ${id}`)
-    // `data` is a shallow PATCH (null removes), never a replacement — see the
-    // GroupManager contract; wholesale replace let partial writers erase each
-    // other's fields (rls#234).
+    if (!this.groups.some((g) => g.id === id)) throw new Error(`Group not found: ${id}`)
     const { data, ...rest } = updates
-    Object.assign(group, rest)
-    if (data) group.data = applyGroupDataPatch(group.data, data)
+
+    // `data` is a shallow PATCH (null removes), never a replacement — see the
+    // GroupManager contract (rls#234). The patch is applied INSIDE the store
+    // transaction against the COMMITTED group, not against this instance's
+    // possibly stale RAM copy: `persist()` writes `groups` wholesale, so a
+    // second tab patching another field would otherwise revert ours (rls#244).
+    let committed: Group | undefined
+    await updateStoredValue<StoredState>("state", (stored) => {
+      const base = stored ?? this.createStoredState()
+      const groups = base.groups.map((candidate) => {
+        if (candidate.id !== id) return candidate
+        committed = {
+          ...candidate,
+          ...rest,
+          ...(data ? { data: applyGroupDataPatch(candidate.data, data) } : {}),
+        }
+        return committed
+      })
+      return { ...base, groups }
+    }, this.store)
+
+    // Only after the commit: adopt the merged result locally, so the RAM copy
+    // reflects the store's truth (including the other writer's fields).
+    if (committed) {
+      const merged = committed
+      this.groups = this.groups.map((candidate) => (candidate.id === id ? merged : candidate))
+      if (this.currentGroup?.id === id) {
+        this.currentGroup = merged
+        this.currentGroupObs.set(merged)
+      }
+    }
     this.notifyGroupObservers()
-    await this.persist()
     this.broadcast({ type: "groups-changed" })
-    return group
+    return committed ?? this.groups.find((g) => g.id === id)!
   }
 
   async deleteGroup(id: string): Promise<void> {
