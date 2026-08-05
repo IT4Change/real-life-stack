@@ -139,3 +139,23 @@ describe("createLatestWinsSaver rollback anchor", () => {
     expect(onError.mock.calls[0][2]).toBeUndefined()
   })
 })
+
+describe("createLatestWinsSaver success signal", () => {
+  it("reports a confirmed save so the caller can clear a stale error", async () => {
+    const { calls, save } = controlledSave()
+    const onError = vi.fn()
+    const onSaved = vi.fn()
+    const push = createLatestWinsSaver(save, onError, onSaved)
+
+    push(["a"])
+    calls[0].reject(new Error("offline"))
+    await flush()
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    push(["a", "b"]) // neuer Versuch nach dem Fehler
+    calls[1].resolve()
+    await flush()
+    expect(onSaved).toHaveBeenCalledTimes(1)
+    expect(onSaved.mock.calls[0][0]).toEqual(["a", "b"])
+  })
+})

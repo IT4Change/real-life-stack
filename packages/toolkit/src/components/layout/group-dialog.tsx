@@ -66,6 +66,8 @@ const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
 export function createLatestWinsSaver<T>(
   save: (value: T) => Promise<void>,
   onError: (error: unknown, failedValue: T, lastSavedValue: T | undefined) => void,
+  /** A save was confirmed — the moment to clear a stale failure notice. */
+  onSaved?: (value: T) => void,
 ): (value: T) => void {
   let inFlight = false
   let queued: { value: T } | null = null
@@ -76,6 +78,7 @@ export function createLatestWinsSaver<T>(
       () => {
         lastSaved = value
         inFlight = false
+        onSaved?.(value)
         if (queued) {
           const next = queued.value
           queued = null
@@ -176,6 +179,9 @@ export function GroupDialog({
   modeRef.current = mode
   const onUpdateGroupRef = useRef(onUpdateGroup)
   onUpdateGroupRef.current = onUpdateGroup
+  // Whether the currently shown error came from a MODULE save — only then may
+  // a later successful module save clear it (a rename error must survive).
+  const moduleErrorShownRef = useRef(false)
   const saveModulesRef = useRef<((modules: string[]) => void) | null>(null)
   if (!saveModulesRef.current) {
     saveModulesRef.current = createLatestWinsSaver<string[]>(
@@ -198,7 +204,15 @@ export function GroupDialog({
               ? ((current.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES)
               : DEFAULT_MODULES),
         )
+        moduleErrorShownRef.current = true
         setError(err instanceof Error ? err.message : "Module konnten nicht gespeichert werden")
+      },
+      () => {
+        // A confirmed save supersedes an earlier module-save failure notice.
+        if (moduleErrorShownRef.current) {
+          moduleErrorShownRef.current = false
+          setError(null)
+        }
       },
     )
   }
