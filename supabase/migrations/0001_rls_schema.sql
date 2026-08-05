@@ -197,6 +197,16 @@ alter table public.items replica identity full;
 alter table public.groups replica identity full;
 alter table public.group_members replica identity full;
 
+-- `supabase start` (CLI) creates this publication; self-hosted stacks may
+-- not have it yet at migration time — create it idempotently.
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+end
+$$;
+
 alter publication supabase_realtime add table public.items;
 alter publication supabase_realtime add table public.groups;
 alter publication supabase_realtime add table public.group_members;
