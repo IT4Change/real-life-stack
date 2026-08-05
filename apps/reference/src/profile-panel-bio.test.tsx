@@ -90,4 +90,29 @@ describe("ProfilePanelHost — eigene Bio kommt aus dem Profil-Item", () => {
     const bioText = document.body.textContent?.includes("Baut Netze in Kassel")
     expect(bioField || bioText, "gespeicherte Bio sichtbar").toBeTruthy()
   })
+
+  it("ein rejectender Profil-Read crasht das Panel nicht (kein unhandledrejection)", async () => {
+    const connector = makeConnector("egal")
+    ;(connector as unknown as { getMyProfile: () => Promise<never> }).getMyProfile =
+      () => Promise.reject(new Error("Profil-Backend down"))
+    host = document.createElement("div")
+    document.body.appendChild(host)
+    root = createRoot(host)
+    await act(async () => {
+      root!.render(
+        <ProfilePanelHost
+          userId={ME.id}
+          currentUser={ME}
+          connector={connector}
+          onSaveProfile={async () => {}}
+          onClose={() => {}}
+        />,
+      )
+    })
+    await act(async () => { await Promise.resolve() })
+    // Panel steht (kein Crash): das Edit-Formular ist gerendert und der Name
+    // kommt aus dem User-Objekt (der rejectende Read wird nur geloggt).
+    expect(document.body.textContent).toContain("Ueber mich")
+    expect([...document.querySelectorAll("input")].some((el) => el.value === "Anton")).toBe(true)
+  })
 })

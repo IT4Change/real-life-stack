@@ -339,6 +339,103 @@ describe("SupabaseConnector — ProfileCapable (WoT-Parität)", () => {
     expect(observable.current?.data.displayName).toBe("Vom anderen Gerät")
   })
 
+  /** Gate the NEXT profiles read: resolves only when release() is called. */
+  function gateNextProfilesRead(client: FakeSupabaseClient): { release: () => void } {
+    const originalFrom = client.from.bind(client)
+    let armed = true
+    let release: () => void = () => {}
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      const tableApi = originalFrom(table)
+      if (table !== "profiles" || !armed) return tableApi
+      armed = false
+      const originalSelect = tableApi.select.bind(tableApi)
+      return {
+        ...tableApi,
+        select: (columns?: string) => {
+          const builder = originalSelect(columns)
+          const originalMaybeSingle = builder.maybeSingle.bind(builder)
+          return Object.assign(builder, {
+            maybeSingle: () => new Promise((resolve) => { release = () => resolve(originalMaybeSingle()) }),
+          })
+        },
+      }
+    }
+    return { get release() { return release }, set release(_v) {} } as { release: () => void }
+  }
+
+  it("ein nach Logout auflösender Profil-Read reanimiert das alte Profil NICHT (Review-Race)", async () => {
+    const { client, connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Alice", bio: "Geheim" })
+    await flush()
+    // Read für die ALTE Session gaten (Realtime-Event stößt den Refresh an) …
+    const gate = gateNextProfilesRead(client)
+    client.emit("profiles", { eventType: "UPDATE", new: {}, old: {} })
+    await flush()
+    // … dann Logout: Observable korrekt leer.
+    await connector.logout()
+    await flush()
+    expect(connector.observeMyProfile().current).toBeNull()
+    // Alten Read freigeben — er darf die entzogene Session nicht überleben.
+    gate.release()
+    await flush()
+    expect(connector.observeMyProfile().current).toBeNull()
+  })
+
+  it("bei A→B-Sessionwechsel überschreibt ein später A-Read das B-Profil nicht", async () => {
+    const { client, connector } = await makeConnector()
+    await connector.updateMyProfile({ name: "Alice" })
+    await flush()
+    const gate = gateNextProfilesRead(client)
+    client.emit("profiles", { eventType: "UPDATE", new: {}, old: {} })
+    await flush()
+    await connector.logout()
+    const userB = await connector.authenticate("anonymous", {})
+    await connector.updateMyProfile({ name: "Berta" })
+    await flush()
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Berta")
+    gate.release()
+    await flush()
+    expect(connector.observeMyProfile().current?.id).toBe(userB.id)
+    expect(connector.observeMyProfile().current?.data.displayName).toBe("Berta")
+  })
+
+  it("observeMyProfile erfüllt den Async-Observable-Vertrag (loaded)", async () => {
+    // Frischer Client MIT bestehender Session; ALLE profiles-Reads hängen am
+    // Gate — vor dem ersten Settle muss loaded false sein, danach true.
+    const client = new FakeSupabaseClient()
+    await client.auth.signInAnonymously()
+    const releases: Array<() => void> = []
+    const originalFrom = client.from.bind(client)
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      const tableApi = originalFrom(table)
+      if (table !== "profiles") return tableApi
+      const originalSelect = tableApi.select.bind(tableApi)
+      return {
+        ...tableApi,
+        select: (columns?: string) => {
+          const builder = originalSelect(columns)
+          const originalMaybeSingle = builder.maybeSingle.bind(builder)
+          return Object.assign(builder, {
+            maybeSingle: () => new Promise((resolve) => { releases.push(() => resolve(originalMaybeSingle())) }),
+          })
+        },
+      }
+    }
+    const fresh = new SupabaseConnector(client)
+    const initPromise = fresh.init()
+    const observable = fresh.observeMyProfile()
+    expect(observable.loaded).toBe(false)
+    // Freigeben (auch nachgelagerte Reads), bis init + Refresh settled sind.
+    for (let round = 0; round < 5; round += 1) {
+      releases.splice(0).forEach((release) => release())
+      await flush()
+    }
+    await initPromise
+    await flush()
+    expect(observable.loaded).toBe(true)
+    expect(observable.current?.id).toBe(client.auth.session!.user.id)
+  })
+
   it("getPublicProfile liefert Fremdprofil-Daten; leeres Feld bleibt absent", async () => {
     const { client, connector } = await makeConnector()
     client.tables.get("profiles")!.push({ id: "user-berta", display_name: "Berta", avatar_url: null, bio: "Hallo", created_at: "t" })

@@ -313,13 +313,21 @@ export function ProfilePanelHost({
       setMyBio("")
       return
     }
+    // Stale/error guard: a resolve after the effect re-ran (connector or
+    // profile switch) must not apply, and a rejecting connector must not
+    // surface as unhandledrejection.
+    let cancelled = false
     const observable = connector.observeMyProfile()
     const apply = (item: import("@real-life-stack/data-interface").Item | null) => {
+      if (cancelled) return
       setMyBio(typeof item?.data.bio === "string" ? item.data.bio : "")
     }
     apply(observable.current)
-    void connector.getMyProfile().then(apply)
-    return observable.subscribe(apply)
+    connector.getMyProfile().then(apply).catch((error) => {
+      console.error("[ProfilePanelHost] getMyProfile failed", error)
+    })
+    const unsubscribe = observable.subscribe(apply)
+    return () => { cancelled = true; unsubscribe() }
   }, [isOwn, connector])
 
   useEffect(() => {

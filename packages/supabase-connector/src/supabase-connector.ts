@@ -610,8 +610,14 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
 
   // --- Profile (ProfileCapable, WoT-Parität) ---
 
-  private profileObs = createObservable<Item | null>(null)
+  // Starts unloaded (async source): consumers can tell "still loading"
+  // from "loaded, no profile" (Observable contract, spec 02).
+  private profileObs = createObservable<Item | null>(null, false)
   private profileSyncPendingObs = createObservable<boolean>(false)
+  /** Session epoch: bumped on every session transition BEFORE any await —
+      an in-flight profile read must never outlive the session it was
+      started for (logout or A→B switch would resurrect stale data). */
+  private profileEpoch = 0
 
   /** profiles-Row → person-Item (person/v1), same projection idea as WoT. */
   private profileRowToPersonItem(row: Record<string, unknown>): Item {
@@ -637,26 +643,38 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   }
 
   private async refreshMyProfile(): Promise<void> {
+    const epoch = this.profileEpoch
     const userId = this.currentUser?.id
     if (!userId) {
-      this.profileObs.set(null)
+      // While auth is still resolving (init in flight), "no user" is
+      // UNKNOWN, not final — don't settle the observable yet; the session
+      // transition triggers the next refresh.
+      if (this.authState.current.status !== "loading") {
+        this.profileObs.set(null)
+        this.profileObs.markLoaded()
+      }
       return
     }
     try {
       const row = await this.fetchProfileRow(userId)
+      // Apply only if the session is STILL the one this read was started
+      // for — a resolve after logout/account switch is dropped.
+      if (epoch !== this.profileEpoch || this.currentUser?.id !== userId) return
       this.profileObs.set(row ? this.profileRowToPersonItem(row) : null)
+      this.profileObs.markLoaded()
     } catch (error) {
+      if (epoch === this.profileEpoch) this.profileObs.markLoaded()
       console.error("[SupabaseConnector] profile refresh failed", error)
     }
   }
 
   async getMyProfile(): Promise<Item | null> {
-    if (!this.profileObs.current) await this.refreshMyProfile()
+    if (!this.profileObs.loaded) await this.refreshMyProfile()
     return this.profileObs.current
   }
 
   observeMyProfile(): Observable<Item | null> {
-    if (!this.profileObs.current) void this.refreshMyProfile()
+    if (!this.profileObs.loaded) void this.refreshMyProfile()
     return this.profileObs
   }
 
@@ -668,10 +686,15 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       ...(updates.bio !== undefined ? { bio: (updates.bio as string) || null } : {}),
       ...(updates.avatar !== undefined ? { avatar_url: (updates.avatar as string) || null } : {}),
     }
+    const epoch = this.profileEpoch
     const result = await this.client.from("profiles").update(patch).eq("id", user.id).select().single()
     const row = throwOnError(result, "updateMyProfile")
     const item = this.profileRowToPersonItem(row)
+    // Session revoked mid-write: the server-side write stands, but the
+    // observables belong to the NEW session — leave them alone.
+    if (epoch !== this.profileEpoch || this.currentUser?.id !== user.id) return item
     this.profileObs.set(item)
+    this.profileObs.markLoaded()
     // The navbar reads currentUser — reflect the new name/avatar immediately.
     const nextUser: User = {
       id: user.id,
@@ -714,6 +737,9 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   private realtimeAuthUserId: string | null = null
 
   private async applySession(session: AuthSessionLike | null): Promise<void> {
+    // Invalidate in-flight profile reads of the previous session BEFORE any
+    // await in this transition.
+    this.profileEpoch += 1
     const nextUserId = session?.user?.id ?? null
     if (this.channels.length > 0 && nextUserId !== this.realtimeAuthUserId) {
       this.realtimeAuthUserId = nextUserId
@@ -725,6 +751,8 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       this.currentUser = null
       this.currentUserObs.set(null)
       this.profileObs.set(null)
+      // No session is a SETTLED profile state: loaded, genuinely empty.
+      this.profileObs.markLoaded()
       this.authState.set({ status: "unauthenticated" })
       return
     }
@@ -800,6 +828,7 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     if (!data.session) {
       throw new Error("[SupabaseConnector] Registrierung angelegt, aber E-Mail-Bestätigung steht aus — noch keine aktive Sitzung")
     }
+    this.profileEpoch += 1
     const user = await this.resolveUser(authUser.id)
     this.currentUser = user
     this.currentUserObs.set(user)
@@ -810,8 +839,11 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   async logout(): Promise<void> {
     const { error } = await this.client.auth.signOut()
     if (error) throw new Error(`[SupabaseConnector] logout: ${error.message}`)
+    this.profileEpoch += 1
     this.currentUser = null
     this.currentUserObs.set(null)
+    this.profileObs.set(null)
+    this.profileObs.markLoaded()
     this.authState.set({ status: "unauthenticated" })
   }
 
