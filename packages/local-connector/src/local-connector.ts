@@ -188,9 +188,8 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
     // either (and a later persist would otherwise retroactively stamp it as
     // enforced). Discarding follows the dev connector's documented
     // SEED_VERSION behaviour: local state is expendable.
-    const stored = (!this.allowFixtureAuthors && loaded && loaded.authorBindingEnforced !== true)
-      ? undefined
-      : loaded
+    const discardedUnenforced = !this.allowFixtureAuthors && loaded !== undefined && loaded.authorBindingEnforced !== true
+    const stored = discardedUnenforced ? undefined : loaded
     const shouldSeed = this.seedData && (
       !stored ||
       stored.seedVersion === undefined ||
@@ -237,6 +236,14 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
     )
     this.groupsObs.set([...this.groups])
     this.currentGroupObs.set(this.currentGroup)
+
+    if (discardedUnenforced) {
+      // The discard must be DURABLE: later persists read IndexedDB fresh
+      // (updateStoredValue merge path) and would resurrect the legacy blob —
+      // stamping it as enforced on the way. Replace it with the fresh
+      // enforced state now.
+      await this.persist({ replaceItemState: true })
+    }
 
     // Set up cross-tab sync
     this.channel = new BroadcastChannel("rls-local-connector")

@@ -193,6 +193,51 @@ describe("LocalConnector — vote relation store contract", () => {
     expect(hasClaimVerification(restored)).toBe(true)
   })
 
+  it("discarded legacy state cannot RESURRECT through a later persist (#235 round 4)", async () => {
+    // The discard must be DURABLE: updateStoredValue-based persists (e.g.
+    // createGroup) read IndexedDB fresh — if the legacy blob is still there,
+    // the mallory record returns and even gets stamped as enforced.
+    const idb = await import("idb-keyval")
+    const legacy = {
+      items: [{ id: "mallory-legacy", type: "relation", createdBy: "user-mallory", createdAt: "t", data: { predicate: VOTE_PREDICATE, value: "green" }, relations: [{ predicate: "from", target: "global:user-mallory" }, { predicate: "to", target: "item:s1" }] }],
+      groups: [{ id: "g1", name: "Legacy" }],
+      users: [{ id: ALICE, displayName: "Alice" }],
+      groupMembers: { g1: [ALICE] },
+      groupItems: { g1: ["mallory-legacy"] },
+      currentUserId: ALICE, currentGroupId: "g1", nextItemId: 100,
+      seedVersion: 999,
+    }
+    let state: unknown = legacy
+    const getMock = idb.get as ReturnType<typeof vi.fn>
+    const setMock = idb.set as ReturnType<typeof vi.fn>
+    const updateMock = idb.update as ReturnType<typeof vi.fn>
+    getMock.mockImplementation(async () => state)
+    setMock.mockImplementation(async (_key: string, value: unknown) => { state = value })
+    updateMock.mockImplementation(async (_key: string, updater: (value: unknown) => unknown) => { state = updater(state) })
+    try {
+      const restored = new LocalConnector()
+      await restored.init()
+      expect(await restored.getItem("mallory-legacy")).toBeNull()
+
+      // Follow-up persist through the merge path.
+      await restored.createGroup("Fresh Group")
+
+      // Durable: the blob holds the fresh enforced state, not the legacy items.
+      const persisted = state as { items: Array<{ id: string }>; authorBindingEnforced?: boolean }
+      expect(persisted.items.map(({ id }) => id)).not.toContain("mallory-legacy")
+      expect(persisted.authorBindingEnforced).toBe(true)
+
+      // And a freshly constructed trusted instance never sees mallory again.
+      const fresh = new LocalConnector()
+      await fresh.init()
+      expect(await fresh.getItem("mallory-legacy")).toBeNull()
+    } finally {
+      getMock.mockReset(); getMock.mockResolvedValue(undefined)
+      setMock.mockReset(); setMock.mockResolvedValue(undefined)
+      updateMock.mockReset(); updateMock.mockImplementation(async (_key: string, updater: (value: unknown) => unknown) => { updater(undefined) })
+    }
+  })
+
   it("refuses to update or delete another author's record", async () => {
     const connector = fixtureConnector
     const bobsId = await deriveRelationRecordId(BOB, VOTE_PREDICATE, `global:${BOB}`, "item:s1")
