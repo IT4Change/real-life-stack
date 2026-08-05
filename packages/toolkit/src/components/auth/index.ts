@@ -1,3 +1,4 @@
+export { AuthScreen, type AuthScreenProps } from "./auth-screen"
 export { MnemonicGrid, type MnemonicGridProps } from "./MnemonicGrid"
 export { MnemonicVerify, type MnemonicVerifyProps } from "./MnemonicVerify"
 export { PassphraseInput, PassphraseConfirm, type PassphraseInputProps, type PassphraseConfirmProps } from "./PassphraseInput"

@@ -62,6 +62,7 @@ import {
   type UserData,
   type ConnectorOption,
   type GroupDialogMode,
+  AuthScreen,
 } from "@real-life-stack/toolkit"
 import type { DataInterface, User } from "@real-life-stack/data-interface"
 import { isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile, moduleHintsFor } from "@real-life-stack/data-interface"
@@ -764,12 +765,9 @@ async function createConnector(type: string): Promise<DataInterface> {
       import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
     )
     await connector.init()
-    // v1: anonymous session so the (WoT-specific) auth gate never engages;
-    // supabase-js persists the session, so identity survives reloads.
-    // A proper Supabase login screen is follow-up work.
-    if (connector.getAuthState().current.status !== "authenticated") {
-      await connector.authenticate("anonymous", {})
-    }
+    // No auto-login: the AuthGate presents the generic AuthScreen (email
+    // login/signup + anonymous). supabase-js persists sessions, so an
+    // existing login survives reloads and skips the gate.
     return connector
   }
   const c = new MockConnector()
@@ -793,16 +791,41 @@ const LazyDIDAuthScreen = lazy(() =>
   }))
 )
 
-function AuthGate({ connector, children }: { connector: DataInterface; children: React.ReactNode }) {
-  // Only check auth state once at mount — do NOT subscribe to changes.
-  // The DIDAuthScreen controls when onAuthenticated fires (after seed backup etc.),
-  // so reacting to auth state changes would skip the onboarding wizard.
+/** Methods the generic AuthScreen can actually present. */
+const GENERIC_AUTH_METHODS = new Set(["email", "email-signup", "anonymous"])
+
+export function AuthGate({ connector, wot, children }: { connector: DataInterface; wot: boolean; children: React.ReactNode }) {
+  // WoT: check auth state once at mount and LATCH — the DIDAuthScreen controls
+  // when onAuthenticated fires (after seed backup etc.), so reacting to auth
+  // state changes would skip the onboarding wizard.
   const [authenticated, setAuthenticated] = useState(() => {
     if (!isAuthenticatable(connector)) return true
     return connector.getAuthState().current.status === "authenticated"
   })
 
+  // Generic backend path: the gate FOLLOWS the auth observable (spec
+  // architektur2 → AuthState als Observable). A later session loss — expiry,
+  // refresh failure, logout in another tab — must close the app again, and an
+  // external login must open it.
+  useEffect(() => {
+    if (wot || !isAuthenticatable(connector)) return
+    const observable = connector.getAuthState()
+    setAuthenticated(observable.current.status === "authenticated")
+    return observable.subscribe((state) => setAuthenticated(state.status === "authenticated"))
+  }, [connector, wot])
+
   if (authenticated) {
+    return <>{children}</>
+  }
+
+  if (!wot) {
+    // Generic capability path (e.g. Supabase): email login/signup + anonymous.
+    // A connector that offers none of these has no interactive flow — pass
+    // through instead of dead-ending (matches the pre-gate behaviour of the
+    // auto-authenticating demo connectors).
+    if (isAuthenticatable(connector) && connector.getAuthMethods().some(({ method }) => GENERIC_AUTH_METHODS.has(method))) {
+      return <AuthScreen connector={connector} onAuthenticated={() => setAuthenticated(true)} />
+    }
     return <>{children}</>
   }
 
@@ -865,7 +888,7 @@ export default function App() {
   return (
     <ConnectorProvider connector={connector} key={connectorId}>
       <IncomingEventsProvider>
-        <AuthGate connector={connector}>
+        <AuthGate connector={connector} wot={connectorId === "wot"}>
           {/* Focus lives above the routes so it survives module switches — the
               shared panel's onClose must clear the focus on whatever module the
               user is on now, not the one that opened it. */}
