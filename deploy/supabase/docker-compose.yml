@@ -24,6 +24,7 @@ services:
     networks: [supabase]
     volumes:
       - ./db-init/99-realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:ro
+      - ./db-init/97-auth-fn-owner.sql:/docker-entrypoint-initdb.d/init-scripts/97-auth-fn-owner.sql:ro
       - ./db-init/99-roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
       - ./db-init/99-jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
       - supabase-db-data:/var/lib/postgresql/data
