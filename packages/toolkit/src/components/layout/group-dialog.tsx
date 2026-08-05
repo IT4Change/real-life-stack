@@ -177,31 +177,31 @@ export function GroupDialog({
     isEdit ? (mode.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES : DEFAULT_MODULES
   )
 
+  // Module-save errors get their OWN state: sharing the dialog-wide `error`
+  // state made ownership ambiguous — a successful module save could only
+  // guess (flag, then message equality) whether the shown error was its own,
+  // and two operations failing with the same text (`Network request failed`)
+  // still collided. Separate state = ownership by construction (rls#232).
+  const [moduleError, setModuleError] = useState<string | null>(null)
+
   // Persisting the module list: rapid ↑/↓ clicks fire faster than a save
   // round-trips, and two in-flight saves can settle out of order — the older
   // one would then win in the store. The saver serializes to one in-flight
   // save with latest-wins; it lives in a ref (stable for the dialog's
-  // lifetime) and reads mode/onUpdateGroup through refs so a completed save
-  // spreads the LIVE group data, not the render it was created in.
+  // lifetime) and reads mode/onUpdateGroup through refs. The payload is a
+  // minimal PATCH ({modules} only) — updateGroup merges per key (rls#234),
+  // so this writer cannot erase image/accent saved by another writer.
   const modeRef = useRef(mode)
   modeRef.current = mode
   const onUpdateGroupRef = useRef(onUpdateGroup)
   onUpdateGroupRef.current = onUpdateGroup
-  // The exact error message the last failed MODULE save put into the shared
-  // error state. A later successful module save clears the error only while
-  // THAT message is still showing — a boolean "module error shown" flag would
-  // stay stale once another operation (e.g. a failed rename) overwrote the
-  // state, and the clear would swallow the foreign error.
-  const moduleErrorMessageRef = useRef<string | null>(null)
   const saveModulesRef = useRef<((modules: string[]) => void) | null>(null)
   if (!saveModulesRef.current) {
     saveModulesRef.current = createLatestWinsSaver<string[]>(
       (modules) => {
         const current = modeRef.current
         if (current.type !== "edit") return Promise.resolve()
-        return onUpdateGroupRef.current(current.group.id, {
-          data: { ...current.group.data, modules },
-        })
+        return onUpdateGroupRef.current(current.group.id, { data: { modules } })
       },
       (err, _failed, lastSaved) => {
         // Roll the UI back to the last CONFIRMED order — a silently divergent
@@ -215,19 +215,9 @@ export function GroupDialog({
               ? ((current.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES)
               : DEFAULT_MODULES),
         )
-        const message = err instanceof Error ? err.message : "Module konnten nicht gespeichert werden"
-        moduleErrorMessageRef.current = message
-        setError(message)
+        setModuleError(err instanceof Error ? err.message : "Module konnten nicht gespeichert werden")
       },
-      () => {
-        // A confirmed save supersedes an earlier module-save failure notice —
-        // but only if that notice is still the one on display.
-        const message = moduleErrorMessageRef.current
-        if (message !== null) {
-          moduleErrorMessageRef.current = null
-          setError((current) => (current === message ? null : current))
-        }
-      },
+      () => setModuleError(null),
     )
   }
   const applyModules = useCallback((next: string[]) => {
@@ -245,6 +235,7 @@ export function GroupDialog({
       if (!nextOpen) {
         setConfirmDelete(false)
         setError(null)
+        setModuleError(null)
         setInvitingId(null)
         setInvitedIds(new Set())
         setInviteErrors(new Map())
@@ -288,8 +279,10 @@ export function GroupDialog({
       // grayscale logo dominantColor returns null -> clear it so reads fall
       // back to the deterministic id color.
       const primaryColor = await dominantColor(dataUrl).catch(() => null)
+      // Minimal patch — updateGroup merges per key (null removes), so this
+      // cannot clobber e.g. a module order saved meanwhile (rls#234).
       void onUpdateGroup(mode.group.id, {
-        data: { ...mode.group.data, image: dataUrl, primaryColor: primaryColor ?? undefined },
+        data: { image: dataUrl, primaryColor },
       })
     } catch {
       setError("Bild konnte nicht verarbeitet werden")
@@ -300,8 +293,10 @@ export function GroupDialog({
   const handleImageRemove = () => {
     if (!isEdit) return
     setGroupImage("")
-    // Drop the cached accent too, so it falls back to the deterministic id color.
-    void onUpdateGroup(mode.group.id, { data: { ...mode.group.data, image: "", primaryColor: undefined } })
+    // Drop the cached accent too, so it falls back to the deterministic id
+    // color — `null` removes the key (patch contract), `undefined` would be
+    // dropped by JSON transports and leave the stale accent behind.
+    void onUpdateGroup(mode.group.id, { data: { image: "", primaryColor: null } })
   }
 
   const handleLeave = async () => {
@@ -642,7 +637,11 @@ export function GroupDialog({
           )}
         </div>
 
-        {/* Error */}
+        {/* Errors: module-save failures have their own state (ownership by
+            construction, rls#232) and can coexist with a general error. */}
+        {moduleError && (
+          <p className="text-xs text-destructive px-6 pb-2">{moduleError}</p>
+        )}
         {error && (
           <p className="text-xs text-destructive px-6 pb-2">{error}</p>
         )}
