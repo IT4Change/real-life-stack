@@ -1,0 +1,151 @@
+/**
+ * LIVE contract suite against a running Supabase instance — the referee for
+ * PostgREST filter semantics and for the RLS trust boundary that the unit
+ * fake only mimics.
+ *
+ * Run `npx supabase start` in the repo root (Docker required), then:
+ *
+ *   SUPABASE_URL=http://127.0.0.1:54321 \
+ *   SUPABASE_ANON_KEY=<from supabase start> \
+ *   SUPABASE_SERVICE_ROLE_KEY=<from supabase start> \
+ *   pnpm --filter @real-life-stack/supabase-connector test
+ *
+ * Without these env vars the suite skips (CI has no Supabase yet).
+ */
+import { describe, expect, it } from "vitest"
+import { createClient } from "@supabase/supabase-js"
+import { describeDataInterfaceContract } from "@real-life-stack/data-interface/testing"
+import { deriveRelationRecordId, voteRecordInput, VOTE_PREDICATE } from "@real-life-stack/data-interface"
+import type { SupabaseClientLike } from "../src/client-types.js"
+import { SupabaseConnector } from "../src/supabase-connector.js"
+
+const url = process.env.SUPABASE_URL
+const anonKey = process.env.SUPABASE_ANON_KEY
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+if (!url || !anonKey || !serviceKey) {
+  describe.skip("Supabase live contract (SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY not set)", () => {
+    it("skipped", () => {})
+  })
+} else {
+  /** Service-role client: Authorization pinned to the service key so PostgREST
+      bypasses RLS (fixture path) while gotrue still issues a session identity. */
+  function makeServiceClient() {
+    return createClient(url!, serviceKey!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { Authorization: `Bearer ${serviceKey}` } },
+    })
+  }
+
+  function makeAnonClient() {
+    return createClient(url!, anonKey!, { auth: { persistSession: false, autoRefreshToken: false } })
+  }
+
+  // Shared suite in fixture mode — its foreign-author cases seed rows that
+  // the authoritative ingress rightly refuses.
+  describeDataInterfaceContract("SupabaseConnector (live, fixture/service-role)", {
+    async makeConnector() {
+      const client = makeServiceClient()
+      const connector = new SupabaseConnector(client as unknown as SupabaseClientLike, { allowFixtureAuthors: true })
+      await connector.init()
+      const user = await connector.authenticate("anonymous", {})
+      return { connector, currentUserId: user.id, dispose: () => connector.dispose() }
+    },
+  })
+
+  describe("SupabaseConnector (live, authoritative) — the RLS boundary itself", () => {
+    async function makeAuthoritative() {
+      const client = makeAnonClient()
+      const connector = new SupabaseConnector(client as unknown as SupabaseClientLike)
+      await connector.init()
+      const user = await connector.authenticate("anonymous", {})
+      return { client, connector, userId: user.id }
+    }
+
+    it("SERVER rejects a raw insert with a foreign created_by (bypassing the connector)", async () => {
+      const { client, connector, userId } = await makeAuthoritative()
+      try {
+        const { error } = await client.from("items").insert({
+          id: `mallory-${Date.now()}`,
+          type: "note",
+          created_by: "user-mallory",
+          data: {},
+        })
+        expect(error).not.toBeNull()
+        expect(String(error!.message)).toMatch(/row-level security/i)
+        void userId
+      } finally {
+        await connector.dispose()
+      }
+    })
+
+    it("SERVER rejects a raw created_by change on update (immutability trigger)", async () => {
+      const { client, connector, userId } = await makeAuthoritative()
+      try {
+        const item = await connector.createItem({ type: "note", createdBy: userId, data: { title: "mine" } })
+        const { error } = await client.from("items").update({ created_by: "user-mallory" }).eq("id", item.id)
+        expect(error).not.toBeNull()
+        expect((await connector.getItem(item.id))!.createdBy).toBe(userId)
+      } finally {
+        await connector.dispose()
+      }
+    })
+
+    it("a SECOND user can neither update nor delete a foreign relation record via raw DML", async () => {
+      const alice = await makeAuthoritative()
+      const mallory = await makeAuthoritative()
+      try {
+        const record = await alice.connector.createRelationRecord(voteRecordInput(alice.userId, "s-live", "green"))
+        // RLS: update/delete on type='relation' requires authorship — the
+        // foreign session's DML silently affects 0 rows.
+        await mallory.client.from("items").update({ data: { predicate: VOTE_PREDICATE, value: "red" } }).eq("id", record.id)
+        await mallory.client.from("items").delete().eq("id", record.id)
+        const after = await alice.connector.getItem(record.id)
+        expect(after).not.toBeNull()
+        expect(after!.data.value).toBe("green")
+      } finally {
+        await alice.connector.dispose()
+        await mallory.connector.dispose()
+      }
+    })
+
+    it("authoritative connector vouches trusted for the facade-written record", async () => {
+      const { connector, userId } = await makeAuthoritative()
+      try {
+        const statement = `s-${Date.now()}`
+        const record = await connector.createRelationRecord(voteRecordInput(userId, statement, "green"))
+        expect(record.id).toBe(await deriveRelationRecordId(userId, VOTE_PREDICATE, `global:${userId}`, `item:${statement}`))
+        expect(await connector.verifyRecordClaim!(record)).toBe("trusted")
+      } finally {
+        await connector.dispose()
+      }
+    })
+
+    it("observe() is LIVE: an insert from a second client arrives via realtime", { timeout: 20_000 }, async () => {
+      const observerSide = await makeAuthoritative()
+      const writerSide = await makeAuthoritative()
+      try {
+        const type = `live-${Date.now()}`
+        const observable = observerSide.connector.observe({ type })
+        // Give the initial fetch + channel join a moment to settle.
+        await new Promise((resolve) => setTimeout(resolve, 2_000))
+        const created = await writerSide.connector.createItem({ type, createdBy: writerSide.userId, data: { title: "realtime" } })
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("realtime update did not arrive within 15s")), 15_000)
+          const check = () => {
+            if (observable.current.some(({ id }) => id === created.id)) {
+              clearTimeout(timer)
+              stop()
+              resolve()
+            }
+          }
+          const stop = observable.subscribe(check)
+          check()
+        })
+      } finally {
+        await observerSide.connector.dispose()
+        await writerSide.connector.dispose()
+      }
+    })
+  })
+}
