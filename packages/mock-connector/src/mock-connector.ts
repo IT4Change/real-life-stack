@@ -26,6 +26,7 @@ import type {
   Source,
 } from "@real-life-stack/data-interface"
 import {
+  applyGroupDataPatch,
   applyPagination,
   createDefaultRelationStore,
   createObservable,
@@ -233,7 +234,11 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
   async updateGroup(id: string, updates: Partial<Group>): Promise<Group> {
     const group = this.groups.find((g) => g.id === id)
     if (!group) throw new Error(`Group not found: ${id}`)
-    Object.assign(group, updates)
+    // `data` is a shallow PATCH (null removes), never a replacement — see the
+    // GroupManager contract (rls#234).
+    const { data, ...rest } = updates
+    Object.assign(group, rest)
+    if (data) group.data = applyGroupDataPatch(group.data, data)
     this.notifyGroupObservers()
     return group
   }

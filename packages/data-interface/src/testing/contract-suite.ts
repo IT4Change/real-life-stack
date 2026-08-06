@@ -20,6 +20,7 @@ import type { DataInterface, Item, RelationRecord } from "../index.js"
 import {
   deriveRelationRecordId,
   hasClaimVerification,
+  hasGroups,
   hasRelationRecords,
   hasRelationRecordWriter,
   isWritable,
@@ -34,6 +35,13 @@ export interface ContractContext {
 
 export interface ContractHarness {
   makeConnector(): Promise<ContractContext>
+  /**
+   * Yield a group id the suite may `updateGroup` against (fresh or seeded).
+   * Omit when the harness cannot reach group updates (e.g. the WoT light
+   * harness fakes only the doc handle — group meta goes through the
+   * replication runtime); the group-update contract cases are skipped then.
+   */
+  updatableGroup?(context: ContractContext): Promise<string>
 }
 
 let uniqueCounter = 0
@@ -221,6 +229,36 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
           expect((await connector.getItem(created.id))!.data).toEqual({ title: "new" })
           await connector.deleteItem(created.id)
           expect(await connector.getItem(created.id)).toBeNull()
+        })
+      })
+
+      it("updateGroup PATCHES data — a partial writer cannot erase foreign keys (rls#234)", async () => {
+        if (!harness.updatableGroup) return
+        await withConnector(async (context) => {
+          const { connector } = context
+          if (!hasGroups(connector)) return
+          const groupId = await harness.updatableGroup!(context)
+          // Two independent writers, each sending ONLY its own fields — the
+          // second knows nothing about the first (stale caller).
+          await connector.updateGroup(groupId, { data: { image: "logo.png", primaryColor: "#123456" } })
+          await connector.updateGroup(groupId, { data: { modules: ["feed", "graph"] } })
+          const group = (await connector.getGroups()).find((candidate) => candidate.id === groupId)
+          expect(group?.data?.image).toBe("logo.png")
+          expect(group?.data?.primaryColor).toBe("#123456")
+          expect(group?.data?.modules).toEqual(["feed", "graph"])
+        })
+      })
+
+      it("updateGroup removes a key via null (JSON Merge Patch at depth 1)", async () => {
+        if (!harness.updatableGroup) return
+        await withConnector(async (context) => {
+          const { connector } = context
+          if (!hasGroups(connector)) return
+          const groupId = await harness.updatableGroup!(context)
+          await connector.updateGroup(groupId, { data: { primaryColor: "#123456" } })
+          await connector.updateGroup(groupId, { data: { primaryColor: null } })
+          const group = (await connector.getGroups()).find((candidate) => candidate.id === groupId)
+          expect(group?.data ?? {}).not.toHaveProperty("primaryColor")
         })
       })
 
