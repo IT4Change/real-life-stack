@@ -315,6 +315,7 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
       />
       <IncomingContactRequestDialog
         open={!!contactRequest}
+        fromId={contactRequest?.fromId}
         fromName={contactRequest?.fromName}
         fromAvatar={contactRequest?.fromAvatar}
         onConfirm={handleConfirmContactRequest}

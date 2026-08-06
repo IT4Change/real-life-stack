@@ -63,7 +63,10 @@ interface QueueState {
 type QueueAction =
   | { type: "rebind"; owner: QueueOwner }
   | { type: "enqueue"; owner: QueueOwner; notification: QueuedNotification }
-  | { type: "dismiss" }
+  /** dismiss trägt denselben Owner-Vertrag UND die konkrete Notification:
+      eine verspätete Aktion darf weder den Dialog eines neuen Besitzers noch
+      den NACHFOLGENDEN Dialog desselben Besitzers schlucken. */
+  | { type: "dismiss"; owner: QueueOwner; id: string }
 
 const sameOwner = (a: QueueOwner, b: QueueOwner) =>
   a.connector === b.connector && a.identity === b.identity
@@ -80,8 +83,12 @@ function queueReducer(state: QueueState, action: QueueAction): QueueState {
       if (!sameOwner(state.owner, action.owner)) return state
       if (state.entries.some((entry) => entry.id === action.notification.id)) return state
       return { ...state, entries: [...state.entries, action.notification] }
-    case "dismiss":
+    case "dismiss": {
+      if (!sameOwner(state.owner, action.owner)) return state
+      // Nur den Kopf entfernen, und nur wenn er der gemeinte ist.
+      if (state.entries[0]?.id !== action.id) return state
       return { ...state, entries: state.entries.slice(1) }
+    }
   }
 }
 
@@ -110,7 +117,12 @@ export function IncomingEventsProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "rebind", owner: { connector, identity } })
   }, [connector, identity])
 
-  const dismiss = useCallback(() => dispatch({ type: "dismiss" }), [])
+  const head = entries[0] ?? null
+  // An den bei DARSTELLUNG erfassten Owner und Eintrag gebunden.
+  const dismiss = useCallback(() => {
+    if (!head) return
+    dispatch({ type: "dismiss", owner: { connector, identity }, id: head.id })
+  }, [connector, identity, head])
 
   // Auf Auth-Wechsel reagieren, damit `identity` neu gelesen wird (ein
   // Token-Refresh derselben Identität ändert nichts und behält die Queue).
@@ -132,7 +144,7 @@ export function IncomingEventsProvider({ children }: { children: ReactNode }) {
     })
   }, [connector])
 
-  const current = entries[0] ?? null
+  const current = head
 
   const incomingVerification = useMemo(
     () => current?.event.type === "incoming-verification" ? current.event : null,

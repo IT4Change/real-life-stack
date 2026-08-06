@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { UserPlus } from "lucide-react"
 import {
   Dialog,
@@ -13,6 +13,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/primitives/ava
 
 export interface IncomingContactRequestDialogProps {
   open: boolean
+  /** Identität der Anfrage — wechselt sie, wird der lokale Zustand
+      (Fehler/Submitting) zurückgesetzt: der Dialog bleibt beim Nachrücken
+      der nächsten Anfrage montiert. */
+  fromId?: string
   fromName?: string
   fromAvatar?: string
   /** Bestätigt die Anfrage. Wirft der Handler, BLEIBT der Dialog offen und
@@ -33,6 +37,7 @@ function getInitials(name: string): string {
  */
 export function IncomingContactRequestDialog({
   open,
+  fromId,
   fromName,
   fromAvatar,
   onConfirm,
@@ -41,6 +46,12 @@ export function IncomingContactRequestDialog({
   const displayName = fromName ?? "Jemand"
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Nächste Anfrage rückt nach → der Fehler der vorherigen gilt nicht mehr.
+  useEffect(() => {
+    setError(null)
+    setConfirming(false)
+  }, [fromId])
 
   const handleConfirm = async () => {
     if (confirming) return
@@ -55,7 +66,14 @@ export function IncomingContactRequestDialog({
     }
   }
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onDismiss() }}>
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        // Während des Bestätigens NICHT schließen (Escape/Outside-Click):
+        // sonst verschwindet bei einer Ablehnung die zugesagte Retry-Fläche.
+        if (!isOpen && !confirming) onDismiss()
+      }}
+    >
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

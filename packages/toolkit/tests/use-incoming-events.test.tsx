@@ -77,6 +77,50 @@ describe("IncomingEventsProvider — Dialog-Queue ist session-gebunden (#251 Re-
     expect(frames.length).toBeGreaterThan(0)
   })
 
+  it("ein STALE dismiss von A löscht den Dialog von B nicht (Owner+ID-Bindung)", () => {
+    const a = makeConnector()
+    const b = makeConnector()
+    host = document.createElement("div")
+    document.body.appendChild(host)
+    root = createRoot(host)
+    const render = (connector: DataInterface) => (
+      <ConnectorProvider connector={connector}>
+        <IncomingEventsProvider><Probe /></IncomingEventsProvider>
+      </ConnectorProvider>
+    )
+    act(() => root!.render(render(a.connector)))
+    act(() => a.emitEvent({ type: "contact-request", fromId: "user-a1" }))
+    // A hält sein dismiss fest (async Bestätigung läuft noch) …
+    const staleDismiss = currentValue!.dismiss
+    // … Wechsel zu B, B bekommt einen eigenen Dialog.
+    act(() => root!.render(render(b.connector)))
+    act(() => b.emitEvent({ type: "space-invite", fromId: "user-b1", spaceId: "g1", spaceName: "Bs Gruppe" }))
+    expect(currentValue?.current?.event.fromId).toBe("user-b1")
+    // As alte Aktion löst jetzt auf — sie darf Bs Dialog NICHT schlucken.
+    act(() => staleDismiss())
+    expect(currentValue?.current?.event.fromId).toBe("user-b1")
+  })
+
+  it("ein verspätetes dismiss entfernt nicht den NACHFOLGENDEN Dialog desselben Owners", () => {
+    const a = makeConnector()
+    host = document.createElement("div")
+    document.body.appendChild(host)
+    root = createRoot(host)
+    act(() => root!.render(
+      <ConnectorProvider connector={a.connector}>
+        <IncomingEventsProvider><Probe /></IncomingEventsProvider>
+      </ConnectorProvider>,
+    ))
+    act(() => a.emitEvent({ type: "contact-request", fromId: "erste" }))
+    act(() => a.emitEvent({ type: "contact-request", fromId: "zweite" }))
+    const dismissForFirst = currentValue!.dismiss
+    act(() => dismissForFirst())
+    expect(currentValue?.current?.event.fromId).toBe("zweite")
+    // Nochmal dasselbe (veraltete) dismiss — darf die zweite nicht treffen.
+    act(() => dismissForFirst())
+    expect(currentValue?.current?.event.fromId).toBe("zweite")
+  })
+
   it("ein CONNECTOR-Wechsel leert die Queue des alten Connectors (#253)", () => {
     const a = makeConnector()
     const b = makeConnector()
