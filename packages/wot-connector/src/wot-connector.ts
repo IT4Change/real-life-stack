@@ -993,12 +993,18 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     const idx = this.groupsCache.findIndex((g) => g.id === id)
     if (idx !== -1) {
       const group = this.groupsCache[idx]
+      const patchedData = applyGroupDataPatch(group.data, acceptedPatch)
+      // Deleting `modules` removes the key, but the DURABLE projection in
+      // spaceToGroup falls back to DEFAULT_MODULES. Mirror that here, or the
+      // returned group and the observable would disagree with the persisted
+      // one until the next refresh (rls#250).
+      if (patchedData.modules === undefined) patchedData.modules = DEFAULT_MODULES
       this.groupsCache[idx] = {
         ...group,
         name: updates.name ?? group.name,
         // Same shallow-patch semantics as every other connector (null removes)
         // — the cache must not drift from the GroupManager contract (rls#234).
-        data: applyGroupDataPatch(group.data, acceptedPatch),
+        data: patchedData,
       }
       this.groupsObservable.set([...this.groupsCache])
       return this.groupsCache[idx]

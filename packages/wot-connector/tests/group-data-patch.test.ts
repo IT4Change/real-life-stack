@@ -114,3 +114,24 @@ describe("updateGroup — Cache-Patch (rls#245)", () => {
     expect(cached?.data?.theme).toBe("forest")
   })
 })
+
+describe("updateGroup — modules:null (rls#250)", () => {
+  it("projiziert geloeschte modules im Cache auf die Defaults", async () => {
+    const { connector, updateSpace } = fakeConnector()
+
+    const returned = await connector.updateGroup("space-1", { data: { modules: null } })
+
+    // Replikation bekommt das Loeschen unveraendert...
+    expect(updateSpace).toHaveBeenCalledWith("space-1", { modules: null })
+    // ...aber Rueckgabe und Cache muessen zeigen, was spaceToGroup nach dem
+    // Loeschen dauerhaft projiziert: space.modules ?? DEFAULT_MODULES.
+    const projected = (connector as unknown as {
+      spaceToGroup: (space: unknown) => { data?: Record<string, unknown> }
+    }).spaceToGroup({
+      id: "space-1", type: "shared", name: "Garten", members: [], createdAt: "2026-08-05T00:00:00.000Z",
+    }).data?.modules
+    expect(returned.data?.modules).toEqual(projected)
+    const cached = (await connector.getGroups()).find((candidate) => candidate.id === "space-1")
+    expect(cached?.data?.modules).toEqual(projected)
+  })
+})
