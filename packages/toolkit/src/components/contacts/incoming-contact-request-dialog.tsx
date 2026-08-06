@@ -13,9 +13,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/primitives/ava
 
 export interface IncomingContactRequestDialogProps {
   open: boolean
-  /** Identität der Anfrage — wechselt sie, wird der lokale Zustand
-      (Fehler/Submitting) zurückgesetzt: der Dialog bleibt beim Nachrücken
-      der nächsten Anfrage montiert. */
+  /**
+   * Lifecycle-Token des dargestellten VORGANGS (die Notification-ID, nicht
+   * der Absender): wechselt es, wird der lokale Zustand zurückgesetzt und
+   * jede noch laufende Fortsetzung des vorherigen Vorgangs verworfen. Nur
+   * so trennt der Dialog auch zwei Vorgänge DESSELBEN Absenders (#254).
+   */
+  requestKey?: string
+  /** Absender-ID (nur informativ; für den Lifecycle zählt requestKey). */
   fromId?: string
   fromName?: string
   fromAvatar?: string
@@ -37,6 +42,7 @@ function getInitials(name: string): string {
  */
 export function IncomingContactRequestDialog({
   open,
+  requestKey,
   fromId,
   fromName,
   fromAvatar,
@@ -54,12 +60,13 @@ export function IncomingContactRequestDialog({
    */
   const requestEpoch = useRef(0)
 
-  // Nächste Anfrage rückt nach → der Fehler der vorherigen gilt nicht mehr.
+  // Nächster Vorgang rückt nach → der Fehler des vorherigen gilt nicht mehr.
+  // Token-basiert, damit auch zwei Vorgänge desselben Absenders trennen.
   useEffect(() => {
     requestEpoch.current += 1
     setError(null)
     setConfirming(false)
-  }, [fromId])
+  }, [requestKey ?? fromId])
 
   const handleConfirm = async () => {
     if (confirming) return

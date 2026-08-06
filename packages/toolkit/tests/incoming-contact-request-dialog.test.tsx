@@ -60,6 +60,23 @@ describe("IncomingContactRequestDialog — Fehler- und Schließ-Verhalten", () =
     expect(button("Bestätigen")).toBeTruthy()
   })
 
+  it("Owner-Wechsel bei GLEICHEM Absender: alte Fortsetzung fasst den neuen Dialog nicht an (#254)", async () => {
+    let rejectA: (reason: Error) => void = () => {}
+    const confirmA = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectA = reject }))
+    mount(<IncomingContactRequestDialog open requestKey="evt-1" fromId="same" fromName="Anna" onConfirm={confirmA} onDismiss={() => {}} />)
+    act(() => { button("Bestätigen")!.click() })
+    await flush()
+    // Neuer Vorgang, IDENTISCHER Absender — nur das Lifecycle-Token wechselt.
+    act(() => root!.render(
+      <IncomingContactRequestDialog open requestKey="evt-2" fromId="same" fromName="Anna" onConfirm={async () => {}} onDismiss={() => {}} />,
+    ))
+    await flush()
+    act(() => rejectA(new Error("As alter Fehler")))
+    await flush()
+    expect(document.body.textContent).not.toContain("As alter Fehler")
+    expect(button("Bestätigen")).toBeTruthy()
+  })
+
   it("während des Bestätigens schließt Escape/Outside-Click den Dialog NICHT", async () => {
     let release: () => void = () => {}
     const pending = vi.fn(() => new Promise<void>((resolve) => { release = resolve }))

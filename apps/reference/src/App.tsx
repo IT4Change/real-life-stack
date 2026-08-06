@@ -246,7 +246,7 @@ function RelayStatusBadgeWrapper() {
 function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: () => void }) {
   const connector = useConnector()
   const { data: currentUser } = useCurrentUser()
-  const { incomingVerification, spaceInvite, mutualVerification, contactRequest, contactConfirmed, dismiss } = useIncomingEvents()
+  const { current: currentNotification, incomingVerification, spaceInvite, mutualVerification, contactRequest, contactConfirmed, dismiss } = useIncomingEvents()
   const { activateContact: activateIncomingContact } = useContacts()
 
   const handleConfirmContactRequest = async () => {
@@ -315,6 +315,7 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
       />
       <IncomingContactRequestDialog
         open={!!contactRequest}
+        requestKey={currentNotification?.id}
         fromId={contactRequest?.fromId}
         fromName={contactRequest?.fromName}
         fromAvatar={contactRequest?.fromAvatar}

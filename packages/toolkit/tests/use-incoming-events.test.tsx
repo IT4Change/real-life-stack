@@ -77,6 +77,35 @@ describe("IncomingEventsProvider — Dialog-Queue ist session-gebunden (#251 Re-
     expect(frames.length).toBeGreaterThan(0)
   })
 
+  it("zwei gleichartige Events im selben Millisekunden-Tick gehen nicht verloren (#255)", () => {
+    const a = makeConnector()
+    host = document.createElement("div")
+    document.body.appendChild(host)
+    root = createRoot(host)
+    act(() => root!.render(
+      <ConnectorProvider connector={a.connector}>
+        <IncomingEventsProvider><Probe /></IncomingEventsProvider>
+      </ConnectorProvider>,
+    ))
+    // Gleicher Typ, gleicher Absender, selber Tick — die ID darf nicht
+    // kollidieren, sonst verwirft die Dedupe-Regel das zweite Event.
+    const now = Date.now()
+    const realNow = Date.now
+    Date.now = () => now
+    try {
+      act(() => {
+        a.emitEvent({ type: "contact-request", fromId: "user-x" })
+        a.emitEvent({ type: "contact-request", fromId: "user-x" })
+      })
+    } finally {
+      Date.now = realNow
+    }
+    // Erste sichtbar, zweite rückt nach dem Wegklicken nach.
+    expect(currentValue?.current).not.toBeNull()
+    act(() => currentValue!.dismiss())
+    expect(currentValue?.current).not.toBeNull()
+  })
+
   it("ein STALE dismiss von A löscht den Dialog von B nicht (Owner+ID-Bindung)", () => {
     const a = makeConnector()
     const b = makeConnector()

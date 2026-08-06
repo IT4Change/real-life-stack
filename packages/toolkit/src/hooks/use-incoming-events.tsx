@@ -73,6 +73,17 @@ const sameOwner = (a: QueueOwner, b: QueueOwner) =>
 
 const EMPTY_ENTRIES: QueuedNotification[] = []
 
+/**
+ * Kollisionsfreie Notification-ID (#255): Date.now() allein kollidiert bei
+ * gleichartigen Events im selben Tick, und die Dedupe-Regel würde das
+ * zweite Event schlucken. Der monotone Zähler garantiert Eindeutigkeit
+ * innerhalb der Laufzeit; die ID ist zugleich das Lifecycle-Token, das bis
+ * in den Dialog durchgereicht wird (#254).
+ */
+let notificationSequence = 0
+const nextNotificationId = (eventType: string): string =>
+  `${eventType}-${++notificationSequence}`
+
 function queueReducer(state: QueueState, action: QueueAction): QueueState {
   switch (action.type) {
     case "rebind":
@@ -136,7 +147,7 @@ export function IncomingEventsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!hasEventListener(connector)) return
     return connector.onIncomingEvent((event) => {
-      const id = `${event.type}-${event.fromId}-${Date.now()}`
+      const id = nextNotificationId(event.type)
       const currentIdentity = isAuthenticatable(connector)
         ? identityOf(connector.getAuthState().current)
         : null
