@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.2.4](https://github.com/real-life-org/real-life-stack/compare/app-v0.2.3...app-v0.2.4) (2026-08-06)
+## [0.1.1](https://github.com/real-life-org/real-life-stack/compare/toolkit-v0.1.0...toolkit-v0.1.1) (2026-08-06)
 
 
 ### Features
@@ -22,15 +22,3 @@
 * The following workspace dependencies were updated
   * dependencies
     * @real-life-stack/data-interface bumped to 0.1.1
-    * @real-life-stack/local-connector bumped to 0.1.1
-    * @real-life-stack/mock-connector bumped to 0.1.1
-    * @real-life-stack/supabase-connector bumped to 0.1.1
-    * @real-life-stack/toolkit bumped to 0.1.1
-    * @real-life-stack/wot-connector bumped to 0.1.1
-
-## [0.2.3](https://github.com/real-life-org/real-life-stack/compare/app-v0.2.2...app-v0.2.3) (2026-08-03)
-
-
-### Features
-
-* App-Releases über release-please (neu aufgesetzt) + volle Doku ([#199](https://github.com/real-life-org/real-life-stack/issues/199)) ([6e6e611](https://github.com/real-life-org/real-life-stack/commit/6e6e6111cd51e395c4b98e37b7c32db270e6b42d))
