@@ -9,6 +9,7 @@ export interface ContactListProps {
   onRemove?: (id: string) => void
   onEditName?: (id: string, name: string) => void
   onActivate?: (id: string) => void
+  activeLabel?: string
   emptyMessage?: string
   className?: string
 }
@@ -18,6 +19,7 @@ export function ContactList({
   onRemove,
   onEditName,
   onActivate,
+  activeLabel,
   emptyMessage = "Noch keine Kontakte",
   className,
 }: ContactListProps) {
@@ -39,6 +41,7 @@ export function ContactList({
           onRemove={onRemove}
           onEditName={onEditName}
           onActivate={onActivate}
+          activeLabel={activeLabel}
         />
       ))}
     </div>

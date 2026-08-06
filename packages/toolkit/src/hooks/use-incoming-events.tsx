@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, createContext, useContext, type ReactNode } from "react"
 import type { IncomingEvent, IncomingVerificationEvent, IncomingSpaceInviteEvent, MutualVerificationEvent,
   IncomingContactRequestEvent,
+  ContactConfirmedEvent,
 } from "@real-life-stack/data-interface"
 import { hasEventListener } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
@@ -22,6 +23,7 @@ interface IncomingEventsContextType {
   spaceInvite: IncomingSpaceInviteEvent | null
   mutualVerification: MutualVerificationEvent | null
   contactRequest: IncomingContactRequestEvent | null
+  contactConfirmed: ContactConfirmedEvent | null
 }
 
 const IncomingEventsContext = createContext<IncomingEventsContextType | null>(null)
@@ -81,6 +83,10 @@ export function IncomingEventsProvider({ children }: { children: ReactNode }) {
     () => current?.event.type === "contact-request" ? current.event : null,
     [current],
   )
+  const contactConfirmed = useMemo(
+    () => current?.event.type === "contact-confirmed" ? current.event : null,
+    [current],
+  )
 
   const value = useMemo(() => ({
     current,
@@ -89,7 +95,8 @@ export function IncomingEventsProvider({ children }: { children: ReactNode }) {
     spaceInvite,
     mutualVerification,
     contactRequest,
-  }), [current, dismiss, incomingVerification, spaceInvite, mutualVerification, contactRequest])
+    contactConfirmed,
+  }), [current, dismiss, incomingVerification, spaceInvite, mutualVerification, contactRequest, contactConfirmed])
 
   return (
     <IncomingEventsContext.Provider value={value}>

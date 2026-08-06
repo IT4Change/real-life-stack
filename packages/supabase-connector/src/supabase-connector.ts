@@ -174,6 +174,16 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
         if (inserted?.addressee === this.sessionUserId && inserted.status === "pending" && inserted.requester) {
           void this.emitContactRequestEvent(inserted.requester)
         }
+        // … und die Bestätigung MEINER Anfrage ebenso (der Bestätigende hat
+        // selbst geklickt und braucht keinen Dialog).
+        if (payload.eventType === "UPDATE") {
+          const before = payload.old as { status?: string } | null
+          const after = payload.new as { requester?: string; addressee?: string; status?: string } | null
+          if (before?.status === "pending" && after?.status === "active"
+            && after.requester === this.sessionUserId && after.addressee) {
+            void this.emitContactConfirmedEvent(after.addressee)
+          }
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, (payload) => {
         // Member-list display names refresh on ANY profile change; the own
@@ -933,6 +943,20 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       })
     } catch (error) {
       console.error("[SupabaseConnector] contact-request event failed", error)
+    }
+  }
+
+  private async emitContactConfirmedEvent(fromId: string): Promise<void> {
+    try {
+      const profile = await this.fetchProfileRow(fromId)
+      this.emitIncomingEvent({
+        type: "contact-confirmed",
+        fromId,
+        ...(profile?.display_name ? { fromName: profile.display_name as string } : {}),
+        ...(profile?.avatar_url ? { fromAvatar: profile.avatar_url as string } : {}),
+      })
+    } catch (error) {
+      console.error("[SupabaseConnector] contact-confirmed event failed", error)
     }
   }
 

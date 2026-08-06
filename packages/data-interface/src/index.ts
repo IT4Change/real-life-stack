@@ -628,7 +628,16 @@ export interface IncomingContactRequestEvent {
   fromAvatar?: string
 }
 
-export type IncomingEvent = IncomingVerificationEvent | IncomingSpaceInviteEvent | MutualVerificationEvent | IncomingClaimEvent | IncomingContactRequestEvent
+/** Die Gegenseite hat meine Kontaktanfrage bestätigt — das Anfrage-Pendant
+    zum mutual-verification-Abschluss der WoT-Begegnung. */
+export interface ContactConfirmedEvent {
+  type: "contact-confirmed"
+  fromId: string
+  fromName?: string
+  fromAvatar?: string
+}
+
+export type IncomingEvent = IncomingVerificationEvent | IncomingSpaceInviteEvent | MutualVerificationEvent | IncomingClaimEvent | IncomingContactRequestEvent | ContactConfirmedEvent
 
 export interface EventListenerCapable {
   onIncomingEvent(callback: (event: IncomingEvent) => void): () => void

@@ -27,6 +27,9 @@ export interface ContactCardProps {
   onEditName?: (id: string, name: string) => void
   /** Bestätigt eine EINGEHENDE Anfrage (nur gezeigt bei direction "incoming"). */
   onActivate?: (id: string) => void
+  /** Beschriftung für status "active" — capability-getrieben: "Verifiziert"
+      nur bei Begegnungs-Verifikation (WoT), sonst "Aktiv". */
+  activeLabel?: string
   className?: string
 }
 
@@ -35,6 +38,7 @@ export function ContactCard({
   onRemove,
   onEditName,
   onActivate,
+  activeLabel = "Aktiv",
   className,
 }: ContactCardProps) {
   const [copied, setCopied] = useState(false)
@@ -74,7 +78,7 @@ export function ContactCard({
                 : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
             )}
           >
-            {contact.status === "active" ? "Verifiziert" : "Ausstehend"}
+            {contact.status === "active" ? activeLabel : "Ausstehend"}
           </span>
         </div>
         <button

@@ -246,7 +246,7 @@ function RelayStatusBadgeWrapper() {
 function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: () => void }) {
   const connector = useConnector()
   const { data: currentUser } = useCurrentUser()
-  const { incomingVerification, spaceInvite, mutualVerification, contactRequest, dismiss } = useIncomingEvents()
+  const { incomingVerification, spaceInvite, mutualVerification, contactRequest, contactConfirmed, dismiss } = useIncomingEvents()
   const { activateContact: activateIncomingContact } = useContacts()
 
   const handleConfirmContactRequest = async () => {
@@ -300,6 +300,17 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
         open={!!mutualVerification}
         peerName={mutualVerification?.fromName}
         peerAvatar={mutualVerification?.fromAvatar}
+        myName={currentUser?.displayName}
+        myAvatar={currentUser?.avatarUrl}
+        onDismiss={dismiss}
+      />
+      {/* Gleiche Komponente, andere Variante: Anfrage-Bestätigung statt
+          Begegnungs-Verifikation. */}
+      <MutualVerificationDialog
+        open={!!contactConfirmed}
+        title="Ihr seid jetzt Kontakte!"
+        peerName={contactConfirmed?.fromName}
+        peerAvatar={contactConfirmed?.fromAvatar}
         myName={currentUser?.displayName}
         myAvatar={currentUser?.avatarUrl}
         onDismiss={dismiss}
@@ -770,6 +781,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         onVerify={hasEncounterVerification(connector) ? () => openDialog("verify") : undefined}
         onAdd={supportsContacts && !hasEncounterVerification(connector) ? () => setAddContactOpen(true) : undefined}
         onActivate={activateContact}
+        activeLabel={hasEncounterVerification(connector) ? "Verifiziert" : "Aktiv"}
       />
 
       {/* Kontakt per ID/Profil-Link hinzufügen (Anfrage-Connectoren). */}

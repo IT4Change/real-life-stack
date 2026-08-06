@@ -30,6 +30,8 @@ export interface ContactsDialogProps {
   onAdd?: () => void
   /** Bestätigt eine eingehende Anfrage (direction "incoming"). */
   onActivate?: (id: string) => void
+  /** Status-Wording für aktive Kontakte — "Verifiziert" (WoT) oder "Aktiv". */
+  activeLabel?: string
 }
 
 export function ContactsDialog({
@@ -43,6 +45,7 @@ export function ContactsDialog({
   onVerify,
   onAdd,
   onActivate,
+  activeLabel = "Aktiv",
 }: ContactsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -53,7 +56,7 @@ export function ContactsDialog({
             Kontakte
           </DialogTitle>
           <DialogDescription>
-            {activeContacts.length} aktiv · {pendingContacts.length} ausstehend
+            {activeContacts.length} {activeLabel.toLowerCase()} · {pendingContacts.length} ausstehend
           </DialogDescription>
         </DialogHeader>
         <div className="flex-1 overflow-y-auto space-y-4 -mx-6 px-6">
@@ -91,18 +94,20 @@ export function ContactsDialog({
                     onRemove={onRemove}
                     onEditName={onEditName}
                     onActivate={onActivate}
+                    activeLabel={activeLabel}
                   />
                 </div>
               )}
               <div className="space-y-2">
                 {activeContacts.length > 0 && pendingContacts.length > 0 && (
-                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Aktiv</h3>
+                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{activeLabel}</h3>
                 )}
                 <ContactList
                   contacts={activeContacts}
                   onRemove={onRemove}
                   onEditName={onEditName}
-                  emptyMessage="Noch keine verifizierten Kontakte"
+                  activeLabel={activeLabel}
+                  emptyMessage="Noch keine Kontakte"
                 />
               </div>
             </>

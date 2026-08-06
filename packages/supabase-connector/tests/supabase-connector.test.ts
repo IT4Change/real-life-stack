@@ -851,6 +851,32 @@ describe("SupabaseConnector — ContactManager (Anfrage → Bestätigung)", () =
     unsubscribe()
   })
 
+  it("die Bestätigung MEINER Anfrage feuert contact-confirmed — beim Bestätigenden selbst nicht", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-berta", "Berta")
+    const events: Array<Record<string, unknown>> = []
+    ;(connector as unknown as { onIncomingEvent(cb: (e: Record<string, unknown>) => void): () => void }).onIncomingEvent((event) => events.push(event))
+    // Meine Anfrage wird von Berta bestätigt (UPDATE pending→active).
+    client.emit("contacts", {
+      eventType: "UPDATE",
+      new: { requester: userId, addressee: "user-berta", status: "active" },
+      old: { requester: userId, addressee: "user-berta", status: "pending" },
+    })
+    await flush()
+    await flush()
+    expect(events).toEqual([
+      { type: "contact-confirmed", fromId: "user-berta", fromName: "Berta" },
+    ])
+    // Umgekehrt (ich bin der Bestätigende) → kein Event, ich habe selbst geklickt.
+    client.emit("contacts", {
+      eventType: "UPDATE",
+      new: { requester: "user-berta", addressee: userId, status: "active" },
+      old: { requester: "user-berta", addressee: userId, status: "pending" },
+    })
+    await flush()
+    expect(events).toHaveLength(1)
+  })
+
   it("eine Gruppen-Einladung feuert ein space-invite-Event; der eigene createGroup-Join nicht", async () => {
     const { client, connector, userId } = await makeConnector()
     seedProfile(client, "user-inviter", "Ina")
