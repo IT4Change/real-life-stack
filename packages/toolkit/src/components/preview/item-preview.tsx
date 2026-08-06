@@ -54,6 +54,7 @@ import { MessageSquare } from "lucide-react"
  * column without bleeding off-screen.
  */
 export type ItemPreviewDensity = "comfortable" | "compact"
+export type ItemPreviewSurface = "card" | "panel"
 
 /** Neutral toolkit default; apps may supply an origin-group colour instead. */
 export const DEFAULT_ACTIVE_ITEM_GLOW_COLOR = "#64748b"
@@ -88,11 +89,17 @@ export interface ItemPreviewProps {
    */
   density?: ItemPreviewDensity
   /**
-   * Show the body in full instead of clamping it to four lines. Cards clamp
-   * so a long text cannot push its neighbours off screen; the detail panel is
-   * the surface that shows everything, so it sets this.
+   * Which SURFACE renders this preview (the density axis' sibling: density
+   * tunes spacing, surface decides what belongs at all).
+   *
+   * - `card` (default): one of many. Clamps the body to four lines so a long
+   *   text cannot push its neighbours off screen, and hints at comments the
+   *   reader cannot see.
+   * - `panel`: the detail surface, alone on screen. Shows the body in full,
+   *   and drops the comment hint — the discussion is listed right below it,
+   *   so a count would only repeat what is already visible.
    */
-  fullBody?: boolean
+  surface?: ItemPreviewSurface
   /** Highlights the selected item using the shared panel-glow treatment. */
   active?: boolean
   /** Optional `#rrggbb` override for the active-item glow. */
@@ -122,7 +129,7 @@ export function ItemPreview({
   metaAdornment,
   footerAdornment,
   density = "comfortable",
-  fullBody = false,
+  surface = "card",
   active = false,
   activeGlowColor = DEFAULT_ACTIVE_ITEM_GLOW_COLOR,
   className,
@@ -137,9 +144,11 @@ export function ItemPreview({
         (typeof data.description === "string" && data.description) ||
         ""
   const tags = useItemTags(item)
+  const isPanel = surface === "panel"
   // A card should reveal that a discussion exists — otherwise comments are
-  // invisible until the item is opened.
+  // invisible until the item is opened. The panel lists them anyway.
   const commentCount = useCommentCount(item.id)
+  const showCommentHint = !isPanel && commentCount > 0
 
   const authorName = author?.displayName ?? item.createdBy
   const authorAvatar = author?.avatarUrl
@@ -230,7 +239,7 @@ export function ItemPreview({
             // The composer writes Markdown, so the body is rendered as
             // Markdown everywhere it is shown. Clamping happens on the
             // wrapper: with block content there is no single <p> to clamp.
-            <MarkdownText className={cn("mt-1 text-sm text-foreground", !fullBody && "line-clamp-4")}>
+            <MarkdownText className={cn("mt-1 text-sm text-foreground", !isPanel && "line-clamp-4")}>
               {description}
             </MarkdownText>
           )}
@@ -252,24 +261,28 @@ export function ItemPreview({
         </div>
       )}
 
-      {/* Comment hint — only when there IS a discussion; an explicit "0" would
-          be noise on every card. Not a slot: "this item has comments" is a
-          property of the item, not of the surface or of its type. */}
-      {commentCount > 0 && (
+
+      {/* Footer row: whatever the surface contributes on the left (reactions,
+          type footer), the comment hint on the right — the conventional
+          split, and it saves the card a row of its own. The row also renders
+          with an EMPTY slot, so a lens without a footer still shows the hint.
+          Not a slot itself: "this item has comments" is a property of the
+          item, not of the surface — via a slot every surface would have to
+          add it separately and they would drift apart again. */}
+      {(footerAdornment || showCommentHint) && (
         <div
           className={cn(
-            "flex items-center gap-1.5 text-xs text-muted-foreground",
-            isCompact ? "px-3 pb-2" : "px-4 pb-3",
+            "flex items-center justify-between gap-3",
+            isCompact ? "px-3 py-1.5" : "border-t px-4 py-2",
           )}
         >
-          <MessageSquare className="h-3.5 w-3.5" aria-hidden />
-          <span>{commentCount === 1 ? "1 Kommentar" : `${commentCount} Kommentare`}</span>
-        </div>
-      )}
-
-      {footerAdornment && (
-        <div className={cn("flex items-center gap-3", isCompact ? "px-3 py-1.5" : "border-t px-4 py-2")}>
-          {footerAdornment}
+          <div className="flex min-w-0 items-center gap-3">{footerAdornment}</div>
+          {showCommentHint && (
+            <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+              {commentCount === 1 ? "1 Kommentar" : `${commentCount} Kommentare`}
+            </span>
+          )}
         </div>
       )}
     </article>

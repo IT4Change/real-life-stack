@@ -4,9 +4,12 @@ import { useCallback, useRef, useState } from "react"
 import { Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/primitives/button"
+import { Dialog, DialogContent, DialogTitle } from "@/components/primitives/dialog"
 import { useReactions } from "@/hooks/use-reactions"
+import { useUserNameResolver } from "@/hooks/use-user-names"
 import type { AggregatedReaction } from "@/hooks/use-reactions"
 import { REACTION_NAMES } from "./reaction-constants"
+import { ReactionDetails } from "./reaction-details"
 import { ReactionPicker } from "./reaction-picker"
 
 export interface ReactionBarProps {
@@ -14,7 +17,11 @@ export interface ReactionBarProps {
   itemId: string
   /** Maximum number of distinct emojis to show before collapsing. Default: 6. */
   maxVisible?: number
-  /** Callback when user clicks count (desktop) or long-presses (mobile) a pill to view details. */
+  /**
+   * Override for "who reacted". Without it the bar opens its OWN layer above
+   * everything else (dialog portal) — so every surface gets the behaviour
+   * without wiring it six times, and the item underneath stays in place.
+   */
   onOpenDetails?: (emoji?: string) => void
   /** Additional CSS classes. */
   className?: string
@@ -29,9 +36,11 @@ interface PillProps {
   reaction: AggregatedReaction
   onReact: (emoji: string) => void
   onOpenDetails?: (emoji: string) => void
+  /** Names behind this emoji, for the hover tooltip. */
+  reactorNames?: string[]
 }
 
-function ReactionPill({ reaction, onReact, onOpenDetails }: PillProps) {
+function ReactionPill({ reaction, onReact, onOpenDetails, reactorNames }: PillProps) {
   const { emoji, count, isMyReaction } = reaction
   const pressTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
@@ -72,6 +81,8 @@ function ReactionPill({ reaction, onReact, onOpenDetails }: PillProps) {
   }, [])
 
   const name = REACTION_NAMES[emoji] ?? emoji
+  // Answers "who was that?" without a click — the frequent question.
+  const tooltip = reactorNames?.length ? `${reactorNames.join(", ")} — ${name}` : name
 
   return (
     <span
@@ -82,7 +93,8 @@ function ReactionPill({ reaction, onReact, onOpenDetails }: PillProps) {
           : "border-border bg-muted/50 text-muted-foreground hover:bg-muted",
         pressing && "scale-105"
       )}
-      aria-label={`${name}, ${count} reaction${count !== 1 ? "s" : ""}${isMyReaction ? ", your reaction" : ""}`}
+      title={tooltip}
+      aria-label={`${name}, ${count} reaction${count !== 1 ? "s" : ""}${isMyReaction ? ", your reaction" : ""}${reactorNames?.length ? `: ${reactorNames.join(", ")}` : ""}`}
       aria-pressed={isMyReaction}
       role="button"
       tabIndex={0}
@@ -98,15 +110,20 @@ function ReactionPill({ reaction, onReact, onOpenDetails }: PillProps) {
       }}
     >
       {/* Emoji area — tap/click to toggle */}
-      <span className="pl-1.5 py-0.5 text-base leading-none">{emoji}</span>
-      {/* Count area — click to open details (desktop), part of long-press zone (mobile) */}
+      <span data-reaction-emoji className="pl-1.5 py-0.5 text-base leading-none">{emoji}</span>
+      {/* Count area — opens the "who reacted" list. The toggle hangs on the
+          PILL's pointerup, and pointer events run before click: stopping
+          propagation on the click would come too late and fire both. So the
+          count stops the pointer sequence itself. */}
       <span
+        data-reaction-count
         className="pr-1.5 pl-1 py-0.5 text-xs tabular-nums hover:underline"
-        onClick={(e) => {
-          // Desktop: clicking count opens details
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => {
           e.stopPropagation()
           onOpenDetails?.(emoji)
         }}
+        onClick={(e) => e.stopPropagation()}
       >
         {count}
       </span>
@@ -123,6 +140,25 @@ export function ReactionBar({ itemId, maxVisible = 6, onOpenDetails, className }
   const { reactions, react, canReact } = useReactions(itemId)
   const [pickerOpen, setPickerOpen] = useState(false)
   const addButtonRef = useRef<HTMLButtonElement>(null)
+  // Own details layer, unless the consumer supplies one.
+  const [detailsEmoji, setDetailsEmoji] = useState<string | null>(null)
+  const detailsOpen = detailsEmoji !== null
+
+  // No extra request: the ids ride along with the counts, the resolver only
+  // names them — and degrades gracefully on connectors without groups.
+  const resolveName = useUserNameResolver()
+  const namesFor = useCallback(
+    (reaction: AggregatedReaction) => (reaction.userIds ?? []).map(resolveName),
+    [resolveName],
+  )
+
+  const openDetails = useCallback(
+    (emoji: string) => {
+      if (onOpenDetails) onOpenDetails(emoji)
+      else setDetailsEmoji(emoji)
+    },
+    [onOpenDetails],
+  )
 
   const visibleReactions = reactions.slice(0, maxVisible)
   const overflowCount = reactions.length - maxVisible
@@ -147,7 +183,8 @@ export function ReactionBar({ itemId, maxVisible = 6, onOpenDetails, className }
           key={r.emoji}
           reaction={r}
           onReact={handleReact}
-          onOpenDetails={onOpenDetails}
+          onOpenDetails={openDetails}
+          reactorNames={namesFor(r)}
         />
       ))}
 
@@ -179,6 +216,27 @@ export function ReactionBar({ itemId, maxVisible = 6, onOpenDetails, className }
           )}
         </>
       )}
+
+      {/* "Who reacted" as a LAYER above whatever is open (dialog portal), not
+          as a replacement for it: after looking, the reader wants to be back
+          on the item, not somewhere else. */}
+      <Dialog open={detailsOpen} onOpenChange={(open) => !open && setDetailsEmoji(null)}>
+        <DialogContent className="max-w-sm p-0">
+          <DialogTitle className="sr-only">Wer hat reagiert</DialogTitle>
+          {detailsEmoji !== null && (
+            <ReactionDetails
+              itemId={itemId}
+              initialEmoji={detailsEmoji}
+              reactions={reactions}
+              onClose={() => setDetailsEmoji(null)}
+              // The Dialog already renders the X — a second close would be
+              // two affordances for one action.
+              showHeaderClose={false}
+              className="max-h-[70vh]"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

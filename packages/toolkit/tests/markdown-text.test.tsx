@@ -65,3 +65,34 @@ describe("MarkdownText", () => {
     expect(html).toContain('rel="noopener noreferrer"')
   })
 })
+
+describe("MarkdownText — externe Bilder (rls#257)", () => {
+  it("laedt fremde Bild-URLs NICHT automatisch", async () => {
+    const { html } = await render("![Katze](https://tracker.example.com/pixel.png)")
+    // Ein <img src="https://…"> waere ein Request beim blossen Anzeigen des
+    // Items — ein Tracking-Pixel, das Lesevorgaenge an Dritte meldet.
+    expect(html).not.toContain('src="https://tracker.example.com/pixel.png"')
+    // Der Nutzer soll trotzdem sehen, dass da ein Bild ist, und es laden koennen.
+    expect(html).toContain("Katze")
+  })
+
+  it("zeigt eingebettete data:-Bilder direkt — die verlassen das Geraet nicht", async () => {
+    const tiny = "data:image/gif;base64,R0lGODlhAQABAAAAACw="
+    const { html } = await render(`![Punkt](${tiny})`)
+    expect(html).toContain(`src="${tiny}"`)
+  })
+
+  it("zeigt blob:-Bilder direkt — lokal erzeugte Objekt-URLs", async () => {
+    const { html } = await render("![Foto](blob:http://localhost/abc-123)")
+    expect(html).toContain('src="blob:http://localhost/abc-123"')
+  })
+
+  it("erlaubt data:/blob: NUR als Bildquelle, nicht als Link-Ziel", async () => {
+    // Als href waere data: ein Angriffsweg (Navigation zu fremdem Markup);
+    // die Ausnahme fuer Bilder darf darauf nicht abfaerben.
+    const { html } = await render("[klick](data:text/html,<script>alert(1)</script>)")
+    expect(html).not.toContain('href="data:text/html')
+    const blobLink = await render("[klick](blob:http://localhost/x)")
+    expect(blobLink.html).not.toContain('href="blob:')
+  })
+})

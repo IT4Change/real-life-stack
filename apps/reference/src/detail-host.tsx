@@ -212,8 +212,9 @@ export function ItemDetailRead({
     <ItemPreview
       item={item}
       author={author}
-      // The panel is the surface that shows everything — no four-line clamp.
-      fullBody
+      // The panel shows everything: full body, and no comment hint (the
+      // discussion is listed right below).
+      surface="panel"
       headerAdornment={
         <>
           <ItemTypeBadge type={item.type} />
