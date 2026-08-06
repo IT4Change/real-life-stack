@@ -8,6 +8,7 @@ import { CalendarViewWrapper } from "./calendar-view"
 import { KanbanView } from "./kanban-view"
 import { CollectionView } from "./collection-view"
 import { ResonanceView } from "./resonance-view"
+import { GraphViewWrapper } from "./graph-view"
 
 export interface ModuleOutletProps {
   /**
@@ -87,6 +88,12 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
       ) : activeModule === "resonance" ? (
         <div className={containerClass}>
           <ResonanceView groupId={activeWorkspace?.id ?? ""} />
+        </div>
+      ) : activeModule === "graph" ? (
+        // Full-bleed like the map: the canvas needs the whole viewport, the
+        // container padding would just shrink it.
+        <div className="h-[calc(100dvh-8rem)] min-h-0">
+          <GraphViewWrapper groupId={activeWorkspace?.id ?? "__overview__"} />
         </div>
       ) : null}
     </>

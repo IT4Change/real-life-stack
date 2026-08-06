@@ -15,4 +15,7 @@ describeDataInterfaceContract("MockConnector", {
     if (!user) throw new Error("MockConnector should start authenticated")
     return { connector, currentUserId: user.id }
   },
+  async updatableGroup() {
+    return "g1"
+  },
 })

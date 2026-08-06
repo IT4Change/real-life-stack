@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef } from "react"
-import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon, Waves } from "lucide-react"
+import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon, Waves, List, Share2, ChevronUp, ChevronDown, GripVertical } from "lucide-react"
 import type { Group, ContactInfo } from "@real-life-stack/data-interface"
 import { useMembers } from "../../hooks/use-groups"
 import { resolveAdminView } from "../../lib/group-admin-view"
+import { cn } from "../../lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -32,9 +33,119 @@ const AVAILABLE_MODULES = [
   { id: "map", label: "Karte", icon: MapIcon },
   // Opt-in only (not in DEFAULT_MODULES) — spec: docs/spec/modules/resonance.md.
   { id: "resonance", label: "Resonanz", icon: Waves },
+  { id: "collection", label: "Liste", icon: List },
+  { id: "graph", label: "Graph", icon: Share2 },
 ] as const
 
+/**
+ * Move a module one position within the active list. `data.modules` is an
+ * ORDERED array — the nav renders it verbatim — so this IS the surface for
+ * "which module comes first". Out-of-range moves return the list unchanged.
+ */
+export function moveModule(modules: readonly string[], id: string, direction: -1 | 1): string[] {
+  const from = modules.indexOf(id)
+  const to = from + direction
+  if (from === -1 || to < 0 || to >= modules.length) return [...modules]
+  const next = [...modules]
+  next.splice(from, 1)
+  next.splice(to, 0, id)
+  return next
+}
+
+/**
+ * Move `id` to the drop position `toIndex`, counted in the list AS SHOWN
+ * (i.e. including the dragged element). That is what a drop indicator between
+ * two rows means, so the caller can pass the indicator index verbatim; once
+ * the element is removed, everything behind it shifts by one, which is
+ * corrected here. Out-of-range positions clamp, unknown ids are ignored.
+ *
+ * This is the whole ordering contract for drag & drop — one gesture instead
+ * of N clicks on a button that moves away under the finger after each click.
+ */
+export function reorderModule(modules: readonly string[], id: string, toIndex: number): string[] {
+  const from = modules.indexOf(id)
+  if (from === -1) return [...modules]
+  const clamped = Math.max(0, Math.min(toIndex, modules.length))
+  const target = clamped > from ? clamped - 1 : clamped
+  if (target === from) return [...modules]
+  const next = [...modules]
+  next.splice(from, 1)
+  next.splice(target, 0, id)
+  return next
+}
+
+/**
+ * The subset of `data.modules` this dialog can actually render — unknown or
+ * legacy ids have no entry in AVAILABLE_MODULES and produce no row. Guards
+ * and positions MUST count this list, not the raw one: otherwise a legacy id
+ * silently satisfies the "keep at least one module" rule and the admin can
+ * remove the last VISIBLE module, leaving a space with no usable tab
+ * (rls#249). Order is preserved.
+ */
+export function knownModules(modules: readonly string[]): string[] {
+  return modules.filter((id) => AVAILABLE_MODULES.some((mod) => mod.id === id))
+}
+
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
+
+/**
+ * Serialize saves so a slow older request can never overwrite a newer state:
+ * at most one save runs at a time; states arriving meanwhile collapse to the
+ * LATEST one, sent exactly once after the running save settles. A failure
+ * retries with the newer queued state if there is one; only a failure with
+ * nothing newer surfaces via `onError`, which receives the value that was
+ * lost AND the last CONFIRMED value — the correct rollback anchor. (The
+ * caller's props may still show an older baseline while a store round-trip
+ * is in flight; only the saver knows what was actually acknowledged.)
+ */
+export function createLatestWinsSaver<T>(
+  save: (value: T) => Promise<void>,
+  onError: (error: unknown, failedValue: T, lastSavedValue: T | undefined) => void,
+  /** A save was confirmed — the moment to clear a stale failure notice. */
+  onSaved?: (value: T) => void,
+): (value: T) => void {
+  let inFlight = false
+  let queued: { value: T } | null = null
+  let lastSaved: T | undefined
+  const run = (value: T) => {
+    inFlight = true
+    // A synchronous throw from save() must flow into the SAME failure path as
+    // a rejection — otherwise inFlight never resets and the saver locks up.
+    let settling: Promise<void>
+    try {
+      settling = save(value)
+    } catch (error) {
+      settling = Promise.reject(error)
+    }
+    settling.then(
+      () => {
+        lastSaved = value
+        inFlight = false
+        onSaved?.(value)
+        if (queued) {
+          const next = queued.value
+          queued = null
+          run(next)
+        }
+      },
+      (error) => {
+        inFlight = false
+        if (queued) {
+          // Something newer is waiting — the failed state is obsolete anyway.
+          const next = queued.value
+          queued = null
+          run(next)
+        } else {
+          onError(error, value, lastSaved)
+        }
+      },
+    )
+  }
+  return (value: T) => {
+    if (inFlight) queued = { value }
+    else run(value)
+  }
+}
 
 /** Human-readable fallback for raw IDs (e.g. DIDs) */
 function shortName(id: string): string {
@@ -101,6 +212,101 @@ export function GroupDialog({
     isEdit ? (mode.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES : DEFAULT_MODULES
   )
 
+  // Module-save errors get their OWN state: sharing the dialog-wide `error`
+  // state made ownership ambiguous — a successful module save could only
+  // guess (flag, then message equality) whether the shown error was its own,
+  // and two operations failing with the same text (`Network request failed`)
+  // still collided. Separate state = ownership by construction (rls#232).
+  const [moduleError, setModuleError] = useState<string | null>(null)
+
+  // Persisting the module list: rapid ↑/↓ clicks fire faster than a save
+  // round-trips, and two in-flight saves can settle out of order — the older
+  // one would then win in the store. The saver serializes to one in-flight
+  // save with latest-wins; it lives in a ref (stable for the dialog's
+  // lifetime) and reads mode/onUpdateGroup through refs. The payload is a
+  // minimal PATCH ({modules} only) — updateGroup merges per key (rls#234),
+  // so this writer cannot erase image/accent saved by another writer.
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const onUpdateGroupRef = useRef(onUpdateGroup)
+  onUpdateGroupRef.current = onUpdateGroup
+  const saveModulesRef = useRef<((modules: string[]) => void) | null>(null)
+  if (!saveModulesRef.current) {
+    saveModulesRef.current = createLatestWinsSaver<string[]>(
+      (modules) => {
+        const current = modeRef.current
+        if (current.type !== "edit") return Promise.resolve()
+        return onUpdateGroupRef.current(current.group.id, { data: { modules } })
+      },
+      (err, _failed, lastSaved) => {
+        // Roll the UI back to the last CONFIRMED order — a silently divergent
+        // list would suggest the reorder stuck when it didn't. The saver's
+        // lastSaved beats the prop: after "A saved, B failed" the group prop
+        // may still show the state before A (store round-trip in flight).
+        const current = modeRef.current
+        setActiveModules(
+          lastSaved ??
+            (current.type === "edit"
+              ? ((current.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES)
+              : DEFAULT_MODULES),
+        )
+        setModuleError(err instanceof Error ? err.message : "Module konnten nicht gespeichert werden")
+      },
+      () => setModuleError(null),
+    )
+  }
+  const applyModules = useCallback((next: string[]) => {
+    setActiveModules(next)
+    saveModulesRef.current?.(next)
+  }, [])
+
+  // Drag & drop reordering. `dropIndex` is the position in the list AS SHOWN
+  // (0 = above the first row), which is exactly what the indicator line
+  // between two rows means — reorderModule corrects for the removal shift.
+  const [draggedModule, setDraggedModule] = useState<string | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+  // Which row currently holds keyboard focus on its reorder buttons. Explicit
+  // state instead of a `focus-visible:` utility: the arrows must be INVISIBLE
+  // for mouse users (they drag) yet VISIBLE the moment a keyboard reaches
+  // them — an invisible focused control is worse than a noisy one.
+  const [keyboardRow, setKeyboardRow] = useState<string | null>(null)
+  // Only renderable modules drive rows, guards and drop positions; unknown
+  // ids stay untouched in data.modules (we never silently drop foreign data).
+  const visibleModules = knownModules(activeModules)
+  /**
+   * Rows, guards and drop indices all count VISIBLE modules, so reordering
+   * happens on that list. Unknown/legacy ids are preserved (we never silently
+   * drop foreign data) and appended — their position is irrelevant because
+   * neither this dialog nor the nav renders them.
+   */
+  const applyVisibleOrder = useCallback((nextVisible: string[]) => {
+    const unknown = activeModules.filter((id) => !visibleModules.includes(id))
+    applyModules([...nextVisible, ...unknown])
+  }, [activeModules, visibleModules, applyModules])
+
+  const handleModuleDragOver = useCallback((event: React.DragEvent, rowIndex: number) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "move"
+    // Above the row's midpoint means "in front of it", below means "after it".
+    const rect = event.currentTarget.getBoundingClientRect()
+    const next = event.clientY < rect.top + rect.height / 2 ? rowIndex : rowIndex + 1
+    setDropIndex((prev) => (prev === next ? prev : next))
+  }, [])
+
+  const handleModuleDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault()
+    const id = draggedModule
+    const target = dropIndex
+    setDraggedModule(null)
+    setDropIndex(null)
+    if (!id || target === null) return
+    const next = reorderModule(visibleModules, id, target)
+    // An unchanged order must not trigger a save — a drop onto the row's own
+    // position is a no-op, not an edit.
+    if (next.length === visibleModules.length && next.every((mod, i) => mod === visibleModules[i])) return
+    applyVisibleOrder(next)
+  }, [draggedModule, dropIndex, visibleModules, applyVisibleOrder])
+
   // Invite state
   const [invitingId, setInvitingId] = useState<string | null>(null)
   const [invitedIds, setInvitedIds] = useState<Set<string>>(new Set())
@@ -111,6 +317,7 @@ export function GroupDialog({
       if (!nextOpen) {
         setConfirmDelete(false)
         setError(null)
+        setModuleError(null)
         setInvitingId(null)
         setInvitedIds(new Set())
         setInviteErrors(new Map())
@@ -154,8 +361,10 @@ export function GroupDialog({
       // grayscale logo dominantColor returns null -> clear it so reads fall
       // back to the deterministic id color.
       const primaryColor = await dominantColor(dataUrl).catch(() => null)
+      // Minimal patch — updateGroup merges per key (null removes), so this
+      // cannot clobber e.g. a module order saved meanwhile (rls#234).
       void onUpdateGroup(mode.group.id, {
-        data: { ...mode.group.data, image: dataUrl, primaryColor: primaryColor ?? undefined },
+        data: { image: dataUrl, primaryColor },
       })
     } catch {
       setError("Bild konnte nicht verarbeitet werden")
@@ -166,8 +375,10 @@ export function GroupDialog({
   const handleImageRemove = () => {
     if (!isEdit) return
     setGroupImage("")
-    // Drop the cached accent too, so it falls back to the deterministic id color.
-    void onUpdateGroup(mode.group.id, { data: { ...mode.group.data, image: "", primaryColor: undefined } })
+    // Drop the cached accent too, so it falls back to the deterministic id
+    // color — `null` removes the key (patch contract), `undefined` would be
+    // dropped by JSON transports and leave the stale accent behind.
+    void onUpdateGroup(mode.group.id, { data: { image: "", primaryColor: null } })
   }
 
   const handleLeave = async () => {
@@ -435,44 +646,119 @@ export function GroupDialog({
             </p>
           )}
 
-          {/* Module Toggles (admin only) */}
+          {/* Modules (admin only): the ACTIVE list is ordered — data.modules
+              is what the nav renders, top row = first tab. Reorder by DRAGGING
+              a row (one gesture, any distance), deactivate via ✕; available
+              modules append at the end. The ↑/↓ buttons stay as the keyboard
+              path and appear ONLY on keyboard focus — with the mouse you
+              drag, so showing them on hover was pure noise. Dragging alone
+              would lock out keyboard and screen-reader users. */}
           {isCurrentUserAdmin && (
             <div className="mt-3 pt-3 border-t border-border/50">
-              <Label className="text-xs text-muted-foreground">Module</Label>
-              <div className="mt-2 grid grid-cols-2 gap-1">
-                {AVAILABLE_MODULES.map((mod) => {
-                  const isActive = activeModules.includes(mod.id)
-                  const isLast = isActive && activeModules.length === 1
+              <Label className="text-xs text-muted-foreground">Module (ziehen zum Sortieren)</Label>
+              <div className="mt-2 space-y-0.5" onDragOver={(e) => e.preventDefault()} onDrop={handleModuleDrop}>
+                {visibleModules.map((id, index) => {
+                  const mod = AVAILABLE_MODULES.find((m) => m.id === id)!
                   const Icon = mod.icon
+                  // Guard and positions count the VISIBLE rows — a legacy id
+                  // must not silently satisfy "keep one module" (rls#249).
+                  const isOnly = visibleModules.length === 1
+                  const isDragged = draggedModule === id
                   return (
-                    <button
-                      key={mod.id}
-                      type="button"
-                      disabled={isLast}
-                      onClick={() => {
-                        if (mode.type !== "edit") return
-                        const newModules = isActive
-                          ? activeModules.filter((m) => m !== mod.id)
-                          : [...activeModules, mod.id]
-                        setActiveModules(newModules)
-                        void onUpdateGroup(mode.group.id, { data: { ...mode.group.data, modules: newModules } })
+                    <div
+                      key={id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "move"
+                        // Firefox starts no drag without payload.
+                        e.dataTransfer.setData("text/plain", id)
+                        setDraggedModule(id)
                       }}
-                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      onDragEnd={() => { setDraggedModule(null); setDropIndex(null) }}
+                      onDragOver={(e) => handleModuleDragOver(e, index)}
+                      className={cn(
+                        "group relative flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/50 active:cursor-grabbing",
+                        isDragged && "opacity-40",
+                        // Drop indicator: a line on the edge the row would land on.
+                        dropIndex === index && "before:absolute before:inset-x-2 before:-top-px before:h-0.5 before:rounded-full before:bg-primary",
+                        dropIndex === index + 1 && "after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary",
+                      )}
                     >
-                      <div className={`h-4 w-8 shrink-0 rounded-full transition-colors ${isActive ? "bg-primary" : "bg-muted"} relative`}>
-                        <div className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${isActive ? "translate-x-4" : "translate-x-0.5"}`} />
-                      </div>
-                      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-sm">{mod.label}</span>
-                    </button>
+                      <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 text-sm">{mod.label}</span>
+                      {/* Keyboard path — appears only while focused (see keyboardRow). */}
+                      <button
+                        type="button"
+                        aria-label={`${mod.label} nach oben`}
+                        disabled={index === 0}
+                        onClick={() => applyVisibleOrder(moveModule(visibleModules, id, -1))}
+                        onFocus={() => setKeyboardRow(id)}
+                        onBlur={() => setKeyboardRow((prev) => (prev === id ? null : prev))}
+                        className={cn(
+                          "rounded p-1 text-muted-foreground transition-opacity hover:text-foreground",
+                          keyboardRow === id ? "opacity-100 disabled:opacity-30" : "opacity-0",
+                        )}
+                      >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${mod.label} nach unten`}
+                        disabled={index === visibleModules.length - 1}
+                        onClick={() => applyVisibleOrder(moveModule(visibleModules, id, 1))}
+                        onFocus={() => setKeyboardRow(id)}
+                        onBlur={() => setKeyboardRow((prev) => (prev === id ? null : prev))}
+                        className={cn(
+                          "rounded p-1 text-muted-foreground transition-opacity hover:text-foreground",
+                          keyboardRow === id ? "opacity-100 disabled:opacity-30" : "opacity-0",
+                        )}
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${mod.label} deaktivieren`}
+                        disabled={isOnly}
+                        onClick={() => applyVisibleOrder(visibleModules.filter((m) => m !== id))}
+                        className="rounded p-1 text-muted-foreground hover:text-destructive disabled:opacity-30"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   )
                 })}
               </div>
+              {AVAILABLE_MODULES.some((m) => !activeModules.includes(m.id)) && (
+                <div className="mt-2">
+                  <Label className="text-xs text-muted-foreground">Verfügbar</Label>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {AVAILABLE_MODULES.filter((m) => !activeModules.includes(m.id)).map((mod) => {
+                      const Icon = mod.icon
+                      return (
+                        <button
+                          key={mod.id}
+                          type="button"
+                          onClick={() => applyVisibleOrder([...visibleModules, mod.id])}
+                          className="flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs text-muted-foreground hover:border-primary hover:text-foreground"
+                        >
+                          <Icon className="h-3 w-3" />
+                          {mod.label} +
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Error */}
+        {/* Errors: module-save failures have their own state (ownership by
+            construction, rls#232) and can coexist with a general error. */}
+        {moduleError && (
+          <p className="text-xs text-destructive px-6 pb-2">{moduleError}</p>
+        )}
         {error && (
           <p className="text-xs text-destructive px-6 pb-2">{error}</p>
         )}

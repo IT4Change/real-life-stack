@@ -36,4 +36,7 @@ describeDataInterfaceContract("LocalConnector", {
     const user = await connector.authenticate("local", {})
     return { connector, currentUserId: user.id }
   },
+  async updatableGroup() {
+    return "g1"
+  },
 })

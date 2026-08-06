@@ -1,6 +1,6 @@
 "use client"
 
-import { QrCode, Users } from "lucide-react"
+import { QrCode, UserPlus, Users } from "lucide-react"
 import type { ContactInfo } from "@real-life-stack/data-interface"
 
 import { Button } from "@/components/primitives/button"
@@ -23,7 +23,15 @@ export interface ContactsDialogProps {
   isLoading?: boolean
   onRemove: (id: string) => void
   onEditName: (id: string, name: string) => void
-  onVerify: () => void
+  /** WoT-Pfad: QR-Verifikation starten. Optional — Server-Connectoren ohne
+      Begegnungs-Verifikation lassen den Button weg. */
+  onVerify?: () => void
+  /** Anfrage-Pfad: "Kontakt hinzufügen" (ID/Profil-Link einfügen). */
+  onAdd?: () => void
+  /** Bestätigt eine eingehende Anfrage (direction "incoming"). */
+  onActivate?: (id: string) => void
+  /** Status-Wording für aktive Kontakte — "Verifiziert" (WoT) oder "Aktiv". */
+  activeLabel?: string
 }
 
 export function ContactsDialog({
@@ -35,6 +43,9 @@ export function ContactsDialog({
   onRemove,
   onEditName,
   onVerify,
+  onAdd,
+  onActivate,
+  activeLabel = "Aktiv",
 }: ContactsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -45,14 +56,22 @@ export function ContactsDialog({
             Kontakte
           </DialogTitle>
           <DialogDescription>
-            {activeContacts.length} verifiziert · {pendingContacts.length} ausstehend
+            {activeContacts.length} {activeLabel.toLowerCase()} · {pendingContacts.length} ausstehend
           </DialogDescription>
         </DialogHeader>
         <div className="flex-1 overflow-y-auto space-y-4 -mx-6 px-6">
-          <Button size="sm" className="w-full" onClick={onVerify}>
-            <QrCode className="h-3.5 w-3.5 mr-1.5" />
-            Verifizieren
-          </Button>
+          {onVerify && (
+            <Button size="sm" className="w-full" onClick={onVerify}>
+              <QrCode className="h-3.5 w-3.5 mr-1.5" />
+              Verifizieren
+            </Button>
+          )}
+          {onAdd && (
+            <Button size="sm" variant={onVerify ? "outline" : "default"} className="w-full" onClick={onAdd}>
+              <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+              Kontakt hinzufügen
+            </Button>
+          )}
           {isLoading ? (
             <div className="space-y-2" aria-hidden>
               {Array.from({ length: 3 }).map((_, i) => (
@@ -74,18 +93,21 @@ export function ContactsDialog({
                     contacts={pendingContacts}
                     onRemove={onRemove}
                     onEditName={onEditName}
+                    onActivate={onActivate}
+                    activeLabel={activeLabel}
                   />
                 </div>
               )}
               <div className="space-y-2">
                 {activeContacts.length > 0 && pendingContacts.length > 0 && (
-                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Verifiziert</h3>
+                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{activeLabel}</h3>
                 )}
                 <ContactList
                   contacts={activeContacts}
                   onRemove={onRemove}
                   onEditName={onEditName}
-                  emptyMessage="Noch keine verifizierten Kontakte"
+                  activeLabel={activeLabel}
+                  emptyMessage="Noch keine Kontakte"
                 />
               </div>
             </>

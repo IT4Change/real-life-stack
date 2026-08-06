@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
-import { Newspaper, Map as MapIcon, Calendar, Columns3, List, Waves } from "lucide-react"
+import { Newspaper, Map as MapIcon, Calendar, Columns3, List, Waves, Share2 } from "lucide-react"
 import {
   useConnector,
   useGroups,
@@ -24,6 +24,7 @@ const MODULE_ICONS: Record<string, typeof Newspaper> = {
   kanban: Columns3,
   collection: List,
   resonance: Waves,
+  graph: Share2,
 }
 
 const MODULE_LABELS: Record<string, string> = {
@@ -33,9 +34,10 @@ const MODULE_LABELS: Record<string, string> = {
   kanban: "Kanban",
   collection: "Liste",
   resonance: "Resonanz",
+  graph: "Graph",
 }
 
-export const VALID_MODULES = ["feed", "kanban", "calendar", "map", "collection", "resonance"]
+export const VALID_MODULES = ["feed", "kanban", "calendar", "map", "collection", "resonance", "graph"]
 
 // The aggregate ("Mein Netzwerk") keeps its internal scope id `__overview__`
 // (used across the module views) but appears as `network` in the URL.

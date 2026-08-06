@@ -63,6 +63,8 @@ import {
   type ConnectorOption,
   type GroupDialogMode,
   AuthScreen,
+  AddContactDialog,
+  IncomingContactRequestDialog,
 } from "@real-life-stack/toolkit"
 import type { DataInterface, User } from "@real-life-stack/data-interface"
 import { isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile, moduleHintsFor } from "@real-life-stack/data-interface"
@@ -102,6 +104,22 @@ function ModulePanelHost({ children, onDrawerHeightChange }: { children: ReactNo
       {children}
     </ModulePanelProvider>
   )
+}
+
+/**
+ * Accepts either a raw user id or a shared profile URL (…?profile=<id>) in
+ * the add-contact input — people paste what they got.
+ */
+function extractProfileId(input: string): string {
+  const trimmed = input.trim()
+  try {
+    const url = new URL(trimmed)
+    const fromParam = url.searchParams.get("profile")
+    if (fromParam) return fromParam
+  } catch {
+    // not a URL — treat as raw id
+  }
+  return trimmed
 }
 
 /** Meta-item types the shell has no detail projection for (log stays visible, not clickable). */
@@ -228,7 +246,16 @@ function RelayStatusBadgeWrapper() {
 function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: () => void }) {
   const connector = useConnector()
   const { data: currentUser } = useCurrentUser()
-  const { incomingVerification, spaceInvite, mutualVerification, dismiss } = useIncomingEvents()
+  const { current: currentNotification, incomingVerification, spaceInvite, mutualVerification, contactRequest, contactConfirmed, dismiss } = useIncomingEvents()
+  const { activateContact: activateIncomingContact } = useContacts()
+
+  const handleConfirmContactRequest = async () => {
+    if (!contactRequest) return
+    // Fehler NICHT schlucken: der Dialog zeigt ihn und bleibt offen
+    // (retry-fähig). Nur der Erfolg schließt.
+    await activateIncomingContact(contactRequest.fromId)
+    dismiss()
+  }
 
   const handleCounterVerify = async () => {
     if (!incomingVerification || !hasEncounterVerification(connector)) return
@@ -275,6 +302,26 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
         myAvatar={currentUser?.avatarUrl}
         onDismiss={dismiss}
       />
+      {/* Gleiche Komponente, andere Variante: Anfrage-Bestätigung statt
+          Begegnungs-Verifikation. */}
+      <MutualVerificationDialog
+        open={!!contactConfirmed}
+        variant="contact"
+        peerName={contactConfirmed?.fromName}
+        peerAvatar={contactConfirmed?.fromAvatar}
+        myName={currentUser?.displayName}
+        myAvatar={currentUser?.avatarUrl}
+        onDismiss={dismiss}
+      />
+      <IncomingContactRequestDialog
+        open={!!contactRequest}
+        requestKey={currentNotification?.id}
+        fromId={contactRequest?.fromId}
+        fromName={contactRequest?.fromName}
+        fromAvatar={contactRequest?.fromAvatar}
+        onConfirm={handleConfirmContactRequest}
+        onDismiss={dismiss}
+      />
     </>
   )
 }
@@ -293,6 +340,9 @@ export function ProfilePanelHost({
   contactCount,
   onSaveProfile,
   onClose,
+  onAddContact,
+  contactStatusFor,
+  contactDirectionFor,
 }: {
   userId: string | null
   currentUser: User | null | undefined
@@ -300,6 +350,9 @@ export function ProfilePanelHost({
   contactCount?: number
   onSaveProfile: (updates: { name: string; bio: string; avatar?: string }) => Promise<void>
   onClose: () => void
+  onAddContact?: (id: string) => Promise<unknown>
+  contactStatusFor?: (id: string) => "pending" | "active" | undefined
+  contactDirectionFor?: (id: string) => "incoming" | "outgoing" | undefined
 }) {
   const isOwn = userId != null && userId === currentUser?.id
   const [foreign, setForeign] = useState<User | null>(null)
@@ -376,17 +429,23 @@ export function ProfilePanelHost({
         // edit carries onSave, view forbids it.
         isOwn ? (
           <ProfilePanelContent
+            key={profile.did}
             mode="edit"
             profile={profile}
             contactCount={contactCount}
             onSave={onSaveProfile}
             onClose={onClose}
+            profileUrl={`${window.location.origin}${window.location.pathname}?profile=${encodeURIComponent(profile.did)}`}
           />
         ) : (
           <ProfilePanelContent
+            key={profile.did}
             mode="view"
             profile={profile}
             onClose={onClose}
+            onAddContact={onAddContact && userId ? () => onAddContact(userId) : undefined}
+            contactStatus={userId ? contactStatusFor?.(userId) : undefined}
+            contactDirection={userId ? contactDirectionFor?.(userId) : undefined}
           />
         )
       )}
@@ -414,7 +473,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   const inviteMember = useInviteMember()
   const removeMember = useRemoveMember()
   const { data: currentUser } = useCurrentUser()
-  const { activeContacts, pendingContacts, contacts: allContacts, isLoading: contactsLoading, removeContact, updateContactName, supportsContacts } = useContacts()
+  const { activeContacts, pendingContacts, contacts: allContacts, isLoading: contactsLoading, addContact, activateContact, removeContact, updateContactName, supportsContacts } = useContacts()
   const verification = useVerification()
 
   // Erstbefüllung des Verify-Dialogs: restore-dann-create (Entscheidung 1c).
@@ -518,6 +577,8 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
       await connector.updateMyProfile(updates)
     }
   }, [connector])
+
+  const [addContactOpen, setAddContactOpen] = useState(false)
 
   // Group dialog state
   const [groupDialogOpen, setGroupDialogOpen] = useState(false)
@@ -707,6 +768,9 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         contactCount={activeContacts.length}
         onSaveProfile={handleSaveProfile}
         onClose={closeProfile}
+        onAddContact={supportsContacts ? addContact : undefined}
+        contactStatusFor={(id) => allContacts.find((contact) => contact.id === id)?.status}
+        contactDirectionFor={(id) => allContacts.find((contact) => contact.id === id)?.direction}
       />
 
       {/* Contacts Dialog */}
@@ -718,7 +782,17 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         isLoading={contactsLoading}
         onRemove={removeContact}
         onEditName={updateContactName}
-        onVerify={() => openDialog("verify")}
+        onVerify={hasEncounterVerification(connector) ? () => openDialog("verify") : undefined}
+        onAdd={supportsContacts && !hasEncounterVerification(connector) ? () => setAddContactOpen(true) : undefined}
+        onActivate={activateContact}
+        activeLabel={hasEncounterVerification(connector) ? "Verifiziert" : "Aktiv"}
+      />
+
+      {/* Kontakt per ID/Profil-Link hinzufügen (Anfrage-Connectoren). */}
+      <AddContactDialog
+        open={addContactOpen}
+        onOpenChange={setAddContactOpen}
+        onAdd={(id, name) => addContact(extractProfileId(id), name)}
       />
 
       <VerificationDialog

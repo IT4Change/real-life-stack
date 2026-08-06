@@ -2,6 +2,8 @@ import type {
   AuthMethod,
   AuthState,
   ClaimVerdict,
+  ContactInfo,
+  IncomingEvent,
   CreateItemInput,
   DataInterface,
   Group,
@@ -96,6 +98,20 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
    */
   verifyRecordClaim?: (record: RelationRecord) => Promise<ClaimVerdict>
 
+  /** Sichtbare Zustellung (EventListenerCapable): Kontaktanfragen und
+      Gruppen-Einladungen poppen als Dialog auf statt still in Listen zu
+      landen — dieselbe Mechanik wie beim WoT, gespeist aus Realtime. */
+  private incomingEventListeners = new Set<(event: IncomingEvent) => void>()
+
+  onIncomingEvent(callback: (event: IncomingEvent) => void): () => void {
+    this.incomingEventListeners.add(callback)
+    return () => this.incomingEventListeners.delete(callback)
+  }
+
+  private emitIncomingEvent(event: IncomingEvent): void {
+    for (const listener of this.incomingEventListeners) listener(event)
+  }
+
   constructor(client: SupabaseClientLike, options?: SupabaseConnectorOptions) {
     this.client = client
     this.allowFixtureAuthors = options?.allowFixtureAuthors === true
@@ -141,8 +157,36 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       .on("postgres_changes", { event: "*", schema: "public", table: "groups" }, () => {
         this.scheduleGroupsRefresh()
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, (payload) => {
         this.scheduleGroupsRefresh()
+        const inserted = payload.eventType === "INSERT" ? payload.new as { group_id?: string; user_id?: string; invited_by?: string } | null : null
+        if (inserted?.user_id === this.sessionUserId && inserted.invited_by
+          && inserted.invited_by !== this.sessionUserId && inserted.group_id) {
+          void this.emitSpaceInviteEvent(inserted.group_id, inserted.invited_by)
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "contacts" }, (payload) => {
+        // WALRUS delivers only the caller's own edges — any event means MY
+        // contact list changed.
+        void this.refreshContacts()
+        // Sichtbare Zustellung: eine NEUE eingehende Anfrage ist ein Event.
+        const inserted = payload.eventType === "INSERT" ? payload.new as { requester?: string; addressee?: string; status?: string } | null : null
+        if (inserted?.addressee === this.sessionUserId && inserted.status === "pending" && inserted.requester) {
+          void this.emitContactRequestEvent(inserted.requester)
+        }
+        // … und der Abschluss ebenso — bei BEIDEN Beteiligten, wie der
+        // mutual-Abschluss der WoT-Begegnung (WALRUS liefert das UPDATE nur
+        // den zwei Kanten-Parteien).
+        if (payload.eventType === "UPDATE") {
+          const before = payload.old as { status?: string } | null
+          const after = payload.new as { requester?: string; addressee?: string; status?: string } | null
+          if (before?.status === "pending" && after?.status === "active" && after.requester && after.addressee) {
+            const other = after.requester === this.sessionUserId ? after.addressee
+              : after.addressee === this.sessionUserId ? after.requester
+              : null
+            if (other) void this.emitContactConfirmedEvent(other)
+          }
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, (payload) => {
         // Member-list display names refresh on ANY profile change; the own
@@ -177,6 +221,9 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     this.currentGroupObs.destroy()
     this.profileObs.destroy()
     this.profileSyncPendingObs.destroy()
+    this.contactsObs?.destroy()
+    this.contactsObs = null
+    this.incomingEventListeners.clear()
   }
 
   // --- Items ---
@@ -812,6 +859,230 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     return this.profileSyncPendingObs
   }
 
+  // --- Contacts (ContactManager: Anfrage → Bestätigung, spec-08-konsistent
+  // authoritative — die RLS/Trigger in Migration 0004 sind die Grenze) ---
+
+  private contactsObs: ReturnType<typeof createObservable<ContactInfo[]>> | null = null
+  /** Single-flight wie beim Profil-Worker: höchstens ein Kontakt-Read pro
+      Session in flight; weitere Anfragen setzen das Rerun-Flag und laufen
+      danach genau einmal — Responses überholen sich nicht (#251 Re-Review). */
+  private contactsFlight: Promise<void> | null = null
+  private contactsRerunRequested = false
+
+  private contactsObservable(): ReturnType<typeof createObservable<ContactInfo[]>> {
+    this.contactsObs ??= createObservable<ContactInfo[]>([], false)
+    return this.contactsObs
+  }
+
+  private contactRowToInfo(row: Record<string, unknown>, me: string, profile: Record<string, unknown> | undefined): ContactInfo {
+    const isRequester = row.requester === me
+    const otherId = (isRequester ? row.addressee : row.requester) as string
+    const alias = (isRequester ? row.requester_alias : row.addressee_alias) as string | null
+    const displayName = alias ?? ((profile?.display_name as string | null) ?? undefined)
+    const iso = (value: unknown) => {
+      const parsed = typeof value === "string" ? new Date(value) : null
+      return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : new Date(0).toISOString()
+    }
+    return {
+      id: otherId,
+      ...(displayName ? { name: displayName } : {}),
+      ...(profile?.avatar_url ? { avatar: profile.avatar_url as string } : {}),
+      ...(profile?.bio ? { bio: profile.bio as string } : {}),
+      status: row.status as "pending" | "active",
+      ...(row.status === "pending" ? { direction: isRequester ? "outgoing" as const : "incoming" as const } : {}),
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    }
+  }
+
+  private async fetchContactEdges(me: string): Promise<Array<Record<string, unknown>>> {
+    // RLS already scopes to the caller's edges; the or-filter keeps the fake
+    // (no select-RLS) honest and the query index-friendly.
+    const result = await this.client.from("contacts").select("*")
+      .or(`requester.eq.${me},addressee.eq.${me}`)
+    return throwOnError(result, "getContacts")
+  }
+
+  async getContacts(): Promise<ContactInfo[]> {
+    // Same session-generation contract as the profile surfaces: a read
+    // started for A must neither publish after logout nor overwrite B.
+    const generation = this.sessionGeneration
+    const me = this.sessionUserId
+    if (!me) return []
+    const rows = await this.fetchContactEdges(me)
+    const otherIds = rows.map((row) => (row.requester === me ? row.addressee : row.requester) as string)
+    const profiles = otherIds.length > 0
+      ? throwOnError(await this.client.from("profiles").select("*").in("id", otherIds), "getContacts profiles")
+      : []
+    if (generation !== this.sessionGeneration) return []
+    const profileById = new Map(profiles.map((profile) => [profile.id as string, profile]))
+    const contacts = rows.map((row) => this.contactRowToInfo(row, me, profileById.get((row.requester === me ? row.addressee : row.requester) as string)))
+    this.contactsObservable().set(contacts)
+    return contacts
+  }
+
+  observeContacts(): Observable<ContactInfo[]> {
+    const observable = this.contactsObservable()
+    if (!observable.loaded) void this.refreshContacts()
+    return observable
+  }
+
+  private refreshContacts(): Promise<void> {
+    if (this.contactsFlight) {
+      this.contactsRerunRequested = true
+      return this.contactsFlight
+    }
+    this.contactsFlight = this.runContactsRefresh().finally(() => {
+      this.contactsFlight = null
+      if (this.contactsRerunRequested) void this.refreshContacts()
+    })
+    return this.contactsFlight
+  }
+
+  private async runContactsRefresh(): Promise<void> {
+    do {
+      this.contactsRerunRequested = false
+      try {
+        await this.getContacts()
+        this.contactsObservable().markLoaded()
+      } catch (error) {
+        console.error("[SupabaseConnector] contacts refresh failed", error)
+      }
+    } while (this.contactsRerunRequested)
+  }
+
+  private async emitContactRequestEvent(fromId: string): Promise<void> {
+    const generation = this.sessionGeneration
+    try {
+      const profile = await this.fetchProfileRow(fromId)
+      // Das Event gehört der Session, in der es entstand (#251 Re-Review).
+      if (generation !== this.sessionGeneration) return
+      this.emitIncomingEvent({
+        type: "contact-request",
+        fromId,
+        ...(profile?.display_name ? { fromName: profile.display_name as string } : {}),
+        ...(profile?.avatar_url ? { fromAvatar: profile.avatar_url as string } : {}),
+      })
+    } catch (error) {
+      console.error("[SupabaseConnector] contact-request event failed", error)
+    }
+  }
+
+  private async emitContactConfirmedEvent(fromId: string): Promise<void> {
+    const generation = this.sessionGeneration
+    try {
+      const profile = await this.fetchProfileRow(fromId)
+      if (generation !== this.sessionGeneration) return
+      this.emitIncomingEvent({
+        type: "contact-confirmed",
+        fromId,
+        ...(profile?.display_name ? { fromName: profile.display_name as string } : {}),
+        ...(profile?.avatar_url ? { fromAvatar: profile.avatar_url as string } : {}),
+      })
+    } catch (error) {
+      console.error("[SupabaseConnector] contact-confirmed event failed", error)
+    }
+  }
+
+  private async emitSpaceInviteEvent(groupId: string, fromId: string): Promise<void> {
+    const generation = this.sessionGeneration
+    try {
+      const groupResult = await this.client.from("groups").select("*").eq("id", groupId).maybeSingle()
+      const group = throwOnError(groupResult, "space-invite group")
+      if (!group) return
+      const profile = await this.fetchProfileRow(fromId)
+      if (generation !== this.sessionGeneration) return
+      this.emitIncomingEvent({
+        type: "space-invite",
+        fromId,
+        ...(profile?.display_name ? { fromName: profile.display_name as string } : {}),
+        spaceId: groupId,
+        spaceName: (group.name as string | null) ?? groupId,
+        ...(typeof (group.data as Record<string, unknown> | null)?.image === "string"
+          ? { spaceImage: (group.data as Record<string, unknown>).image as string }
+          : {}),
+      })
+    } catch (error) {
+      console.error("[SupabaseConnector] space-invite event failed", error)
+    }
+  }
+
+  async addContact(id: string, name?: string): Promise<ContactInfo> {
+    const me = this.sessionUserId
+    if (!me) throw new Error("[SupabaseConnector] addContact requires an authenticated user")
+    if (id === me) throw new Error("Du kannst dich nicht selbst als Kontakt anfragen.")
+    const profile = await this.fetchProfileRow(id)
+    if (!profile) throw new Error("Profil nicht gefunden — stimmt der Link bzw. die ID?")
+    const existing = (await this.fetchContactEdges(me)).find(
+      (row) => row.requester === id || row.addressee === id,
+    )
+    if (existing) {
+      // Counter-request on an INCOMING pending edge = confirmation.
+      if (existing.status === "pending" && existing.requester === id) {
+        return this.activateContact(id)
+      }
+      return this.contactRowToInfo(existing, me, profile)
+    }
+    const result = await this.client.from("contacts").insert({
+      requester: me,
+      addressee: id,
+      status: "pending",
+      ...(name ? { requester_alias: name } : {}),
+    }).select().single()
+    if (result.error?.code === "23505" || /duplicate/i.test(result.error?.message ?? "")) {
+      // Concurrent counter-request: the other side inserted between our read
+      // and our insert (unique pair index). Re-read and treat it as incoming.
+      const edge = (await this.fetchContactEdges(me)).find(
+        (row) => row.requester === id || row.addressee === id,
+      )
+      if (edge?.status === "pending" && edge.requester === id) return this.activateContact(id)
+      if (edge) return this.contactRowToInfo(edge, me, profile)
+    }
+    const row = throwOnError(result, "addContact")
+    void this.refreshContacts()
+    return this.contactRowToInfo(row, me, profile)
+  }
+
+  async activateContact(id: string): Promise<ContactInfo> {
+    const me = this.sessionUserId
+    if (!me) throw new Error("[SupabaseConnector] activateContact requires an authenticated user")
+    // Only the addressee can confirm (enforced server-side by the trigger).
+    const update = this.client.from("contacts").update({ status: "active" })
+      .eq("requester", id) as unknown as { eq(column: string, value: unknown): { select(): { single(): PromiseLike<SupabaseResult<Record<string, unknown>>> } } }
+    const result = await update.eq("addressee", me).select().single()
+    const row = throwOnError(result, "activateContact")
+    void this.refreshContacts()
+    return this.contactRowToInfo(row, me, await this.fetchProfileRow(id) ?? undefined)
+  }
+
+  async updateContactName(id: string, name: string): Promise<void> {
+    const me = this.sessionUserId
+    if (!me) throw new Error("[SupabaseConnector] updateContactName requires an authenticated user")
+    // Ohne Guard könnte die Kanten-Suche irgendeine EIGENE Kante treffen.
+    if (id === me) throw new Error("Du kannst dich nicht selbst als Kontakt bearbeiten.")
+    const edge = (await this.fetchContactEdges(me)).find(
+      (row) => row.requester === id || row.addressee === id,
+    )
+    if (!edge) throw new Error("Kontakt nicht gefunden.")
+    const isRequester = edge.requester === me
+    const patch = isRequester ? { requester_alias: name || null } : { addressee_alias: name || null }
+    const update = this.client.from("contacts").update(patch)
+      .eq("requester", edge.requester as string) as unknown as { eq(column: string, value: unknown): PromiseLike<SupabaseResult<unknown>> }
+    throwOnError(await update.eq("addressee", edge.addressee as string), "updateContactName")
+    void this.refreshContacts()
+  }
+
+  async removeContact(id: string): Promise<void> {
+    const me = this.sessionUserId
+    if (!me) throw new Error("[SupabaseConnector] removeContact requires an authenticated user")
+    if (id === me) throw new Error("Du kannst dich nicht selbst als Kontakt entfernen.")
+    for (const [requester, addressee] of [[me, id], [id, me]] as const) {
+      const deletion = this.client.from("contacts").delete().eq("requester", requester) as unknown as { eq(column: string, value: unknown): PromiseLike<SupabaseResult<unknown>> }
+      throwOnError(await deletion.eq("addressee", addressee), "removeContact")
+    }
+    void this.refreshContacts()
+  }
+
   // --- Users / Auth ---
 
   /** Identity the realtime channels were joined with (rejoin on change). */
@@ -850,13 +1121,16 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       this.profileObs.set(null)
       // No session is a SETTLED profile state: loaded, genuinely empty.
       this.profileObs.markLoaded()
+      // Contacts are account-scoped views — clear them with the session.
+      this.contactsObs?.set([])
       this.authState.set({ status: "unauthenticated" })
       return
     }
 
-    // Identity switch A→B: A's profile must never stay visible while B's
-    // data is still loading.
+    // Identity switch A→B: A's profile and contacts must never stay
+    // visible while B's data is still loading.
     if (identityChanged && this.profileObs.current !== null) this.profileObs.set(null)
+    if (identityChanged) this.contactsObs?.set([])
     // Minimal user IMMEDIATELY (the id IS the identity). Enrichment happens
     // EXCLUSIVELY through the profile worker's commit boundary — no parallel
     // resolveUser tail that could compete with it (round-4 review).
@@ -864,6 +1138,7 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     this.currentUserObs.set(this.currentUser)
     this.authState.set({ status: "authenticated", user: this.currentUser })
     this.requestProfileRefresh()
+    if (this.contactsObs) void this.refreshContacts()
   }
 
   private async resolveUser(id: string, session?: AuthSessionLike | null): Promise<User> {

@@ -11,6 +11,12 @@
  *   pnpm --filter @real-life-stack/supabase-connector test
  *
  * Without these env vars the suite skips (CI has no Supabase yet).
+ *
+ * ACHTUNG bei Wiederholungsläufen: jeder Fall legt anonyme Sessions an.
+ * GoTrue limitiert anonyme Anmeldungen (Default 30/Stunde/IP) — mehrere
+ * volle Läufe kurz hintereinander laufen sonst in 5s-Auth-Timeouts, die wie
+ * Produktfehler aussehen. Der Server setzt dafür
+ * GOTRUE_RATE_LIMIT_ANONYMOUS_USERS (deploy/supabase/docker-compose.yml).
  */
 import { describe, expect, it } from "vitest"
 import { createClient } from "@supabase/supabase-js"
@@ -19,6 +25,7 @@ import { deriveRelationRecordId, voteRecordInput, VOTE_PREDICATE } from "@real-l
 import type { SupabaseClientLike } from "../src/client-types.js"
 import { SupabaseConnector } from "../src/supabase-connector.js"
 
+// Timeouts: siehe vitest.config.ts (Projekt "live").
 const url = process.env.SUPABASE_URL
 const anonKey = process.env.SUPABASE_ANON_KEY
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -35,6 +42,19 @@ if (!url || !anonKey || !serviceKey) {
       auth: { persistSession: false, autoRefreshToken: false },
       global: { headers: { Authorization: `Bearer ${serviceKey}` } },
     })
+  }
+
+  /** Wartet auf eine BEDINGUNG statt auf eine feste Pause — feste Sleeps
+      gegen einen echten Server waren die eigentliche Flake-Quelle. */
+  async function waitFor(
+    predicate: () => boolean,
+    { timeout = 15_000, interval = 100, label = "Bedingung" } = {},
+  ): Promise<void> {
+    const deadline = Date.now() + timeout
+    while (!predicate()) {
+      if (Date.now() > deadline) throw new Error(`waitFor: ${label} nicht erreicht in ${timeout}ms`)
+      await new Promise((resolve) => setTimeout(resolve, interval))
+    }
   }
 
   function makeAnonClient() {
@@ -121,7 +141,7 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
-    it("group scope binds reads AND an existing observation follows a group switch", { timeout: 20_000 }, async () => {
+    it("group scope binds reads AND an existing observation follows a group switch", async () => {
       const { connector, userId } = await makeAuthoritative()
       try {
         const probeType = `scope-probe-${Date.now()}`
@@ -137,11 +157,11 @@ if (!url || !anonKey || !serviceKey) {
 
         connector.setCurrentGroup(groupA.id)
         const observable = connector.observe({ type: probeType })
-        await new Promise((resolve) => setTimeout(resolve, 500))
+        await waitFor(() => observable.current.some(({ id }) => id === inA.id), { label: "Gruppe A sichtbar" })
         expect(observable.current.map(({ id }) => id)).toEqual([inA.id])
         // Existing observation must switch its content with the group.
         connector.setCurrentGroup(groupB.id)
-        await new Promise((resolve) => setTimeout(resolve, 1_000))
+        await waitFor(() => observable.current.some(({ id }) => id === inB.id), { label: "Gruppe B sichtbar" })
         expect(observable.current.map(({ id }) => id)).toEqual([inB.id])
 
         connector.setCurrentGroup(null)
@@ -170,7 +190,7 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
-    it("membership visibility: non-members see nothing, cannot join or write; invitation opens the door", { timeout: 30_000 }, async () => {
+    it("membership visibility: non-members see nothing, cannot join or write; invitation opens the door", async () => {
       const alice = await makeAuthoritative()
       const mallory = await makeAuthoritative()
       try {
@@ -205,7 +225,7 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
-    it("realtime still delivers GROUP items to members (WALRUS evaluates the definer-based policy)", { timeout: 25_000 }, async () => {
+    it("realtime still delivers GROUP items to members (WALRUS evaluates the definer-based policy)", async () => {
       const alice = await makeAuthoritative()
       const berta = await makeAuthoritative()
       try {
@@ -229,20 +249,106 @@ if (!url || !anonKey || !serviceKey) {
           const stop = observable.subscribe(check)
           check()
         })
+
+    it("contacts: request→confirm end-to-end; only the addressee confirms; third parties see nothing", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      const carla = await makeAuthoritative()
+      try {
+        // A fragt B an — bei A outgoing, bei B incoming.
+        await alice.connector.addContact(berta.userId, "Berta")
+        expect((await alice.connector.getContacts())[0]).toMatchObject({ id: berta.userId, status: "pending", direction: "outgoing" })
+        expect((await berta.connector.getContacts())[0]).toMatchObject({ id: alice.userId, status: "pending", direction: "incoming" })
+
+        // Der ANFRAGENDE kann nicht selbst bestätigen (Trigger).
+        const selfConfirm = await alice.client.from("contacts")
+          .update({ status: "active" }).eq("requester", alice.userId)
+        expect(selfConfirm.error).not.toBeNull()
+
+        // Dritte sehen die Kante nicht und können sie nicht anfassen.
+        const carlaView = await carla.client.from("contacts").select("*")
+        expect(carlaView.data).toEqual([])
+        await carla.client.from("contacts").update({ status: "active" }).eq("requester", alice.userId)
+        expect((await alice.connector.getContacts())[0]!.status).toBe("pending")
+
+        // Gegenanfrage von B = Bestätigung → beidseitig aktiv.
+        const confirmed = await berta.connector.addContact(alice.userId)
+        expect(confirmed.status).toBe("active")
+        expect((await alice.connector.getContacts())[0]!.status).toBe("active")
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+        await carla.connector.dispose()
+      }
+    })
+
+    it("contacts INSERT boundary: raw active/foreign-alias inserts bounce off RLS (round-1 review)", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        // Bypass the connector: a requester must not create an ACTIVE edge …
+        const activeInsert = await alice.client.from("contacts").insert({
+          requester: alice.userId, addressee: berta.userId, status: "active",
+        })
+        expect(activeInsert.error).not.toBeNull()
+        // … nor pre-fill the other side's alias.
+        const aliasInsert = await alice.client.from("contacts").insert({
+          requester: alice.userId, addressee: berta.userId, status: "pending", addressee_alias: "von A diktiert",
+        })
+        expect(aliasInsert.error).not.toBeNull()
+        // The legitimate pending request still works.
+        const ok = await alice.client.from("contacts").insert({
+          requester: alice.userId, addressee: berta.userId, status: "pending",
+        })
+        expect(ok.error).toBeNull()
       } finally {
         await alice.connector.dispose()
         await berta.connector.dispose()
       }
     })
 
-    it("observe() is LIVE: an insert from a second client arrives via realtime", { timeout: 20_000 }, async () => {
+    it("incoming events LIVE: contact request and group invite arrive as dialog events", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        const events: Array<{ type: string }> = []
+        ;(berta.connector as unknown as { onIncomingEvent(cb: (e: { type: string }) => void): () => void })
+          .onIncomingEvent((event) => events.push(event))
+        await new Promise((resolve) => setTimeout(resolve, 2_000)) // Channel-Join
+
+        await alice.connector.addContact(berta.userId, "Berta")
+        await berta.connector.activateContact(alice.userId)
+        const group = await alice.connector.createGroup(`Invite ${Date.now()}`)
+        await alice.connector.inviteMember(group.id, berta.userId)
+
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error(`events fehlen nach 15s: ${JSON.stringify(events)}`)), 15_000)
+          const check = setInterval(() => {
+            if (events.some((e) => e.type === "contact-request") && events.some((e) => e.type === "space-invite")) {
+              clearTimeout(timer)
+              clearInterval(check)
+              resolve()
+            }
+          }, 250)
+        })
+        const invite = events.find((e) => e.type === "space-invite") as { fromId: string; spaceId: string }
+        expect(invite.fromId).toBe(alice.userId)
+        expect(invite.spaceId).toBe(group.id)
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
+    it("observe() is LIVE: an insert from a second client arrives via realtime", async () => {
       const observerSide = await makeAuthoritative()
       const writerSide = await makeAuthoritative()
       try {
         const type = `live-${Date.now()}`
         const observable = observerSide.connector.observe({ type })
-        // Give the initial fetch + channel join a moment to settle.
-        await new Promise((resolve) => setTimeout(resolve, 2_000))
+        // Erst wenn der initiale Fetch settled ist, steht der Kanal-Join an.
+        await waitFor(() => observable.loaded === true, { label: "observe geladen" })
+        await new Promise((resolve) => setTimeout(resolve, 1_500)) // Kanal-Join
         const created = await writerSide.connector.createItem({ type, createdBy: writerSide.userId, data: { title: "realtime" } })
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error("realtime update did not arrive within 15s")), 15_000)

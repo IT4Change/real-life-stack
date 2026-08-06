@@ -431,6 +431,17 @@ export interface GroupManager {
   observeCurrentGroup(): Observable<Group | null>
   setCurrentGroup(id: string | null): void
   createGroup(name: string, data?: Record<string, unknown>): Promise<Group>
+  /**
+   * `updates.data` is a shallow PATCH of `Group.data`, never a replacement:
+   * listed keys are merged over the stored ones (`null` removes a key —
+   * JSON-Merge-Patch semantics at depth 1, {@link applyGroupDataPatch}),
+   * unlisted keys stay untouched. This is what makes several independent
+   * writers safe: a modules reorder `{data: {modules}}` cannot erase an
+   * `image` that a second writer saved after the caller last read the group.
+   * Wholesale-replace semantics forced every caller to spread a full
+   * `group.data` snapshot — and two snapshot writers in one dialog session
+   * deterministically lost each other's fields (rls#234).
+   */
   updateGroup(id: string, updates: Partial<Group>): Promise<Group>
   deleteGroup(id: string): Promise<void>
   getMembers(groupId: string | null): Promise<User[]>
@@ -464,6 +475,13 @@ export interface ContactInfo {
   avatar?: string
   bio?: string
   status: "pending" | "active"
+  /**
+   * Richtung einer OFFENEN Anfrage (nur bei status "pending" sinnvoll):
+   * "incoming" = die Gegenseite hat angefragt, ICH kann bestätigen;
+   * "outgoing" = meine Anfrage wartet. Optional und additiv — Connectoren
+   * ohne Anfragemodell (WoT-Verifikation) lassen es weg.
+   */
+  direction?: "incoming" | "outgoing"
   verifiedAt?: string
   createdAt: string
   updatedAt: string
@@ -609,7 +627,28 @@ export interface IncomingClaimEvent {
   claimId: string
 }
 
-export type IncomingEvent = IncomingVerificationEvent | IncomingSpaceInviteEvent | MutualVerificationEvent | IncomingClaimEvent
+/**
+ * Eingehende Kontaktanfrage (Anfrage-Connectoren, spec 02): das sichtbare
+ * Gegenstück zur WoT-Begegnungs-Verifikation — der Empfänger bekommt einen
+ * Dialog statt einer still wachsenden Kontaktliste.
+ */
+export interface IncomingContactRequestEvent {
+  type: "contact-request"
+  fromId: string
+  fromName?: string
+  fromAvatar?: string
+}
+
+/** Die Gegenseite hat meine Kontaktanfrage bestätigt — das Anfrage-Pendant
+    zum mutual-verification-Abschluss der WoT-Begegnung. */
+export interface ContactConfirmedEvent {
+  type: "contact-confirmed"
+  fromId: string
+  fromName?: string
+  fromAvatar?: string
+}
+
+export type IncomingEvent = IncomingVerificationEvent | IncomingSpaceInviteEvent | MutualVerificationEvent | IncomingClaimEvent | IncomingContactRequestEvent | ContactConfirmedEvent
 
 export interface EventListenerCapable {
   onIncomingEvent(callback: (event: IncomingEvent) => void): () => void
@@ -771,4 +810,23 @@ export function hasEventListener(c: DataInterface): c is DataInterface & EventLi
 
 export function hasItemGroups(c: DataInterface): c is DataInterface & ItemGroupCapable {
   return "getItemGroupId" in c && "moveItemToGroup" in c
+}
+
+/**
+ * The one shared implementation of the `updateGroup` data contract: shallow
+ * merge of `patch` over `base`, where `null` REMOVES a key (JSON Merge Patch,
+ * RFC 7386, at depth 1 — `null` because JSON transports cannot carry
+ * `undefined`). Every connector's `updateGroup` goes through this so the
+ * patch semantics cannot drift per backend.
+ */
+export function applyGroupDataPatch(
+  base: Record<string, unknown> | undefined,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...base }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) delete next[key]
+    else next[key] = value
+  }
+  return next
 }

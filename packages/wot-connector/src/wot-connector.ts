@@ -45,6 +45,7 @@ import {
   matchesFilter,
   findRelatedItems,
   applyPagination,
+  applyGroupDataPatch,
   itemDisplayTitle,
   moduleHintsFor,
   maxTs,
@@ -960,11 +961,31 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     if (id === null) throw new Error("Cannot update personal view")
     if (!this.replication) throw new Error("Not authenticated")
 
-    // All metadata via updateSpace (framework level — syncs via _meta)
+    // The WHOLE data patch replicates via updateSpace (framework level —
+    // syncs via _meta): image/modules map onto the fixed SpaceDocMeta keys,
+    // every other app field travels in the appData merge patch (null
+    // deletes). Fields the catalog didn't know used to stay RAM-cache-only
+    // and vanished on reload / on the second device (rls#234, wot#341).
     const metaUpdate: Record<string, unknown> = {}
     if (updates.name) metaUpdate.name = updates.name
-    if (updates.data?.image !== undefined) metaUpdate.image = updates.data.image as string
-    if (updates.data?.modules !== undefined) metaUpdate.modules = updates.data.modules as string[]
+    // ONE accepted patch feeds both replication and cache. Deriving the cache
+    // from the raw `updates.data` instead let a rejected field (`scope`) or an
+    // `undefined` land in the cache only — the cache would then claim state
+    // that neither the persisted doc nor spaceToGroup can reproduce (rls#245).
+    const acceptedPatch: Record<string, unknown> = {}
+    const appData: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(updates.data ?? {})) {
+      // `undefined` means "not sent" — only `null` deletes (patch contract).
+      if (value === undefined) continue
+      // `scope` is an RLS presentation field DERIVED in spaceToGroup — it
+      // never belongs to the space meta, and thus never to the cache either.
+      if (key === "scope") continue
+      acceptedPatch[key] = value
+      if (key === "image") metaUpdate.image = value as string
+      else if (key === "modules") metaUpdate.modules = value as string[]
+      else appData[key] = value
+    }
+    if (Object.keys(appData).length > 0) metaUpdate.appData = appData
     if (Object.keys(metaUpdate).length > 0) {
       await this.replication.updateSpace(id, metaUpdate as any)
     }
@@ -972,10 +993,18 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     const idx = this.groupsCache.findIndex((g) => g.id === id)
     if (idx !== -1) {
       const group = this.groupsCache[idx]
+      const patchedData = applyGroupDataPatch(group.data, acceptedPatch)
+      // Deleting `modules` removes the key, but the DURABLE projection in
+      // spaceToGroup falls back to DEFAULT_MODULES. Mirror that here, or the
+      // returned group and the observable would disagree with the persisted
+      // one until the next refresh (rls#250).
+      if (patchedData.modules === undefined) patchedData.modules = DEFAULT_MODULES
       this.groupsCache[idx] = {
         ...group,
         name: updates.name ?? group.name,
-        data: updates.data ? { ...group.data, ...updates.data } : group.data,
+        // Same shallow-patch semantics as every other connector (null removes)
+        // — the cache must not drift from the GroupManager contract (rls#234).
+        data: patchedData,
       }
       this.groupsObservable.set([...this.groupsCache])
       return this.groupsCache[idx]
@@ -2550,6 +2579,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       members: space.members,
       data: {
         scope: "group",
+        // App fields (appData projection) first — the framework fields below
+        // stay authoritative for their keys.
+        ...(space.appData ?? {}),
         modules: space.modules ?? DEFAULT_MODULES,
         ...(space.image ? { image: space.image } : {}),
       },
