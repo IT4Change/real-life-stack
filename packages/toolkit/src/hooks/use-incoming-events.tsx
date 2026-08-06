@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef, createContext, useContext, type ReactNode } from "react"
+import { useEffect, useReducer, useCallback, useMemo, createContext, useContext, type ReactNode } from "react"
 import type { IncomingEvent, IncomingVerificationEvent, IncomingSpaceInviteEvent, MutualVerificationEvent,
   IncomingContactRequestEvent,
   ContactConfirmedEvent,
@@ -44,53 +44,95 @@ export { IncomingEventsContext }
  * Provider that listens to connector's incoming events and manages
  * a FIFO notification queue. Only one notification is shown at a time.
  */
+/**
+ * Wem gehört die Queue: Connector-INSTANZ + Identität. Beides ist Teil des
+ * Zustands, nicht Ergebnis eines Effects — dadurch ist die Isolation eine
+ * Invariante und kein Timing-Patch (#251/#253 Review): schon der erste
+ * Render unter einem neuen Besitzer sieht garantiert keine fremden Dialoge.
+ */
+interface QueueOwner {
+  connector: DataInterface | null
+  identity: string | null
+}
+
+interface QueueState {
+  owner: QueueOwner
+  entries: QueuedNotification[]
+}
+
+type QueueAction =
+  | { type: "rebind"; owner: QueueOwner }
+  | { type: "enqueue"; owner: QueueOwner; notification: QueuedNotification }
+  | { type: "dismiss" }
+
+const sameOwner = (a: QueueOwner, b: QueueOwner) =>
+  a.connector === b.connector && a.identity === b.identity
+
+const EMPTY_ENTRIES: QueuedNotification[] = []
+
+function queueReducer(state: QueueState, action: QueueAction): QueueState {
+  switch (action.type) {
+    case "rebind":
+      // Besitzerwechsel verwirft die Dialoge des vorherigen Besitzers.
+      return sameOwner(state.owner, action.owner) ? state : { owner: action.owner, entries: EMPTY_ENTRIES }
+    case "enqueue":
+      // Verspätete Events eines alten Besitzers kommen nicht mehr hinein.
+      if (!sameOwner(state.owner, action.owner)) return state
+      if (state.entries.some((entry) => entry.id === action.notification.id)) return state
+      return { ...state, entries: [...state.entries, action.notification] }
+    case "dismiss":
+      return { ...state, entries: state.entries.slice(1) }
+  }
+}
+
+const identityOf = (state: AuthState): string | null =>
+  state.status === "authenticated" ? state.user.id : null
+
+/**
+ * Provider that listens to connector's incoming events and manages
+ * a FIFO notification queue. Only one notification is shown at a time.
+ */
 export function IncomingEventsProvider({ children }: { children: ReactNode }) {
   const connector = useConnector()
-  const [queue, setQueue] = useState<QueuedNotification[]>([])
+  // Synchron gelesener Besitzer: der Auth-State ist eine Observable, deren
+  // aktueller Wert ohne Await verfügbar ist.
+  const identity = isAuthenticatable(connector) ? identityOf(connector.getAuthState().current) : null
+  const owner: QueueOwner = { connector, identity }
 
-  const enqueue = useCallback((notification: QueuedNotification) => {
-    setQueue((prev) => prev.some((n) => n.id === notification.id) ? prev : [...prev, notification])
-  }, [])
+  const [state, dispatch] = useReducer(queueReducer, { owner, entries: EMPTY_ENTRIES })
 
-  const dismiss = useCallback(() => {
-    setQueue((prev) => prev.slice(1))
-  }, [])
+  // DIE Invariante: Einträge zählen nur, solange der Besitzer noch stimmt.
+  // Das gilt schon im ersten Render nach einem Wechsel — vor jedem Effect.
+  const entries = sameOwner(state.owner, owner) ? state.entries : EMPTY_ENTRIES
+
+  // Besitzerwechsel im State nachziehen (verwirft die alten Einträge).
+  useEffect(() => {
+    dispatch({ type: "rebind", owner: { connector, identity } })
+  }, [connector, identity])
+
+  const dismiss = useCallback(() => dispatch({ type: "dismiss" }), [])
+
+  // Auf Auth-Wechsel reagieren, damit `identity` neu gelesen wird (ein
+  // Token-Refresh derselben Identität ändert nichts und behält die Queue).
+  const [, forceIdentityRead] = useReducer((n: number) => n + 1, 0)
+  useEffect(() => {
+    if (!isAuthenticatable(connector)) return
+    return connector.getAuthState().subscribe(() => forceIdentityRead())
+  }, [connector])
 
   // Subscribe to connector events
   useEffect(() => {
     if (!hasEventListener(connector)) return
-
-    const unsub = connector.onIncomingEvent((event) => {
+    return connector.onIncomingEvent((event) => {
       const id = `${event.type}-${event.fromId}-${Date.now()}`
-      enqueue({ id, event })
-    })
-    return unsub
-  }, [connector, enqueue])
-
-  // Queued dialogs are a view of THIS session AND this connector: a logout,
-  // an account switch (#251 re-review) or a connector switch (#253) must drop
-  // them — an invite meant for A has no business popping up for B. Within a
-  // connector the IDENTITY is the trigger, not the auth status: a token
-  // refresh keeps the queue.
-  const previousConnector = useRef<DataInterface | null>(null)
-  useEffect(() => {
-    // Connector swapped without a remount (Toolkit hosts without
-    // key={connectorId}): the previous instance's queue is void.
-    if (previousConnector.current && previousConnector.current !== connector) setQueue([])
-    previousConnector.current = connector
-    if (!isAuthenticatable(connector)) return
-    const observable = connector.getAuthState()
-    const identityOf = (state: AuthState) => state.status === "authenticated" ? state.user.id : null
-    let lastIdentity = identityOf(observable.current)
-    return observable.subscribe((state) => {
-      const identity = identityOf(state)
-      if (identity === lastIdentity) return
-      lastIdentity = identity
-      setQueue([])
+      const currentIdentity = isAuthenticatable(connector)
+        ? identityOf(connector.getAuthState().current)
+        : null
+      dispatch({ type: "enqueue", owner: { connector, identity: currentIdentity }, notification: { id, event } })
     })
   }, [connector])
 
-  const current = queue[0] ?? null
+  const current = entries[0] ?? null
 
   const incomingVerification = useMemo(
     () => current?.event.type === "incoming-verification" ? current.event : null,

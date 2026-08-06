@@ -3,7 +3,7 @@ import { act } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, describe, expect, it } from "vitest"
 import type { AuthState, DataInterface, IncomingEvent } from "@real-life-stack/data-interface"
-import { ConnectorProvider } from "../src/hooks/connector-context"
+import { ConnectorProvider, useConnector } from "../src/hooks/connector-context"
 import { IncomingEventsProvider, useIncomingEvents } from "../src/hooks/use-incoming-events"
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -35,8 +35,12 @@ function makeConnector() {
 }
 
 let currentValue: ReturnType<typeof useIncomingEvents> | null = null
+/** Jeder Render wird protokolliert — so lässt sich prüfen, dass NIE ein
+    Frame Connector B mit der Queue von A zeigt (nicht nur der Endzustand). */
+const frames: Array<{ connector: DataInterface; current: unknown }> = []
 function Probe() {
   currentValue = useIncomingEvents()
+  frames.push({ connector: useConnector(), current: currentValue.current })
   return null
 }
 
@@ -50,6 +54,29 @@ afterEach(() => {
 })
 
 describe("IncomingEventsProvider — Dialog-Queue ist session-gebunden (#251 Re-Review)", () => {
+  it("kein einziger Frame zeigt Connector B mit der Queue von A (synchrone Bindung)", () => {
+    const a = makeConnector()
+    const b = makeConnector()
+    frames.length = 0
+    host = document.createElement("div")
+    document.body.appendChild(host)
+    root = createRoot(host)
+    const render = (connector: DataInterface) => (
+      <ConnectorProvider connector={connector}>
+        <IncomingEventsProvider><Probe /></IncomingEventsProvider>
+      </ConnectorProvider>
+    )
+    act(() => root!.render(render(a.connector)))
+    act(() => a.emitEvent({ type: "space-invite", fromId: "user-x", spaceId: "g1", spaceName: "G" }))
+    expect(currentValue?.current).not.toBeNull()
+    frames.length = 0
+    act(() => root!.render(render(b.connector)))
+    // Auch der ERSTE Frame unter B darf nichts von A tragen.
+    const leaked = frames.filter((frame) => frame.connector === b.connector && frame.current !== null)
+    expect(leaked).toEqual([])
+    expect(frames.length).toBeGreaterThan(0)
+  })
+
   it("ein CONNECTOR-Wechsel leert die Queue des alten Connectors (#253)", () => {
     const a = makeConnector()
     const b = makeConnector()
