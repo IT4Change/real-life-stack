@@ -190,6 +190,151 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
+    it("membership visibility: non-members see nothing, cannot join or write; invitation opens the door", async () => {
+      const alice = await makeAuthoritative()
+      const mallory = await makeAuthoritative()
+      try {
+        const probeType = `member-probe-${Date.now()}`
+        const group = await alice.connector.createGroup(`Membership ${Date.now()}`)
+        alice.connector.setCurrentGroup(group.id)
+        const secret = await alice.connector.createItem({ type: probeType, createdBy: alice.userId, data: { title: "nur für Mitglieder" } })
+
+        // Non-member: no item, no group, no membership row.
+        expect((await mallory.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([])
+        expect(await mallory.connector.getItem(secret.id)).toBeNull()
+        expect((await mallory.connector.getGroups()).map(({ id }) => id)).not.toContain(group.id)
+
+        // Self-join bounces off RLS (the pre-0003 gap).
+        const joinAttempt = await mallory.client.from("group_members").insert({ group_id: group.id, user_id: mallory.userId })
+        expect(joinAttempt.error).not.toBeNull()
+
+        // Writing into the group bounces off RLS even with a bound author.
+        const writeAttempt = await mallory.client.from("items").insert({
+          id: `mallory-write-${Date.now()}`, type: probeType, created_by: mallory.userId, data: {}, group_id: group.id,
+        })
+        expect(writeAttempt.error).not.toBeNull()
+
+        // Invitation by a member opens the door.
+        await alice.connector.inviteMember(group.id, mallory.userId)
+        expect((await mallory.connector.getGroups()).map(({ id }) => id)).toContain(group.id)
+        mallory.connector.setCurrentGroup(group.id)
+        expect((await mallory.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([secret.id])
+      } finally {
+        await alice.connector.dispose()
+        await mallory.connector.dispose()
+      }
+    })
+
+    it("group_id ist unveränderlich: kein Veröffentlichen und kein Space-Wechsel per Raw-DML (#246)", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        const probeType = `scope-lock-${Date.now()}`
+        const group = await alice.connector.createGroup(`Lock ${Date.now()}`)
+        const other = await alice.connector.createGroup(`Lock B ${Date.now()}`)
+        alice.connector.setCurrentGroup(group.id)
+        const secret = await alice.connector.createItem({ type: probeType, createdBy: alice.userId, data: { title: "geheim" } })
+
+        // 1. Global veröffentlichen (group_id → NULL) muss scheitern …
+        const publish = await alice.client.from("items").update({ group_id: null }).eq("id", secret.id)
+        expect(publish.error).not.toBeNull()
+        // 2. … und der Wechsel in einen ANDEREN eigenen Space ebenso.
+        const move = await alice.client.from("items").update({ group_id: other.id }).eq("id", secret.id)
+        expect(move.error).not.toBeNull()
+
+        // Ein Nicht-Mitglied sieht das Item weiterhin nicht.
+        expect(await berta.connector.getItem(secret.id)).toBeNull()
+        // Und der Scope steht unverändert.
+        alice.connector.setCurrentGroup(group.id)
+        expect((await alice.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([secret.id])
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
+    it("auch der GEGENPFAD global→Gruppe ist gesperrt: kein Einschleusen in einen Space (#246)", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        const probeType = `scope-in-${Date.now()}`
+        // Alices globales Item (kein Space) …
+        alice.connector.setCurrentGroup(null)
+        const global = await alice.connector.createItem({ type: probeType, createdBy: alice.userId, data: { title: "global" } })
+        // … Bertas Gruppe, in der Alice NICHT Mitglied ist.
+        const bertasGroup = await berta.connector.createGroup(`Fremd ${Date.now()}`)
+
+        // Weder in einen fremden Space …
+        const intoForeign = await alice.client.from("items").update({ group_id: bertasGroup.id }).eq("id", global.id)
+        expect(intoForeign.error).not.toBeNull()
+        // … noch in einen eigenen: group_id ist unveränderlich, Punkt.
+        const own = await alice.connector.createGroup(`Eigen ${Date.now()}`)
+        const intoOwn = await alice.client.from("items").update({ group_id: own.id }).eq("id", global.id)
+        expect(intoOwn.error).not.toBeNull()
+
+        // Das Item ist unverändert global geblieben.
+        alice.connector.setCurrentGroup(null)
+        expect((await alice.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([global.id])
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
+    it("das Löschen einer Gruppe VERÖFFENTLICHT ihre Inhalte nicht (CASCADE statt SET NULL, #246)", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        const probeType = `cascade-${Date.now()}`
+        const group = await alice.connector.createGroup(`Cascade ${Date.now()}`)
+        alice.connector.setCurrentGroup(group.id)
+        const secret = await alice.connector.createItem({ type: probeType, createdBy: alice.userId, data: { title: "geheim" } })
+
+        alice.connector.setCurrentGroup(null)
+        await alice.connector.deleteGroup(group.id)
+
+        // Mit SET NULL wäre das Item jetzt global sichtbar — auch für Fremde.
+        expect((await berta.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([])
+        expect(await berta.connector.getItem(secret.id)).toBeNull()
+        // Auch für den Ex-Creator im Overview ist es weg, nicht "global".
+        expect((await alice.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([])
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
+    it("realtime still delivers GROUP items to members (WALRUS evaluates the definer-based policy)", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        const probeType = `member-rt-${Date.now()}`
+        const group = await alice.connector.createGroup(`RT ${Date.now()}`)
+        await alice.connector.inviteMember(group.id, berta.userId)
+        berta.connector.setCurrentGroup(group.id)
+        const observable = berta.connector.observe({ type: probeType })
+        await waitFor(() => observable.loaded === true, { label: "observe geladen" })
+        await new Promise((resolve) => setTimeout(resolve, 1_500)) // Kanal-Join
+        alice.connector.setCurrentGroup(group.id)
+        const created = await alice.connector.createItem({ type: probeType, createdBy: alice.userId, data: { title: "im Space" } })
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("realtime group event did not arrive within 15s")), 15_000)
+          const check = () => {
+            if (observable.current.some(({ id }) => id === created.id)) {
+              clearTimeout(timer)
+              stop()
+              resolve()
+            }
+          }
+          const stop = observable.subscribe(check)
+          check()
+        })
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
     it("contacts: request→confirm end-to-end; only the addressee confirms; third parties see nothing", async () => {
       const alice = await makeAuthoritative()
       const berta = await makeAuthoritative()

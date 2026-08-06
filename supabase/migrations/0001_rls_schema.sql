@@ -134,7 +134,10 @@ create table public.items (
   data jsonb not null default '{}'::jsonb,
   relations jsonb,
   tags text[],
-  group_id text references public.groups (id) on delete set null
+  -- ON DELETE CASCADE, NICHT SET NULL: eine gelöschte Gruppe nimmt ihre
+  -- Inhalte mit. SET NULL hätte sie zu instanzweit sichtbaren Items
+  -- gemacht — Löschen wäre Veröffentlichen (rls#246 Review).
+  group_id text references public.groups (id) on delete cascade
 );
 
 create index items_type_idx on public.items (type);

@@ -42,6 +42,17 @@ docker compose up -d
 - **Admin-Zugriff:** `docker exec -it supabase-db psql -U postgres` (kein
   Studio deployed).
 
+## Sichtbarkeitsmodell (seit Migration 0003)
+
+- **items:** `group_id IS NULL` → instanzweit sichtbar; Gruppen-Items nur
+  für Mitglieder (lesen UND schreiben)
+- **groups / group_members:** nur Creator + Mitglieder; **einladen dürfen
+  nur Mitglieder** (der frühere Selbst-Beitritt Beliebiger ist zu)
+- **profiles:** instanzweit lesbar (Mitgliederauswahl beim Einladen)
+- Mitgliedschafts-Checks als `security definer`-Funktionen im
+  `private`-Schema (Standard-Muster gegen die RLS-Rekursionsfalle
+  groups ↔ group_members); Realtime (WALRUS) wertet dieselben Policies aus
+
 ## Smoke-Tests
 
 ```bash
@@ -60,6 +71,19 @@ SUPABASE_ANON_KEY=<anon key> \
 SUPABASE_SERVICE_ROLE_KEY=<service_role key aus .env auf dem Server> \
 pnpm --filter @real-life-stack/supabase-connector test
 ```
+
+## Vertrag: Space-Zugehörigkeit und Gruppen-Löschung (seit 0007)
+
+- **`items.group_id` ist unveränderlich** (Trigger `items_scope_immutable`).
+  Ein Item wechselt seinen Space nicht — weder global→Gruppe noch
+  Gruppe→global noch zwischen Gruppen. Die UPDATE-Policy allein reicht
+  dafür nicht, weil sie alten und neuen Scope nur getrennt prüft. Ein
+  fachlich gewollter Space-Wechsel wäre eine eigene autorisierte Operation.
+- **Gruppen-Löschung kaskadiert** (`on delete cascade`): Die Gruppe nimmt
+  ihre Inhalte mit. Vorher stand der Fremdschlüssel auf `set null` — dann
+  wären die Items instanzweit sichtbar geworden, Löschen wäre
+  Veröffentlichen gewesen. Wer Archivierung/Wiederherstellung will, braucht
+  `restrict` plus expliziten Löschworkflow (eigener Feature-Schnitt).
 
 ## Neue Migrationen ausrollen
 
