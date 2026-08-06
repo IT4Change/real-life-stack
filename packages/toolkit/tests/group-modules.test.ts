@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { createLatestWinsSaver, moveModule, reorderModule } from "../src/components/layout/group-dialog"
+import { createLatestWinsSaver, knownModules, moveModule, reorderModule } from "../src/components/layout/group-dialog"
 
 /**
  * `data.modules` is an ORDERED array and the nav renders it verbatim —
@@ -221,5 +221,23 @@ describe("reorderModule (Drag & Drop)", () => {
     const input = ["a", "b", "c"]
     reorderModule(input, "c", 0)
     expect(input).toEqual(["a", "b", "c"])
+  })
+})
+
+describe("knownModules (rls#249)", () => {
+  it("zaehlt nur RENDERBARE Module — ein Legacy-Eintrag darf den Guard nicht auffuellen", () => {
+    // data.modules = ["feed", "legacy"] rendert nur eine Zeile. Zaehlte
+    // "legacy" mit, waere feed entfernbar und der Space haette kein
+    // sichtbares Modul mehr.
+    expect(knownModules(["feed", "legacy-modul"])).toEqual(["feed"])
+    expect(knownModules(["feed", "kanban"])).toEqual(["feed", "kanban"])
+  })
+
+  it("erhaelt die Reihenfolge und filtert Unbekanntes an jeder Position", () => {
+    expect(knownModules(["ghost", "map", "x", "feed"])).toEqual(["map", "feed"])
+  })
+
+  it("gibt eine leere Liste zurueck, wenn nichts bekannt ist", () => {
+    expect(knownModules(["ghost", "x"])).toEqual([])
   })
 })

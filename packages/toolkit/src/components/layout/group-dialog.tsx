@@ -74,6 +74,18 @@ export function reorderModule(modules: readonly string[], id: string, toIndex: n
   return next
 }
 
+/**
+ * The subset of `data.modules` this dialog can actually render — unknown or
+ * legacy ids have no entry in AVAILABLE_MODULES and produce no row. Guards
+ * and positions MUST count this list, not the raw one: otherwise a legacy id
+ * silently satisfies the "keep at least one module" rule and the admin can
+ * remove the last VISIBLE module, leaving a space with no usable tab
+ * (rls#249). Order is preserved.
+ */
+export function knownModules(modules: readonly string[]): string[] {
+  return modules.filter((id) => AVAILABLE_MODULES.some((mod) => mod.id === id))
+}
+
 const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
 
 /**
@@ -258,6 +270,19 @@ export function GroupDialog({
   // for mouse users (they drag) yet VISIBLE the moment a keyboard reaches
   // them — an invisible focused control is worse than a noisy one.
   const [keyboardRow, setKeyboardRow] = useState<string | null>(null)
+  // Only renderable modules drive rows, guards and drop positions; unknown
+  // ids stay untouched in data.modules (we never silently drop foreign data).
+  const visibleModules = knownModules(activeModules)
+  /**
+   * Rows, guards and drop indices all count VISIBLE modules, so reordering
+   * happens on that list. Unknown/legacy ids are preserved (we never silently
+   * drop foreign data) and appended — their position is irrelevant because
+   * neither this dialog nor the nav renders them.
+   */
+  const applyVisibleOrder = useCallback((nextVisible: string[]) => {
+    const unknown = activeModules.filter((id) => !visibleModules.includes(id))
+    applyModules([...nextVisible, ...unknown])
+  }, [activeModules, visibleModules, applyModules])
 
   const handleModuleDragOver = useCallback((event: React.DragEvent, rowIndex: number) => {
     event.preventDefault()
@@ -275,12 +300,12 @@ export function GroupDialog({
     setDraggedModule(null)
     setDropIndex(null)
     if (!id || target === null) return
-    const next = reorderModule(activeModules, id, target)
+    const next = reorderModule(visibleModules, id, target)
     // An unchanged order must not trigger a save — a drop onto the row's own
     // position is a no-op, not an edit.
-    if (next.length === activeModules.length && next.every((mod, i) => mod === activeModules[i])) return
-    applyModules(next)
-  }, [draggedModule, dropIndex, activeModules, applyModules])
+    if (next.length === visibleModules.length && next.every((mod, i) => mod === visibleModules[i])) return
+    applyVisibleOrder(next)
+  }, [draggedModule, dropIndex, visibleModules, applyVisibleOrder])
 
   // Invite state
   const [invitingId, setInvitingId] = useState<string | null>(null)
@@ -632,11 +657,12 @@ export function GroupDialog({
             <div className="mt-3 pt-3 border-t border-border/50">
               <Label className="text-xs text-muted-foreground">Module (ziehen zum Sortieren)</Label>
               <div className="mt-2 space-y-0.5" onDragOver={(e) => e.preventDefault()} onDrop={handleModuleDrop}>
-                {activeModules.map((id, index) => {
-                  const mod = AVAILABLE_MODULES.find((m) => m.id === id)
-                  if (!mod) return null
+                {visibleModules.map((id, index) => {
+                  const mod = AVAILABLE_MODULES.find((m) => m.id === id)!
                   const Icon = mod.icon
-                  const isOnly = activeModules.length === 1
+                  // Guard and positions count the VISIBLE rows — a legacy id
+                  // must not silently satisfy "keep one module" (rls#249).
+                  const isOnly = visibleModules.length === 1
                   const isDragged = draggedModule === id
                   return (
                     <div
@@ -666,7 +692,7 @@ export function GroupDialog({
                         type="button"
                         aria-label={`${mod.label} nach oben`}
                         disabled={index === 0}
-                        onClick={() => applyModules(moveModule(activeModules, id, -1))}
+                        onClick={() => applyVisibleOrder(moveModule(visibleModules, id, -1))}
                         onFocus={() => setKeyboardRow(id)}
                         onBlur={() => setKeyboardRow((prev) => (prev === id ? null : prev))}
                         className={cn(
@@ -679,8 +705,8 @@ export function GroupDialog({
                       <button
                         type="button"
                         aria-label={`${mod.label} nach unten`}
-                        disabled={index === activeModules.length - 1}
-                        onClick={() => applyModules(moveModule(activeModules, id, 1))}
+                        disabled={index === visibleModules.length - 1}
+                        onClick={() => applyVisibleOrder(moveModule(visibleModules, id, 1))}
                         onFocus={() => setKeyboardRow(id)}
                         onBlur={() => setKeyboardRow((prev) => (prev === id ? null : prev))}
                         className={cn(
@@ -694,7 +720,7 @@ export function GroupDialog({
                         type="button"
                         aria-label={`${mod.label} deaktivieren`}
                         disabled={isOnly}
-                        onClick={() => applyModules(activeModules.filter((m) => m !== id))}
+                        onClick={() => applyVisibleOrder(visibleModules.filter((m) => m !== id))}
                         className="rounded p-1 text-muted-foreground hover:text-destructive disabled:opacity-30"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -713,7 +739,7 @@ export function GroupDialog({
                         <button
                           key={mod.id}
                           type="button"
-                          onClick={() => applyModules([...activeModules, mod.id])}
+                          onClick={() => applyVisibleOrder([...visibleModules, mod.id])}
                           className="flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs text-muted-foreground hover:border-primary hover:text-foreground"
                         >
                           <Icon className="h-3 w-3" />
