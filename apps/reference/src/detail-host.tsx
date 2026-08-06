@@ -212,6 +212,8 @@ export function ItemDetailRead({
     <ItemPreview
       item={item}
       author={author}
+      // The panel is the surface that shows everything — no four-line clamp.
+      fullBody
       headerAdornment={
         <>
           <ItemTypeBadge type={item.type} />

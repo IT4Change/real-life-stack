@@ -4,6 +4,7 @@ export {
   type ItemPreviewProps,
 } from "./item-preview"
 export { ItemPreviewSkeleton } from "./item-preview-skeleton"
+export { MarkdownText } from "./markdown-text"
 export {
   ItemTypeBadge,
   type ItemTypeBadgeProps,

@@ -6,8 +6,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "../primitives/avatar"
 import { RelativeTime } from "../primitives/relative-time"
 import { ProfileLink } from "../profile/profile-link"
 import { TagChip } from "../tag/tag-chip"
+import { MarkdownText } from "./markdown-text"
 import { cn, getActivePanelGlow } from "../../lib/utils"
 import { useItemTags } from "../../hooks/use-item-tags"
+import { useCommentCount } from "../../hooks/use-comment-count"
+import { MessageSquare } from "lucide-react"
 
 /**
  * `ItemPreview` — shared item-card surface for list/board/feed contexts.
@@ -84,6 +87,12 @@ export interface ItemPreviewProps {
    * block — fits kanban / dense list contexts.
    */
   density?: ItemPreviewDensity
+  /**
+   * Show the body in full instead of clamping it to four lines. Cards clamp
+   * so a long text cannot push its neighbours off screen; the detail panel is
+   * the surface that shows everything, so it sets this.
+   */
+  fullBody?: boolean
   /** Highlights the selected item using the shared panel-glow treatment. */
   active?: boolean
   /** Optional `#rrggbb` override for the active-item glow. */
@@ -113,6 +122,7 @@ export function ItemPreview({
   metaAdornment,
   footerAdornment,
   density = "comfortable",
+  fullBody = false,
   active = false,
   activeGlowColor = DEFAULT_ACTIVE_ITEM_GLOW_COLOR,
   className,
@@ -127,6 +137,9 @@ export function ItemPreview({
         (typeof data.description === "string" && data.description) ||
         ""
   const tags = useItemTags(item)
+  // A card should reveal that a discussion exists — otherwise comments are
+  // invisible until the item is opened.
+  const commentCount = useCommentCount(item.id)
 
   const authorName = author?.displayName ?? item.createdBy
   const authorAvatar = author?.avatarUrl
@@ -214,7 +227,12 @@ export function ItemPreview({
               </h3>
             ))}
           {description && (
-            <p className="text-sm text-foreground leading-relaxed line-clamp-4 mt-1">{description}</p>
+            // The composer writes Markdown, so the body is rendered as
+            // Markdown everywhere it is shown. Clamping happens on the
+            // wrapper: with block content there is no single <p> to clamp.
+            <MarkdownText className={cn("mt-1 text-sm text-foreground", !fullBody && "line-clamp-4")}>
+              {description}
+            </MarkdownText>
           )}
         </div>
       )}
@@ -231,6 +249,21 @@ export function ItemPreview({
           {tags.map((tag) => (
             <TagChip key={tag} tag={tag} />
           ))}
+        </div>
+      )}
+
+      {/* Comment hint — only when there IS a discussion; an explicit "0" would
+          be noise on every card. Not a slot: "this item has comments" is a
+          property of the item, not of the surface or of its type. */}
+      {commentCount > 0 && (
+        <div
+          className={cn(
+            "flex items-center gap-1.5 text-xs text-muted-foreground",
+            isCompact ? "px-3 pb-2" : "px-4 pb-3",
+          )}
+        >
+          <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+          <span>{commentCount === 1 ? "1 Kommentar" : `${commentCount} Kommentare`}</span>
         </div>
       )}
 

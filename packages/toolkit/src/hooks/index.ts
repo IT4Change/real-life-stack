@@ -1,7 +1,7 @@
 export { useIsMobile, useIsCompact } from "./use-mobile"
 
 // Connector
-export { ConnectorProvider, useConnector } from "./connector-context"
+export { ConnectorProvider, useConnector, useOptionalConnector } from "./connector-context"
 export type { ConnectorProviderProps } from "./connector-context"
 
 // Data Hooks
@@ -31,6 +31,7 @@ export { useVerification } from "./use-verification"
 export { useConfirmations } from "./use-confirmations"
 export { useRelayStatus } from "./use-relay-status"
 export { useReactions, useReactionUsers, type AggregatedReaction, type UseReactionsResult, type ReactionUser, type UseReactionUsersResult } from "./use-reactions"
+export { useCommentCount } from "./use-comment-count"
 export { useComments, useReplies, type CommentWithAuthor, type UseCommentsResult, type UseRepliesResult } from "./use-comments"
 export { useVotes, useVoteUsers, useVerifiedRelationRecords, type VoteSummary, type UseVotesResult, type VoteUser, type UseVoteUsersResult } from "./use-votes"
 export { useIncomingEvents, IncomingEventsProvider } from "./use-incoming-events"
