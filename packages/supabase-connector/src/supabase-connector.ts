@@ -1058,6 +1058,8 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   async updateContactName(id: string, name: string): Promise<void> {
     const me = this.sessionUserId
     if (!me) throw new Error("[SupabaseConnector] updateContactName requires an authenticated user")
+    // Ohne Guard könnte die Kanten-Suche irgendeine EIGENE Kante treffen.
+    if (id === me) throw new Error("Du kannst dich nicht selbst als Kontakt bearbeiten.")
     const edge = (await this.fetchContactEdges(me)).find(
       (row) => row.requester === id || row.addressee === id,
     )
@@ -1073,6 +1075,7 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   async removeContact(id: string): Promise<void> {
     const me = this.sessionUserId
     if (!me) throw new Error("[SupabaseConnector] removeContact requires an authenticated user")
+    if (id === me) throw new Error("Du kannst dich nicht selbst als Kontakt entfernen.")
     for (const [requester, addressee] of [[me, id], [id, me]] as const) {
       const deletion = this.client.from("contacts").delete().eq("requester", requester) as unknown as { eq(column: string, value: unknown): PromiseLike<SupabaseResult<unknown>> }
       throwOnError(await deletion.eq("addressee", addressee), "removeContact")

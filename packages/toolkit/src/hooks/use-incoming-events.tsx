@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback, useMemo, createContext, useContext, type ReactNode } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef, createContext, useContext, type ReactNode } from "react"
 import type { IncomingEvent, IncomingVerificationEvent, IncomingSpaceInviteEvent, MutualVerificationEvent,
   IncomingContactRequestEvent,
   ContactConfirmedEvent,
   AuthState,
+  DataInterface,
 } from "@real-life-stack/data-interface"
 import { hasEventListener, isAuthenticatable } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
@@ -66,11 +67,17 @@ export function IncomingEventsProvider({ children }: { children: ReactNode }) {
     return unsub
   }, [connector, enqueue])
 
-  // Queued dialogs are a view of THIS session: a logout or account switch
-  // must drop them — an invite meant for A has no business popping up for B
-  // (#251 re-review). The identity, not the auth status, is the trigger:
-  // a token refresh keeps the queue.
+  // Queued dialogs are a view of THIS session AND this connector: a logout,
+  // an account switch (#251 re-review) or a connector switch (#253) must drop
+  // them — an invite meant for A has no business popping up for B. Within a
+  // connector the IDENTITY is the trigger, not the auth status: a token
+  // refresh keeps the queue.
+  const previousConnector = useRef<DataInterface | null>(null)
   useEffect(() => {
+    // Connector swapped without a remount (Toolkit hosts without
+    // key={connectorId}): the previous instance's queue is void.
+    if (previousConnector.current && previousConnector.current !== connector) setQueue([])
+    previousConnector.current = connector
     if (!isAuthenticatable(connector)) return
     const observable = connector.getAuthState()
     const identityOf = (state: AuthState) => state.status === "authenticated" ? state.user.id : null

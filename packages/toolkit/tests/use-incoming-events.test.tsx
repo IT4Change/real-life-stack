@@ -50,6 +50,26 @@ afterEach(() => {
 })
 
 describe("IncomingEventsProvider — Dialog-Queue ist session-gebunden (#251 Re-Review)", () => {
+  it("ein CONNECTOR-Wechsel leert die Queue des alten Connectors (#253)", () => {
+    const a = makeConnector()
+    const b = makeConnector()
+    host = document.createElement("div")
+    document.body.appendChild(host)
+    root = createRoot(host)
+    const render = (connector: DataInterface) => (
+      <ConnectorProvider connector={connector}>
+        <IncomingEventsProvider><Probe /></IncomingEventsProvider>
+      </ConnectorProvider>
+    )
+    act(() => root!.render(render(a.connector)))
+    act(() => a.emitEvent({ type: "space-invite", fromId: "user-x", spaceId: "g1", spaceName: "G" }))
+    expect(currentValue?.current?.event.type).toBe("space-invite")
+    // Ohne Remount (Toolkit-Hosts ohne key={connectorId}): der Wechsel muss
+    // die Queue des alten Connectors verwerfen.
+    act(() => root!.render(render(b.connector)))
+    expect(currentValue?.current).toBeNull()
+  })
+
   it("eingereihte Dialoge überleben Logout und Accountwechsel NICHT", () => {
     const { connector, emitEvent, setAuth } = makeConnector()
     host = document.createElement("div")

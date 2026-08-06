@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { UserPlus } from "lucide-react"
 import {
   Dialog,
@@ -14,8 +15,9 @@ export interface IncomingContactRequestDialogProps {
   open: boolean
   fromName?: string
   fromAvatar?: string
-  /** Bestätigt die Anfrage (activateContact) und schließt. */
-  onConfirm: () => void
+  /** Bestätigt die Anfrage. Wirft der Handler, BLEIBT der Dialog offen und
+      zeigt den Fehler — die Anfrage ist retry-fähig. */
+  onConfirm: () => void | Promise<void>
   /** Später entscheiden — die Anfrage bleibt im Kontakte-Dialog sichtbar. */
   onDismiss: () => void
 }
@@ -37,6 +39,21 @@ export function IncomingContactRequestDialog({
   onDismiss,
 }: IncomingContactRequestDialogProps) {
   const displayName = fromName ?? "Jemand"
+  const [confirming, setConfirming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleConfirm = async () => {
+    if (confirming) return
+    setConfirming(true)
+    setError(null)
+    try {
+      await onConfirm()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Bestätigen fehlgeschlagen. Bitte erneut versuchen.")
+    } finally {
+      setConfirming(false)
+    }
+  }
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onDismiss() }}>
       <DialogContent className="sm:max-w-sm">
@@ -59,12 +76,14 @@ export function IncomingContactRequestDialog({
           </p>
         </div>
 
+        {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onDismiss}>
+          <Button variant="ghost" size="sm" onClick={onDismiss} disabled={confirming}>
             Später
           </Button>
-          <Button size="sm" onClick={onConfirm}>
-            Bestätigen
+          <Button size="sm" onClick={handleConfirm} disabled={confirming}>
+            {confirming ? "Bestätige…" : "Bestätigen"}
           </Button>
         </div>
       </DialogContent>

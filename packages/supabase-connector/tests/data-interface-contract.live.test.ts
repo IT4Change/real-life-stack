@@ -25,6 +25,7 @@ import { deriveRelationRecordId, voteRecordInput, VOTE_PREDICATE } from "@real-l
 import type { SupabaseClientLike } from "../src/client-types.js"
 import { SupabaseConnector } from "../src/supabase-connector.js"
 
+// Timeouts: siehe vitest.config.ts (Projekt "live").
 const url = process.env.SUPABASE_URL
 const anonKey = process.env.SUPABASE_ANON_KEY
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -41,6 +42,19 @@ if (!url || !anonKey || !serviceKey) {
       auth: { persistSession: false, autoRefreshToken: false },
       global: { headers: { Authorization: `Bearer ${serviceKey}` } },
     })
+  }
+
+  /** Wartet auf eine BEDINGUNG statt auf eine feste Pause — feste Sleeps
+      gegen einen echten Server waren die eigentliche Flake-Quelle. */
+  async function waitFor(
+    predicate: () => boolean,
+    { timeout = 15_000, interval = 100, label = "Bedingung" } = {},
+  ): Promise<void> {
+    const deadline = Date.now() + timeout
+    while (!predicate()) {
+      if (Date.now() > deadline) throw new Error(`waitFor: ${label} nicht erreicht in ${timeout}ms`)
+      await new Promise((resolve) => setTimeout(resolve, interval))
+    }
   }
 
   function makeAnonClient() {
@@ -127,7 +141,7 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
-    it("group scope binds reads AND an existing observation follows a group switch", { timeout: 20_000 }, async () => {
+    it("group scope binds reads AND an existing observation follows a group switch", async () => {
       const { connector, userId } = await makeAuthoritative()
       try {
         const probeType = `scope-probe-${Date.now()}`
@@ -143,11 +157,11 @@ if (!url || !anonKey || !serviceKey) {
 
         connector.setCurrentGroup(groupA.id)
         const observable = connector.observe({ type: probeType })
-        await new Promise((resolve) => setTimeout(resolve, 500))
+        await waitFor(() => observable.current.some(({ id }) => id === inA.id), { label: "Gruppe A sichtbar" })
         expect(observable.current.map(({ id }) => id)).toEqual([inA.id])
         // Existing observation must switch its content with the group.
         connector.setCurrentGroup(groupB.id)
-        await new Promise((resolve) => setTimeout(resolve, 1_000))
+        await waitFor(() => observable.current.some(({ id }) => id === inB.id), { label: "Gruppe B sichtbar" })
         expect(observable.current.map(({ id }) => id)).toEqual([inB.id])
 
         connector.setCurrentGroup(null)
@@ -176,7 +190,7 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
-    it("contacts: request→confirm end-to-end; only the addressee confirms; third parties see nothing", { timeout: 30_000 }, async () => {
+    it("contacts: request→confirm end-to-end; only the addressee confirms; third parties see nothing", async () => {
       const alice = await makeAuthoritative()
       const berta = await makeAuthoritative()
       const carla = await makeAuthoritative()
@@ -233,7 +247,7 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
-    it("incoming events LIVE: contact request and group invite arrive as dialog events", { timeout: 30_000 }, async () => {
+    it("incoming events LIVE: contact request and group invite arrive as dialog events", async () => {
       const alice = await makeAuthoritative()
       const berta = await makeAuthoritative()
       try {
@@ -266,14 +280,15 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
-    it("observe() is LIVE: an insert from a second client arrives via realtime", { timeout: 20_000 }, async () => {
+    it("observe() is LIVE: an insert from a second client arrives via realtime", async () => {
       const observerSide = await makeAuthoritative()
       const writerSide = await makeAuthoritative()
       try {
         const type = `live-${Date.now()}`
         const observable = observerSide.connector.observe({ type })
-        // Give the initial fetch + channel join a moment to settle.
-        await new Promise((resolve) => setTimeout(resolve, 2_000))
+        // Erst wenn der initiale Fetch settled ist, steht der Kanal-Join an.
+        await waitFor(() => observable.loaded === true, { label: "observe geladen" })
+        await new Promise((resolve) => setTimeout(resolve, 1_500)) // Kanal-Join
         const created = await writerSide.connector.createItem({ type, createdBy: writerSide.userId, data: { title: "realtime" } })
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error("realtime update did not arrive within 15s")), 15_000)

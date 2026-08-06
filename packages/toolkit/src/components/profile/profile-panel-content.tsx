@@ -33,6 +33,7 @@ export type ProfilePanelContentProps =
       profileUrl?: string
       onAddContact?: never
       contactStatus?: never
+      contactDirection?: never
     }
   | {
       mode: "view"
@@ -46,6 +47,9 @@ export type ProfilePanelContentProps =
       onAddContact?: () => Promise<unknown> | void
       /** Bestehender Kontaktstatus zur Button-Beschriftung. */
       contactStatus?: "pending" | "active"
+      /** Richtung einer offenen Anfrage: bei "incoming" bestätigt der Button
+          (die Gegenseite hat angefragt), bei "outgoing" wartet er. */
+      contactDirection?: "incoming" | "outgoing"
     }
 
 function getInitials(name: string): string {
@@ -70,6 +74,7 @@ export function ProfilePanelContent({
   profileUrl,
   onAddContact,
   contactStatus,
+  contactDirection,
 }: ProfilePanelContentProps) {
   const [name, setName] = useState(profile.name)
   const [bio, setBio] = useState(profile.bio ?? "")
@@ -259,7 +264,7 @@ export function ProfilePanelContent({
           <Button
             size="sm"
             className="w-full"
-            disabled={requesting || requested || contactStatus === "pending"}
+            disabled={requesting || (contactDirection !== "incoming" && (requested || contactStatus === "pending"))}
             onClick={async () => {
               setRequesting(true)
               try {
@@ -272,7 +277,11 @@ export function ProfilePanelContent({
               }
             }}
           >
-            {contactStatus === "pending" || requested ? "Anfrage gesendet" : requesting ? "Sende…" : "Als Kontakt anfragen"}
+            {contactStatus === "pending" && contactDirection === "incoming"
+              ? (requesting ? "Bestätige…" : "Anfrage bestätigen")
+              : contactStatus === "pending" || requested
+                ? "Anfrage gesendet"
+                : requesting ? "Sende…" : "Als Kontakt anfragen"}
           </Button>
         )}
         {onAddContact && contactStatus === "active" && (

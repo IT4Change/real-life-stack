@@ -999,6 +999,21 @@ describe("SupabaseConnector — ContactManager (Anfrage → Bestätigung)", () =
     expect(observable.current.map(({ id }) => id).sort()).toEqual(["user-alt", "user-neu"])
   })
 
+  it("updateContactName lehnt die eigene ID ab (keine willkürliche eigene Kante)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-berta", "Berta")
+    await connector.addContact("user-berta")
+    await expect(connector.updateContactName(userId, "Ich selbst")).rejects.toThrow(/selbst/i)
+    // Die bestehende Kante bleibt unangetastet.
+    const edge = client.tables.get("contacts")!.find((r) => r.requester === userId)!
+    expect(edge.requester_alias).toBeUndefined()
+  })
+
+  it("removeContact lehnt die eigene ID ab", async () => {
+    const { connector, userId } = await makeConnector()
+    await expect(connector.removeContact(userId)).rejects.toThrow(/selbst/i)
+  })
+
   it("observeContacts folgt Realtime-Events auf contacts", async () => {
     const { client, connector, userId } = await makeConnector()
     seedProfile(client, "user-carla", "Carla")

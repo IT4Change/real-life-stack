@@ -251,11 +251,9 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
 
   const handleConfirmContactRequest = async () => {
     if (!contactRequest) return
-    try {
-      await activateIncomingContact(contactRequest.fromId)
-    } catch (error) {
-      console.error("[IncomingEventDialogs] Kontaktanfrage bestätigen fehlgeschlagen", error)
-    }
+    // Fehler NICHT schlucken: der Dialog zeigt ihn und bleibt offen
+    // (retry-fähig). Nur der Erfolg schließt.
+    await activateIncomingContact(contactRequest.fromId)
     dismiss()
   }
 
@@ -342,6 +340,7 @@ export function ProfilePanelHost({
   onClose,
   onAddContact,
   contactStatusFor,
+  contactDirectionFor,
 }: {
   userId: string | null
   currentUser: User | null | undefined
@@ -351,6 +350,7 @@ export function ProfilePanelHost({
   onClose: () => void
   onAddContact?: (id: string) => Promise<unknown>
   contactStatusFor?: (id: string) => "pending" | "active" | undefined
+  contactDirectionFor?: (id: string) => "incoming" | "outgoing" | undefined
 }) {
   const isOwn = userId != null && userId === currentUser?.id
   const [foreign, setForeign] = useState<User | null>(null)
@@ -443,6 +443,7 @@ export function ProfilePanelHost({
             onClose={onClose}
             onAddContact={onAddContact && userId ? () => onAddContact(userId) : undefined}
             contactStatus={userId ? contactStatusFor?.(userId) : undefined}
+            contactDirection={userId ? contactDirectionFor?.(userId) : undefined}
           />
         )
       )}
@@ -767,6 +768,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
         onClose={closeProfile}
         onAddContact={supportsContacts ? addContact : undefined}
         contactStatusFor={(id) => allContacts.find((contact) => contact.id === id)?.status}
+        contactDirectionFor={(id) => allContacts.find((contact) => contact.id === id)?.direction}
       />
 
       {/* Contacts Dialog */}
