@@ -52,12 +52,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages (data-interface, toolkit, connectors)
-        run: |
-          pnpm --filter @real-life-stack/data-interface build
-          pnpm --filter @real-life-stack/toolkit build
-          pnpm --filter @real-life-stack/mock-connector --filter @real-life-stack/local-connector build
-          pnpm --filter @real-life-stack/wot-connector build
+      # Abhaengigkeiten der Apps, aus dem Workspace-Graphen abgeleitet statt
+      # von Hand aufgezaehlt. Die fruehere Liste nannte data-interface,
+      # toolkit und drei Connectoren — als `supabase-connector` dazukam
+      # (#238), trug sie niemand nach, und der Deploy brach ab dem naechsten
+      # Push ab: `Cannot find module '@real-life-stack/supabase-connector'`.
+      # Eine Handliste driftet lautlos; `^...` kann das nicht.
+      - name: Build workspace dependencies
+        run: pnpm --filter "reference^..." --filter "landing^..." build
 
       - name: Build landing page
         run: pnpm --filter landing build
@@ -86,6 +88,10 @@ jobs:
       # F-Droid-Installation landete damit auf dem Play-Kanal. Deshalb
       # bekommt jeder Kanal seinen eigenen Build statt sich auf die
       # Namensgleichheit zu verlassen.
+      # Pro Kanal ein eigener Build: VITE_UPDATE_CHANNEL landet im Bundle.
+      # Bewusst ohne turbo-Cache — ohne die Variable im Cache-Schluessel
+      # bekaemen alle drei Kanaele das Bundle des ersten, genau der Fehler
+      # aus #193.
       - name: Build OTA bundles
         run: |
           for channel in ios android android-foss; do
