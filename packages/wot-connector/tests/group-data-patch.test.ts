@@ -135,3 +135,26 @@ describe("updateGroup — modules:null (rls#250)", () => {
     expect(cached?.data?.modules).toEqual(projected)
   })
 })
+
+describe("updateGroup — description ist ein Framework-Feld (rls#256)", () => {
+  it("schreibt description auf den festen _meta-Schluessel, nicht in appData", async () => {
+    const { connector, updateSpace } = fakeConnector()
+
+    await connector.updateGroup("space-1", { data: { description: "Unser Garten", theme: "forest" } })
+
+    expect(updateSpace).toHaveBeenCalledWith("space-1", {
+      description: "Unser Garten",
+      appData: { theme: "forest" },
+    })
+  })
+
+  it("projiziert space.description zurueck nach Group.data", () => {
+    const { connector } = fakeConnector()
+    const group = (connector as unknown as { spaceToGroup: (s: unknown) => { data?: Record<string, unknown> } })
+      .spaceToGroup({
+        id: "space-2", type: "shared", name: "B", members: [], createdAt: "2026-08-06T00:00:00.000Z",
+        description: "Aus dem Sync-Vokabular",
+      })
+    expect(group.data?.description).toBe("Aus dem Sync-Vokabular")
+  })
+})

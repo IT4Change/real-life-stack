@@ -14,6 +14,16 @@ export function ConnectorProvider({ connector, children }: ConnectorProviderProp
   return <ConnectorContext value={connector}>{children}</ConnectorContext>
 }
 
+/**
+ * The connector if one is provided, otherwise `null`. For components that
+ * MAY enrich themselves from live data but must keep rendering without a
+ * provider — `ItemPreview` is deliberately usable in tests, SSR and
+ * storybook-style contexts without connector wiring.
+ */
+export function useOptionalConnector(): DataInterface | null {
+  return useContext(ConnectorContext)
+}
+
 export function useConnector(): DataInterface {
   const connector = useContext(ConnectorContext)
   if (!connector) {

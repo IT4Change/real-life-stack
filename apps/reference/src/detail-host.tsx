@@ -212,6 +212,9 @@ export function ItemDetailRead({
     <ItemPreview
       item={item}
       author={author}
+      // The panel shows everything: full body, and no comment hint (the
+      // discussion is listed right below).
+      surface="panel"
       headerAdornment={
         <>
           <ItemTypeBadge type={item.type} />

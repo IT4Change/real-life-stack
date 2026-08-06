@@ -11,6 +11,13 @@ export interface AggregatedReaction {
   count: number
   /** Whether this is the current user's reaction. At most one emoji can be true. */
   isMyReaction: boolean
+  /**
+   * Ids of the users behind this emoji. Comes free with the reaction ITEMS we
+   * already observe (each carries `createdBy`), so a surface can name the
+   * reactors without a second round trip. Optional: a consumer that only
+   * builds counts (fixtures, stories) need not supply it.
+   */
+  userIds?: string[]
 }
 
 /** Return value of useReactions hook. */
@@ -78,16 +85,28 @@ export function useReactions(itemId: string): UseReactionsResult {
   }, [pending, persistedMyReaction])
 
   const reactions: AggregatedReaction[] = useMemo(() => {
-    const counts = new Map<string, number>()
+    const byEmoji = new Map<string, string[]>()
+    const add = (emoji: string, userId: string | undefined) => {
+      const ids = byEmoji.get(emoji) ?? []
+      if (userId) ids.push(userId)
+      byEmoji.set(emoji, ids)
+    }
     for (const reaction of reactionItems) {
       if (pending && currentUserId && reaction.createdBy === currentUserId) continue
       const emoji = reaction.data.emoji
       if (typeof emoji !== "string" || !emoji) continue
-      counts.set(emoji, (counts.get(emoji) ?? 0) + 1)
+      add(emoji, reaction.createdBy)
     }
-    if (pending?.emoji) counts.set(pending.emoji, (counts.get(pending.emoji) ?? 0) + 1)
-    return [...counts.entries()]
-      .map(([emoji, count]) => ({ emoji, count, isMyReaction: emoji === myReaction }))
+    // The optimistic own reaction counts too, so the tooltip does not lag
+    // behind the pill it belongs to.
+    if (pending?.emoji) add(pending.emoji, currentUserId)
+    return [...byEmoji.entries()]
+      .map(([emoji, userIds]) => ({
+        emoji,
+        count: userIds.length,
+        isMyReaction: emoji === myReaction,
+        userIds,
+      }))
       .sort((a, b) => b.count - a.count)
   }, [reactionItems, pending, currentUserId, myReaction])
 

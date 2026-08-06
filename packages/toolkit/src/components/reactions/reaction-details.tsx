@@ -16,6 +16,12 @@ export interface ReactionDetailsProps {
   reactions: AggregatedReaction[]
   /** Callback when the panel is dismissed. */
   onClose: () => void
+  /**
+   * Show the header's own close button. Default `true` for the panel usage
+   * this component was built for; a surface that already provides one (a
+   * Dialog with its X) passes `false` so the user is not offered two.
+   */
+  showHeaderClose?: boolean
   /** Additional CSS classes. */
   className?: string
 }
@@ -39,6 +45,7 @@ export function ReactionDetails({
   initialEmoji,
   reactions,
   onClose,
+  showHeaderClose = true,
   className,
 }: ReactionDetailsProps) {
   const [activeFilter, setActiveFilter] = useState<string | undefined>(initialEmoji)
@@ -50,14 +57,16 @@ export function ReactionDetails({
     <div className={cn("flex flex-col h-full", className)}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
-        <h3 className="text-sm font-semibold text-foreground">Reactions</h3>
-        <button
-          type="button"
-          className="text-muted-foreground hover:text-foreground text-sm"
-          onClick={onClose}
-        >
-          Close
-        </button>
+        <h3 className="text-sm font-semibold text-foreground">Reaktionen</h3>
+        {showHeaderClose && (
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground text-sm"
+            onClick={onClose}
+          >
+            Schliessen
+          </button>
+        )}
       </div>
 
       {/* Filter row */}
@@ -73,7 +82,7 @@ export function ReactionDetails({
           )}
           onClick={() => setActiveFilter(undefined)}
         >
-          All
+          Alle
           <span className="tabular-nums">{totalCount}</span>
         </button>
 
@@ -99,11 +108,11 @@ export function ReactionDetails({
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-            Loading...
+            Wird geladen …
           </div>
         ) : users.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-            No reactions yet
+            Noch keine Reaktionen
           </div>
         ) : (
           <ul>

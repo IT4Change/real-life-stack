@@ -983,6 +983,10 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       acceptedPatch[key] = value
       if (key === "image") metaUpdate.image = value as string
       else if (key === "modules") metaUpdate.modules = value as string[]
+      // `description` is a FRAMEWORK field of the sync vocabulary, not an app
+      // field — other apps read it from `SpaceInfo.description` without
+      // knowing anything about RLS (rls#256).
+      else if (key === "description") metaUpdate.description = value as string
       else appData[key] = value
     }
     if (Object.keys(appData).length > 0) metaUpdate.appData = appData
@@ -2584,6 +2588,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
         ...(space.appData ?? {}),
         modules: space.modules ?? DEFAULT_MODULES,
         ...(space.image ? { image: space.image } : {}),
+        ...(space.description !== undefined ? { description: space.description } : {}),
       },
     }
   }
