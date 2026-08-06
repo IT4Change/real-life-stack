@@ -41,6 +41,25 @@ describe("IncomingContactRequestDialog — Fehler- und Schließ-Verhalten", () =
     expect(document.body.textContent).toContain("Bert")
   })
 
+  it("eine alte Bestätigung von A überschreibt den Zustand von B nicht (Request-Epoche)", async () => {
+    let rejectA: (reason: Error) => void = () => {}
+    const confirmA = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectA = reject }))
+    mount(<IncomingContactRequestDialog open fromId="a" fromName="Anna" onConfirm={confirmA} onDismiss={() => {}} />)
+    act(() => { button("Bestätigen")!.click() })
+    await flush()
+    // Nächste Anfrage rückt nach, während As Bestätigung noch läuft.
+    act(() => root!.render(
+      <IncomingContactRequestDialog open fromId="b" fromName="Bert" onConfirm={async () => {}} onDismiss={() => {}} />,
+    ))
+    await flush()
+    expect(button("Bestätigen")).toBeTruthy() // Bs Button ist bedienbar
+    // As Bestätigung scheitert JETZT — der Fehler gehört nicht zu B.
+    act(() => rejectA(new Error("As Netzwerkfehler")))
+    await flush()
+    expect(document.body.textContent).not.toContain("As Netzwerkfehler")
+    expect(button("Bestätigen")).toBeTruthy()
+  })
+
   it("während des Bestätigens schließt Escape/Outside-Click den Dialog NICHT", async () => {
     let release: () => void = () => {}
     const pending = vi.fn(() => new Promise<void>((resolve) => { release = resolve }))

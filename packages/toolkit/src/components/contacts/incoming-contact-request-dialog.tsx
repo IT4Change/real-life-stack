@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { UserPlus } from "lucide-react"
 import {
   Dialog,
@@ -47,22 +47,32 @@ export function IncomingContactRequestDialog({
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  /**
+   * Request-Epoche (#254): die async Fortsetzung einer Bestätigung gehört
+   * der Anfrage, für die sie gestartet wurde. Rückt inzwischen die nächste
+   * nach, darf sie deren error/confirming nicht mehr setzen.
+   */
+  const requestEpoch = useRef(0)
+
   // Nächste Anfrage rückt nach → der Fehler der vorherigen gilt nicht mehr.
   useEffect(() => {
+    requestEpoch.current += 1
     setError(null)
     setConfirming(false)
   }, [fromId])
 
   const handleConfirm = async () => {
     if (confirming) return
+    const epoch = requestEpoch.current
     setConfirming(true)
     setError(null)
     try {
       await onConfirm()
     } catch (cause) {
+      if (epoch !== requestEpoch.current) return
       setError(cause instanceof Error ? cause.message : "Bestätigen fehlgeschlagen. Bitte erneut versuchen.")
     } finally {
-      setConfirming(false)
+      if (epoch === requestEpoch.current) setConfirming(false)
     }
   }
   return (
