@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { Item, RelationRecord, User } from "@real-life-stack/data-interface"
 
-import { projectSpaceGraph } from "./graph-view"
+import { graphNodeRef, projectSpaceGraph } from "./graph-view"
 
 const item = (id: string, type: string, data: Record<string, unknown> = {}, relations: Item["relations"] = []): Item =>
   ({ id, type, createdAt: "2026-08-05T10:00:00.000Z", createdBy: "u1", data, relations }) as Item
@@ -24,7 +24,7 @@ describe("projectSpaceGraph", () => {
       ],
       [], USERS, labelOf,
     )
-    expect(nodes.map((n) => n.id)).toEqual(["t1"])
+    expect(nodes.map((n) => n.id)).toEqual(["item:t1"])
   })
 
   it("adds person nodes only when an edge reaches them", () => {
@@ -32,10 +32,10 @@ describe("projectSpaceGraph", () => {
       [item("t1", "task", { title: "Beete" }, [{ predicate: "assignedTo", target: "global:u2" }])],
       [], USERS, labelOf,
     )
-    expect(nodes.map((n) => n.id).sort()).toEqual(["t1", "u2"])
-    expect(nodes.find((n) => n.id === "u2")?.type).toBe("person")
+    expect(nodes.map((n) => n.id).sort()).toEqual(["item:t1", "user:u2"])
+    expect(nodes.find((n) => n.id === "user:u2")?.type).toBe("person")
     expect(edges).toEqual([
-      { id: "t1|assignedTo|u2", sourceId: "t1", targetId: "u2", predicate: "assignedTo" },
+      { id: "t1|assignedTo|user:u2", sourceId: "item:t1", targetId: "user:u2", predicate: "assignedTo" },
     ])
   })
 
@@ -51,9 +51,9 @@ describe("projectSpaceGraph", () => {
       [record], USERS, labelOf,
     )
     expect(edges).toEqual([
-      { id: "rel-vote", sourceId: "u1", targetId: "s1", predicate: "votesOn" },
+      { id: "rel-vote", sourceId: "user:u1", targetId: "item:s1", predicate: "votesOn" },
     ])
-    expect(nodes.some((n) => n.id === "u1" && n.type === "person")).toBe(true)
+    expect(nodes.some((n) => n.id === "user:u1" && n.type === "person")).toBe(true)
   })
 
   it("drops edges whose endpoint is unknown instead of breaking", () => {
@@ -74,8 +74,8 @@ describe("projectSpaceGraph", () => {
     ]
     const inGarden = { resolveItemSpace: (id: string) => (id === "b" ? "garden" : null) }
     expect(projectSpaceGraph(items, [], USERS, labelOf, inGarden).edges[0]).toMatchObject({
-      sourceId: "a",
-      targetId: "b",
+      sourceId: "item:a",
+      targetId: "item:b",
     })
   })
 
@@ -97,5 +97,43 @@ describe("projectSpaceGraph", () => {
     expect(nodeTypes).toEqual([
       expect.objectContaining({ id: "task", label: "L:task" }),
     ])
+  })
+})
+
+describe("projectSpaceGraph — Namensraum für Knoten-Ids (rls#248)", () => {
+  it("haelt Item und User mit GLEICHER Roh-Id auseinander", () => {
+    // Kollidierende Ids sind kein Konstrukt: Item-Ids und DIDs/User-Ids
+    // stammen aus verschiedenen Quellen und teilen keinen Namensraum.
+    const collide = "shared-id"
+    const users: User[] = [{ id: collide, displayName: "Lena" }]
+    const { nodes, edges } = projectSpaceGraph(
+      [item(collide, "task", { title: "Beete" }, [{ predicate: "assignedTo", target: `global:${collide}` }])],
+      [], users, labelOf,
+    )
+    // Zwei getrennte Knoten, nicht einer.
+    expect(nodes).toHaveLength(2)
+    const person = nodes.find((n) => n.type === "person")
+    const task = nodes.find((n) => n.type === "task")
+    expect(person).toBeDefined()
+    expect(task).toBeDefined()
+    expect(person!.id).not.toBe(task!.id)
+    // Und die Kante zeigt auf den PERSONEN-Knoten.
+    expect(edges).toHaveLength(1)
+    expect(edges[0].sourceId).toBe(task!.id)
+    expect(edges[0].targetId).toBe(person!.id)
+  })
+
+  it("kodiert den Identitaetstyp in der Knoten-Id, dekodierbar per graphNodeRef", () => {
+    const { nodes } = projectSpaceGraph(
+      [item("t1", "task", {}, [{ predicate: "assignedTo", target: "global:u2" }])],
+      [], USERS, labelOf,
+    )
+    const refs = nodes.map((n) => graphNodeRef(n.id))
+    expect(refs).toEqual(
+      expect.arrayContaining([
+        { kind: "item", id: "t1" },
+        { kind: "user", id: "u2" },
+      ]),
+    )
   })
 })

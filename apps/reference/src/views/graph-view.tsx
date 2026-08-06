@@ -51,6 +51,22 @@ const NODE_COLORS: Record<string, { color: string; darkColor: string }> = {
 }
 const FALLBACK_COLOR = { color: "#64748b", darkColor: "#475569" }
 
+/**
+ * Graph node ids are NAMESPACED by identity kind (`item:` / `user:`). Item
+ * ids and user ids come from different sources and share no namespace — a
+ * collision used to merge both into one node, and a click on the person then
+ * opened the item instead of the profile (rls#248).
+ */
+export const graphItemNodeId = (id: string): string => `item:${id}`
+export const graphUserNodeId = (id: string): string => `user:${id}`
+
+/** Decode a namespaced graph node id back to kind + original id. */
+export function graphNodeRef(nodeId: string): { kind: "item" | "user"; id: string } | null {
+  if (nodeId.startsWith("item:")) return { kind: "item", id: nodeId.slice("item:".length) }
+  if (nodeId.startsWith("user:")) return { kind: "user", id: nodeId.slice("user:".length) }
+  return null
+}
+
 export interface GraphProjection {
   nodes: GraphNode[]
   edges: GraphEdge[]
@@ -96,7 +112,8 @@ export function projectSpaceGraph(
   const usedTypes = new Set<string>()
 
   for (const item of cardItems) {
-    nodes.set(item.id, { id: item.id, label: label(item), type: item.type })
+    const nodeId = graphItemNodeId(item.id)
+    nodes.set(nodeId, { id: nodeId, label: label(item), type: item.type })
     usedTypes.add(item.type)
   }
 
@@ -113,20 +130,21 @@ export function projectSpaceGraph(
       if (parsed.spaceId !== undefined) {
         if (opts?.resolveItemSpace?.(parsed.id) !== parsed.spaceId) return null
       }
-      return parsed.id
+      return graphItemNodeId(parsed.id)
     }
     const user = usersById.get(parsed.id)
     if (!user) return null
-    if (!nodes.has(user.id)) {
-      nodes.set(user.id, {
-        id: user.id,
+    const nodeId = graphUserNodeId(user.id)
+    if (!nodes.has(nodeId)) {
+      nodes.set(nodeId, {
+        id: nodeId,
         label: user.displayName ?? user.id,
         type: "person",
         avatarUrl: typeof user.avatarUrl === "string" ? user.avatarUrl : undefined,
       })
       usedTypes.add("person")
     }
-    return user.id
+    return nodeId
   }
 
   // Embedded relations (spec 04, forward): task --assignedTo--> person, …
@@ -136,7 +154,7 @@ export function projectSpaceGraph(
       if (!other) continue
       edges.push({
         id: `${item.id}|${relation.predicate}|${other}`,
-        sourceId: item.id,
+        sourceId: graphItemNodeId(item.id),
         targetId: other,
         predicate: relation.predicate,
       })
@@ -222,20 +240,23 @@ export function GraphViewWrapper({ groupId }: { groupId: string }) {
   }, [focusedItemId, openProfile])
   const onSelect = useCallback(
     (nodeId: string | null) => {
-      if (nodeId && itemById.has(nodeId)) {
-        focusItem(nodeId)
-      } else if (nodeId) {
+      // The node id carries its identity KIND (rls#248) — never guess from a
+      // lookup, an item id and a user id may be the same string.
+      const ref = nodeId ? graphNodeRef(nodeId) : null
+      if (ref?.kind === "item") {
+        focusItem(ref.id)
+      } else if (ref?.kind === "user") {
         if (focusedItemId) {
-          pendingProfileRef.current = nodeId
+          pendingProfileRef.current = ref.id
           clearFocus()
         } else {
-          openProfile(nodeId)
+          openProfile(ref.id)
         }
-      } else if (focusedItemId) {
+      } else if (!nodeId && focusedItemId) {
         clearFocus()
       }
     },
-    [itemById, focusItem, openProfile, focusedItemId, clearFocus],
+    [focusItem, openProfile, focusedItemId, clearFocus],
   )
 
   return (
@@ -244,7 +265,7 @@ export function GraphViewWrapper({ groupId }: { groupId: string }) {
       nodes={projection.nodes}
       edges={projection.edges}
       nodeTypes={projection.nodeTypes}
-      selectedNodeId={focusedItemId ?? null}
+      selectedNodeId={focusedItemId ? graphItemNodeId(focusedItemId) : null}
       onSelectedNodeChange={onSelect}
       fitViewKey={groupId}
       className="h-full w-full"
