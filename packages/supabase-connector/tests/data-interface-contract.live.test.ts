@@ -253,6 +253,34 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
+    it("auch der GEGENPFAD global→Gruppe ist gesperrt: kein Einschleusen in einen Space (#246)", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        const probeType = `scope-in-${Date.now()}`
+        // Alices globales Item (kein Space) …
+        alice.connector.setCurrentGroup(null)
+        const global = await alice.connector.createItem({ type: probeType, createdBy: alice.userId, data: { title: "global" } })
+        // … Bertas Gruppe, in der Alice NICHT Mitglied ist.
+        const bertasGroup = await berta.connector.createGroup(`Fremd ${Date.now()}`)
+
+        // Weder in einen fremden Space …
+        const intoForeign = await alice.client.from("items").update({ group_id: bertasGroup.id }).eq("id", global.id)
+        expect(intoForeign.error).not.toBeNull()
+        // … noch in einen eigenen: group_id ist unveränderlich, Punkt.
+        const own = await alice.connector.createGroup(`Eigen ${Date.now()}`)
+        const intoOwn = await alice.client.from("items").update({ group_id: own.id }).eq("id", global.id)
+        expect(intoOwn.error).not.toBeNull()
+
+        // Das Item ist unverändert global geblieben.
+        alice.connector.setCurrentGroup(null)
+        expect((await alice.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([global.id])
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
     it("das Löschen einer Gruppe VERÖFFENTLICHT ihre Inhalte nicht (CASCADE statt SET NULL, #246)", async () => {
       const alice = await makeAuthoritative()
       const berta = await makeAuthoritative()
@@ -285,7 +313,8 @@ if (!url || !anonKey || !serviceKey) {
         await alice.connector.inviteMember(group.id, berta.userId)
         berta.connector.setCurrentGroup(group.id)
         const observable = berta.connector.observe({ type: probeType })
-        await new Promise((resolve) => setTimeout(resolve, 2_000))
+        await waitFor(() => observable.loaded === true, { label: "observe geladen" })
+        await new Promise((resolve) => setTimeout(resolve, 1_500)) // Kanal-Join
         alice.connector.setCurrentGroup(group.id)
         const created = await alice.connector.createItem({ type: probeType, createdBy: alice.userId, data: { title: "im Space" } })
         await new Promise<void>((resolve, reject) => {
@@ -300,6 +329,11 @@ if (!url || !anonKey || !serviceKey) {
           const stop = observable.subscribe(check)
           check()
         })
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
 
     it("contacts: request→confirm end-to-end; only the addressee confirms; third parties see nothing", async () => {
       const alice = await makeAuthoritative()
