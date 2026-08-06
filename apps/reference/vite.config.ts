@@ -23,6 +23,14 @@ export default defineConfig({
       '@': toolkitSrc,
     },
   },
+  // Unit tests are discovered by PATTERN, never by a hand-maintained list —
+  // a list silently leaves new test files out of `pnpm test` and CI (rls#241,
+  // which is how auth-gate.test.tsx went unrun). Scoped to `src/` and to
+  // `.test.`, so the Playwright suites in `e2e/*.spec.ts` stay out: they need
+  // the Playwright runner and would fail under vitest.
+  test: {
+    include: ['src/**/*.test.{ts,tsx}'],
+  },
   server: {
     headers: {
       // Required for SharedArrayBuffer (Automerge WASM).

@@ -141,20 +141,27 @@ Regeln:
 
 ## Space-Metadaten
 
-Space-Metadaten (Name, Image, Modules) liegen gemäß Regel #5 in `Group.data` (Ausnahme `name`, top-level). `updateGroup` bildet `Group.data.image` und `Group.data.modules` auf die Y.Doc `_meta`-Map des Space ab (via `updateSpace`) und synct sie darüber. Code-Referenz: `packages/wot-connector/src/wot-connector.ts` (`updateGroup`, Lese-Felder `updates.data?.image` / `updates.data?.modules`).
+Space-Metadaten (Name, Image, Modules) liegen gemäß Regel #5 in `Group.data` (Ausnahme `name`, top-level). `updateGroup` bildet den gesamten `data`-Patch auf die `_meta`-Map des Space ab (via `updateSpace`) und synct ihn darüber. Code-Referenz: `packages/wot-connector/src/wot-connector.ts` (`updateGroup`).
+
+`_meta` kennt zwei Klassen von Feldern:
+
+- **Framework-Felder** mit festen Schlüsseln, die das Sync-Vokabular selbst definiert (`name`, `description`, `image`, `modules`).
+- **App-Felder** in `_meta.appData`, einem offenen Namensraum für anwendungsspezifische Metadaten (z.B. `primaryColor`). Neue App-Felder erfordern KEINE Änderung an Sync-Vokabular oder Adaptern.
 
 Regeln:
 
 1. Kanonische Quelle der Space-Metadaten ist `Group.data`; `_meta` ist die synchronisierte Projektion für andere Geräte und Leseflächen.
-2. Neue Metadatenfelder MÜSSEN demselben Muster folgen: Wert in `Group.data.<feld>`, Abbildung nach `_meta.<feld>` über `updateGroup`.
+2. Neue Metadatenfelder MÜSSEN demselben Muster folgen: Wert in `Group.data.<feld>`, Abbildung nach `_meta` über `updateGroup`. Ein Feld, das das Sync-Vokabular als Framework-Feld führt, wird auf dessen festen Schlüssel abgebildet; jedes andere Feld wandert nach `_meta.appData.<feld>`.
+3. `updateGroup` behandelt `data` als flachen PATCH, nicht als Ersetzung: gelistete Schlüssel werden über die gespeicherten gemergt, `null` löscht einen Schlüssel (JSON Merge Patch, RFC 7386, Tiefe 1). Nicht genannte Felder bleiben unangetastet — nur so können mehrere unabhängige Schreiber (etwa Logo-Upload und Modul-Sortierung in derselben Dialog-Sitzung) sich nicht gegenseitig überschreiben. Connectoren MÜSSEN diese Semantik über die gemeinsame Implementierung `applyGroupDataPatch` erfüllen.
+4. Abgeleitete Anzeigefelder (z.B. `scope`) sind KEINE Metadaten und werden nicht gesynct.
 
 ### Space-Primärfarbe
 
-Jeder Space hat eine `primaryColor` — ein weiteres Space-Metadatenfeld nach obigem Muster: Wert in `Group.data.primaryColor`, Spiegelung nach `_meta.primaryColor` über `updateGroup` (wie `image` / `modules`).
+Jeder Space hat eine `primaryColor` — ein weiteres Space-Metadatenfeld nach obigem Muster: Wert in `Group.data.primaryColor`, Spiegelung nach `_meta.appData.primaryColor` über `updateGroup`. Anders als `image` / `modules` ist `primaryColor` kein Framework-Feld des Sync-Vokabulars, sondern ein App-Feld im offenen `appData`-Namensraum.
 
 Regeln:
 
-1. `Group.data.primaryColor` ist die kanonische Quelle; `_meta.primaryColor` ist die synchronisierte Projektion. `primaryColor` MUSS ein Hex-Farbwert der Form `#rrggbb` sein (passend zu `TAG_PALETTE.accent` in `packages/toolkit/src/lib/utils.ts`, zum Beispiel `#2563eb`).
+1. `Group.data.primaryColor` ist die kanonische Quelle; `_meta.appData.primaryColor` ist die synchronisierte Projektion. `primaryColor` MUSS ein Hex-Farbwert der Form `#rrggbb` sein (passend zu `TAG_PALETTE.accent` in `packages/toolkit/src/lib/utils.ts`, zum Beispiel `#2563eb`).
 2. Beim Logo-Upload MUSS der Client die dominanteste Farbe des Logos extrahieren und das Ergebnis in `Group.data.primaryColor` cachen. Die Extraktion läuft client-seitig genau einmal beim Upload, nicht bei jedem Render und nicht auf jedem Gerät neu.
 3. Ohne Logo MUSS `primaryColor` deterministisch aus der Space-ID abgeleitet werden, analog zu `getTagColor` / `getTagAccentColor` in `packages/toolkit/src/lib/utils.ts`. Die Ableitung MUSS über Geräte und Sessions stabil sein und DARF NICHT echtes Random verwenden.
 4. Wird ein Logo entfernt, SOLL `primaryColor` wieder auf den deterministischen ID-Fallback zurückfallen.
