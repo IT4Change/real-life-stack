@@ -2,8 +2,9 @@ import { useEffect, useState, useCallback, useMemo, createContext, useContext, t
 import type { IncomingEvent, IncomingVerificationEvent, IncomingSpaceInviteEvent, MutualVerificationEvent,
   IncomingContactRequestEvent,
   ContactConfirmedEvent,
+  AuthState,
 } from "@real-life-stack/data-interface"
-import { hasEventListener } from "@real-life-stack/data-interface"
+import { hasEventListener, isAuthenticatable } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 
 // --- Notification Queue ---
@@ -64,6 +65,23 @@ export function IncomingEventsProvider({ children }: { children: ReactNode }) {
     })
     return unsub
   }, [connector, enqueue])
+
+  // Queued dialogs are a view of THIS session: a logout or account switch
+  // must drop them — an invite meant for A has no business popping up for B
+  // (#251 re-review). The identity, not the auth status, is the trigger:
+  // a token refresh keeps the queue.
+  useEffect(() => {
+    if (!isAuthenticatable(connector)) return
+    const observable = connector.getAuthState()
+    const identityOf = (state: AuthState) => state.status === "authenticated" ? state.user.id : null
+    let lastIdentity = identityOf(observable.current)
+    return observable.subscribe((state) => {
+      const identity = identityOf(state)
+      if (identity === lastIdentity) return
+      lastIdentity = identity
+      setQueue([])
+    })
+  }, [connector])
 
   const current = queue[0] ?? null
 

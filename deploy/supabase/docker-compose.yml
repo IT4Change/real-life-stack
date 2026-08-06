@@ -81,6 +81,10 @@ services:
 
       GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
       GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "true"
+      # Default ist 30/Stunde/IP — die Live-Contract-Suite legt pro Fall
+      # anonyme Sessions an und lief bei Wiederholungsläufen ins Limit
+      # (5s-Timeouts im Auth-Schritt, kein Produktfehler).
+      GOTRUE_RATE_LIMIT_ANONYMOUS_USERS: "300"
       # Kein SMTP konfiguriert — E-Mail-Signups werden direkt bestätigt.
       GOTRUE_MAILER_AUTOCONFIRM: "true"
 

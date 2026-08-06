@@ -11,6 +11,12 @@
  *   pnpm --filter @real-life-stack/supabase-connector test
  *
  * Without these env vars the suite skips (CI has no Supabase yet).
+ *
+ * ACHTUNG bei Wiederholungsläufen: jeder Fall legt anonyme Sessions an.
+ * GoTrue limitiert anonyme Anmeldungen (Default 30/Stunde/IP) — mehrere
+ * volle Läufe kurz hintereinander laufen sonst in 5s-Auth-Timeouts, die wie
+ * Produktfehler aussehen. Der Server setzt dafür
+ * GOTRUE_RATE_LIMIT_ANONYMOUS_USERS (deploy/supabase/docker-compose.yml).
  */
 import { describe, expect, it } from "vitest"
 import { createClient } from "@supabase/supabase-js"

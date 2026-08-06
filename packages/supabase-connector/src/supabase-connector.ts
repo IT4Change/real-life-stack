@@ -863,6 +863,11 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   // authoritative — die RLS/Trigger in Migration 0004 sind die Grenze) ---
 
   private contactsObs: ReturnType<typeof createObservable<ContactInfo[]>> | null = null
+  /** Single-flight wie beim Profil-Worker: höchstens ein Kontakt-Read pro
+      Session in flight; weitere Anfragen setzen das Rerun-Flag und laufen
+      danach genau einmal — Responses überholen sich nicht (#251 Re-Review). */
+  private contactsFlight: Promise<void> | null = null
+  private contactsRerunRequested = false
 
   private contactsObservable(): ReturnType<typeof createObservable<ContactInfo[]>> {
     this.contactsObs ??= createObservable<ContactInfo[]>([], false)
@@ -918,26 +923,40 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
 
   observeContacts(): Observable<ContactInfo[]> {
     const observable = this.contactsObservable()
-    if (!observable.loaded) {
-      void this.getContacts()
-        .catch((error) => console.error("[SupabaseConnector] observeContacts initial load failed", error))
-        .finally(() => observable.markLoaded())
-    }
+    if (!observable.loaded) void this.refreshContacts()
     return observable
   }
 
-  private async refreshContacts(): Promise<void> {
-    try {
-      await this.getContacts()
-      this.contactsObservable().markLoaded()
-    } catch (error) {
-      console.error("[SupabaseConnector] contacts refresh failed", error)
+  private refreshContacts(): Promise<void> {
+    if (this.contactsFlight) {
+      this.contactsRerunRequested = true
+      return this.contactsFlight
     }
+    this.contactsFlight = this.runContactsRefresh().finally(() => {
+      this.contactsFlight = null
+      if (this.contactsRerunRequested) void this.refreshContacts()
+    })
+    return this.contactsFlight
+  }
+
+  private async runContactsRefresh(): Promise<void> {
+    do {
+      this.contactsRerunRequested = false
+      try {
+        await this.getContacts()
+        this.contactsObservable().markLoaded()
+      } catch (error) {
+        console.error("[SupabaseConnector] contacts refresh failed", error)
+      }
+    } while (this.contactsRerunRequested)
   }
 
   private async emitContactRequestEvent(fromId: string): Promise<void> {
+    const generation = this.sessionGeneration
     try {
       const profile = await this.fetchProfileRow(fromId)
+      // Das Event gehört der Session, in der es entstand (#251 Re-Review).
+      if (generation !== this.sessionGeneration) return
       this.emitIncomingEvent({
         type: "contact-request",
         fromId,
@@ -950,8 +969,10 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   }
 
   private async emitContactConfirmedEvent(fromId: string): Promise<void> {
+    const generation = this.sessionGeneration
     try {
       const profile = await this.fetchProfileRow(fromId)
+      if (generation !== this.sessionGeneration) return
       this.emitIncomingEvent({
         type: "contact-confirmed",
         fromId,
@@ -964,11 +985,13 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   }
 
   private async emitSpaceInviteEvent(groupId: string, fromId: string): Promise<void> {
+    const generation = this.sessionGeneration
     try {
       const groupResult = await this.client.from("groups").select("*").eq("id", groupId).maybeSingle()
       const group = throwOnError(groupResult, "space-invite group")
       if (!group) return
       const profile = await this.fetchProfileRow(fromId)
+      if (generation !== this.sessionGeneration) return
       this.emitIncomingEvent({
         type: "space-invite",
         fromId,

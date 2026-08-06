@@ -907,6 +907,98 @@ describe("SupabaseConnector — ContactManager (Anfrage → Bestätigung)", () =
     ])
   })
 
+  it("eine Event-Anreicherung nach Accountwechsel wird verworfen (Generation-Guard)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-carla", "Carla")
+    const events: Array<Record<string, unknown>> = []
+    ;(connector as unknown as { onIncomingEvent(cb: (e: Record<string, unknown>) => void): () => void }).onIncomingEvent((event) => events.push(event))
+    // Profil-Read der Anreicherung hängt …
+    const releases: Array<() => void> = []
+    const originalFrom = client.from.bind(client)
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      const tableApi = originalFrom(table)
+      if (table !== "profiles") return tableApi
+      const originalSelect = tableApi.select.bind(tableApi)
+      return {
+        insert: tableApi.insert.bind(tableApi),
+        update: tableApi.update.bind(tableApi),
+        delete: tableApi.delete.bind(tableApi),
+        select: (columns?: string) => {
+          const builder = originalSelect(columns)
+          const originalMaybeSingle = builder.maybeSingle.bind(builder)
+          return Object.assign(builder, {
+            maybeSingle: () => {
+              const result = originalMaybeSingle()
+              return new Promise((resolve) => { releases.push(() => resolve(result)) })
+            },
+          })
+        },
+      }
+    }
+    client.emit("contacts", { eventType: "INSERT", new: { requester: "user-carla", addressee: userId, status: "pending" }, old: null })
+    await flush()
+    // … in dieser Zeit wechselt der Account.
+    ;(client as { from: typeof client.from }).from = originalFrom
+    await connector.logout()
+    await connector.authenticate("anonymous", {})
+    releases.splice(0).forEach((release) => release())
+    await flush()
+    await flush()
+    // Das Event gehört der alten Session — es darf nicht mehr feuern.
+    expect(events).toEqual([])
+  })
+
+  it("contacts-Refresh ist single-flight: ein alter Read überholt den neuen nicht", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-alt", "Alt")
+    client.tables.get("contacts")!.push({
+      requester: "user-alt", addressee: userId, status: "active",
+      requester_alias: null, addressee_alias: null, created_at: "t", updated_at: "t",
+    })
+    const observable = connector.observeContacts()
+    await flush()
+    expect(observable.current.map(({ id }) => id)).toEqual(["user-alt"])
+
+    // Read #1 hängt (Snapshot: nur "alt"); danach kommt ein weiterer
+    // Kontakt UND ein zweites Event. Nach Freigabe muss der NEUE Stand stehen.
+    let armed = true
+    const originalFrom = client.from.bind(client)
+    let release: () => void = () => {}
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      const tableApi = originalFrom(table)
+      if (table !== "contacts" || !armed) return tableApi
+      armed = false
+      const originalSelect = tableApi.select.bind(tableApi)
+      return {
+        insert: tableApi.insert.bind(tableApi),
+        update: tableApi.update.bind(tableApi),
+        delete: tableApi.delete.bind(tableApi),
+        select: (columns?: string) => {
+          const builder = originalSelect(columns)
+          const snapshot = new Promise((resolve) => builder.then(resolve))
+          return Object.assign(builder, {
+            then: <T1,>(onf?: ((v: unknown) => T1 | PromiseLike<T1>) | null) =>
+              new Promise<T1>((resolve) => { release = () => { void snapshot.then((value) => resolve(onf ? (onf(value) as T1) : (value as T1))) } }),
+          })
+        },
+      }
+    }
+    client.emit("contacts", { eventType: "UPDATE", new: {}, old: {} })
+    await flush()
+    seedProfile(client, "user-neu", "Neu")
+    client.tables.get("contacts")!.push({
+      requester: "user-neu", addressee: userId, status: "active",
+      requester_alias: null, addressee_alias: null, created_at: "t", updated_at: "t",
+    })
+    client.emit("contacts", { eventType: "UPDATE", new: {}, old: {} })
+    await flush()
+    release()
+    await flush()
+    await flush()
+    await flush()
+    expect(observable.current.map(({ id }) => id).sort()).toEqual(["user-alt", "user-neu"])
+  })
+
   it("observeContacts folgt Realtime-Events auf contacts", async () => {
     const { client, connector, userId } = await makeConnector()
     seedProfile(client, "user-carla", "Carla")
