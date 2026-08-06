@@ -185,6 +185,13 @@ WebSocket via `graphql-ws` (npm-Paket), NICHT `graphql-sse`. Mercurius nutzt das
 - **TypeScript strict mode** in allen Packages
 - **Type-only Imports** nutzen: `import type { Item } from ...`
 - **UI-Änderungen dokumentieren:** `packages/toolkit/docs/UI-REQUIREMENTS.md` aktualisieren
+- **PR-Titel als Conventional Commit:** `feat(toolkit): …`, `fix: …`, `feat!: …`.
+  Beim Squash-Merge wird der PR-Titel zum Commit-Betreff auf `master`, und
+  release-please liest ausschliesslich Conventional Commits. Ein Titel ohne
+  Präfix wird **lautlos** übersehen: kein Changelog-Eintrag, keine
+  Versionsanhebung, keine Fehlermeldung. Am 06.08.2026 fehlten dadurch sechs
+  gemergte PRs im Release. Der Workflow `.github/workflows/pr-title.yml` prüft
+  das jetzt; die Commits *innerhalb* eines PRs sind davon unberührt.
 
 ## Entwicklung
 

@@ -1,0 +1,56 @@
+# Der PR-Titel wird beim Squash-Merge zum Commit-Betreff auf master (das Repo
+# steht auf `COMMIT_OR_PR_TITLE`: bei mehr als einem Commit gewinnt der
+# PR-Titel). release-please liest ausschliesslich Conventional Commits — ein
+# Titel ohne Praefix erzeugt daher WEDER einen Changelog-Eintrag NOCH eine
+# Versionsanhebung, und zwar lautlos.
+#
+# Genau das ist am 06.08.2026 passiert: sechs gemergte PRs (#238, #240, #242,
+# #229, #251, #252) fehlten komplett im Release-PR und mussten per leerem
+# Commit nachgetragen werden. Diese Pruefung faengt es vorher ab.
+#
+# Bewusst als eigenes Skript statt ueber eine Marketplace-Action: eine
+# Regex-Pruefung rechtfertigt keine zusaetzliche Abhaengigkeit in der CI.
+name: PR-Titel
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  conventional-title:
+    name: Conventional Commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Titel pruefen
+        env:
+          # Ueber die Umgebung, nicht per ${{ }} direkt im Skript: ein Titel
+          # ist Nutzereingabe und wuerde sonst als Shell-Code interpoliert.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          TYPES='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+          if printf '%s' "$TITLE" | grep -qE "^($TYPES)(\([^)]+\))?!?: .+"; then
+            echo "OK: $TITLE"
+            exit 0
+          fi
+          cat >&2 <<MSG
+          PR-Titel ohne Conventional-Commit-Praefix:
+
+            $TITLE
+
+          Der Titel wird beim Squash-Merge zum Commit-Betreff. Ohne Praefix
+          uebersieht release-please die Aenderung vollstaendig: kein
+          Changelog-Eintrag, keine Versionsanhebung, ohne Fehlermeldung.
+
+          Erwartet wird eines von: $TYPES
+          optional mit Scope und "!" fuer Breaking Changes.
+
+          Beispiele:
+            feat(toolkit): Kommentar-Hinweis auf Item-Karten
+            fix(wot-connector): description auf den festen _meta-Schluessel
+            feat!: Group.data ist ein Merge-Patch
+          MSG
+          exit 1
