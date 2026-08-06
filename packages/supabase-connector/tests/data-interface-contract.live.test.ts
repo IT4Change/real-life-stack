@@ -227,6 +227,39 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
+    it("incoming events LIVE: contact request and group invite arrive as dialog events", { timeout: 30_000 }, async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        const events: Array<{ type: string }> = []
+        ;(berta.connector as unknown as { onIncomingEvent(cb: (e: { type: string }) => void): () => void })
+          .onIncomingEvent((event) => events.push(event))
+        await new Promise((resolve) => setTimeout(resolve, 2_000)) // Channel-Join
+
+        await alice.connector.addContact(berta.userId, "Berta")
+        await berta.connector.activateContact(alice.userId)
+        const group = await alice.connector.createGroup(`Invite ${Date.now()}`)
+        await alice.connector.inviteMember(group.id, berta.userId)
+
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error(`events fehlen nach 15s: ${JSON.stringify(events)}`)), 15_000)
+          const check = setInterval(() => {
+            if (events.some((e) => e.type === "contact-request") && events.some((e) => e.type === "space-invite")) {
+              clearTimeout(timer)
+              clearInterval(check)
+              resolve()
+            }
+          }, 250)
+        })
+        const invite = events.find((e) => e.type === "space-invite") as { fromId: string; spaceId: string }
+        expect(invite.fromId).toBe(alice.userId)
+        expect(invite.spaceId).toBe(group.id)
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
     it("observe() is LIVE: an insert from a second client arrives via realtime", { timeout: 20_000 }, async () => {
       const observerSide = await makeAuthoritative()
       const writerSide = await makeAuthoritative()

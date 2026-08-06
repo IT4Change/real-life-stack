@@ -826,6 +826,51 @@ describe("SupabaseConnector — ContactManager (Anfrage → Bestätigung)", () =
     expect(client.tables.get("contacts")![0]!.status).toBe("active")
   })
 
+  it("eine EINGEHENDE Anfrage feuert ein contact-request-Event mit Profildaten (sichtbare Zustellung)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-carla", "Carla")
+    client.tables.get("profiles")!.find((r) => r.id === "user-carla")!.avatar_url = "data:image/png;base64,c"
+    const { hasEventListener } = await import("@real-life-stack/data-interface")
+    expect(hasEventListener(connector)).toBe(true)
+    const events: unknown[] = []
+    const unsubscribe = (connector as unknown as { onIncomingEvent(cb: (e: unknown) => void): () => void }).onIncomingEvent((event) => events.push(event))
+    client.tables.get("contacts")!.push({
+      requester: "user-carla", addressee: userId, status: "pending",
+      requester_alias: null, addressee_alias: null, created_at: "t", updated_at: "t",
+    })
+    client.emit("contacts", { eventType: "INSERT", new: { requester: "user-carla", addressee: userId, status: "pending" }, old: null })
+    await flush()
+    await flush()
+    expect(events).toEqual([
+      { type: "contact-request", fromId: "user-carla", fromName: "Carla", fromAvatar: "data:image/png;base64,c" },
+    ])
+    // Eigene AUSGEHENDE Anfrage (requester=me) feuert NICHT.
+    client.emit("contacts", { eventType: "INSERT", new: { requester: userId, addressee: "user-carla", status: "pending" }, old: null })
+    await flush()
+    expect(events).toHaveLength(1)
+    unsubscribe()
+  })
+
+  it("eine Gruppen-Einladung feuert ein space-invite-Event; der eigene createGroup-Join nicht", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-inviter", "Ina")
+    const events: Array<Record<string, unknown>> = []
+    ;(connector as unknown as { onIncomingEvent(cb: (e: Record<string, unknown>) => void): () => void }).onIncomingEvent((event) => events.push(event))
+    // Eigene Gruppe: der Selbst-Join (invited_by = me) ist KEIN Event.
+    await connector.createGroup("Meine Gruppe")
+    await flush()
+    expect(events).toHaveLength(0)
+    // Fremde Einladung: group_members-INSERT mit invited_by ≠ me.
+    client.tables.get("groups")!.push({ id: "g-fremd", name: "Inas Kreis", data: {}, created_by: "user-inviter", created_at: "t" })
+    client.tables.get("group_members")!.push({ group_id: "g-fremd", user_id: userId, invited_by: "user-inviter", created_at: "t" })
+    client.emit("group_members", { eventType: "INSERT", new: { group_id: "g-fremd", user_id: userId, invited_by: "user-inviter" }, old: null })
+    await flush()
+    await flush()
+    expect(events).toEqual([
+      { type: "space-invite", fromId: "user-inviter", fromName: "Ina", spaceId: "g-fremd", spaceName: "Inas Kreis" },
+    ])
+  })
+
   it("observeContacts folgt Realtime-Events auf contacts", async () => {
     const { client, connector, userId } = await makeConnector()
     seedProfile(client, "user-carla", "Carla")

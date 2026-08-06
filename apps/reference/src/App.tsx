@@ -64,6 +64,7 @@ import {
   type GroupDialogMode,
   AuthScreen,
   AddContactDialog,
+  IncomingContactRequestDialog,
 } from "@real-life-stack/toolkit"
 import type { DataInterface, User } from "@real-life-stack/data-interface"
 import { isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile, moduleHintsFor } from "@real-life-stack/data-interface"
@@ -245,7 +246,18 @@ function RelayStatusBadgeWrapper() {
 function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: () => void }) {
   const connector = useConnector()
   const { data: currentUser } = useCurrentUser()
-  const { incomingVerification, spaceInvite, mutualVerification, dismiss } = useIncomingEvents()
+  const { incomingVerification, spaceInvite, mutualVerification, contactRequest, dismiss } = useIncomingEvents()
+  const { activateContact: activateIncomingContact } = useContacts()
+
+  const handleConfirmContactRequest = async () => {
+    if (!contactRequest) return
+    try {
+      await activateIncomingContact(contactRequest.fromId)
+    } catch (error) {
+      console.error("[IncomingEventDialogs] Kontaktanfrage bestätigen fehlgeschlagen", error)
+    }
+    dismiss()
+  }
 
   const handleCounterVerify = async () => {
     if (!incomingVerification || !hasEncounterVerification(connector)) return
@@ -290,6 +302,13 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
         peerAvatar={mutualVerification?.fromAvatar}
         myName={currentUser?.displayName}
         myAvatar={currentUser?.avatarUrl}
+        onDismiss={dismiss}
+      />
+      <IncomingContactRequestDialog
+        open={!!contactRequest}
+        fromName={contactRequest?.fromName}
+        fromAvatar={contactRequest?.fromAvatar}
+        onConfirm={handleConfirmContactRequest}
         onDismiss={dismiss}
       />
     </>

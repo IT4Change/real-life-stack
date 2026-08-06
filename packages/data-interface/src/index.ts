@@ -616,7 +616,19 @@ export interface IncomingClaimEvent {
   claimId: string
 }
 
-export type IncomingEvent = IncomingVerificationEvent | IncomingSpaceInviteEvent | MutualVerificationEvent | IncomingClaimEvent
+/**
+ * Eingehende Kontaktanfrage (Anfrage-Connectoren, spec 02): das sichtbare
+ * Gegenstück zur WoT-Begegnungs-Verifikation — der Empfänger bekommt einen
+ * Dialog statt einer still wachsenden Kontaktliste.
+ */
+export interface IncomingContactRequestEvent {
+  type: "contact-request"
+  fromId: string
+  fromName?: string
+  fromAvatar?: string
+}
+
+export type IncomingEvent = IncomingVerificationEvent | IncomingSpaceInviteEvent | MutualVerificationEvent | IncomingClaimEvent | IncomingContactRequestEvent
 
 export interface EventListenerCapable {
   onIncomingEvent(callback: (event: IncomingEvent) => void): () => void

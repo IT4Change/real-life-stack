@@ -3,6 +3,7 @@ import type {
   AuthState,
   ClaimVerdict,
   ContactInfo,
+  IncomingEvent,
   CreateItemInput,
   DataInterface,
   Group,
@@ -97,6 +98,20 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
    */
   verifyRecordClaim?: (record: RelationRecord) => Promise<ClaimVerdict>
 
+  /** Sichtbare Zustellung (EventListenerCapable): Kontaktanfragen und
+      Gruppen-Einladungen poppen als Dialog auf statt still in Listen zu
+      landen — dieselbe Mechanik wie beim WoT, gespeist aus Realtime. */
+  private incomingEventListeners = new Set<(event: IncomingEvent) => void>()
+
+  onIncomingEvent(callback: (event: IncomingEvent) => void): () => void {
+    this.incomingEventListeners.add(callback)
+    return () => this.incomingEventListeners.delete(callback)
+  }
+
+  private emitIncomingEvent(event: IncomingEvent): void {
+    for (const listener of this.incomingEventListeners) listener(event)
+  }
+
   constructor(client: SupabaseClientLike, options?: SupabaseConnectorOptions) {
     this.client = client
     this.allowFixtureAuthors = options?.allowFixtureAuthors === true
@@ -142,13 +157,23 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       .on("postgres_changes", { event: "*", schema: "public", table: "groups" }, () => {
         this.scheduleGroupsRefresh()
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, (payload) => {
         this.scheduleGroupsRefresh()
+        const inserted = payload.eventType === "INSERT" ? payload.new as { group_id?: string; user_id?: string; invited_by?: string } | null : null
+        if (inserted?.user_id === this.sessionUserId && inserted.invited_by
+          && inserted.invited_by !== this.sessionUserId && inserted.group_id) {
+          void this.emitSpaceInviteEvent(inserted.group_id, inserted.invited_by)
+        }
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "contacts" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "contacts" }, (payload) => {
         // WALRUS delivers only the caller's own edges — any event means MY
         // contact list changed.
         void this.refreshContacts()
+        // Sichtbare Zustellung: eine NEUE eingehende Anfrage ist ein Event.
+        const inserted = payload.eventType === "INSERT" ? payload.new as { requester?: string; addressee?: string; status?: string } | null : null
+        if (inserted?.addressee === this.sessionUserId && inserted.status === "pending" && inserted.requester) {
+          void this.emitContactRequestEvent(inserted.requester)
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, (payload) => {
         // Member-list display names refresh on ANY profile change; the own
@@ -185,6 +210,7 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     this.profileSyncPendingObs.destroy()
     this.contactsObs?.destroy()
     this.contactsObs = null
+    this.incomingEventListeners.clear()
   }
 
   // --- Items ---
@@ -893,6 +919,41 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       this.contactsObservable().markLoaded()
     } catch (error) {
       console.error("[SupabaseConnector] contacts refresh failed", error)
+    }
+  }
+
+  private async emitContactRequestEvent(fromId: string): Promise<void> {
+    try {
+      const profile = await this.fetchProfileRow(fromId)
+      this.emitIncomingEvent({
+        type: "contact-request",
+        fromId,
+        ...(profile?.display_name ? { fromName: profile.display_name as string } : {}),
+        ...(profile?.avatar_url ? { fromAvatar: profile.avatar_url as string } : {}),
+      })
+    } catch (error) {
+      console.error("[SupabaseConnector] contact-request event failed", error)
+    }
+  }
+
+  private async emitSpaceInviteEvent(groupId: string, fromId: string): Promise<void> {
+    try {
+      const groupResult = await this.client.from("groups").select("*").eq("id", groupId).maybeSingle()
+      const group = throwOnError(groupResult, "space-invite group")
+      if (!group) return
+      const profile = await this.fetchProfileRow(fromId)
+      this.emitIncomingEvent({
+        type: "space-invite",
+        fromId,
+        ...(profile?.display_name ? { fromName: profile.display_name as string } : {}),
+        spaceId: groupId,
+        spaceName: (group.name as string | null) ?? groupId,
+        ...(typeof (group.data as Record<string, unknown> | null)?.image === "string"
+          ? { spaceImage: (group.data as Record<string, unknown>).image as string }
+          : {}),
+      })
+    } catch (error) {
+      console.error("[SupabaseConnector] space-invite event failed", error)
     }
   }
 
