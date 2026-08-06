@@ -475,6 +475,13 @@ export interface ContactInfo {
   avatar?: string
   bio?: string
   status: "pending" | "active"
+  /**
+   * Richtung einer OFFENEN Anfrage (nur bei status "pending" sinnvoll):
+   * "incoming" = die Gegenseite hat angefragt, ICH kann bestätigen;
+   * "outgoing" = meine Anfrage wartet. Optional und additiv — Connectoren
+   * ohne Anfragemodell (WoT-Verifikation) lassen es weg.
+   */
+  direction?: "incoming" | "outgoing"
   verifiedAt?: string
   createdAt: string
   updatedAt: string
@@ -620,7 +627,28 @@ export interface IncomingClaimEvent {
   claimId: string
 }
 
-export type IncomingEvent = IncomingVerificationEvent | IncomingSpaceInviteEvent | MutualVerificationEvent | IncomingClaimEvent
+/**
+ * Eingehende Kontaktanfrage (Anfrage-Connectoren, spec 02): das sichtbare
+ * Gegenstück zur WoT-Begegnungs-Verifikation — der Empfänger bekommt einen
+ * Dialog statt einer still wachsenden Kontaktliste.
+ */
+export interface IncomingContactRequestEvent {
+  type: "contact-request"
+  fromId: string
+  fromName?: string
+  fromAvatar?: string
+}
+
+/** Die Gegenseite hat meine Kontaktanfrage bestätigt — das Anfrage-Pendant
+    zum mutual-verification-Abschluss der WoT-Begegnung. */
+export interface ContactConfirmedEvent {
+  type: "contact-confirmed"
+  fromId: string
+  fromName?: string
+  fromAvatar?: string
+}
+
+export type IncomingEvent = IncomingVerificationEvent | IncomingSpaceInviteEvent | MutualVerificationEvent | IncomingClaimEvent | IncomingContactRequestEvent | ContactConfirmedEvent
 
 export interface EventListenerCapable {
   onIncomingEvent(callback: (event: IncomingEvent) => void): () => void
