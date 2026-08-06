@@ -308,7 +308,7 @@ function IncomingEventDialogs({ onCloseVerifyDialog }: { onCloseVerifyDialog?: (
           Begegnungs-Verifikation. */}
       <MutualVerificationDialog
         open={!!contactConfirmed}
-        title="Ihr seid jetzt Kontakte!"
+        variant="contact"
         peerName={contactConfirmed?.fromName}
         peerAvatar={contactConfirmed?.fromAvatar}
         myName={currentUser?.displayName}

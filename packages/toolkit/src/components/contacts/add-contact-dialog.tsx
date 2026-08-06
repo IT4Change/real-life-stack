@@ -64,18 +64,18 @@ export function AddContactDialog({
             Kontakt hinzufügen
           </DialogTitle>
           <DialogDescription>
-            Gib die ID (DID) der Person ein, die du als Kontakt hinzufügen möchtest.
+            Füge den Profil-Link oder die ID der Person ein, die du als Kontakt anfragen möchtest.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="contact-id">ID / DID</Label>
+            <Label htmlFor="contact-id">Profil-Link oder ID</Label>
             <Input
               id="contact-id"
               value={contactId}
               onChange={(e) => setContactId(e.target.value)}
-              placeholder="did:key:z6Mk..."
+              placeholder="https://… oder ID"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {

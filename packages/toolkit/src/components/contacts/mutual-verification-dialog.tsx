@@ -21,8 +21,10 @@ export interface MutualVerificationDialogProps {
   myName?: string
   myAvatar?: string
   onDismiss: () => void
-  /** Varianten-Titel — Default ist die WoT-Verifikation. Anfrage-Connectoren
-      nutzen dieselbe Komponente mit z.B. "Ihr seid jetzt Kontakte!". */
+  /** Bedeutungs-Variante: "verification" (WoT-Begegnung, Default) oder
+      "contact" (Anfrage bestätigt) — steuert Titel UND Text. */
+  variant?: "verification" | "contact"
+  /** Optionaler Titel-Override über die Variante hinaus. */
   title?: string
 }
 
@@ -33,15 +35,17 @@ export function MutualVerificationDialog({
   myName,
   myAvatar,
   onDismiss,
-  title = "Gegenseitig verifiziert!",
+  variant = "verification",
+  title,
 }: MutualVerificationDialogProps) {
   const name = peerName ?? "Kontakt"
+  const heading = title ?? (variant === "contact" ? "Ihr seid jetzt Kontakte!" : "Gegenseitig verifiziert!")
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onDismiss() }}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle className="text-center">{title}</DialogTitle>
+          <DialogTitle className="text-center">{heading}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col items-center gap-4 py-4">
@@ -63,7 +67,8 @@ export function MutualVerificationDialog({
             </Avatar>
           </div>
           <p className="text-sm text-muted-foreground text-center">
-            Du und <span className="font-medium text-foreground">{name}</span> habt euch gegenseitig verifiziert.
+            Du und <span className="font-medium text-foreground">{name}</span>{" "}
+            {variant === "contact" ? "seid jetzt Kontakte." : "habt euch gegenseitig verifiziert."}
           </p>
         </div>
 

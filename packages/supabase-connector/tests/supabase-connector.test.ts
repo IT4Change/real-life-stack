@@ -851,12 +851,12 @@ describe("SupabaseConnector — ContactManager (Anfrage → Bestätigung)", () =
     unsubscribe()
   })
 
-  it("die Bestätigung MEINER Anfrage feuert contact-confirmed — beim Bestätigenden selbst nicht", async () => {
+  it("der Abschluss feuert contact-confirmed bei BEIDEN Rollen — fromId ist jeweils die Gegenseite", async () => {
     const { client, connector, userId } = await makeConnector()
     seedProfile(client, "user-berta", "Berta")
     const events: Array<Record<string, unknown>> = []
     ;(connector as unknown as { onIncomingEvent(cb: (e: Record<string, unknown>) => void): () => void }).onIncomingEvent((event) => events.push(event))
-    // Meine Anfrage wird von Berta bestätigt (UPDATE pending→active).
+    // Als ANFRAGENDER: Berta bestätigt (UPDATE pending→active).
     client.emit("contacts", {
       eventType: "UPDATE",
       new: { requester: userId, addressee: "user-berta", status: "active" },
@@ -867,14 +867,24 @@ describe("SupabaseConnector — ContactManager (Anfrage → Bestätigung)", () =
     expect(events).toEqual([
       { type: "contact-confirmed", fromId: "user-berta", fromName: "Berta" },
     ])
-    // Umgekehrt (ich bin der Bestätigende) → kein Event, ich habe selbst geklickt.
+    // Als BESTÄTIGENDER (WoT-Parität: der mutual-Abschluss erscheint bei beiden).
     client.emit("contacts", {
       eventType: "UPDATE",
       new: { requester: "user-berta", addressee: userId, status: "active" },
       old: { requester: "user-berta", addressee: userId, status: "pending" },
     })
     await flush()
-    expect(events).toHaveLength(1)
+    await flush()
+    expect(events).toHaveLength(2)
+    expect(events[1]).toMatchObject({ type: "contact-confirmed", fromId: "user-berta" })
+    // Ein reines Alias-Update (kein Statuswechsel) feuert nicht.
+    client.emit("contacts", {
+      eventType: "UPDATE",
+      new: { requester: "user-berta", addressee: userId, status: "active" },
+      old: { requester: "user-berta", addressee: userId, status: "active" },
+    })
+    await flush()
+    expect(events).toHaveLength(2)
   })
 
   it("eine Gruppen-Einladung feuert ein space-invite-Event; der eigene createGroup-Join nicht", async () => {

@@ -174,14 +174,17 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
         if (inserted?.addressee === this.sessionUserId && inserted.status === "pending" && inserted.requester) {
           void this.emitContactRequestEvent(inserted.requester)
         }
-        // … und die Bestätigung MEINER Anfrage ebenso (der Bestätigende hat
-        // selbst geklickt und braucht keinen Dialog).
+        // … und der Abschluss ebenso — bei BEIDEN Beteiligten, wie der
+        // mutual-Abschluss der WoT-Begegnung (WALRUS liefert das UPDATE nur
+        // den zwei Kanten-Parteien).
         if (payload.eventType === "UPDATE") {
           const before = payload.old as { status?: string } | null
           const after = payload.new as { requester?: string; addressee?: string; status?: string } | null
-          if (before?.status === "pending" && after?.status === "active"
-            && after.requester === this.sessionUserId && after.addressee) {
-            void this.emitContactConfirmedEvent(after.addressee)
+          if (before?.status === "pending" && after?.status === "active" && after.requester && after.addressee) {
+            const other = after.requester === this.sessionUserId ? after.addressee
+              : after.addressee === this.sessionUserId ? after.requester
+              : null
+            if (other) void this.emitContactConfirmedEvent(other)
           }
         }
       })
