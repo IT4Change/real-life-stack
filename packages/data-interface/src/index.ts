@@ -464,6 +464,13 @@ export interface ContactInfo {
   avatar?: string
   bio?: string
   status: "pending" | "active"
+  /**
+   * Richtung einer OFFENEN Anfrage (nur bei status "pending" sinnvoll):
+   * "incoming" = die Gegenseite hat angefragt, ICH kann bestätigen;
+   * "outgoing" = meine Anfrage wartet. Optional und additiv — Connectoren
+   * ohne Anfragemodell (WoT-Verifikation) lassen es weg.
+   */
+  direction?: "incoming" | "outgoing"
   verifiedAt?: string
   createdAt: string
   updatedAt: string

@@ -2,6 +2,7 @@ import type {
   AuthMethod,
   AuthState,
   ClaimVerdict,
+  ContactInfo,
   CreateItemInput,
   DataInterface,
   Group,
@@ -144,6 +145,11 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, () => {
         this.scheduleGroupsRefresh()
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "contacts" }, () => {
+        // WALRUS delivers only the caller's own edges — any event means MY
+        // contact list changed.
+        void this.refreshContacts()
+      })
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, (payload) => {
         // Member-list display names refresh on ANY profile change; the own
         // profile read only runs when the OWN row changed (no read
@@ -177,6 +183,8 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     this.currentGroupObs.destroy()
     this.profileObs.destroy()
     this.profileSyncPendingObs.destroy()
+    this.contactsObs?.destroy()
+    this.contactsObs = null
   }
 
   // --- Items ---
@@ -810,6 +818,142 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
 
   isProfileSyncPending(): Observable<boolean> {
     return this.profileSyncPendingObs
+  }
+
+  // --- Contacts (ContactManager: Anfrage → Bestätigung, spec-08-konsistent
+  // authoritative — die RLS/Trigger in Migration 0004 sind die Grenze) ---
+
+  private contactsObs: ReturnType<typeof createObservable<ContactInfo[]>> | null = null
+
+  private contactsObservable(): ReturnType<typeof createObservable<ContactInfo[]>> {
+    this.contactsObs ??= createObservable<ContactInfo[]>([], false)
+    return this.contactsObs
+  }
+
+  private contactRowToInfo(row: Record<string, unknown>, me: string, profile: Record<string, unknown> | undefined): ContactInfo {
+    const isRequester = row.requester === me
+    const otherId = (isRequester ? row.addressee : row.requester) as string
+    const alias = (isRequester ? row.requester_alias : row.addressee_alias) as string | null
+    const displayName = alias ?? ((profile?.display_name as string | null) ?? undefined)
+    const iso = (value: unknown) => {
+      const parsed = typeof value === "string" ? new Date(value) : null
+      return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : new Date(0).toISOString()
+    }
+    return {
+      id: otherId,
+      ...(displayName ? { name: displayName } : {}),
+      ...(profile?.avatar_url ? { avatar: profile.avatar_url as string } : {}),
+      ...(profile?.bio ? { bio: profile.bio as string } : {}),
+      status: row.status as "pending" | "active",
+      ...(row.status === "pending" ? { direction: isRequester ? "outgoing" as const : "incoming" as const } : {}),
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    }
+  }
+
+  private async fetchContactEdges(me: string): Promise<Array<Record<string, unknown>>> {
+    // RLS already scopes to the caller's edges; the or-filter keeps the fake
+    // (no select-RLS) honest and the query index-friendly.
+    const result = await this.client.from("contacts").select("*")
+      .or(`requester.eq.${me},addressee.eq.${me}`)
+    return throwOnError(result, "getContacts")
+  }
+
+  async getContacts(): Promise<ContactInfo[]> {
+    const me = this.sessionUserId
+    if (!me) return []
+    const rows = await this.fetchContactEdges(me)
+    const otherIds = rows.map((row) => (row.requester === me ? row.addressee : row.requester) as string)
+    const profiles = otherIds.length > 0
+      ? throwOnError(await this.client.from("profiles").select("*").in("id", otherIds), "getContacts profiles")
+      : []
+    const profileById = new Map(profiles.map((profile) => [profile.id as string, profile]))
+    const contacts = rows.map((row) => this.contactRowToInfo(row, me, profileById.get((row.requester === me ? row.addressee : row.requester) as string)))
+    this.contactsObservable().set(contacts)
+    return contacts
+  }
+
+  observeContacts(): Observable<ContactInfo[]> {
+    const observable = this.contactsObservable()
+    if (!observable.loaded) {
+      void this.getContacts()
+        .catch((error) => console.error("[SupabaseConnector] observeContacts initial load failed", error))
+        .finally(() => observable.markLoaded())
+    }
+    return observable
+  }
+
+  private async refreshContacts(): Promise<void> {
+    try {
+      await this.getContacts()
+      this.contactsObservable().markLoaded()
+    } catch (error) {
+      console.error("[SupabaseConnector] contacts refresh failed", error)
+    }
+  }
+
+  async addContact(id: string, name?: string): Promise<ContactInfo> {
+    const me = this.sessionUserId
+    if (!me) throw new Error("[SupabaseConnector] addContact requires an authenticated user")
+    if (id === me) throw new Error("Du kannst dich nicht selbst als Kontakt anfragen.")
+    const profile = await this.fetchProfileRow(id)
+    if (!profile) throw new Error("Profil nicht gefunden — stimmt der Link bzw. die ID?")
+    const existing = (await this.fetchContactEdges(me)).find(
+      (row) => row.requester === id || row.addressee === id,
+    )
+    if (existing) {
+      // Counter-request on an INCOMING pending edge = confirmation.
+      if (existing.status === "pending" && existing.requester === id) {
+        return this.activateContact(id)
+      }
+      return this.contactRowToInfo(existing, me, profile)
+    }
+    const result = await this.client.from("contacts").insert({
+      requester: me,
+      addressee: id,
+      status: "pending",
+      ...(name ? { requester_alias: name } : {}),
+    }).select().single()
+    const row = throwOnError(result, "addContact")
+    void this.refreshContacts()
+    return this.contactRowToInfo(row, me, profile)
+  }
+
+  async activateContact(id: string): Promise<ContactInfo> {
+    const me = this.sessionUserId
+    if (!me) throw new Error("[SupabaseConnector] activateContact requires an authenticated user")
+    // Only the addressee can confirm (enforced server-side by the trigger).
+    const update = this.client.from("contacts").update({ status: "active" })
+      .eq("requester", id) as unknown as { eq(column: string, value: unknown): { select(): { single(): PromiseLike<SupabaseResult<Record<string, unknown>>> } } }
+    const result = await update.eq("addressee", me).select().single()
+    const row = throwOnError(result, "activateContact")
+    void this.refreshContacts()
+    return this.contactRowToInfo(row, me, await this.fetchProfileRow(id) ?? undefined)
+  }
+
+  async updateContactName(id: string, name: string): Promise<void> {
+    const me = this.sessionUserId
+    if (!me) throw new Error("[SupabaseConnector] updateContactName requires an authenticated user")
+    const edge = (await this.fetchContactEdges(me)).find(
+      (row) => row.requester === id || row.addressee === id,
+    )
+    if (!edge) throw new Error("Kontakt nicht gefunden.")
+    const isRequester = edge.requester === me
+    const patch = isRequester ? { requester_alias: name || null } : { addressee_alias: name || null }
+    const update = this.client.from("contacts").update(patch)
+      .eq("requester", edge.requester as string) as unknown as { eq(column: string, value: unknown): PromiseLike<SupabaseResult<unknown>> }
+    throwOnError(await update.eq("addressee", edge.addressee as string), "updateContactName")
+    void this.refreshContacts()
+  }
+
+  async removeContact(id: string): Promise<void> {
+    const me = this.sessionUserId
+    if (!me) throw new Error("[SupabaseConnector] removeContact requires an authenticated user")
+    for (const [requester, addressee] of [[me, id], [id, me]] as const) {
+      const deletion = this.client.from("contacts").delete().eq("requester", requester) as unknown as { eq(column: string, value: unknown): PromiseLike<SupabaseResult<unknown>> }
+      throwOnError(await deletion.eq("addressee", addressee), "removeContact")
+    }
+    void this.refreshContacts()
   }
 
   // --- Users / Auth ---

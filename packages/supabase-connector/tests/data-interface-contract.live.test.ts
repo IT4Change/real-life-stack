@@ -170,6 +170,38 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
+    it("contacts: request→confirm end-to-end; only the addressee confirms; third parties see nothing", { timeout: 30_000 }, async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      const carla = await makeAuthoritative()
+      try {
+        // A fragt B an — bei A outgoing, bei B incoming.
+        await alice.connector.addContact(berta.userId, "Berta")
+        expect((await alice.connector.getContacts())[0]).toMatchObject({ id: berta.userId, status: "pending", direction: "outgoing" })
+        expect((await berta.connector.getContacts())[0]).toMatchObject({ id: alice.userId, status: "pending", direction: "incoming" })
+
+        // Der ANFRAGENDE kann nicht selbst bestätigen (Trigger).
+        const selfConfirm = await alice.client.from("contacts")
+          .update({ status: "active" }).eq("requester", alice.userId)
+        expect(selfConfirm.error).not.toBeNull()
+
+        // Dritte sehen die Kante nicht und können sie nicht anfassen.
+        const carlaView = await carla.client.from("contacts").select("*")
+        expect(carlaView.data).toEqual([])
+        await carla.client.from("contacts").update({ status: "active" }).eq("requester", alice.userId)
+        expect((await alice.connector.getContacts())[0]!.status).toBe("pending")
+
+        // Gegenanfrage von B = Bestätigung → beidseitig aktiv.
+        const confirmed = await berta.connector.addContact(alice.userId)
+        expect(confirmed.status).toBe("active")
+        expect((await alice.connector.getContacts())[0]!.status).toBe("active")
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+        await carla.connector.dispose()
+      }
+    })
+
     it("observe() is LIVE: an insert from a second client arrives via realtime", { timeout: 20_000 }, async () => {
       const observerSide = await makeAuthoritative()
       const writerSide = await makeAuthoritative()

@@ -431,6 +431,7 @@ export class FakeSupabaseClient implements SupabaseClientLike {
     ["groups", []],
     ["group_members", []],
     ["profiles", []],
+    ["contacts", []],
   ])
   readonly auth: FakeAuth
   readonly channels: FakeChannel[] = []

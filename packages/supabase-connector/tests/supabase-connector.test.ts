@@ -647,6 +647,84 @@ describe("SupabaseConnector — ProfileCapable (WoT-Parität)", () => {
   })
 })
 
+describe("SupabaseConnector — ContactManager (Anfrage → Bestätigung)", () => {
+  function seedProfile(client: FakeSupabaseClient, id: string, name: string) {
+    client.tables.get("profiles")!.push({ id, display_name: name, avatar_url: null, bio: null, created_at: "t" })
+  }
+
+  it("hasContacts greift; addContact stellt eine AUSGEHENDE pending-Anfrage", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-berta", "Berta")
+    const { hasContacts } = await import("@real-life-stack/data-interface")
+    expect(hasContacts(connector)).toBe(true)
+    const contact = await connector.addContact("user-berta")
+    expect(contact).toMatchObject({ id: "user-berta", name: "Berta", status: "pending", direction: "outgoing" })
+    const edge = client.tables.get("contacts")!.find((r) => r.requester === userId)
+    expect(edge).toMatchObject({ requester: userId, addressee: "user-berta", status: "pending" })
+  })
+
+  it("eine EINGEHENDE Anfrage erscheint als incoming und wird per activateContact aktiv", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-carla", "Carla")
+    client.tables.get("contacts")!.push({
+      requester: "user-carla", addressee: userId, status: "pending",
+      requester_alias: null, addressee_alias: null, created_at: "t", updated_at: "t",
+    })
+    const [incoming] = await connector.getContacts()
+    expect(incoming).toMatchObject({ id: "user-carla", name: "Carla", status: "pending", direction: "incoming" })
+    await connector.activateContact("user-carla")
+    const [active] = await connector.getContacts()
+    expect(active).toMatchObject({ id: "user-carla", status: "active" })
+    expect("direction" in active! && active!.direction ? "gesetzt" : "absent").toBe("absent")
+  })
+
+  it("addContact auf eine eingehende pending-Anfrage BESTÄTIGT statt zu duplizieren", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-carla", "Carla")
+    client.tables.get("contacts")!.push({
+      requester: "user-carla", addressee: userId, status: "pending",
+      requester_alias: null, addressee_alias: null, created_at: "t", updated_at: "t",
+    })
+    const contact = await connector.addContact("user-carla")
+    expect(contact.status).toBe("active")
+    expect(client.tables.get("contacts")!.length).toBe(1)
+  })
+
+  it("addContact lehnt Selbst-Anfrage und unbekannte Profile ab", async () => {
+    const { connector, userId } = await makeConnector()
+    await expect(connector.addContact(userId)).rejects.toThrow(/selbst/i)
+    await expect(connector.addContact("user-gibtsnicht")).rejects.toThrow(/profil/i)
+  })
+
+  it("updateContactName pflegt den EIGENEN Alias; removeContact löst die Kante", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-berta", "Berta")
+    await connector.addContact("user-berta")
+    await connector.updateContactName("user-berta", "Berta vom Markt")
+    const edge = client.tables.get("contacts")!.find((r) => r.requester === userId)!
+    expect(edge.requester_alias).toBe("Berta vom Markt")
+    expect((await connector.getContacts())[0]!.name).toBe("Berta vom Markt")
+    await connector.removeContact("user-berta")
+    expect(await connector.getContacts()).toEqual([])
+  })
+
+  it("observeContacts folgt Realtime-Events auf contacts", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-carla", "Carla")
+    const observable = connector.observeContacts()
+    await flush()
+    expect(observable.current).toEqual([])
+    client.tables.get("contacts")!.push({
+      requester: "user-carla", addressee: userId, status: "pending",
+      requester_alias: null, addressee_alias: null, created_at: "t", updated_at: "t",
+    })
+    client.emit("contacts", { eventType: "INSERT", new: { requester: "user-carla", addressee: userId }, old: null })
+    await flush()
+    await flush()
+    expect(observable.current.map(({ id }) => id)).toEqual(["user-carla"])
+  })
+})
+
 describe("SupabaseConnector — groups and auth", () => {
   it("createGroup binds the creator, joins them as member, isAdmin follows created_by", async () => {
     const { connector, userId } = await makeConnector()

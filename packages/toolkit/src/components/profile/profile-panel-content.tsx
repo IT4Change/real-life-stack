@@ -28,6 +28,11 @@ export type ProfilePanelContentProps =
       contactCount?: number
       onSave: ProfileSaveHandler
       onClose: () => void
+      /** Teilbarer Link zum eigenen Profil (?profile=<id>) — zeigt den
+          "Profil-Link kopieren"-Button. */
+      profileUrl?: string
+      onAddContact?: never
+      contactStatus?: never
     }
   | {
       mode: "view"
@@ -35,6 +40,12 @@ export type ProfilePanelContentProps =
       contactCount?: number
       onSave?: never
       onClose: () => void
+      profileUrl?: never
+      /** Kontaktanfrage senden (Anfrage-Connectoren). Button erscheint nur,
+          wenn gesetzt und noch kein aktiver Kontakt besteht. */
+      onAddContact?: () => Promise<unknown> | void
+      /** Bestehender Kontaktstatus zur Button-Beschriftung. */
+      contactStatus?: "pending" | "active"
     }
 
 function getInitials(name: string): string {
@@ -56,6 +67,9 @@ export function ProfilePanelContent({
   contactCount,
   onSave,
   onClose,
+  profileUrl,
+  onAddContact,
+  contactStatus,
 }: ProfilePanelContentProps) {
   const [name, setName] = useState(profile.name)
   const [bio, setBio] = useState(profile.bio ?? "")
@@ -63,6 +77,9 @@ export function ProfilePanelContent({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const [requesting, setRequesting] = useState(false)
+  const [requested, setRequested] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -221,6 +238,48 @@ export function ProfilePanelContent({
             <Copy className="h-3 w-3 text-muted-foreground/50 group-hover/did:text-muted-foreground shrink-0 transition-colors" />
           )}
         </button>
+
+        {profileUrl && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={async () => {
+              await navigator.clipboard.writeText(profileUrl)
+              setLinkCopied(true)
+              setTimeout(() => setLinkCopied(false), 2000)
+            }}
+          >
+            {linkCopied ? <Check className="h-3.5 w-3.5 mr-1.5 text-green-600" /> : <Copy className="h-3.5 w-3.5 mr-1.5" />}
+            {linkCopied ? "Link kopiert!" : "Profil-Link kopieren"}
+          </Button>
+        )}
+
+        {onAddContact && contactStatus !== "active" && (
+          <Button
+            size="sm"
+            className="w-full"
+            disabled={requesting || requested || contactStatus === "pending"}
+            onClick={async () => {
+              setRequesting(true)
+              try {
+                await onAddContact()
+                setRequested(true)
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Anfrage fehlgeschlagen")
+              } finally {
+                setRequesting(false)
+              }
+            }}
+          >
+            {contactStatus === "pending" || requested ? "Anfrage gesendet" : requesting ? "Sende…" : "Als Kontakt anfragen"}
+          </Button>
+        )}
+        {onAddContact && contactStatus === "active" && (
+          <p className="text-xs text-muted-foreground inline-flex items-center gap-1">
+            <Check className="h-3.5 w-3.5 text-green-600" /> Ihr seid Kontakte
+          </p>
+        )}
 
         {isEdit ? (
           <div className="space-y-1.5">

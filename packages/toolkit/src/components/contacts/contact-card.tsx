@@ -25,6 +25,8 @@ export interface ContactCardProps {
   contact: ContactInfo
   onRemove?: (id: string) => void
   onEditName?: (id: string, name: string) => void
+  /** Bestätigt eine EINGEHENDE Anfrage (nur gezeigt bei direction "incoming"). */
+  onActivate?: (id: string) => void
   className?: string
 }
 
@@ -32,6 +34,7 @@ export function ContactCard({
   contact,
   onRemove,
   onEditName,
+  onActivate,
   className,
 }: ContactCardProps) {
   const [copied, setCopied] = useState(false)
@@ -91,6 +94,11 @@ export function ContactCard({
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
+        {onActivate && contact.status === "pending" && contact.direction === "incoming" && (
+          <Button size="sm" onClick={() => onActivate(contact.id)}>
+            Bestätigen
+          </Button>
+        )}
         {onEditName && (
           <Button
             variant="ghost"
