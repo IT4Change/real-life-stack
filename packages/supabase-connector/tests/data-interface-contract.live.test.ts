@@ -225,6 +225,57 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
+    it("group_id ist unveränderlich: kein Veröffentlichen und kein Space-Wechsel per Raw-DML (#246)", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        const probeType = `scope-lock-${Date.now()}`
+        const group = await alice.connector.createGroup(`Lock ${Date.now()}`)
+        const other = await alice.connector.createGroup(`Lock B ${Date.now()}`)
+        alice.connector.setCurrentGroup(group.id)
+        const secret = await alice.connector.createItem({ type: probeType, createdBy: alice.userId, data: { title: "geheim" } })
+
+        // 1. Global veröffentlichen (group_id → NULL) muss scheitern …
+        const publish = await alice.client.from("items").update({ group_id: null }).eq("id", secret.id)
+        expect(publish.error).not.toBeNull()
+        // 2. … und der Wechsel in einen ANDEREN eigenen Space ebenso.
+        const move = await alice.client.from("items").update({ group_id: other.id }).eq("id", secret.id)
+        expect(move.error).not.toBeNull()
+
+        // Ein Nicht-Mitglied sieht das Item weiterhin nicht.
+        expect(await berta.connector.getItem(secret.id)).toBeNull()
+        // Und der Scope steht unverändert.
+        alice.connector.setCurrentGroup(group.id)
+        expect((await alice.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([secret.id])
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
+    it("das Löschen einer Gruppe VERÖFFENTLICHT ihre Inhalte nicht (CASCADE statt SET NULL, #246)", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        const probeType = `cascade-${Date.now()}`
+        const group = await alice.connector.createGroup(`Cascade ${Date.now()}`)
+        alice.connector.setCurrentGroup(group.id)
+        const secret = await alice.connector.createItem({ type: probeType, createdBy: alice.userId, data: { title: "geheim" } })
+
+        alice.connector.setCurrentGroup(null)
+        await alice.connector.deleteGroup(group.id)
+
+        // Mit SET NULL wäre das Item jetzt global sichtbar — auch für Fremde.
+        expect((await berta.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([])
+        expect(await berta.connector.getItem(secret.id)).toBeNull()
+        // Auch für den Ex-Creator im Overview ist es weg, nicht "global".
+        expect((await alice.connector.getItems({ type: probeType })).map(({ id }) => id)).toEqual([])
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
     it("realtime still delivers GROUP items to members (WALRUS evaluates the definer-based policy)", async () => {
       const alice = await makeAuthoritative()
       const berta = await makeAuthoritative()

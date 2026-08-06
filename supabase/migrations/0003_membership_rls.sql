@@ -90,6 +90,26 @@ create policy "delete item"
     and (type <> 'relation' or created_by = (select auth.uid())::text)
   );
 
+-- Scope-Wechsel ist KEIN Update: sonst könnte ein Mitglied ein Gruppen-Item
+-- global veröffentlichen (group_id → NULL) oder in einen anderen eigenen
+-- Space verschieben. Die UPDATE-Policy allein reicht nicht, weil sie alten
+-- und neuen Scope nur getrennt prüft.
+create function public.enforce_item_scope_immutable()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.group_id is distinct from old.group_id then
+    raise exception 'group_id is immutable — ein Item wechselt seinen Space nicht';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger items_scope_immutable
+  before update on public.items
+  for each row execute function public.enforce_item_scope_immutable();
+
 -- ---------------------------------------------------------------------------
 -- groups
 -- ---------------------------------------------------------------------------
