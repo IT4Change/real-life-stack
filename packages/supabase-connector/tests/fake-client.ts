@@ -217,8 +217,13 @@ class FakeTable implements TableLike {
       }
       // Primary-key / composite-key conflicts mirror Postgres 23505.
       const keyColumns = this.name === "group_members" ? ["group_id", "user_id"] : ["id"]
-      const collides = this.rows.some((existing) =>
-        keyColumns.every((column) => existing[column] === withDefaults[column]))
+      const collides = this.name === "contacts"
+        // contacts: ONE edge per pair, either direction (least/greatest index).
+        ? this.rows.some((existing) =>
+            (existing.requester === withDefaults.requester && existing.addressee === withDefaults.addressee)
+            || (existing.requester === withDefaults.addressee && existing.addressee === withDefaults.requester))
+        : this.rows.some((existing) =>
+            keyColumns.every((column) => existing[column] === withDefaults[column]))
       if (collides) return { data: null, error: { message: "duplicate key", code: "23505" } }
       // RLS insert policy: created_by must match the session (items/groups),
       // unless this fake runs as service role (fixture path).

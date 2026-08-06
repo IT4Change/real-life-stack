@@ -708,6 +708,124 @@ describe("SupabaseConnector — ContactManager (Anfrage → Bestätigung)", () =
     expect(await connector.getContacts()).toEqual([])
   })
 
+  it("Kontakte sind account-isoliert: Logout leert, Login B zeigt Bs — nie As (Review-Blocker)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-a-freund", "As Freund")
+    client.tables.get("contacts")!.push({
+      requester: "user-a-freund", addressee: userId, status: "active",
+      requester_alias: null, addressee_alias: null, created_at: "t", updated_at: "t",
+    })
+    const observable = connector.observeContacts()
+    await flush()
+    expect(observable.current.map(({ id }) => id)).toEqual(["user-a-freund"])
+
+    await connector.logout()
+    expect(observable.current).toEqual([])
+
+    const userB = await connector.authenticate("anonymous", {})
+    seedProfile(client, "user-b-freund", "Bs Freundin")
+    client.tables.get("contacts")!.push({
+      requester: "user-b-freund", addressee: userB.id, status: "active",
+      requester_alias: null, addressee_alias: null, created_at: "t", updated_at: "t",
+    })
+    client.emit("contacts", { eventType: "INSERT", new: {}, old: null })
+    await flush()
+    await flush()
+    expect(observable.current.map(({ id }) => id)).toEqual(["user-b-freund"])
+  })
+
+  it("ein langsamer A-Kontakt-Read überschreibt Bs Liste nicht (Generation-Guard)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-a-freund", "As Freund")
+    client.tables.get("contacts")!.push({
+      requester: "user-a-freund", addressee: userId, status: "active",
+      requester_alias: null, addressee_alias: null, created_at: "t", updated_at: "t",
+    })
+    // As Read hängt (Snapshot mit As Kontakt) …
+    const releases: Array<() => void> = []
+    const originalFrom = client.from.bind(client)
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      const tableApi = originalFrom(table)
+      if (table !== "contacts") return tableApi
+      const originalSelect = tableApi.select.bind(tableApi)
+      return {
+        insert: tableApi.insert.bind(tableApi),
+        update: tableApi.update.bind(tableApi),
+        delete: tableApi.delete.bind(tableApi),
+        select: (columns?: string) => {
+          const builder = originalSelect(columns)
+          const originalThen = builder.then.bind(builder)
+          return Object.assign(builder, {
+            then: <T1, T2>(onf?: ((v: unknown) => T1 | PromiseLike<T1>) | null, onr?: ((r: unknown) => T2 | PromiseLike<T2>) | null) => {
+              const snapshot = new Promise((resolve) => originalThen(resolve))
+              return new Promise<T1 | T2>((resolve) => {
+                releases.push(() => { void snapshot.then((value) => resolve(onf ? (onf(value) as T1) : (value as T1))) })
+              })
+            },
+          })
+        },
+      }
+    }
+    const observable = connector.observeContacts()
+    await flush()
+    // … Accountwechsel zu B, Gate weg für Bs Reads.
+    ;(client as { from: typeof client.from }).from = originalFrom
+    await connector.logout()
+    const userB = await connector.authenticate("anonymous", {})
+    seedProfile(client, "user-b-freund", "Bs Freundin")
+    client.tables.get("contacts")!.push({
+      requester: "user-b-freund", addressee: userB.id, status: "active",
+      requester_alias: null, addressee_alias: null, created_at: "t", updated_at: "t",
+    })
+    await connector.getContacts()
+    expect(observable.current.map(({ id }) => id)).toEqual(["user-b-freund"])
+    // As alter Read löst auf — darf Bs Liste nicht überschreiben.
+    releases.splice(0).forEach((release) => release())
+    await flush()
+    await flush()
+    expect(observable.current.map(({ id }) => id)).toEqual(["user-b-freund"])
+  })
+
+  it("gleichzeitige Gegenanfragen: der 23505-Verlierer liest neu und bestätigt (Review-Race)", async () => {
+    const { client, connector, userId } = await makeConnector()
+    seedProfile(client, "user-berta", "Berta")
+    // As fetchEdges hängt mit LEEREM Snapshot; währenddessen entsteht Bs
+    // Gegenkante — As insert kollidiert (Paar-Index) und muss den Konflikt
+    // als eingehende Anfrage behandeln.
+    let armed = true
+    const originalFrom = client.from.bind(client)
+    ;(client as { from: typeof client.from }).from = (table: string) => {
+      const tableApi = originalFrom(table)
+      if (table !== "contacts" || !armed) return tableApi
+      const originalSelect = tableApi.select.bind(tableApi)
+      return {
+        insert: tableApi.insert.bind(tableApi),
+        update: tableApi.update.bind(tableApi),
+        delete: tableApi.delete.bind(tableApi),
+        select: (columns?: string) => {
+          armed = false
+          const builder = originalSelect(columns)
+          const snapshot = new Promise((resolve) => builder.then(resolve))
+          return Object.assign(builder, {
+            then: <T1, T2>(onf?: ((v: unknown) => T1 | PromiseLike<T1>) | null, _onr?: ((r: unknown) => T2 | PromiseLike<T2>) | null) =>
+              new Promise<T1>((resolve) => {
+                // Erst NACH dem Einfügen der Gegenkante auflösen.
+                client.tables.get("contacts")!.push({
+                  requester: "user-berta", addressee: userId, status: "pending",
+                  requester_alias: null, addressee_alias: null, created_at: "t", updated_at: "t",
+                })
+                void snapshot.then((value) => resolve(onf ? (onf(value) as T1) : (value as T1)))
+              }),
+          })
+        },
+      }
+    }
+    const contact = await connector.addContact("user-berta")
+    expect(contact.status).toBe("active")
+    expect(client.tables.get("contacts")!.length).toBe(1)
+    expect(client.tables.get("contacts")![0]!.status).toBe("active")
+  })
+
   it("observeContacts folgt Realtime-Events auf contacts", async () => {
     const { client, connector, userId } = await makeConnector()
     seedProfile(client, "user-carla", "Carla")

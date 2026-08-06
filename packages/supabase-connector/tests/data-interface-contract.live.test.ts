@@ -202,6 +202,31 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
+    it("contacts INSERT boundary: raw active/foreign-alias inserts bounce off RLS (round-1 review)", async () => {
+      const alice = await makeAuthoritative()
+      const berta = await makeAuthoritative()
+      try {
+        // Bypass the connector: a requester must not create an ACTIVE edge …
+        const activeInsert = await alice.client.from("contacts").insert({
+          requester: alice.userId, addressee: berta.userId, status: "active",
+        })
+        expect(activeInsert.error).not.toBeNull()
+        // … nor pre-fill the other side's alias.
+        const aliasInsert = await alice.client.from("contacts").insert({
+          requester: alice.userId, addressee: berta.userId, status: "pending", addressee_alias: "von A diktiert",
+        })
+        expect(aliasInsert.error).not.toBeNull()
+        // The legitimate pending request still works.
+        const ok = await alice.client.from("contacts").insert({
+          requester: alice.userId, addressee: berta.userId, status: "pending",
+        })
+        expect(ok.error).toBeNull()
+      } finally {
+        await alice.connector.dispose()
+        await berta.connector.dispose()
+      }
+    })
+
     it("observe() is LIVE: an insert from a second client arrives via realtime", { timeout: 20_000 }, async () => {
       const observerSide = await makeAuthoritative()
       const writerSide = await makeAuthoritative()

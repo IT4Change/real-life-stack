@@ -860,6 +860,9 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
   }
 
   async getContacts(): Promise<ContactInfo[]> {
+    // Same session-generation contract as the profile surfaces: a read
+    // started for A must neither publish after logout nor overwrite B.
+    const generation = this.sessionGeneration
     const me = this.sessionUserId
     if (!me) return []
     const rows = await this.fetchContactEdges(me)
@@ -867,6 +870,7 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     const profiles = otherIds.length > 0
       ? throwOnError(await this.client.from("profiles").select("*").in("id", otherIds), "getContacts profiles")
       : []
+    if (generation !== this.sessionGeneration) return []
     const profileById = new Map(profiles.map((profile) => [profile.id as string, profile]))
     const contacts = rows.map((row) => this.contactRowToInfo(row, me, profileById.get((row.requester === me ? row.addressee : row.requester) as string)))
     this.contactsObservable().set(contacts)
@@ -914,6 +918,15 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       status: "pending",
       ...(name ? { requester_alias: name } : {}),
     }).select().single()
+    if (result.error?.code === "23505" || /duplicate/i.test(result.error?.message ?? "")) {
+      // Concurrent counter-request: the other side inserted between our read
+      // and our insert (unique pair index). Re-read and treat it as incoming.
+      const edge = (await this.fetchContactEdges(me)).find(
+        (row) => row.requester === id || row.addressee === id,
+      )
+      if (edge?.status === "pending" && edge.requester === id) return this.activateContact(id)
+      if (edge) return this.contactRowToInfo(edge, me, profile)
+    }
     const row = throwOnError(result, "addContact")
     void this.refreshContacts()
     return this.contactRowToInfo(row, me, profile)
@@ -994,13 +1007,16 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
       this.profileObs.set(null)
       // No session is a SETTLED profile state: loaded, genuinely empty.
       this.profileObs.markLoaded()
+      // Contacts are account-scoped views — clear them with the session.
+      this.contactsObs?.set([])
       this.authState.set({ status: "unauthenticated" })
       return
     }
 
-    // Identity switch A→B: A's profile must never stay visible while B's
-    // data is still loading.
+    // Identity switch A→B: A's profile and contacts must never stay
+    // visible while B's data is still loading.
     if (identityChanged && this.profileObs.current !== null) this.profileObs.set(null)
+    if (identityChanged) this.contactsObs?.set([])
     // Minimal user IMMEDIATELY (the id IS the identity). Enrichment happens
     // EXCLUSIVELY through the profile worker's commit boundary — no parallel
     // resolveUser tail that could compete with it (round-4 review).
@@ -1008,6 +1024,7 @@ export class SupabaseConnector implements DataInterface, ItemWriter {
     this.currentUserObs.set(this.currentUser)
     this.authState.set({ status: "authenticated", user: this.currentUser })
     this.requestProfileRefresh()
+    if (this.contactsObs) void this.refreshContacts()
   }
 
   private async resolveUser(id: string, session?: AuthSessionLike | null): Promise<User> {

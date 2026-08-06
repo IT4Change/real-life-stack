@@ -397,6 +397,7 @@ export function ProfilePanelHost({
         // edit carries onSave, view forbids it.
         isOwn ? (
           <ProfilePanelContent
+            key={profile.did}
             mode="edit"
             profile={profile}
             contactCount={contactCount}
@@ -406,6 +407,7 @@ export function ProfilePanelHost({
           />
         ) : (
           <ProfilePanelContent
+            key={profile.did}
             mode="view"
             profile={profile}
             onClose={onClose}
