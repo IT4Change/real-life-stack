@@ -895,6 +895,32 @@ export function assertMayMutateAuthoredItem(
   throw new Error(`Not authorized to ${action} another author's ${item.type}`)
 }
 
+/**
+ * An item may not be re-typed INTO or OUT OF an authored system type.
+ *
+ * Without this the authored-item guard is bypassable: it checks the OLD type,
+ * so a member edits someone's ordinary post (allowed) and re-types it to
+ * `comment` in the same call. `createdBy` stays the original author — the
+ * result is a statement falsely attributed to them, and the guard was green
+ * the whole way. The reverse direction matters too: re-typing a foreign
+ * comment to `post` would strip its protection.
+ *
+ * Deliberately NARROWER than Supabase, which treats `type` as fully
+ * immutable (`items_immutables`, 0007): the Mock connector legitimately
+ * promotes an item to `feature`, and that has nothing to do with authorship.
+ * A backend may be stricter; this is the floor every ingress must meet.
+ */
+export function assertAuthoredTypeUnchanged(
+  existing: Pick<Item, "type">,
+  updates: Partial<Item>,
+): void {
+  if (updates.type === undefined || updates.type === existing.type) return
+  if (!isAuthoredSystemItem(existing.type) && !isAuthoredSystemItem(updates.type)) return
+  throw new Error(
+    `cannot change type between "${existing.type}" and "${updates.type}" — authorship would be misattributed`,
+  )
+}
+
 export function withEditStamp<T extends Record<string, unknown>>(
   updates: T,
   editorId: string,

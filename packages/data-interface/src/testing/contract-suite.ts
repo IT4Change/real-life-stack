@@ -21,6 +21,7 @@ import {
   deriveRelationRecordId,
   hasClaimVerification,
   hasGroups,
+  hasItemGroups,
   hasRelationRecords,
   hasRelationRecordWriter,
   isWritable,
@@ -43,12 +44,26 @@ export interface ContractHarness {
    */
   updatableGroup?(context: ContractContext): Promise<string>
   /**
-   * Seed an authored system item (comment/reaction) created by SOMEONE ELSE
-   * and return its id, or null if the harness cannot fabricate a foreign
-   * author. Needed because the regular ingress binds createdBy to the
-   * session — the very rule under test.
+   * Plant an item authored by SOMEONE ELSE directly in the store, bypassing
+   * the ingress — that is exactly how such an item appears in reality: it
+   * arrives by sync from another device. Needed because the regular ingress
+   * now binds `createdBy` to the session, which is the rule under test.
+   *
+   * A harness that cannot do this must say so; the cases below then fail
+   * loudly rather than passing silently.
    */
-  foreignAuthoredItem?(context: ContractContext, type: string): Promise<string | null>
+  seedForeignItem?(context: ContractContext, item: { id: string; type: string; createdBy: string; data?: Record<string, unknown>; relations?: Item["relations"] }): Promise<void>
+  /** Reason this harness cannot seed a foreign author — documents the gap. */
+  cannotSeedForeignItem?: string
+  /** A second space an item could be moved INTO, or null if unavailable. */
+  movableTarget?(context: ContractContext): Promise<string | null>
+  /**
+   * Set to `false` for a harness that runs its connector in FIXTURE mode
+   * (`allowFixtureAuthors`), where a caller-supplied `createdBy` is the whole
+   * point — it lets tests simulate several authors. Default `true`: the
+   * regular ingress binds the author to the session (spec 08).
+   */
+  bindsAuthorToSession?: boolean
 }
 
 let uniqueCounter = 0
@@ -330,18 +345,81 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
       })
 
       it("refuses to change or remove ANOTHER author's comment/reaction", async () => {
-        await withConnector(async ({ connector, currentUserId }) => {
+        // Kein stiller Skip: ein Harness ohne Seeding muss den Grund nennen.
+        if (harness.cannotSeedForeignItem) return
+        expect(harness.seedForeignItem, "Harness braucht seedForeignItem oder cannotSeedForeignItem").toBeDefined()
+        await withConnector(async (context) => {
+          const { connector, currentUserId } = context
           if (!isWritable(connector)) return
-          if (!harness.foreignAuthoredItem) return
           for (const type of ["comment", "reaction"]) {
-            const foreign = await harness.foreignAuthoredItem({ connector, currentUserId }, type)
-            if (!foreign) continue
+            const foreign = unique(`ct-foreign-${type}`)
+            await harness.seedForeignItem!(context, {
+              id: foreign, type, createdBy: "did:key:someone-else", data: { text: "ihre Aussage" },
+            })
             // The UI hides the buttons — but the UI is not the boundary. A
             // wire client must be refused at the ingress too.
             await expect(connector.updateItem(foreign, { data: { text: "gekapert" } })).rejects.toThrow()
             await expect(connector.deleteItem(foreign)).rejects.toThrow()
             expect(await connector.getItem(foreign)).not.toBeNull()
           }
+        })
+      })
+
+      it("bindet createdBy an die Sitzung — ein fremder Autor im Payload zaehlt nicht", async () => {
+        if (harness.bindsAuthorToSession === false) return
+        await withConnector(async ({ connector, currentUserId }) => {
+          if (!isWritable(connector)) return
+          // Das Autorenmodell entscheidet Rechte anhand von createdBy. Wer es
+          // frei setzen darf, kann eine fremde Urheberschaft erfinden und sie
+          // danach als Schutzanker verwenden.
+          const created = await connector.createItem({
+            type: unique("ct-author"),
+            createdBy: "did:key:someone-else",
+            data: { title: "x" },
+          })
+          expect(created.createdBy).toBe(currentUserId)
+          expect((await connector.getItem(created.id))!.createdBy).toBe(currentUserId)
+        })
+      })
+
+      it("laesst den Typ eines Items nicht nachtraeglich aendern", async () => {
+        await withConnector(async ({ connector, currentUserId }) => {
+          if (!isWritable(connector)) return
+          const created = await connector.createItem({
+            type: unique("ct-retype"),
+            createdBy: currentUserId,
+            data: { title: "inhalt" },
+          })
+          // Sonst liesse sich ein bearbeitbares Inhalts-Item in ein
+          // geschuetztes Autoren-Item verwandeln — der Guard prueft den ALTEN
+          // Typ und waere gruen, das Ergebnis waere eine fremd zugeschriebene
+          // Aussage. Supabase behandelt `type` laengst als unveraenderlich.
+          //
+          // Geprueft wird die WIRKUNG, nicht der Weg: ablehnen (Connectoren)
+          // und stillschweigend verwerfen (GraphQL, dessen Update-Input den
+          // Typ gar nicht kennt) sind beide zulaessig — anwenden nicht.
+          await connector.updateItem(created.id, { type: "comment" }).catch(() => undefined)
+          expect((await connector.getItem(created.id))!.type).toBe(created.type)
+        })
+      })
+
+      it("verschiebt ein fremdes Autoren-Item nicht in einen anderen Space", async () => {
+        if (harness.cannotSeedForeignItem || !harness.movableTarget) return
+        await withConnector(async (context) => {
+          const { connector } = context
+          if (!isWritable(connector) || !hasItemGroups(connector)) return
+          const target = await harness.movableTarget!(context)
+          if (!target) return
+          const foreign = unique("ct-move-foreign")
+          await harness.seedForeignItem!(context, {
+            id: foreign, type: "comment", createdBy: "did:key:someone-else", data: { text: "ihre Aussage" },
+          })
+          const sourceBefore = connector.getItemGroupId(foreign)
+          // Fuer den Quell-Space ist ein Move ein Delete — im WoT-Pfad
+          // woertlich create-im-Ziel plus delete-in-der-Quelle. Er darf die
+          // fremde Aussage nicht aus ihrem Kontext reissen.
+          await expect(connector.moveItemToGroup(foreign, target)).rejects.toThrow()
+          expect(connector.getItemGroupId(foreign)).toBe(sourceBefore)
         })
       })
 
@@ -455,7 +533,11 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
           const statementId = unique("ct-stmt")
           const foreignAuthor = unique("ct-bob")
           const foreignId = await deriveRelationRecordId(foreignAuthor, "votesOn", `global:${foreignAuthor}`, `item:${statementId}`)
-          await connector.createItem({
+          // Direkt gesetzt, nicht ueber createItem: der Ingress bindet den
+          // Autor inzwischen an die Sitzung — ein fremder Datensatz entsteht
+          // nur durch Sync von einem anderen Geraet.
+          if (harness.cannotSeedForeignItem) return
+          await harness.seedForeignItem!({ connector, currentUserId }, {
             id: foreignId,
             type: "relation",
             createdBy: foreignAuthor,

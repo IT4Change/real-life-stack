@@ -48,6 +48,7 @@ import {
   applyGroupDataPatch,
   stripEditStamp,
   assertMayMutateAuthoredItem,
+  assertAuthoredTypeUnchanged,
   itemDisplayTitle,
   moduleHintsFor,
   maxTs,
@@ -1199,7 +1200,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     item: CreateItemInput,
     spaceId: string,
   ): Item {
-    this.requireActivityActor()
+    const author = this.requireActivityActor()
     let result: Item | null = null
     let created = false
 
@@ -1222,6 +1223,10 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
         ...stripEditStamp(item as Record<string, unknown>),
         id,
         createdAt: new Date().toISOString(),
+        // Author bound to the session (spec 08). The authored-item guard
+        // decides rights BY this field — a caller that may set it could
+        // invent a foreign author and then hide behind their protection.
+        createdBy: author,
       } as Item
       doc.items[id] = serializeItem(newItem)
       this.appendActivity(doc, "create", newItem)
@@ -1246,6 +1251,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       // write this document directly, so a modified client bypasses this.
       // It keeps honest clients honest — see isAuthoredSystemItem.
       assertMayMutateAuthoredItem(existing, actor, "update")
+      assertAuthoredTypeUnchanged(existing, updates)
 
       if (updates.type) existing.type = updates.type
       if (updates.data) {
@@ -1346,7 +1352,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     await this.handleReady
     if (!this.replication) throw new Error("Not connected")
 
-    this.requireActivityActor()
+    const mover = this.requireActivityActor()
     const sourceGroupId = this.getItemGroupId(itemId)
     if (!sourceGroupId) throw new Error(`Item ${itemId} not found in any group`)
     if (sourceGroupId === targetGroupId) return
@@ -1354,6 +1360,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // Read item from source
     const sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(sourceGroupId)
     const serialized = sourceHandle.getDoc().items?.[itemId]
+    // Der Move ist hier woertlich create-im-Ziel plus delete-in-der-Quelle —
+    // derselbe Guard wie beim Loeschen, VOR dem ersten Effekt.
+    if (serialized) assertMayMutateAuthoredItem(serialized, mover, "delete")
     if (!serialized) throw new Error(`Item ${itemId} not found in source group`)
 
     // Write to target

@@ -1,5 +1,5 @@
 import type { CreateItemInput, Item, ItemFilter, Group, User, AuthState, Relation } from "@real-life-stack/data-interface"
-import { applyGroupDataPatch, applyPagination, assertMayMutateAuthoredItem, matchesFilter, stripEditStamp } from "@real-life-stack/data-interface"
+import { applyGroupDataPatch, applyPagination, assertMayMutateAuthoredItem, assertAuthoredTypeUnchanged, matchesFilter } from "@real-life-stack/data-interface"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers } from "@real-life-stack/data-interface/demo-data"
 import { publish } from "./pubsub.js"
 
@@ -77,7 +77,7 @@ function requireSession(action: string): string {
 }
 
 export function createItem(input: StoreCreateItemInput): Item {
-  requireSession("createItem")
+  const author = requireSession("createItem")
   if (input.id !== undefined) {
     const existing = items.find((item) => item.id === input.id)
     if (existing) return existing
@@ -87,7 +87,9 @@ export function createItem(input: StoreCreateItemInput): Item {
     id: input.id ?? allocateItemId(),
     type: input.type,
     createdAt: new Date().toISOString(),
-    createdBy: input.createdBy,
+    // Autor aus der Sitzung, nicht aus dem Payload: das Autorenmodell
+    // entscheidet Rechte anhand dieses Feldes (spec 08).
+    createdBy: author,
     ...(input["@context"] ? { "@context": input["@context"] } : {}),
     ...(input.tags ? { tags: input.tags } : {}),
     data: input.data,
@@ -104,6 +106,7 @@ export function updateItem(id: string, updates: { data?: Record<string, unknown>
   const idx = items.findIndex((i) => i.id === id)
   if (idx === -1) throw new Error(`Item not found: ${id}`)
   assertMayMutateAuthoredItem(items[idx], editor, "update")
+  assertAuthoredTypeUnchanged(items[idx], updates as Partial<Item>)
   // Der Server stempelt, nicht der Client: wer den Bearbeiter benennen darf,
   // darf auch jemand anderen benennen (Item-Vertrag, spec 08).
   items[idx] = {
@@ -114,6 +117,23 @@ export function updateItem(id: string, updates: { data?: Record<string, unknown>
   publish({ topic: "ITEMS_CHANGED", filter: { type: items[idx].type } })
   publish({ topic: "ITEM_CHANGED", itemId: id })
   return items[idx]
+}
+
+/**
+ * TESTHILFE: setzt ein Item mit fremdem Autor direkt in den Store, am
+ * Ingress vorbei. Nur so entsteht ein solches Item, seit createItem den
+ * Autor an die Sitzung bindet — in der Realitaet kaeme es von einem
+ * anderen Client. Nicht im oeffentlichen Connector-Pfad verwendet.
+ */
+export function seedForeignItemForTests(input: {
+  id: string; type: string; createdBy: string
+  data?: Record<string, unknown>; relations?: Item["relations"]
+}): void {
+  items.push({
+    id: input.id, type: input.type, createdBy: input.createdBy,
+    createdAt: new Date("2026-08-01T00:00:00.000Z").toISOString(),
+    data: input.data ?? {}, ...(input.relations ? { relations: input.relations } : {}),
+  } as Item)
 }
 
 export function deleteItem(id: string): boolean {

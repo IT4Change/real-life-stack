@@ -39,4 +39,11 @@ describeDataInterfaceContract("LocalConnector", {
   async updatableGroup() {
     return "g1"
   },
+  // Fixture-Modus (siehe makeConnector): der Harness simuliert mehrere Autoren.
+  // Die regulaere Autorbindung deckt der connector-eigene Test ab.
+  bindsAuthorToSession: false,
+  // Der Fixture-Modus laesst createdBy durch — genau dafuer ist er da.
+  async seedForeignItem({ connector }, item) {
+    await connector.createItem(item as never)
+  },
 })

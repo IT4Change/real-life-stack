@@ -30,6 +30,7 @@ import {
   withEditStamp,
   stripEditStamp,
   assertMayMutateAuthoredItem,
+  assertAuthoredTypeUnchanged,
   applyPagination,
   createDefaultRelationStore,
   createObservable,
@@ -391,7 +392,12 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
     }
     // Session-bound, like createdBy — see the Item contract.
     const existing = this.findVisibleItemLocation(id)
-    if (existing) assertMayMutateAuthoredItem(existing.item, actor.id, "update")
+    if (existing) {
+      assertMayMutateAuthoredItem(existing.item, actor.id, "update")
+      // Sonst laesst sich ein bearbeitbares Inhalts-Item in ein geschuetztes
+      // Autoren-Item umtypisieren, mit fremdem createdBy als Opfer.
+      assertAuthoredTypeUnchanged(existing.item, updates)
+    }
     updates = withEditStamp(updates, actor.id)
     const location = this.findVisibleItemLocation(id)
     if (!location) throw new Error(`Item not found: ${id}`)
@@ -485,9 +491,12 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
   }
 
   moveItemToGroup(itemId: string, targetGroupId: string): void {
-    this.requireCurrentUser()
+    const mover = this.requireCurrentUser()
     const location = this.findVisibleItemLocation(itemId)
     if (!location || (location.scopeId === null && location.item.type === "feature")) throw new Error(`Item not found: ${itemId}`)
+    // Fuer den Quell-Space ist ein Move semantisch ein Delete — bei einem
+    // fremden Autoren-Item risse es die Aussage aus ihrem Kontext.
+    assertMayMutateAuthoredItem(location.item, mover.id, "delete")
     if (location.scopeId === targetGroupId) return
 
     const targetItems = this.getScopeItems(targetGroupId, true)

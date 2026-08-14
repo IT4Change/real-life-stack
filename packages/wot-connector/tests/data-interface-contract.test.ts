@@ -68,4 +68,18 @@ describeDataInterfaceContract("WotConnector", {
     value.notifyAllObservers = vi.fn(() => { value.itemCache = null })
     return { connector: value as WotConnector, currentUserId: identity.did }
   },
+  // Direkt ins Space-Dokument, ohne Ingress: genau so taucht ein fremdes
+  // Item in Wirklichkeit auf — es kommt per Sync von einem anderen Geraet.
+  async seedForeignItem({ connector }, item) {
+    const doc = (connector as unknown as { currentHandle: { getDoc(): { items: Record<string, unknown> } } })
+      .currentHandle.getDoc()
+    doc.items[item.id] = {
+      id: item.id,
+      type: item.type,
+      createdBy: item.createdBy,
+      createdAt: "2026-08-01T00:00:00.000Z",
+      data: item.data ?? {},
+      ...(item.relations ? { relations: item.relations } : {}),
+    }
+  },
 })
