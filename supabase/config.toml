@@ -23,6 +23,16 @@ enable_signup = true
 # Anonymous sign-ins carry the local contract-suite harness and quick demos.
 enable_anonymous_sign_ins = true
 
+[auth.rate_limit]
+# Spiegelt GOTRUE_RATE_LIMIT_ANONYMOUS_USERS aus deploy/supabase/docker-compose.yml.
+# Der Default (30/Stunde/IP) reicht fuer die Live-Contract-Suite nicht: jeder
+# Fall legt eigene anonyme Sessions an, ein voller Lauf verbraucht mehrere
+# Dutzend. Ohne diesen Wert laufen Wiederholungslaeufe in Auth-Timeouts, die
+# wie Produktfehler aussehen — dieselbe Falle, vor der der Kopf von
+# data-interface-contract.live.test.ts warnt (dort als Server-Einstellung
+# beschrieben, lokal fehlte sie).
+anonymous_users = 300
+
 [auth.email]
 enable_signup = true
 enable_confirmations = false
