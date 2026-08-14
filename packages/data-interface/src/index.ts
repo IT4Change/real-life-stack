@@ -42,6 +42,19 @@ export interface Item {
   schema?: string
   schemaVersion?: number
 
+  /**
+   * Last modification, set by the CONNECTOR on every successful update —
+   * never supplied by the caller (spec 08 author binding: a client that may
+   * name the editor may also name someone else). Absent on items that were
+   * never edited; `updatedBy` may differ from `createdBy` since space members
+   * may edit each other's items.
+   *
+   * This is the "that it was edited" answer. "What was edited" needs a
+   * version history and is deliberately NOT this — see rls#263.
+   */
+  updatedAt?: string
+  updatedBy?: string
+
   data: Record<string, unknown>
   relations?: Relation[]
 
@@ -819,6 +832,27 @@ export function hasItemGroups(c: DataInterface): c is DataInterface & ItemGroupC
  * `undefined`). Every connector's `updateGroup` goes through this so the
  * patch semantics cannot drift per backend.
  */
+/**
+ * Strip caller-supplied edit stamps and apply the connector's own.
+ *
+ * `updatedBy` must come from the SESSION, never from the payload — a client
+ * that may name the editor may also name someone else (spec 08 author
+ * binding, same reasoning as `createdBy`). One helper for all connectors so
+ * the rule cannot drift per backend; a backend that stamps server-side
+ * (Postgres trigger) does not need it.
+ */
+export function withEditStamp<T extends Record<string, unknown>>(
+  updates: T,
+  editorId: string,
+  now: string = new Date().toISOString(),
+): T & { updatedAt: string; updatedBy: string } {
+  const { updatedAt: _ignoredAt, updatedBy: _ignoredBy, ...rest } = updates as T & {
+    updatedAt?: unknown
+    updatedBy?: unknown
+  }
+  return { ...(rest as T), updatedAt: now, updatedBy: editorId }
+}
+
 export function applyGroupDataPatch(
   base: Record<string, unknown> | undefined,
   patch: Record<string, unknown>,

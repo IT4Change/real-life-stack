@@ -1234,7 +1234,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   }
 
   private applyItemUpdate(handle: SpaceHandle<RlsSpaceDoc>, id: string, updates: Partial<Item>): void {
-    this.requireActivityActor()
+    const actor = this.requireActivityActor()
     handle.transact((doc) => {
       const existing = doc.items[id]
       if (!existing) throw new Error(`Item ${id} not found`)
@@ -1262,6 +1262,13 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       if (updates.schemaVersion !== undefined) existing.schemaVersion = updates.schemaVersion
       if (updates.tags !== undefined) existing.tags = updates.tags
       if (updates["@context"] !== undefined) existing["@context"] = updates["@context"]
+      // Session-bound edit stamp (see the Item contract): space members may
+      // edit each other's items, so the card must be able to say who last
+      // touched it. Set INSIDE the transaction, so it travels with the change.
+      existing.updatedAt = new Date().toISOString()
+      // Same actor the activity entry uses — one source, and it is already
+      // validated as authenticated above.
+      existing.updatedBy = actor
       this.appendActivity(doc, "update", deserializeItem(existing))
     })
   }

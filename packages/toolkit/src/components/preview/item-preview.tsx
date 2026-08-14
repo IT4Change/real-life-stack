@@ -9,6 +9,7 @@ import { TagChip } from "../tag/tag-chip"
 import { MarkdownText } from "./markdown-text"
 import { cn, getActivePanelGlow } from "../../lib/utils"
 import { useItemTags } from "../../hooks/use-item-tags"
+import { useUserNameResolver } from "../../hooks/use-user-names"
 import { useCommentCount } from "../../hooks/use-comment-count"
 import { MessageSquare } from "lucide-react"
 
@@ -153,6 +154,11 @@ export function ItemPreview({
   const authorName = author?.displayName ?? item.createdBy
   const authorAvatar = author?.avatarUrl
   const authorId = author?.id ?? item.createdBy
+  // Who edited it, resolved like any other user id; falls back to the raw id.
+  const resolveName = useUserNameResolver()
+  const editedTitle = item.updatedAt
+    ? `Bearbeitet von ${resolveName(item.updatedBy ?? item.createdBy)} am ${new Date(item.updatedAt).toLocaleString("de-DE")}`
+    : undefined
   const isCompact = density === "compact"
 
   // Keyboard activation: when the card is interactive, treat Enter and
@@ -202,7 +208,23 @@ export function ItemPreview({
               <span className={cn("font-semibold text-foreground", isCompact ? "text-xs" : "text-sm")}>{authorName}</span>
               {headerAdornment}
             </div>
-            {!isCompact && <RelativeTime date={item.createdAt} className="text-xs" />}
+            {!isCompact && (
+              <span className="flex items-center gap-1.5">
+                <RelativeTime date={item.createdAt} className="text-xs" />
+                {/* Members may edit each other's items — without this the
+                    card would still show only the original author, and a
+                    foreign change would be invisible. Deliberately terse:
+                    WHAT changed needs a version history (rls#263). */}
+                {item.updatedAt && (
+                  <span
+                    className="text-xs text-muted-foreground"
+                    title={editedTitle}
+                  >
+                    · bearbeitet
+                  </span>
+                )}
+              </span>
+            )}
           </div>
           {actions && <div className="-mr-1 shrink-0">{actions}</div>}
         </div>

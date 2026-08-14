@@ -75,6 +75,8 @@ export interface SerializedItem {
   type: string
   createdAt: string // ISO string (Automerge can't store Date)
   createdBy: string // DID
+  updatedAt?: string // ISO string, gesetzt beim Bearbeiten
+  updatedBy?: string // DID des Bearbeiters (kann != createdBy sein)
   "@context"?: string[]
   schema?: string
   schemaVersion?: number

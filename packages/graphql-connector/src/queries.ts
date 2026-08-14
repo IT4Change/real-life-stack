@@ -3,7 +3,7 @@
 export const ITEMS_QUERY = `
   query Items($filter: ItemFilterInput) {
     items(filter: $filter) {
-      id type createdAt createdBy context tags schema schemaVersion
+      id type createdAt createdBy updatedAt updatedBy context tags schema schemaVersion
       data relations { predicate target meta }
       _source _included
     }
@@ -13,7 +13,7 @@ export const ITEMS_QUERY = `
 export const ITEM_QUERY = `
   query Item($id: ID!) {
     item(id: $id) {
-      id type createdAt createdBy context tags schema schemaVersion
+      id type createdAt createdBy updatedAt updatedBy context tags schema schemaVersion
       data relations { predicate target meta }
       _source _included
     }
@@ -40,7 +40,7 @@ export const MEMBERS_QUERY = `
 export const RELATED_ITEMS_QUERY = `
   query RelatedItems($itemId: ID!, $predicate: String) {
     relatedItems(itemId: $itemId, predicate: $predicate) {
-      id type createdAt createdBy context tags data
+      id type createdAt createdBy updatedAt updatedBy context tags data
       relations { predicate target meta }
     }
   }
@@ -89,7 +89,7 @@ export const ACTIVE_SOURCE_QUERY = `
 export const CREATE_ITEM_MUTATION = `
   mutation CreateItem($input: ItemInput!) {
     createItem(input: $input) {
-      id type createdAt createdBy context tags data
+      id type createdAt createdBy updatedAt updatedBy context tags data
       relations { predicate target meta }
     }
   }
@@ -98,7 +98,7 @@ export const CREATE_ITEM_MUTATION = `
 export const UPDATE_ITEM_MUTATION = `
   mutation UpdateItem($id: ID!, $input: ItemUpdateInput!) {
     updateItem(id: $id, input: $input) {
-      id type createdAt createdBy context tags data
+      id type createdAt createdBy updatedAt updatedBy context tags data
       relations { predicate target meta }
     }
   }
@@ -169,7 +169,7 @@ export const LOGOUT_MUTATION = `
 export const ITEMS_CHANGED_SUBSCRIPTION = `
   subscription ItemsChanged($filter: ItemFilterInput) {
     itemsChanged(filter: $filter) {
-      id type createdAt createdBy context tags data
+      id type createdAt createdBy updatedAt updatedBy context tags data
       relations { predicate target meta }
     }
   }
@@ -178,7 +178,7 @@ export const ITEMS_CHANGED_SUBSCRIPTION = `
 export const ITEM_CHANGED_SUBSCRIPTION = `
   subscription ItemChanged($id: ID!) {
     itemChanged(id: $id) {
-      id type createdAt createdBy context tags data
+      id type createdAt createdBy updatedAt updatedBy context tags data
       relations { predicate target meta }
     }
   }

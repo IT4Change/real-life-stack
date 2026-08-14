@@ -6,6 +6,8 @@ export interface ItemRow {
   type: string
   created_by: string
   created_at: string
+  updated_by: string | null
+  updated_at: string | null
   context: string[] | null
   schema: string | null
   schema_version: number | null
@@ -29,6 +31,10 @@ export function rowToItem(row: Record<string, unknown>): Item {
     type: r.type,
     createdBy: r.created_by,
     createdAt: isoTimestamp(r.created_at),
+    // Absent until first edit — `null` from Postgres normalises to "no key",
+    // matching the Item contract.
+    ...(r.updated_at != null ? { updatedAt: isoTimestamp(r.updated_at) } : {}),
+    ...(r.updated_by != null ? { updatedBy: r.updated_by } : {}),
     ...(r.context != null ? { "@context": r.context } : {}),
     ...(r.schema != null ? { schema: r.schema } : {}),
     ...(r.schema_version != null ? { schemaVersion: r.schema_version } : {}),
@@ -68,6 +74,11 @@ export function itemToInsertRow(item: ItemInsert, groupId: string | null): Recor
 /** Partial<Item> → column patch. Identity fields are never part of a patch:
     created_by/id/type are immutable server-side (trigger); the connector
     additionally strips them so a manipulated caller fails closed locally. */
+/**
+ * Allow-list of writable columns. `updatedAt`/`updatedBy` are deliberately
+ * NOT here: the `items_stamp_update` trigger (migration 0008) sets them
+ * server-side, so a caller cannot name a foreign editor.
+ */
 export function itemUpdateToRowPatch(updates: Partial<Item>): Record<string, unknown> {
   return {
     ...("@context" in updates ? { context: updates["@context"] ?? null } : {}),

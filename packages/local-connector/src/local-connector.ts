@@ -23,7 +23,7 @@ import type {
   RelationRecordUpdate,
   Source,
 } from "@real-life-stack/data-interface"
-import { applyGroupDataPatch, createObservable, createDefaultRelationStore, createRelationRecordWith, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
+import { applyGroupDataPatch, withEditStamp, createObservable, createDefaultRelationStore, createRelationRecordWith, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
 import { get, set, del, createStore, update as updateStoredValue } from "idb-keyval"
 
 // --- Types ---
@@ -535,6 +535,9 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
       const { createdBy: _ignored, ...rest } = updates
       updates = rest
     }
+    // Who last touched it, bound to the session like createdBy — space
+    // members may edit each other's items, so this is what tells them apart.
+    updates = withEditStamp(updates, actor)
     let result: Item | undefined
     let committedState: StoredState | undefined
     await updateStoredValue<StoredState>("state", (stored) => {

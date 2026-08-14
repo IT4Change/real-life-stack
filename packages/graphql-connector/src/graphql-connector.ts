@@ -46,7 +46,7 @@ import {
 function parseItem(raw: Record<string, unknown>): Item {
   // GraphQL cannot name a field "@context" — the wire field is `context`.
   // Nullable wire fields normalise to absent, matching the Item type.
-  const { context, tags, relations, ...rest } = raw
+  const { context, tags, relations, updatedAt, updatedBy, ...rest } = raw
   const normalizedRelations = Array.isArray(relations)
     ? relations.map(({ meta, ...relation }: { meta?: unknown }) => ({
         ...relation,
@@ -58,6 +58,11 @@ function parseItem(raw: Record<string, unknown>): Item {
     ...(context != null ? { "@context": context } : {}),
     ...(tags != null ? { tags } : {}),
     ...(normalizedRelations != null ? { relations: normalizedRelations } : {}),
+    // A never-edited item has no stamp. GraphQL sends `null`, the Item
+    // contract says ABSENT — normalising here keeps every consumer from
+    // having to handle both (the same boundary that swallowed @context).
+    ...(updatedAt != null ? { updatedAt } : {}),
+    ...(updatedBy != null ? { updatedBy } : {}),
   } as unknown as Item
 }
 

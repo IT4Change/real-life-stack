@@ -90,7 +90,13 @@ export function createItem(input: StoreCreateItemInput): Item {
 export function updateItem(id: string, updates: { data?: Record<string, unknown>; relations?: Item["relations"]; "@context"?: string[]; tags?: string[] }): Item {
   const idx = items.findIndex((i) => i.id === id)
   if (idx === -1) throw new Error(`Item not found: ${id}`)
-  items[idx] = { ...items[idx], ...updates, id }
+  // Der Server stempelt, nicht der Client: wer den Bearbeiter benennen darf,
+  // darf auch jemand anderen benennen (Item-Vertrag, spec 08).
+  items[idx] = {
+    ...items[idx], ...updates, id,
+    updatedAt: new Date().toISOString(),
+    updatedBy: getCurrentUser()?.id,
+  }
   publish({ topic: "ITEMS_CHANGED", filter: { type: items[idx].type } })
   publish({ topic: "ITEM_CHANGED", itemId: id })
   return items[idx]

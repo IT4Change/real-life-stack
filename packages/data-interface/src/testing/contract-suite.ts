@@ -262,6 +262,49 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
         })
       })
 
+      it("stamps updatedAt/updatedBy on update — the connector, not the caller", async () => {
+        await withConnector(async ({ connector, currentUserId }) => {
+          if (!isWritable(connector)) return
+          const created = await connector.createItem({
+            type: unique("ct-stamp"),
+            createdBy: currentUserId,
+            data: { title: "vorher" },
+          })
+          // Never edited yet: no stamp, so surfaces can tell "untouched" from
+          // "edited" instead of guessing from equal timestamps.
+          expect(created.updatedAt).toBeUndefined()
+          expect(created.updatedBy).toBeUndefined()
+
+          const updated = await connector.updateItem(created.id, { data: { title: "nachher" } })
+          expect(updated.updatedBy).toBe(currentUserId)
+          expect(typeof updated.updatedAt).toBe("string")
+          expect(Number.isFinite(Date.parse(updated.updatedAt!))).toBe(true)
+
+          const read = await connector.getItem(created.id)
+          expect(read!.updatedBy).toBe(currentUserId)
+          expect(read!.updatedAt).toBe(updated.updatedAt)
+        })
+      })
+
+      it("ignores a caller-supplied editor — author binding (spec 08)", async () => {
+        await withConnector(async ({ connector, currentUserId }) => {
+          if (!isWritable(connector)) return
+          const created = await connector.createItem({
+            type: unique("ct-forge"),
+            createdBy: currentUserId,
+            data: { title: "a" },
+          })
+          const forged = await connector.updateItem(created.id, {
+            data: { title: "b" },
+            // A client that may name the editor may also name someone else.
+            updatedBy: "did:key:someone-else",
+            updatedAt: "1999-01-01T00:00:00.000Z",
+          } as never)
+          expect(forged.updatedBy).toBe(currentUserId)
+          expect(forged.updatedAt).not.toBe("1999-01-01T00:00:00.000Z")
+        })
+      })
+
       it("observe reflects a create for a matching filter — with COMPLETE item fields", async () => {
         await withConnector(async ({ connector, currentUserId }) => {
           if (!isWritable(connector)) return

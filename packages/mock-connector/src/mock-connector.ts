@@ -27,6 +27,7 @@ import type {
 } from "@real-life-stack/data-interface"
 import {
   applyGroupDataPatch,
+  withEditStamp,
   applyPagination,
   createDefaultRelationStore,
   createObservable,
@@ -377,13 +378,15 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
   }
 
   async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
-    this.requireCurrentUser()
+    const actor = this.requireCurrentUser()
     // Authoritative ingress binding also on UPDATE: createdBy is immutable
     // through the regular path (spec 08); fixture mode keeps old behaviour.
     if (!this.allowFixtureAuthors && "createdBy" in updates) {
       const { createdBy: _ignored, ...rest } = updates
       updates = rest
     }
+    // Session-bound, like createdBy — see the Item contract.
+    updates = withEditStamp(updates, actor.id)
     const location = this.findVisibleItemLocation(id)
     if (!location) throw new Error(`Item not found: ${id}`)
     const updated = { ...location.item, ...updates, id }
