@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import type { DataInterface, Item } from "@real-life-stack/data-interface"
-import { hasAuthorization, isWritable } from "@real-life-stack/data-interface"
+import { SYSTEM_ITEM_TYPES, hasAuthorization, isWritable } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 import { useCurrentUser } from "./use-auth"
 
@@ -15,7 +15,24 @@ const NONE: ItemPermissions = { canEdit: false, canDelete: false }
  * Pure resolver behind {@link useItemPermissions} — exported so it can be unit
  * tested without React. Order: a non-writable connector grants nothing; a
  * connector with an authorization model is the source of truth (UCAN chain /
- * RLS flags); otherwise fall back to creator-owns.
+ * RLS flags); otherwise the default below.
+ *
+ * **Default: space members may edit each other's content.** Creator-owns was
+ * never the technical model — every member holds the space key in WoT, and
+ * the Supabase policy `edit item` has always allowed it. The UI merely hid
+ * the button, promising a protection that did not exist while withholding an
+ * edit that was already permitted.
+ *
+ * The exception are the three SYSTEM types, which carry a visible statement
+ * BY someone: editing a foreign comment puts words in their mouth, editing a
+ * reaction or a vote (a relation record) casts a ballot for them.
+ *
+ * This hook is UX, never a boundary — it only decides whether a button is
+ * shown. The rule is enforced at the write ingress
+ * (`assertMayMutateAuthoredItem`) and, where a server exists, by the backend:
+ * Supabase RLS (migration 0009) and the GraphQL store reject it outright. In
+ * WoT it cannot be enforced at all — every member holds the space key — so
+ * there it stays a convention among honest clients.
  */
 export function resolveItemPermissions(
   connector: DataInterface,
@@ -29,8 +46,11 @@ export function resolveItemPermissions(
       canDelete: connector.can("item/delete", item),
     }
   }
-  const mine = !!currentUserId && item.createdBy === currentUserId
-  return { canEdit: mine, canDelete: mine }
+  if (!currentUserId) return NONE
+  const mine = item.createdBy === currentUserId
+  const speaksForSomeone = (SYSTEM_ITEM_TYPES as readonly string[]).includes(item.type)
+  const allowed = mine || !speaksForSomeone
+  return { canEdit: allowed, canDelete: allowed }
 }
 
 /**

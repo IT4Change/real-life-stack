@@ -27,6 +27,10 @@ import type {
 } from "@real-life-stack/data-interface"
 import {
   applyGroupDataPatch,
+  withEditStamp,
+  stripEditStamp,
+  assertMayMutateAuthoredItem,
+  assertAuthoredTypeUnchanged,
   applyPagination,
   createDefaultRelationStore,
   createObservable,
@@ -347,6 +351,8 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
   }
 
   async createItem(item: CreateItemInput): Promise<Item> {
+    // A fresh item was never edited — drop any caller-supplied stamp.
+    item = stripEditStamp(item)
     const sessionUser = this.requireCurrentUser()
     // Authoritative ingress binding (spec 08): createdBy comes from the
     // session, never the caller — except in the marked fixture mode.
@@ -377,13 +383,22 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
   }
 
   async updateItem(id: string, updates: Partial<Item>): Promise<Item> {
-    this.requireCurrentUser()
+    const actor = this.requireCurrentUser()
     // Authoritative ingress binding also on UPDATE: createdBy is immutable
     // through the regular path (spec 08); fixture mode keeps old behaviour.
     if (!this.allowFixtureAuthors && "createdBy" in updates) {
       const { createdBy: _ignored, ...rest } = updates
       updates = rest
     }
+    // Session-bound, like createdBy — see the Item contract.
+    const existing = this.findVisibleItemLocation(id)
+    if (existing) {
+      assertMayMutateAuthoredItem(existing.item, actor.id, "update")
+      // Sonst laesst sich ein bearbeitbares Inhalts-Item in ein geschuetztes
+      // Autoren-Item umtypisieren, mit fremdem createdBy als Opfer.
+      assertAuthoredTypeUnchanged(existing.item, updates)
+    }
+    updates = withEditStamp(updates, actor.id)
     const location = this.findVisibleItemLocation(id)
     if (!location) throw new Error(`Item not found: ${id}`)
     const updated = { ...location.item, ...updates, id }
@@ -410,9 +425,10 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
   }
 
   async deleteItem(id: string): Promise<void> {
-    this.requireCurrentUser()
+    const actor = this.requireCurrentUser()
     const location = this.findVisibleItemLocation(id)
     if (!location) return
+    assertMayMutateAuthoredItem(location.item, actor.id, "delete")
     this.appendActivity(this.activityScopeFor(location.scopeId), "delete", location.item)
     location.items.delete(id)
     this.removeItemOrder(location.scopeId, id)
@@ -475,9 +491,12 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
   }
 
   moveItemToGroup(itemId: string, targetGroupId: string): void {
-    this.requireCurrentUser()
+    const mover = this.requireCurrentUser()
     const location = this.findVisibleItemLocation(itemId)
     if (!location || (location.scopeId === null && location.item.type === "feature")) throw new Error(`Item not found: ${itemId}`)
+    // Fuer den Quell-Space ist ein Move semantisch ein Delete — bei einem
+    // fremden Autoren-Item risse es die Aussage aus ihrem Kontext.
+    assertMayMutateAuthoredItem(location.item, mover.id, "delete")
     if (location.scopeId === targetGroupId) return
 
     const targetItems = this.getScopeItems(targetGroupId, true)

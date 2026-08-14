@@ -38,19 +38,29 @@ describe("resolveItemPermissions", () => {
     })
   })
 
-  it("creator-owns fallback: own item is editable + deletable", () => {
+  it("default: own item is editable + deletable", () => {
     expect(
       resolveItemPermissions(connector(WRITE), makeItem({ createdBy: "user-a" }), "user-a"),
     ).toEqual({ canEdit: true, canDelete: true })
   })
 
-  it("creator-owns fallback: foreign item grants nothing", () => {
+  // Bis rls#262 galt hier creator-owns. Das war weder das technische Modell
+  // (Space-Schluessel bzw. Supabase-Policy erlauben es laengst) noch
+  // praktisch — die UI blendete nur den Knopf aus. Siehe
+  // item-permissions-membership.test.ts fuer die Systemtyp-Ausnahmen.
+  it("default: fremdes INHALTS-Item ist bearbeitbar (Mitglieder-Modell)", () => {
     expect(
       resolveItemPermissions(connector(WRITE), makeItem({ createdBy: "user-b" }), "user-a"),
+    ).toEqual({ canEdit: true, canDelete: true })
+  })
+
+  it("default: fremder Kommentar bleibt unantastbar", () => {
+    expect(
+      resolveItemPermissions(connector(WRITE), makeItem({ createdBy: "user-b", type: "comment" }), "user-a"),
     ).toEqual({ canEdit: false, canDelete: false })
   })
 
-  it("creator-owns fallback: no current user grants nothing", () => {
+  it("default: no current user grants nothing", () => {
     expect(resolveItemPermissions(connector(WRITE), makeItem(), undefined)).toEqual({
       canEdit: false,
       canDelete: false,

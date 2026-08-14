@@ -23,7 +23,7 @@ import type {
   RelationRecordUpdate,
   Source,
 } from "@real-life-stack/data-interface"
-import { applyGroupDataPatch, createObservable, createDefaultRelationStore, createRelationRecordWith, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
+import { applyGroupDataPatch, withEditStamp, stripEditStamp, assertMayMutateAuthoredItem, assertAuthoredTypeUnchanged, createObservable, createDefaultRelationStore, createRelationRecordWith, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
 import { get, set, del, createStore, update as updateStoredValue } from "idb-keyval"
 
 // --- Types ---
@@ -461,6 +461,8 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
   }
 
   async createItem(item: CreateItemInput): Promise<Item> {
+    // A fresh item was never edited — a caller-supplied stamp is a forgery.
+    item = stripEditStamp(item)
     return this.createItemInGroup(item, this.currentGroup?.id ?? null)
   }
 
@@ -535,6 +537,9 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
       const { createdBy: _ignored, ...rest } = updates
       updates = rest
     }
+    // Who last touched it, bound to the session like createdBy — space
+    // members may edit each other's items, so this is what tells them apart.
+    updates = withEditStamp(updates, actor)
     let result: Item | undefined
     let committedState: StoredState | undefined
     await updateStoredValue<StoredState>("state", (stored) => {
@@ -544,6 +549,11 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
       if (this.currentGroup && !(current.groupItems[this.currentGroup.id] ?? []).includes(id)) {
         throw new Error(`Item not found: ${id}`)
       }
+      // Autorisierung INNERHALB der Transaktion, gegen den atomar gelesenen
+      // Datensatz: ein anderer Tab kann das Item zwischenzeitlich ersetzt
+      // haben, eine RAM-Pruefung davor waere ein Rennen (rls#244-Muster).
+      assertMayMutateAuthoredItem(current.items[idx], actor, "update")
+      assertAuthoredTypeUnchanged(current.items[idx], updates)
       result = { ...current.items[idx], ...updates, id }
       const items = [...current.items]
       items[idx] = result
@@ -567,6 +577,9 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
       const current = stored ?? this.createStoredState()
       const item = current.items.find((candidate) => candidate.id === id)
       if (!item) { committedState = current; return current }
+      // Checked against the COMMITTED row, not the RAM copy — another tab may
+      // have replaced it (same reasoning as the group patch).
+      assertMayMutateAuthoredItem(item, actor, "delete")
       if (this.currentGroup && !(current.groupItems[this.currentGroup.id] ?? []).includes(id)) throw new Error(`Item not found: ${id}`)
       const groupItems = cloneGroupItems(current.groupItems)
       for (const groupId of Object.keys(groupItems)) {
@@ -601,6 +614,10 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
     await updateStoredValue<StoredState>("state", (stored) => {
       const current = stored ?? this.createStoredState()
       const item = current.items.find((candidate) => candidate.id === itemId)
+      // Ein Move ist fuer den Quell-Space semantisch ein Delete — bei einem
+      // fremden Autoren-Item risse es die Aussage aus ihrem Kontext. Gleicher
+      // Guard wie update/delete, vor dem ersten Effekt.
+      if (item) assertMayMutateAuthoredItem(item, actor, "delete")
       const sourceGroupId = Object.entries(current.groupItems).find(([, ids]) => ids.includes(itemId))?.[0] ?? null
       if (!item || !sourceGroupId) throw new Error(`Item not found: ${itemId}`)
       if (this.currentGroup && sourceGroupId !== this.currentGroup.id) throw new Error(`Item not found: ${itemId}`)

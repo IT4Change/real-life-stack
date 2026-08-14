@@ -46,6 +46,9 @@ import {
   findRelatedItems,
   applyPagination,
   applyGroupDataPatch,
+  stripEditStamp,
+  assertMayMutateAuthoredItem,
+  assertAuthoredTypeUnchanged,
   itemDisplayTitle,
   moduleHintsFor,
   maxTs,
@@ -1197,7 +1200,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     item: CreateItemInput,
     spaceId: string,
   ): Item {
-    this.requireActivityActor()
+    const author = this.requireActivityActor()
     let result: Item | null = null
     let created = false
 
@@ -1215,10 +1218,16 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
         } while (doc.items[id])
       }
       const newItem: Item = {
-        ...item,
+        // A fresh item was never edited — drop any caller-supplied stamp
+        // before it reaches the synced document.
+        ...stripEditStamp(item as Record<string, unknown>),
         id,
         createdAt: new Date().toISOString(),
-      }
+        // Author bound to the session (spec 08). The authored-item guard
+        // decides rights BY this field — a caller that may set it could
+        // invent a foreign author and then hide behind their protection.
+        createdBy: author,
+      } as Item
       doc.items[id] = serializeItem(newItem)
       this.appendActivity(doc, "create", newItem)
       result = newItem
@@ -1234,10 +1243,15 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   }
 
   private applyItemUpdate(handle: SpaceHandle<RlsSpaceDoc>, id: string, updates: Partial<Item>): void {
-    this.requireActivityActor()
+    const actor = this.requireActivityActor()
     handle.transact((doc) => {
       const existing = doc.items[id]
       if (!existing) throw new Error(`Item ${id} not found`)
+      // Convention, NOT a boundary: every member holds the space key and can
+      // write this document directly, so a modified client bypasses this.
+      // It keeps honest clients honest — see isAuthoredSystemItem.
+      assertMayMutateAuthoredItem(existing, actor, "update")
+      assertAuthoredTypeUnchanged(existing, updates)
 
       if (updates.type) existing.type = updates.type
       if (updates.data) {
@@ -1262,6 +1276,13 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       if (updates.schemaVersion !== undefined) existing.schemaVersion = updates.schemaVersion
       if (updates.tags !== undefined) existing.tags = updates.tags
       if (updates["@context"] !== undefined) existing["@context"] = updates["@context"]
+      // Session-bound edit stamp (see the Item contract): space members may
+      // edit each other's items, so the card must be able to say who last
+      // touched it. Set INSIDE the transaction, so it travels with the change.
+      existing.updatedAt = new Date().toISOString()
+      // Same actor the activity entry uses — one source, and it is already
+      // validated as authenticated above.
+      existing.updatedBy = actor
       this.appendActivity(doc, "update", deserializeItem(existing))
     })
   }
@@ -1294,10 +1315,11 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     const spaceIdForReindex =
       this.currentGroupId ?? this.crossGroupIndex?.getItemGroupId(id) ?? null
 
-    this.requireActivityActor()
+    const deleteActor = this.requireActivityActor()
     handle.transact((doc) => {
       const existing = doc.items[id]
       if (!existing) return
+      assertMayMutateAuthoredItem(existing, deleteActor, "delete")
       this.appendActivity(doc, "delete", deserializeItem(existing))
       delete doc.items[id]
     })
@@ -1330,29 +1352,47 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     await this.handleReady
     if (!this.replication) throw new Error("Not connected")
 
-    this.requireActivityActor()
+    const mover = this.requireActivityActor()
     const sourceGroupId = this.getItemGroupId(itemId)
     if (!sourceGroupId) throw new Error(`Item ${itemId} not found in any group`)
     if (sourceGroupId === targetGroupId) return
 
-    // Read item from source
-    const sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(sourceGroupId)
-    const serialized = sourceHandle.getDoc().items?.[itemId]
-    if (!serialized) throw new Error(`Item ${itemId} not found in source group`)
+    // Beide Handles gehoeren UNS: openSpace liefert jedes Mal ein frisches
+    // Handle, das einen eigenen Yjs-Listener registriert; close() nimmt nur
+    // dieses aus der Menge und laesst das laufende currentHandle unberuehrt.
+    // Ohne finally sammelt jeder Move Listener an — auch und gerade auf den
+    // Fehlerpfaden, die der Autoren-Guard unten neu erreichbar macht
+    // (rls#270).
+    let sourceHandle: SpaceHandle<RlsSpaceDoc> | null = null
+    let targetHandle: SpaceHandle<RlsSpaceDoc> | null = null
+    try {
+      // Read item from source
+      sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(sourceGroupId)
+      const serialized = sourceHandle.getDoc().items?.[itemId]
+      if (!serialized) throw new Error(`Item ${itemId} not found in source group`)
+      // Der Move ist hier woertlich create-im-Ziel plus delete-in-der-Quelle —
+      // derselbe Guard wie beim Loeschen, VOR dem ersten Effekt.
+      assertMayMutateAuthoredItem(serialized, mover, "delete")
 
-    // Write to target
-    const targetHandle = await this.replication.openSpace<RlsSpaceDoc>(targetGroupId)
-    targetHandle.transact((doc) => {
-      if (!doc.items) doc.items = {}
-      doc.items[itemId] = serialized
-      this.appendActivity(doc, "create", deserializeItem(serialized))
-    })
+      // Write to target
+      targetHandle = await this.replication.openSpace<RlsSpaceDoc>(targetGroupId)
+      targetHandle.transact((doc) => {
+        if (!doc.items) doc.items = {}
+        doc.items[itemId] = serialized
+        this.appendActivity(doc, "create", deserializeItem(serialized))
+      })
 
-    // Delete from source
-    sourceHandle.transact((doc) => {
-      this.appendActivity(doc, "delete", deserializeItem(serialized))
-      delete doc.items[itemId]
-    })
+      // Delete from source
+      sourceHandle.transact((doc) => {
+        this.appendActivity(doc, "delete", deserializeItem(serialized))
+        delete doc.items[itemId]
+      })
+    } finally {
+      // Einzeln abgesichert: wirft das eine close(), muss das andere trotzdem
+      // laufen, sonst haette der Aufraeumpfad selbst ein Leck.
+      try { sourceHandle?.close() } catch (err) { console.warn("[WotConnector] close(source) fehlgeschlagen", err) }
+      try { targetHandle?.close() } catch (err) { console.warn("[WotConnector] close(target) fehlgeschlagen", err) }
+    }
 
     // Reindex both groups
     this.crossGroupIndex?.reindexGroup(sourceGroupId)

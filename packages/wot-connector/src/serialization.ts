@@ -14,6 +14,8 @@ export function serializeItem(item: Item): SerializedItem {
   if (item.schemaVersion != null) serialized.schemaVersion = item.schemaVersion
   if (item.relations?.length) serialized.relations = item.relations
   if (item.tags?.length) serialized.tags = item.tags
+  if (item.updatedAt) serialized.updatedAt = item.updatedAt
+  if (item.updatedBy) serialized.updatedBy = item.updatedBy
   return serialized
 }
 
@@ -30,5 +32,7 @@ export function deserializeItem(serialized: SerializedItem): Item {
   if (serialized.schemaVersion != null) item.schemaVersion = serialized.schemaVersion
   if (serialized.relations?.length) item.relations = serialized.relations
   if (serialized.tags?.length) item.tags = serialized.tags
+  if (serialized.updatedAt) item.updatedAt = serialized.updatedAt
+  if (serialized.updatedBy) item.updatedBy = serialized.updatedBy
   return item
 }

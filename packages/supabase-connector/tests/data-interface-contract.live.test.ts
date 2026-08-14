@@ -71,6 +71,14 @@ if (!url || !anonKey || !serviceKey) {
       const user = await connector.authenticate("anonymous", {})
       return { connector, currentUserId: user.id, dispose: () => connector.dispose() }
     },
+    // Dieser Harness faehrt mit Service-Role und Fixture-Autoren: auth.uid()
+    // ist leer, der Stempel-Trigger schriebe NULL, und RLS wird komplett
+    // umgangen. Die Autorenregeln sind hier also nicht pruefbar — sie werden
+    // weiter unten mit ECHTEN Nutzern und rohem DML geprueft, dort wo sie
+    // tatsaechlich greifen.
+    bindsAuthorToSession: false,
+    cannotSeedForeignItem:
+      "Service-Role umgeht RLS — die Autorenregel wird in den Raw-DML-Tests mit echten Nutzern geprueft",
   })
 
   describe("SupabaseConnector (live, authoritative) — the RLS boundary itself", () => {
@@ -128,6 +136,98 @@ if (!url || !anonKey || !serviceKey) {
         await mallory.connector.dispose()
       }
     })
+
+    // Migration 0009 dehnt die Autorenregel von `relation` auf `comment` und
+    // `reaction` aus. Hier ist sie eine ECHTE Grenze — an PostgREST kommt
+    // niemand vorbei —, also wird sie auch wie eine getestet: mit einem
+    // zweiten, echten Benutzer und rohem DML, nicht ueber den Connector.
+    for (const type of ["comment", "reaction"] as const) {
+      it(`a SECOND user can neither update nor delete a foreign ${type} via raw DML`, async () => {
+        const alice = await makeAuthoritative()
+        const mallory = await makeAuthoritative()
+        try {
+          const id = `${type}-live-${Date.now()}`
+          const original = { text: "ihre Aussage" }
+          const insert = await alice.client.from("items").insert({
+            id, type, created_by: alice.userId, data: original,
+          })
+          expect(insert.error).toBeNull()
+
+          // RLS laesst die Zeile fuer die fremde Sitzung schlicht unsichtbar
+          // werden — das DML trifft 0 Zeilen, statt einen Fehler zu werfen.
+          await mallory.client.from("items").update({ data: { text: "gekapert" } }).eq("id", id)
+          await mallory.client.from("items").delete().eq("id", id)
+
+          const after = await alice.connector.getItem(id)
+          expect(after, `${type} darf nicht geloescht worden sein`).not.toBeNull()
+          expect(after!.data).toEqual(original)
+        } finally {
+          await alice.connector.dispose()
+          await mallory.connector.dispose()
+        }
+      })
+    }
+
+    // Der Stempel-Trigger (0008) laesst sich nur mit einer ECHTEN Sitzung
+    // pruefen: unter Service-Role ist auth.uid() leer. Der Contract-Harness
+    // faehrt genau so, deshalb hier der Nachweis, wo er zaehlt.
+    it("the update trigger stamps updated_by with the AUTHENTICATED user", async () => {
+      const alice = await makeAuthoritative()
+      try {
+        const id = `stamp-live-${Date.now()}`
+        expect((await alice.client.from("items").insert({
+          id, type: "post", created_by: alice.userId, data: { text: "vorher" },
+        })).error).toBeNull()
+
+        // Frisch erstellt: noch kein Stempel — sonst liesse sich "bearbeitet"
+        // nicht von "unberuehrt" unterscheiden.
+        const fresh = await alice.connector.getItem(id)
+        expect(fresh!.updatedAt).toBeUndefined()
+        expect(fresh!.updatedBy).toBeUndefined()
+
+        expect((await alice.client.from("items").update({ data: { text: "nachher" } }).eq("id", id)).error).toBeNull()
+        const edited = await alice.connector.getItem(id)
+        expect(edited!.updatedBy).toBe(alice.userId)
+        expect(Number.isFinite(Date.parse(edited!.updatedAt!))).toBe(true)
+
+        // Und der Client kann den Stempel nicht faelschen — der Trigger
+        // ueberschreibt bedingungslos.
+        await alice.client.from("items")
+          .update({ data: { text: "x" }, updated_by: "did:key:gefaelscht", updated_at: "1999-01-01" })
+          .eq("id", id)
+        const forged = await alice.connector.getItem(id)
+        expect(forged!.updatedBy).toBe(alice.userId)
+        expect(forged!.updatedAt).not.toBe("1999-01-01T00:00:00.000Z")
+      } finally {
+        await alice.connector.dispose()
+      }
+    })
+
+    // Gegenprobe zu den beiden Tests oben: ohne sie wuerde eine Policy, die
+    // ALLEN das Schreiben verbietet, genauso gruen bleiben. Der Autor muss
+    // sein eigenes Autoren-Item weiterhin aendern UND loeschen koennen.
+    for (const type of ["comment", "reaction"] as const) {
+      it(`the AUTHOR can still update and delete their own ${type} via raw DML`, async () => {
+        const alice = await makeAuthoritative()
+        try {
+          const id = `${type}-own-${Date.now()}`
+          const insert = await alice.client.from("items").insert({
+            id, type, created_by: alice.userId, data: { text: "meine Aussage" },
+          })
+          expect(insert.error).toBeNull()
+
+          const updated = await alice.client.from("items").update({ data: { text: "korrigiert" } }).eq("id", id)
+          expect(updated.error).toBeNull()
+          expect((await alice.connector.getItem(id))!.data).toEqual({ text: "korrigiert" })
+
+          const removed = await alice.client.from("items").delete().eq("id", id)
+          expect(removed.error).toBeNull()
+          expect(await alice.connector.getItem(id)).toBeNull()
+        } finally {
+          await alice.connector.dispose()
+        }
+      })
+    }
 
     it("authoritative connector vouches trusted for the facade-written record", async () => {
       const { connector, userId } = await makeAuthoritative()

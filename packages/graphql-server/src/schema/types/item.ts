@@ -22,6 +22,10 @@ export const ItemType = builder.objectRef<Item>("Item").implement({
       resolve: (item) => item.createdAt,
     }),
     createdBy: t.exposeString("createdBy"),
+    // Gesetzt vom Server beim Update (siehe store.updateItem) — nie vom
+    // Client geliefert, sonst koennte er einen fremden Bearbeiter eintragen.
+    updatedAt: t.exposeString("updatedAt", { nullable: true }),
+    updatedBy: t.exposeString("updatedBy", { nullable: true }),
     // GraphQL field names cannot start with "@" — `context` carries the
     // item's `@context` vocabulary list (spec 06 schema activation).
     context: t.stringList({

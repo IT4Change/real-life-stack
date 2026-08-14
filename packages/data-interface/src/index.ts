@@ -16,6 +16,7 @@ export {
   type RelationRecordCreateConnector,
 } from "./relation-records.js"
 export * from "./item-types.js"
+import { SYSTEM_ITEM_TYPES } from "./item-types.js"
 export * from "./votes.js"
 export * from "./claims.js"
 export * from "./vocab.js"
@@ -41,6 +42,19 @@ export interface Item {
 
   schema?: string
   schemaVersion?: number
+
+  /**
+   * Last modification, set by the CONNECTOR on every successful update —
+   * never supplied by the caller (spec 08 author binding: a client that may
+   * name the editor may also name someone else). Absent on items that were
+   * never edited; `updatedBy` may differ from `createdBy` since space members
+   * may edit each other's items.
+   *
+   * This is the "that it was edited" answer. "What was edited" needs a
+   * version history and is deliberately NOT this — see rls#263.
+   */
+  updatedAt?: string
+  updatedBy?: string
 
   data: Record<string, unknown>
   relations?: Relation[]
@@ -176,7 +190,14 @@ export interface DataInterface {
 
 // --- Capability Interfaces ---
 
-export type CreateItemInput = Omit<Item, "id" | "createdAt"> & { id?: string }
+/**
+ * A newly created item was never edited, so it carries no edit stamp — and a
+ * caller must not be able to claim one (that would forge "edited by X").
+ * Excluded from the TYPE for discoverability; the runtime guard is
+ * {@link stripEditStamp}, because a TypeScript type is not a security
+ * boundary.
+ */
+export type CreateItemInput = Omit<Item, "id" | "createdAt" | "updatedAt" | "updatedBy"> & { id?: string }
 
 export interface ItemWriter {
   createItem(item: CreateItemInput): Promise<Item>
@@ -819,6 +840,99 @@ export function hasItemGroups(c: DataInterface): c is DataInterface & ItemGroupC
  * `undefined`). Every connector's `updateGroup` goes through this so the
  * patch semantics cannot drift per backend.
  */
+/**
+ * Strip caller-supplied edit stamps and apply the connector's own.
+ *
+ * `updatedBy` must come from the SESSION, never from the payload — a client
+ * that may name the editor may also name someone else (spec 08 author
+ * binding, same reasoning as `createdBy`). One helper for all connectors so
+ * the rule cannot drift per backend; a backend that stamps server-side
+ * (Postgres trigger) does not need it.
+ */
+/**
+ * Drop caller-supplied edit stamps from a CREATE payload. A fresh item was
+ * never edited; letting the caller set `updatedBy` would let it claim a
+ * foreign editor on an item nobody touched.
+ */
+export function stripEditStamp<T extends Record<string, unknown>>(input: T): T {
+  if (!("updatedAt" in input) && !("updatedBy" in input)) return input
+  const { updatedAt: _at, updatedBy: _by, ...rest } = input as T & {
+    updatedAt?: unknown
+    updatedBy?: unknown
+  }
+  return rest as T
+}
+
+/**
+ * Items that carry a visible statement BY someone: a comment puts words in
+ * their mouth, a reaction or a vote (relation record) casts their ballot.
+ * Only the author may change these — unlike ordinary content, which any
+ * space member may edit.
+ *
+ * IMPORTANT: enforcement is only as strong as the ingress. A server-backed
+ * connector (Supabase RLS, GraphQL) can make this a real boundary. In WoT it
+ * CANNOT be one — every member holds the space key and can write the CRDT
+ * document directly, so a modified client bypasses any local check. There it
+ * is a convention that keeps honest clients honest, and must never be
+ * presented to users as protection.
+ */
+export function isAuthoredSystemItem(type: string): boolean {
+  return (SYSTEM_ITEM_TYPES as readonly string[]).includes(type)
+}
+
+/**
+ * Guard for the generic update/delete path of a connector: reject a mutation
+ * of someone else's authored system item. Mirrors
+ * {@link isAuthoredSystemItem}'s caveat about WoT.
+ */
+export function assertMayMutateAuthoredItem(
+  item: Pick<Item, "type" | "createdBy">,
+  actorId: string,
+  action: "update" | "delete",
+): void {
+  if (!isAuthoredSystemItem(item.type)) return
+  if (item.createdBy === actorId) return
+  throw new Error(`Not authorized to ${action} another author's ${item.type}`)
+}
+
+/**
+ * An item may not be re-typed INTO or OUT OF an authored system type.
+ *
+ * Without this the authored-item guard is bypassable: it checks the OLD type,
+ * so a member edits someone's ordinary post (allowed) and re-types it to
+ * `comment` in the same call. `createdBy` stays the original author — the
+ * result is a statement falsely attributed to them, and the guard was green
+ * the whole way. The reverse direction matters too: re-typing a foreign
+ * comment to `post` would strip its protection.
+ *
+ * Deliberately NARROWER than Supabase, which treats `type` as fully
+ * immutable (`items_immutables`, 0007): the Mock connector legitimately
+ * promotes an item to `feature`, and that has nothing to do with authorship.
+ * A backend may be stricter; this is the floor every ingress must meet.
+ */
+export function assertAuthoredTypeUnchanged(
+  existing: Pick<Item, "type">,
+  updates: Partial<Item>,
+): void {
+  if (updates.type === undefined || updates.type === existing.type) return
+  if (!isAuthoredSystemItem(existing.type) && !isAuthoredSystemItem(updates.type)) return
+  throw new Error(
+    `cannot change type between "${existing.type}" and "${updates.type}" — authorship would be misattributed`,
+  )
+}
+
+export function withEditStamp<T extends Record<string, unknown>>(
+  updates: T,
+  editorId: string,
+  now: string = new Date().toISOString(),
+): T & { updatedAt: string; updatedBy: string } {
+  const { updatedAt: _ignoredAt, updatedBy: _ignoredBy, ...rest } = updates as T & {
+    updatedAt?: unknown
+    updatedBy?: unknown
+  }
+  return { ...(rest as T), updatedAt: now, updatedBy: editorId }
+}
+
 export function applyGroupDataPatch(
   base: Record<string, unknown> | undefined,
   patch: Record<string, unknown>,

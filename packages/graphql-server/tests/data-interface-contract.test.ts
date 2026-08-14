@@ -4,6 +4,7 @@ import mercurius from "mercurius"
 import { describeDataInterfaceContract } from "@real-life-stack/data-interface/testing"
 import { GraphQLConnector } from "@real-life-stack/graphql-connector"
 import { schema } from "../src/schema/index.js"
+import { seedForeignItemForTests } from "../src/store.js"
 
 /**
  * Runs the shared DataInterface contract suite against the REAL
@@ -46,6 +47,10 @@ describeDataInterfaceContract("GraphQLConnector ↔ graphql-server", {
     const user = await connector.getCurrentUser()
     if (!user) throw new Error("graphql demo store should have a current user")
     return { connector, currentUserId: user.id, dispose: () => app.close() }
+  },
+  // Am Ingress vorbei in den Store — der bindet den Autor inzwischen.
+  async seedForeignItem(_context, item) {
+    seedForeignItemForTests(item)
   },
   async updatableGroup(context) {
     // Fresh group per case — the shared demo store survives across cases.
