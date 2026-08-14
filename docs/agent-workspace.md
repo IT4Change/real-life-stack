@@ -279,3 +279,5 @@ Ausführliche Spezifikation in `docs/spec/reaktivitaet.md`. Die wichtigsten Rege
 - `apps/reference/src/App.tsx` — Reference App: Komposition (Provider, AuthGate, App Shell)
 - `apps/reference/src/views/` — Space-Module-Views (feed, kanban, calendar, map) + `module-outlet.tsx` (Dispatch)
 - `apps/reference/src/hooks/use-workspace-routing.ts` — Space/Module-Auflösung aus URL (localStorage-Fallback, No-Access-Fall)
+
+<!-- Wegwerf-Zeile fuer den Ruleset-Negativtest, wird nicht gemergt -->
