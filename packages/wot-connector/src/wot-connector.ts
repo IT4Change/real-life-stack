@@ -1357,27 +1357,42 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     if (!sourceGroupId) throw new Error(`Item ${itemId} not found in any group`)
     if (sourceGroupId === targetGroupId) return
 
-    // Read item from source
-    const sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(sourceGroupId)
-    const serialized = sourceHandle.getDoc().items?.[itemId]
-    // Der Move ist hier woertlich create-im-Ziel plus delete-in-der-Quelle —
-    // derselbe Guard wie beim Loeschen, VOR dem ersten Effekt.
-    if (serialized) assertMayMutateAuthoredItem(serialized, mover, "delete")
-    if (!serialized) throw new Error(`Item ${itemId} not found in source group`)
+    // Beide Handles gehoeren UNS: openSpace liefert jedes Mal ein frisches
+    // Handle, das einen eigenen Yjs-Listener registriert; close() nimmt nur
+    // dieses aus der Menge und laesst das laufende currentHandle unberuehrt.
+    // Ohne finally sammelt jeder Move Listener an — auch und gerade auf den
+    // Fehlerpfaden, die der Autoren-Guard unten neu erreichbar macht
+    // (rls#270).
+    let sourceHandle: SpaceHandle<RlsSpaceDoc> | null = null
+    let targetHandle: SpaceHandle<RlsSpaceDoc> | null = null
+    try {
+      // Read item from source
+      sourceHandle = await this.replication.openSpace<RlsSpaceDoc>(sourceGroupId)
+      const serialized = sourceHandle.getDoc().items?.[itemId]
+      if (!serialized) throw new Error(`Item ${itemId} not found in source group`)
+      // Der Move ist hier woertlich create-im-Ziel plus delete-in-der-Quelle —
+      // derselbe Guard wie beim Loeschen, VOR dem ersten Effekt.
+      assertMayMutateAuthoredItem(serialized, mover, "delete")
 
-    // Write to target
-    const targetHandle = await this.replication.openSpace<RlsSpaceDoc>(targetGroupId)
-    targetHandle.transact((doc) => {
-      if (!doc.items) doc.items = {}
-      doc.items[itemId] = serialized
-      this.appendActivity(doc, "create", deserializeItem(serialized))
-    })
+      // Write to target
+      targetHandle = await this.replication.openSpace<RlsSpaceDoc>(targetGroupId)
+      targetHandle.transact((doc) => {
+        if (!doc.items) doc.items = {}
+        doc.items[itemId] = serialized
+        this.appendActivity(doc, "create", deserializeItem(serialized))
+      })
 
-    // Delete from source
-    sourceHandle.transact((doc) => {
-      this.appendActivity(doc, "delete", deserializeItem(serialized))
-      delete doc.items[itemId]
-    })
+      // Delete from source
+      sourceHandle.transact((doc) => {
+        this.appendActivity(doc, "delete", deserializeItem(serialized))
+        delete doc.items[itemId]
+      })
+    } finally {
+      // Einzeln abgesichert: wirft das eine close(), muss das andere trotzdem
+      // laufen, sonst haette der Aufraeumpfad selbst ein Leck.
+      try { sourceHandle?.close() } catch (err) { console.warn("[WotConnector] close(source) fehlgeschlagen", err) }
+      try { targetHandle?.close() } catch (err) { console.warn("[WotConnector] close(target) fehlgeschlagen", err) }
+    }
 
     // Reindex both groups
     this.crossGroupIndex?.reindexGroup(sourceGroupId)
