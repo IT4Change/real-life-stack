@@ -340,7 +340,12 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
           } as never)
           expect(created.updatedBy).toBeUndefined()
           expect(created.updatedAt).toBeUndefined()
-          expect((await connector.getItem(created.id))!.updatedBy).toBeUndefined()
+          // Auch den PERSISTIERTEN Stand pruefen, und beide Felder: sonst
+          // koennte ein Connector den fremden Zeitstempel speichern, ohne
+          // dass der Test rot wird.
+          const persisted = (await connector.getItem(created.id))!
+          expect(persisted.updatedBy).toBeUndefined()
+          expect(persisted.updatedAt).toBeUndefined()
         })
       })
 
@@ -404,12 +409,15 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
       })
 
       it("verschiebt ein fremdes Autoren-Item nicht in einen anderen Space", async () => {
-        if (harness.cannotSeedForeignItem || !harness.movableTarget) return
+        if (harness.cannotSeedForeignItem) return
         await withConnector(async (context) => {
           const { connector } = context
           if (!isWritable(connector) || !hasItemGroups(connector)) return
+          // Kein stiller Skip: ein Connector MIT moveItemToGroup muss ein
+          // Ziel liefern koennen, sonst prueft dieser Test nichts.
+          expect(harness.movableTarget, "Harness mit ItemGroups braucht movableTarget").toBeDefined()
           const target = await harness.movableTarget!(context)
-          if (!target) return
+          expect(target, "movableTarget muss einen Ziel-Space liefern").toBeTruthy()
           const foreign = unique("ct-move-foreign")
           await harness.seedForeignItem!(context, {
             id: foreign, type: "comment", createdBy: "did:key:someone-else", data: { text: "ihre Aussage" },
@@ -418,7 +426,11 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
           // Fuer den Quell-Space ist ein Move ein Delete — im WoT-Pfad
           // woertlich create-im-Ziel plus delete-in-der-Quelle. Er darf die
           // fremde Aussage nicht aus ihrem Kontext reissen.
-          await expect(connector.moveItemToGroup(foreign, target)).rejects.toThrow()
+          // Mock wirft SYNCHRON (moveItemToGroup ist dort void), die anderen
+          // lehnen ein Promise ab — beides muss der Test fangen.
+          await expect(
+            Promise.resolve().then(() => connector.moveItemToGroup(foreign, target!)),
+          ).rejects.toThrow()
           expect(connector.getItemGroupId(foreign)).toBe(sourceBefore)
         })
       })

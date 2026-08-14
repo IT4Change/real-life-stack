@@ -129,6 +129,37 @@ if (!url || !anonKey || !serviceKey) {
       }
     })
 
+    // Migration 0009 dehnt die Autorenregel von `relation` auf `comment` und
+    // `reaction` aus. Hier ist sie eine ECHTE Grenze — an PostgREST kommt
+    // niemand vorbei —, also wird sie auch wie eine getestet: mit einem
+    // zweiten, echten Benutzer und rohem DML, nicht ueber den Connector.
+    for (const type of ["comment", "reaction"] as const) {
+      it(`a SECOND user can neither update nor delete a foreign ${type} via raw DML`, async () => {
+        const alice = await makeAuthoritative()
+        const mallory = await makeAuthoritative()
+        try {
+          const id = `${type}-live-${Date.now()}`
+          const original = { text: "ihre Aussage" }
+          const insert = await alice.client.from("items").insert({
+            id, type, created_by: alice.userId, data: original,
+          })
+          expect(insert.error).toBeNull()
+
+          // RLS laesst die Zeile fuer die fremde Sitzung schlicht unsichtbar
+          // werden — das DML trifft 0 Zeilen, statt einen Fehler zu werfen.
+          await mallory.client.from("items").update({ data: { text: "gekapert" } }).eq("id", id)
+          await mallory.client.from("items").delete().eq("id", id)
+
+          const after = await alice.connector.getItem(id)
+          expect(after, `${type} darf nicht geloescht worden sein`).not.toBeNull()
+          expect(after!.data).toEqual(original)
+        } finally {
+          await alice.connector.dispose()
+          await mallory.connector.dispose()
+        }
+      })
+    }
+
     it("authoritative connector vouches trusted for the facade-written record", async () => {
       const { connector, userId } = await makeAuthoritative()
       try {

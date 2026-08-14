@@ -68,6 +68,14 @@ describeDataInterfaceContract("WotConnector", {
     value.notifyAllObservers = vi.fn(() => { value.itemCache = null })
     return { connector: value as WotConnector, currentUserId: identity.did }
   },
+  // Der Move-Guard laeuft ueber das QUELL-Dokument; dafuer genuegt eine
+  // openSpace-Attrappe, die dasselbe Handle liefert. Ziel-Space nur dem
+  // Namen nach — der Guard schlaegt zu, bevor irgendetwas geschrieben wird.
+  async movableTarget({ connector }) {
+    const value = connector as unknown as { replication?: unknown; currentHandle: unknown }
+    if (!value.replication) value.replication = { openSpace: async () => value.currentHandle }
+    return "space-move-ziel"
+  },
   // Direkt ins Space-Dokument, ohne Ingress: genau so taucht ein fremdes
   // Item in Wirklichkeit auf — es kommt per Sync von einem anderen Geraet.
   async seedForeignItem({ connector }, item) {

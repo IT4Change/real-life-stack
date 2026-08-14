@@ -123,7 +123,11 @@ useCanCreate(spaceId, type?)  // → boolean                   (can("item/create
 
 ## 5. Phase-1 PR-Schnitt
 
-1. **Berechtigungs-Capability:** `AuthorizationCapable` (`can(ability, resource)`) + `hasAuthorization` + BaseConnector-Default (creator-owns) + Hooks `useItemPermissions(item)` / `useCanCreate(space, type)`. Normativer Eintrag inline in `03-capabilities.md`. (Klein, isoliert, testbar.)
+1. **Berechtigungs-Capability:** `AuthorizationCapable` (`can(ability, resource)`) + `hasAuthorization` + Default + Hooks `useItemPermissions(item)` / `useCanCreate(space, type)`. Normativer Eintrag inline in `03-capabilities.md`. (Klein, isoliert, testbar.)
+   *Der Default war in Phase 1 `creator-owns`; seit rls#263 gilt der
+   Mitglieder-Default aus Abschnitt 3.3 — Space-Mitglieder dürfen
+   Inhalts-Items bearbeiten und löschen, `comment`/`reaction`/`relation`
+   bleiben beim Urheber.*
 2. **Geteilter Detail-Host + Aktionsmenü + Delete-Confirm:** `ItemDetailView` (Read + ⋮ + Edit-Toggle) + Delete-Dialog im toolkit. Kanban als erstes Modul darauf umstellen (es hat das Muster schon → Regressions-Referenz).
 3. **Feed / Kalender / Karte** auf den Host umstellen (Edit/Delete dort neu verfügbar) + Typ-gekeyte Composer-Configs (Mapper aus den heutigen per-Modul-Mappern in die Registry heben).
 
