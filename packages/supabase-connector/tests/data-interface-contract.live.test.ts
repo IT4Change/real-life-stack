@@ -160,6 +160,32 @@ if (!url || !anonKey || !serviceKey) {
       })
     }
 
+    // Gegenprobe zu den beiden Tests oben: ohne sie wuerde eine Policy, die
+    // ALLEN das Schreiben verbietet, genauso gruen bleiben. Der Autor muss
+    // sein eigenes Autoren-Item weiterhin aendern UND loeschen koennen.
+    for (const type of ["comment", "reaction"] as const) {
+      it(`the AUTHOR can still update and delete their own ${type} via raw DML`, async () => {
+        const alice = await makeAuthoritative()
+        try {
+          const id = `${type}-own-${Date.now()}`
+          const insert = await alice.client.from("items").insert({
+            id, type, created_by: alice.userId, data: { text: "meine Aussage" },
+          })
+          expect(insert.error).toBeNull()
+
+          const updated = await alice.client.from("items").update({ data: { text: "korrigiert" } }).eq("id", id)
+          expect(updated.error).toBeNull()
+          expect((await alice.connector.getItem(id))!.data).toEqual({ text: "korrigiert" })
+
+          const removed = await alice.client.from("items").delete().eq("id", id)
+          expect(removed.error).toBeNull()
+          expect(await alice.connector.getItem(id)).toBeNull()
+        } finally {
+          await alice.connector.dispose()
+        }
+      })
+    }
+
     it("authoritative connector vouches trusted for the facade-written record", async () => {
       const { connector, userId } = await makeAuthoritative()
       try {
