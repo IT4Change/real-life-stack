@@ -1,5 +1,5 @@
 import type { CreateItemInput, Item, ItemFilter, Group, User, AuthState, Relation } from "@real-life-stack/data-interface"
-import { applyGroupDataPatch, applyPagination, matchesFilter } from "@real-life-stack/data-interface"
+import { applyGroupDataPatch, applyPagination, assertMayMutateAuthoredItem, matchesFilter, stripEditStamp } from "@real-life-stack/data-interface"
 import { demoItems, demoGroups, demoUsers, demoGroupMembers } from "@real-life-stack/data-interface/demo-data"
 import { publish } from "./pubsub.js"
 
@@ -65,7 +65,19 @@ function allocateItemId(): string {
   return id
 }
 
+/**
+ * Every write needs a session. Checked BEFORE any mutation: the previous
+ * order mutated first and only then read the user, so a write after logout
+ * succeeded and left `updated_by: undefined` behind (rls#263 review).
+ */
+function requireSession(action: string): string {
+  const user = getCurrentUser()
+  if (!user) throw new Error(`${action} requires an authenticated session`)
+  return user.id
+}
+
 export function createItem(input: StoreCreateItemInput): Item {
+  requireSession("createItem")
   if (input.id !== undefined) {
     const existing = items.find((item) => item.id === input.id)
     if (existing) return existing
@@ -88,14 +100,16 @@ export function createItem(input: StoreCreateItemInput): Item {
 }
 
 export function updateItem(id: string, updates: { data?: Record<string, unknown>; relations?: Item["relations"]; "@context"?: string[]; tags?: string[] }): Item {
+  const editor = requireSession("updateItem")
   const idx = items.findIndex((i) => i.id === id)
   if (idx === -1) throw new Error(`Item not found: ${id}`)
+  assertMayMutateAuthoredItem(items[idx], editor, "update")
   // Der Server stempelt, nicht der Client: wer den Bearbeiter benennen darf,
   // darf auch jemand anderen benennen (Item-Vertrag, spec 08).
   items[idx] = {
     ...items[idx], ...updates, id,
     updatedAt: new Date().toISOString(),
-    updatedBy: getCurrentUser()?.id,
+    updatedBy: editor,
   }
   publish({ topic: "ITEMS_CHANGED", filter: { type: items[idx].type } })
   publish({ topic: "ITEM_CHANGED", itemId: id })
@@ -103,8 +117,10 @@ export function updateItem(id: string, updates: { data?: Record<string, unknown>
 }
 
 export function deleteItem(id: string): boolean {
+  const actor = requireSession("deleteItem")
   const item = items.find((i) => i.id === id)
   if (!item) return false
+  assertMayMutateAuthoredItem(item, actor, "delete")
   items = items.filter((i) => i.id !== id)
   publish({ topic: "ITEMS_CHANGED", filter: { type: item.type } })
   publish({ topic: "ITEM_CHANGED", itemId: id })

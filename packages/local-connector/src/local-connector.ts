@@ -23,7 +23,7 @@ import type {
   RelationRecordUpdate,
   Source,
 } from "@real-life-stack/data-interface"
-import { applyGroupDataPatch, withEditStamp, createObservable, createDefaultRelationStore, createRelationRecordWith, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
+import { applyGroupDataPatch, withEditStamp, stripEditStamp, assertMayMutateAuthoredItem, createObservable, createDefaultRelationStore, createRelationRecordWith, matchesFilter, findRelatedItems, applyPagination, deriveActivitySummary, itemDisplayTitle, moduleHintsFor, applyNotificationStatePatch, cloneNotificationState } from "@real-life-stack/data-interface"
 import { get, set, del, createStore, update as updateStoredValue } from "idb-keyval"
 
 // --- Types ---
@@ -461,6 +461,8 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
   }
 
   async createItem(item: CreateItemInput): Promise<Item> {
+    // A fresh item was never edited — a caller-supplied stamp is a forgery.
+    item = stripEditStamp(item)
     return this.createItemInGroup(item, this.currentGroup?.id ?? null)
   }
 
@@ -537,6 +539,10 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
     }
     // Who last touched it, bound to the session like createdBy — space
     // members may edit each other's items, so this is what tells them apart.
+    // Someone else's comment/reaction/relation carries THEIR statement — the
+    // UI hides the buttons, but the UI is not the boundary.
+    const target = this.items.find((candidate) => candidate.id === id)
+    if (target) assertMayMutateAuthoredItem(target, actor, "update")
     updates = withEditStamp(updates, actor)
     let result: Item | undefined
     let committedState: StoredState | undefined
@@ -570,6 +576,9 @@ export class LocalConnector implements FullConnector, ActivityLogCapable, Scoped
       const current = stored ?? this.createStoredState()
       const item = current.items.find((candidate) => candidate.id === id)
       if (!item) { committedState = current; return current }
+      // Checked against the COMMITTED row, not the RAM copy — another tab may
+      // have replaced it (same reasoning as the group patch).
+      assertMayMutateAuthoredItem(item, actor, "delete")
       if (this.currentGroup && !(current.groupItems[this.currentGroup.id] ?? []).includes(id)) throw new Error(`Item not found: ${id}`)
       const groupItems = cloneGroupItems(current.groupItems)
       for (const groupId of Object.keys(groupItems)) {

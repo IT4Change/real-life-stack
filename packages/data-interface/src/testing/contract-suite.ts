@@ -42,6 +42,13 @@ export interface ContractHarness {
    * replication runtime); the group-update contract cases are skipped then.
    */
   updatableGroup?(context: ContractContext): Promise<string>
+  /**
+   * Seed an authored system item (comment/reaction) created by SOMEONE ELSE
+   * and return its id, or null if the harness cannot fabricate a foreign
+   * author. Needed because the regular ingress binds createdBy to the
+   * session — the very rule under test.
+   */
+  foreignAuthoredItem?(context: ContractContext, type: string): Promise<string | null>
 }
 
 let uniqueCounter = 0
@@ -302,6 +309,39 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
           } as never)
           expect(forged.updatedBy).toBe(currentUserId)
           expect(forged.updatedAt).not.toBe("1999-01-01T00:00:00.000Z")
+        })
+      })
+
+      it("ignores an edit stamp supplied at CREATE — a fresh item was never edited", async () => {
+        await withConnector(async ({ connector, currentUserId }) => {
+          if (!isWritable(connector)) return
+          const created = await connector.createItem({
+            type: unique("ct-cstamp"),
+            createdBy: currentUserId,
+            data: { title: "neu" },
+            // The TS type excludes these; a wire client is not bound by it.
+            updatedBy: "did:key:someone-else",
+            updatedAt: "1999-01-01T00:00:00.000Z",
+          } as never)
+          expect(created.updatedBy).toBeUndefined()
+          expect(created.updatedAt).toBeUndefined()
+          expect((await connector.getItem(created.id))!.updatedBy).toBeUndefined()
+        })
+      })
+
+      it("refuses to change or remove ANOTHER author's comment/reaction", async () => {
+        await withConnector(async ({ connector, currentUserId }) => {
+          if (!isWritable(connector)) return
+          if (!harness.foreignAuthoredItem) return
+          for (const type of ["comment", "reaction"]) {
+            const foreign = await harness.foreignAuthoredItem({ connector, currentUserId }, type)
+            if (!foreign) continue
+            // The UI hides the buttons — but the UI is not the boundary. A
+            // wire client must be refused at the ingress too.
+            await expect(connector.updateItem(foreign, { data: { text: "gekapert" } })).rejects.toThrow()
+            await expect(connector.deleteItem(foreign)).rejects.toThrow()
+            expect(await connector.getItem(foreign)).not.toBeNull()
+          }
         })
       })
 

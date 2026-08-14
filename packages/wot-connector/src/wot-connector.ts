@@ -46,6 +46,8 @@ import {
   findRelatedItems,
   applyPagination,
   applyGroupDataPatch,
+  stripEditStamp,
+  assertMayMutateAuthoredItem,
   itemDisplayTitle,
   moduleHintsFor,
   maxTs,
@@ -1215,10 +1217,12 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
         } while (doc.items[id])
       }
       const newItem: Item = {
-        ...item,
+        // A fresh item was never edited — drop any caller-supplied stamp
+        // before it reaches the synced document.
+        ...stripEditStamp(item as Record<string, unknown>),
         id,
         createdAt: new Date().toISOString(),
-      }
+      } as Item
       doc.items[id] = serializeItem(newItem)
       this.appendActivity(doc, "create", newItem)
       result = newItem
@@ -1238,6 +1242,10 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     handle.transact((doc) => {
       const existing = doc.items[id]
       if (!existing) throw new Error(`Item ${id} not found`)
+      // Convention, NOT a boundary: every member holds the space key and can
+      // write this document directly, so a modified client bypasses this.
+      // It keeps honest clients honest — see isAuthoredSystemItem.
+      assertMayMutateAuthoredItem(existing, actor, "update")
 
       if (updates.type) existing.type = updates.type
       if (updates.data) {
@@ -1301,10 +1309,11 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     const spaceIdForReindex =
       this.currentGroupId ?? this.crossGroupIndex?.getItemGroupId(id) ?? null
 
-    this.requireActivityActor()
+    const deleteActor = this.requireActivityActor()
     handle.transact((doc) => {
       const existing = doc.items[id]
       if (!existing) return
+      assertMayMutateAuthoredItem(existing, deleteActor, "delete")
       this.appendActivity(doc, "delete", deserializeItem(existing))
       delete doc.items[id]
     })

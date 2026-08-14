@@ -86,9 +86,14 @@ useItemPermissions(item)      // → { canEdit, canDelete }   (can("item/edit"/"
 useCanCreate(spaceId, type?)  // → boolean                   (can("item/create", { space }))
 ```
 
-- **Auflösung je Connector:** UCAN-Connector matcht die gehaltene Kette (`with` + `can` + Attenuation); Directus/Supabase liest die mit den Daten gelieferten Permission-Flags (bzw. owner-Spalte + Rolle); **BaseConnector-Default** = `creator-owns` (Mock/Local + Fallback). `!isWritable(connector)` ⇒ alles `false`.
+- **Auflösung je Connector:** UCAN-Connector matcht die gehaltene Kette (`with` + `can` + Attenuation); Directus/Supabase liest die mit den Daten gelieferten Permission-Flags (bzw. owner-Spalte + Rolle); `!isWritable(connector)` ⇒ alles `false`.
+- **Default seit rls#263** (kein Connector implementiert `can()` bisher): **Space-Mitglieder dürfen Inhalts-Items bearbeiten und löschen.** Creator-owns war nie das technische Modell — in WoT hält jedes Mitglied den Space-Schlüssel, und die Supabase-Policy `edit item` erlaubt es seit 0003. Ausgenommen bleiben `comment`, `reaction`, `relation`: die tragen eine sichtbare Aussage *einer* Person.
 - **Sync** (kein Promise) — sonst N Permission-Calls pro Liste. Funktioniert, solange die Permission-Info geladen ist (gehaltene UCANs / per-Row-Flags / owner+Rolle). Bei sehr komplexen RLS-Policies ist das UI-Gate „best effort".
-- **Durchsetzung backend-/protokoll-seitig** (Relay/Peer lehnt nicht-autorisierte Writes ab; RLS lehnt ab). UI-Gating ist nur UX, keine Sicherheitsgrenze.
+- **Durchsetzung — differenziert, nicht pauschal.** UI-Gating ist immer nur UX. Wie stark die Grenze darunter ist, hängt vom Backend ab:
+  - **Supabase:** echte Grenze. RLS-Policies (`edit item` / `delete item`, ab 0009 inkl. `comment`/`reaction`) — an PostgREST kommt niemand vorbei.
+  - **GraphQL-Server:** echte Grenze. Session-Prüfung und Autoren-Check vor jeder Mutation im Store.
+  - **Local/Mock:** Prozessgrenze, also API-Disziplin — wer den Store direkt manipuliert, umgeht sie.
+  - **WoT: KEINE Grenze, sondern Konvention.** Jedes Mitglied hält den Space-Schlüssel und kann das CRDT-Dokument direkt schreiben; ein veränderter Client umgeht jede lokale Prüfung. Der Connector-Guard hält ehrliche Clients ehrlich — mehr darf daraus nicht behauptet werden, und Nutzern gegenüber schon gar nicht.
 - **Delegation gratis:** „edit für alle Items in Space Y" lässt sich (UCAN) an andere delegieren — die UI fragt nur „darf ich?", *wie* die Capability entstand (Ownership/Rolle/Delegation) ist Connector-Sache.
 
 ### 3.4 Bearbeiten (im Panel)

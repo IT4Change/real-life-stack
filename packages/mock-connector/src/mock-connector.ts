@@ -28,6 +28,8 @@ import type {
 import {
   applyGroupDataPatch,
   withEditStamp,
+  stripEditStamp,
+  assertMayMutateAuthoredItem,
   applyPagination,
   createDefaultRelationStore,
   createObservable,
@@ -348,6 +350,8 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
   }
 
   async createItem(item: CreateItemInput): Promise<Item> {
+    // A fresh item was never edited — drop any caller-supplied stamp.
+    item = stripEditStamp(item)
     const sessionUser = this.requireCurrentUser()
     // Authoritative ingress binding (spec 08): createdBy comes from the
     // session, never the caller — except in the marked fixture mode.
@@ -386,6 +390,8 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
       updates = rest
     }
     // Session-bound, like createdBy — see the Item contract.
+    const existing = this.findVisibleItemLocation(id)
+    if (existing) assertMayMutateAuthoredItem(existing.item, actor.id, "update")
     updates = withEditStamp(updates, actor.id)
     const location = this.findVisibleItemLocation(id)
     if (!location) throw new Error(`Item not found: ${id}`)
@@ -413,9 +419,10 @@ export class MockConnector implements FullConnector, ActivityLogCapable, ScopedA
   }
 
   async deleteItem(id: string): Promise<void> {
-    this.requireCurrentUser()
+    const actor = this.requireCurrentUser()
     const location = this.findVisibleItemLocation(id)
     if (!location) return
+    assertMayMutateAuthoredItem(location.item, actor.id, "delete")
     this.appendActivity(this.activityScopeFor(location.scopeId), "delete", location.item)
     location.items.delete(id)
     this.removeItemOrder(location.scopeId, id)
