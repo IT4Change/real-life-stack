@@ -281,3 +281,42 @@ describe("roundtrip", () => {
     expect(result).toEqual(original)
   })
 })
+
+describe("Edit-Stempel in der Drahtform (rls#263)", () => {
+  it("ueberlebt den Rundlauf durchs Space-Dokument", () => {
+    // Der Stempel liegt im SerializedItem, also IM synchronisierten Doc —
+    // faellt er hier raus, sieht das Zweitgeraet die Bearbeitung nie.
+    const item = {
+      id: "i1", type: "post", createdAt: "2026-08-06T10:00:00.000Z", createdBy: "did:key:alice",
+      updatedAt: "2026-08-06T12:00:00.000Z", updatedBy: "did:key:bob",
+      data: { title: "x" },
+    } as never
+    const round = deserializeItem(serializeItem(item))
+    expect(round.updatedAt).toBe("2026-08-06T12:00:00.000Z")
+    expect(round.updatedBy).toBe("did:key:bob")
+  })
+
+  it("laesst den Stempel bei nie bearbeiteten Items weg", () => {
+    const item = {
+      id: "i2", type: "post", createdAt: "2026-08-06T10:00:00.000Z", createdBy: "did:key:alice",
+      data: {},
+    } as never
+    const serialized = serializeItem(item)
+    expect("updatedAt" in serialized).toBe(false)
+    expect("updatedBy" in serialized).toBe(false)
+    expect(deserializeItem(serialized).updatedAt).toBeUndefined()
+  })
+
+  it("liest ALTE Dokumente ohne die Felder anstandslos", () => {
+    // Bestehende Spaces enthalten Items, die vor diesem PR geschrieben
+    // wurden — sie duerfen nicht brechen und zeigen einfach keinen Hinweis.
+    const legacy = {
+      id: "i3", type: "post", createdAt: "2026-07-01T10:00:00.000Z",
+      createdBy: "did:key:alice", data: { title: "alt" },
+    } as never
+    const item = deserializeItem(legacy)
+    expect(item.updatedAt).toBeUndefined()
+    expect(item.updatedBy).toBeUndefined()
+    expect(item.data).toEqual({ title: "alt" })
+  })
+})
