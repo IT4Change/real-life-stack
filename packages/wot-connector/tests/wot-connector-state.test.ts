@@ -21,6 +21,7 @@ import type { SpaceInfo } from "@real-life/wot-core"
 import { derivePrivateSpaceGenesis } from "@real-life/wot-core/protocol"
 
 import { WotConnector } from "../src/wot-connector.js"
+import { InitialSyncTracker } from "../src/initial-sync-tracker.js"
 import type { RlsSpaceDoc, SerializedItem, WotSyncState } from "../src/types.js"
 
 const yjsMockState = vi.hoisted(() => ({
@@ -366,6 +367,8 @@ function createFakeConnectorForLogout() {
     privateSpaceId: "private-space",
     spacesSubscriptionUnsub: vi.fn(),
     personalDocUnsub: vi.fn(),
+    restoreSpacesRunner: { cancel: vi.fn() },
+    initialSync: new InitialSyncTracker(),
     replication: { stop: vi.fn(async () => {}) },
     outboxAdapter: { disconnect: vi.fn(async () => {}) },
     transportAdapter: { disconnect: vi.fn(async () => {}) },
@@ -826,6 +829,7 @@ describe("WotConnector Yjs membership routing", () => {
       },
       groupsCache: [] as Group[],
       groupsObservable,
+      initialSync: new InitialSyncTracker(),
       privateSpaceId: null,
       currentGroupId: null,
       currentGroupObservable: createObservable<Group | null>(null),

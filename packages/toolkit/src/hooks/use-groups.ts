@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, startTransition } from "re
 import type { Group } from "@real-life-stack/data-interface"
 import { hasGroups, hasItemGroups } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
+import { useInitialSync } from "./use-initial-sync"
 
 /**
  * Id of the user's personal/private space („share with nobody"), or `null` for
@@ -36,7 +37,11 @@ export function useGroups() {
     return observable.subscribe(() => startTransition(rerender))
   }, [observable])
 
-  return { data: observable.current, isLoading: observable.loaded === false }
+  // Der Erstsync zählt als „lädt noch": sonst meldet ein Deep-Link auf einen
+  // Space „kein Zugriff", nur weil die Gruppenliste dieses Geräts noch
+  // unterwegs ist (rls#265).
+  const initialSync = useInitialSync()
+  return { data: observable.current, isLoading: observable.loaded === false || initialSync.active }
 }
 
 export function useCurrentGroup() {

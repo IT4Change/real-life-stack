@@ -3,6 +3,7 @@ import type { ItemFilter } from "@real-life-stack/data-interface"
 import { matchesFilter } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 import { useDraftItem } from "./use-draft-item"
+import { useInitialSync } from "./use-initial-sync"
 
 export function useItems(filter?: ItemFilter) {
   const connector = useConnector()
@@ -27,7 +28,21 @@ export function useItems(filter?: ItemFilter) {
   // async source's first fetch is in flight), NOT "the list is empty" — a
   // genuinely empty result reads as loaded. `loaded === undefined` (sources
   // without the flag) counts as loaded.
-  return { data: observable.current, isLoading: observable.loaded === false }
+  //
+  // Der Erstsync kommt hinzu, weil `loaded` nur den ersten LOKALEN Lesevorgang
+  // meint: auf einem frisch angemeldeten Gerät ist er sofort durch und liefert
+  // leer, obwohl die eigenen Inhalte noch eintreffen (rls#265). Eine Liste, die
+  // in diesem Fenster „nichts vorhanden" behauptet, sagt die Unwahrheit.
+  //
+  // Aber NUR solange die Liste leer ist: Module zeigen bei `isLoading` ein
+  // Skelett STATT der Inhalte — schon eingetroffene Items wieder zu verstecken,
+  // bis der letzte Space still ist, wäre langsamer als der Zustand vorher.
+  const initialSync = useInitialSync()
+  const items = observable.current
+  return {
+    data: items,
+    isLoading: observable.loaded === false || (initialSync.active && items.length === 0),
+  }
 }
 
 /**
