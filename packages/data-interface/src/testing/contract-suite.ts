@@ -285,6 +285,9 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
       })
 
       it("stamps updatedAt/updatedBy on update — the connector, not the caller", async () => {
+        // Braucht eine echte Sitzung: ein Service-Role-Zugang hat kein
+        // auth.uid(), der Trigger schriebe NULL.
+        if (harness.bindsAuthorToSession === false) return
         await withConnector(async ({ connector, currentUserId }) => {
           if (!isWritable(connector)) return
           const created = await connector.createItem({
@@ -309,6 +312,7 @@ export function describeDataInterfaceContract(name: string, harness: ContractHar
       })
 
       it("ignores a caller-supplied editor — author binding (spec 08)", async () => {
+        if (harness.bindsAuthorToSession === false) return
         await withConnector(async ({ connector, currentUserId }) => {
           if (!isWritable(connector)) return
           const created = await connector.createItem({

@@ -71,6 +71,14 @@ if (!url || !anonKey || !serviceKey) {
       const user = await connector.authenticate("anonymous", {})
       return { connector, currentUserId: user.id, dispose: () => connector.dispose() }
     },
+    // Dieser Harness faehrt mit Service-Role und Fixture-Autoren: auth.uid()
+    // ist leer, der Stempel-Trigger schriebe NULL, und RLS wird komplett
+    // umgangen. Die Autorenregeln sind hier also nicht pruefbar — sie werden
+    // weiter unten mit ECHTEN Nutzern und rohem DML geprueft, dort wo sie
+    // tatsaechlich greifen.
+    bindsAuthorToSession: false,
+    cannotSeedForeignItem:
+      "Service-Role umgeht RLS — die Autorenregel wird in den Raw-DML-Tests mit echten Nutzern geprueft",
   })
 
   describe("SupabaseConnector (live, authoritative) — the RLS boundary itself", () => {
@@ -159,6 +167,41 @@ if (!url || !anonKey || !serviceKey) {
         }
       })
     }
+
+    // Der Stempel-Trigger (0008) laesst sich nur mit einer ECHTEN Sitzung
+    // pruefen: unter Service-Role ist auth.uid() leer. Der Contract-Harness
+    // faehrt genau so, deshalb hier der Nachweis, wo er zaehlt.
+    it("the update trigger stamps updated_by with the AUTHENTICATED user", async () => {
+      const alice = await makeAuthoritative()
+      try {
+        const id = `stamp-live-${Date.now()}`
+        expect((await alice.client.from("items").insert({
+          id, type: "post", created_by: alice.userId, data: { text: "vorher" },
+        })).error).toBeNull()
+
+        // Frisch erstellt: noch kein Stempel — sonst liesse sich "bearbeitet"
+        // nicht von "unberuehrt" unterscheiden.
+        const fresh = await alice.connector.getItem(id)
+        expect(fresh!.updatedAt).toBeUndefined()
+        expect(fresh!.updatedBy).toBeUndefined()
+
+        expect((await alice.client.from("items").update({ data: { text: "nachher" } }).eq("id", id)).error).toBeNull()
+        const edited = await alice.connector.getItem(id)
+        expect(edited!.updatedBy).toBe(alice.userId)
+        expect(Number.isFinite(Date.parse(edited!.updatedAt!))).toBe(true)
+
+        // Und der Client kann den Stempel nicht faelschen — der Trigger
+        // ueberschreibt bedingungslos.
+        await alice.client.from("items")
+          .update({ data: { text: "x" }, updated_by: "did:key:gefaelscht", updated_at: "1999-01-01" })
+          .eq("id", id)
+        const forged = await alice.connector.getItem(id)
+        expect(forged!.updatedBy).toBe(alice.userId)
+        expect(forged!.updatedAt).not.toBe("1999-01-01T00:00:00.000Z")
+      } finally {
+        await alice.connector.dispose()
+      }
+    })
 
     // Gegenprobe zu den beiden Tests oben: ohne sie wuerde eine Policy, die
     // ALLEN das Schreiben verbietet, genauso gruen bleiben. Der Autor muss
