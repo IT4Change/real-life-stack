@@ -70,10 +70,17 @@ revoke insert, update, delete
 -- Ausnahme: das Migrationsjournal geht die App nichts an. apply-migrations.sh
 -- entzieht die Rechte bereits beim Anlegen; hier noch einmal, damit die
 -- Migration unabhaengig von der Reihenfolge zum selben Ergebnis fuehrt.
+--
+-- AUCH `service_role`: die Rolle umgeht RLS und ist ueber den Secret-Key
+-- erreichbar. Auf Altinstallationen hat sie durch die damaligen Defaults
+-- Schreibrechte auf ALLE Tabellen geerbt, also auch auf das Journal — damit
+-- liessen sich Eintraege loeschen oder erfinden und spaetere Migrationen
+-- ueberspringen oder erneut ausloesen. Das Journal schreibt ausschliesslich
+-- apply-migrations.sh, und das laeuft als `postgres` (rls#273 Review).
 do $$
 begin
   if exists (select 1 from information_schema.tables
               where table_schema = 'public' and table_name = 'schema_migrations_rls') then
-    execute 'revoke all on public.schema_migrations_rls from anon, authenticated';
+    execute 'revoke all on public.schema_migrations_rls from anon, authenticated, service_role';
   end if;
 end $$;
