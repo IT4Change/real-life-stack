@@ -12,8 +12,22 @@
 # Regex-Pruefung rechtfertigt keine zusaetzliche Abhaengigkeit in der CI.
 name: PR-Titel
 
+# `pull_request_target` statt `pull_request`, aus zwei Gruenden:
+#
+# 1. SICHERHEIT: bei `pull_request` stammt die Workflow-Datei aus dem
+#    PR-Branch — wer die Pruefung umgehen will, loescht sie einfach im
+#    eigenen PR mit. `pull_request_target` laedt sie immer aus dem
+#    Basis-Branch, sie ist also nicht wegzueditieren.
+# 2. BESTANDS-PRs: ein bereits offener PR kennt die Datei nicht und wuerde
+#    den Check nie melden — als Pflicht-Check waere er damit dauerhaft
+#    blockiert, bis jemand rebased.
+#
+# Der uebliche Einwand gegen `pull_request_target` (laeuft mit Schreibrechten
+# UND fremdem Code) trifft hier nicht zu: es gibt keinen `checkout`, es wird
+# kein PR-Code ausgefuehrt, und `permissions` ist auf `contents: read`
+# reduziert. Gelesen wird ausschliesslich der Titel aus dem Event.
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, edited, reopened, synchronize]
 
 permissions:
