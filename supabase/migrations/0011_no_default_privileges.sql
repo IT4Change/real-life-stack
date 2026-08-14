@@ -21,8 +21,14 @@
 alter default privileges in schema public
   revoke select, insert, update, delete on tables from authenticated, service_role;
 
+-- Bei `anon` ALLE vier entziehen, nicht nur das select aus 0010: auf
+-- Bestandsinstallationen hat die alte Supabase-Konfiguration hier zusaetzlich
+-- insert/update/delete als Default hinterlassen (auf der Produktivinstanz
+-- nachgesehen). Ein Entzug nur des selbst Vergebenen haette den Altbestand
+-- stehen lassen — und damit genau die fail-open-Luecke, die diese Migration
+-- schliessen soll.
 alter default privileges in schema public
-  revoke select on tables from anon;
+  revoke select, insert, update, delete on tables from anon;
 
 -- Die expliziten Rechte der fuenf bestehenden Tabellen bleiben unberuehrt:
 -- sie stehen in 0010 als echte GRANTs, nicht als Default.
