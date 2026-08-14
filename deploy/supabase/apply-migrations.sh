@@ -32,7 +32,7 @@ done
 docker exec supabase-db psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
   "create table if not exists public.schema_migrations_rls (name text primary key, applied_at timestamptz not null default now());
    alter table public.schema_migrations_rls enable row level security;
-   revoke all on public.schema_migrations_rls from anon, authenticated;" >/dev/null
+   revoke all on public.schema_migrations_rls from anon, authenticated, service_role;" >/dev/null
 
 for file in migrations/*.sql; do
   name=$(basename "$file")

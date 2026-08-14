@@ -47,4 +47,26 @@ BODY=$(curl -H "Authorization: Bearer $ANON" http://realtime-dev.supabase-realti
 echo "$BODY" | grep -q '"healthy":true' || fail "Realtime-Tenant nicht healthy: $BODY"
 echo "ok: Realtime healthy"
 
+# Struktur-Assertion: keine DML-Default-Privilegien fuer die App-Rollen.
+# Default-Privilegien vergeben Rechte an JEDE kuenftig angelegte Tabelle,
+# waehrend RLS sich NICHT automatisch aktiviert — eine neue Tabelle waere bis
+# zur manuellen Haertung offen. Rechte gehoeren zusammen mit Tabelle, RLS und
+# Policies vergeben (rls#273). Von den Fehlerarten ist "permission denied"
+# die richtige, nicht "still lesbar".
+#
+# Geprueft wird gezielt der Default fuer die Rolle `postgres` — unter ihr
+# laufen die Migrationen, ihre Defaults gelten also fuer unsere Tabellen. Der
+# Eintrag von `supabase_admin` ist Plattform-Verhalten und nicht unserer.
+# Ebenso ignoriert: Dxtm (truncate/references/trigger/maintain) — harmlos,
+# es geht um a/r/w/d.
+DEFACL=$(docker exec supabase-db psql -U postgres -d postgres -tAc \
+  "select coalesce(string_agg(x, ', '), '') from (
+     select unnest(defaclacl)::text x from pg_default_acl d
+       join pg_namespace n on n.oid = d.defaclnamespace
+      where n.nspname = 'public' and d.defaclobjtype = 'r'
+        and d.defaclrole = 'postgres'::regrole
+   ) t where x ~ '^(anon|authenticated|service_role)=[arwd]'")
+assert_eq "$DEFACL" "" "keine DML-Default-Privilegien auf public-Tabellen erwartet"
+echo "ok: keine DML-Default-Privilegien"
+
 echo "SMOKE PASS: alle Assertions grün"
