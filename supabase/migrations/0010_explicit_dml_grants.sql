@@ -35,6 +35,17 @@ grant select
            public.items, public.contacts
   to anon;
 
+-- Bestandsinstallationen einfangen: auf aelteren Stacks hat `anon` durch die
+-- damaligen Defaults VOLLES DML geerbt (auf der Produktivinstanz nachgesehen:
+-- insert/update/delete inklusive). Wirksam war das nie — es gibt keine Policy
+-- `to anon`, RLS weist jede Zeile ab —, aber die Flaeche ist unnoetig breit
+-- und widerspricht dem, was diese Migration festlegt. Damit alte und neue
+-- Instanzen im GLEICHEN Zustand landen, wird der Ueberschuss entzogen.
+revoke insert, update, delete
+  on table public.profiles, public.groups, public.group_members,
+           public.items, public.contacts
+  from anon;
+
 -- Kuenftige Tabellen automatisch mitnehmen, damit diese Migration nicht zur
 -- handgepflegten Liste verkommt, die beim naechsten `create table` still
 -- veraltet. Gilt fuer Tabellen, die von DIESER Rolle (postgres, unter der
