@@ -46,13 +46,26 @@ revoke insert, update, delete
            public.items, public.contacts
   from anon;
 
--- Kuenftige Tabellen automatisch mitnehmen, damit diese Migration nicht zur
--- handgepflegten Liste verkommt, die beim naechsten `create table` still
--- veraltet. Gilt fuer Tabellen, die von DIESER Rolle (postgres, unter der
--- Migrationen laufen) in `public` erzeugt werden.
-alter default privileges in schema public
-  grant select, insert, update, delete on tables to authenticated, service_role;
-alter default privileges in schema public grant select on tables to anon;
+-- BEWUSST KEINE `alter default privileges` hier. Sie wuerden jeder kuenftig
+-- angelegten Tabelle automatisch Rechte geben, waehrend RLS sich NICHT
+-- automatisch aktiviert — eine neue Tabelle waere bis zur manuellen Haertung
+-- offen. Eine fruehere Fassung dieser Migration hatte sie gesetzt, um die
+-- Rechtevergabe nicht zur handgepflegten Liste verkommen zu lassen; der
+-- Tausch war falsch herum:
+--
+--   vergessene Rechte -> "permission denied", laut und sofort sichtbar
+--   vergessenes RLS   -> Tabelle offen, still und unbemerkt
+--
+-- Von diesen beiden Fehlerarten ist die laute die richtige. Rechte werden
+-- deshalb GEMEINSAM mit Tabelle, RLS und Policies vergeben — in derselben
+-- Migration, die die Tabelle anlegt.
+--
+-- Sie sind hier ersatzlos entfernt statt in 0011 zurueckgenommen zu werden:
+-- jede Migration committet EINZELN (Schema + Journalmarke in einer
+-- Transaktion), ein Abbruch zwischen 0010 und 0011 haette den offenen
+-- Zustand sonst dauerhaft hinterlassen. 0011 bleibt trotzdem bestehen — fuer
+-- Installationen, auf denen 0010 in seiner alten Fassung bereits gelaufen
+-- und journaled ist (rls#273 Review).
 
 -- Ausnahme: das Migrationsjournal geht die App nichts an. apply-migrations.sh
 -- entzieht die Rechte bereits beim Anlegen; hier noch einmal, damit die
