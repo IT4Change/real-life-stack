@@ -127,6 +127,49 @@ describe("InitialSyncTracker", () => {
     expect(t.observe().current.active).toBe(false)
   })
 
+  it("hält durch, solange der Relay offene Seiten gemeldet hat", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 4, expected: 4 })
+    // Der Relay sagt selbst: für dieses Dokument kommt noch mehr.
+    t.noteDocSync({ docId: "personal", truncated: true })
+
+    vi.advanceTimersByTime(19_999)
+    expect(t.observe().current.active).toBe(true)
+
+    t.noteDocSync({ docId: "personal", truncated: false })
+    vi.advanceTimersByTime(2000)
+    expect(t.observe().current.active).toBe(false)
+  })
+
+  it("wartet auf jedes Dokument einzeln", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 2, expected: 2 })
+    t.noteDocSync({ docId: "space-a", truncated: true })
+    t.noteDocSync({ docId: "space-b", truncated: true })
+
+    t.noteDocSync({ docId: "space-a", truncated: false })
+    vi.advanceTimersByTime(2000)
+    expect(t.observe().current.active).toBe(true)
+
+    t.noteDocSync({ docId: "space-b", truncated: false })
+    vi.advanceTimersByTime(2000)
+    expect(t.observe().current.active).toBe(false)
+  })
+
+  it("kehrt zurück, wenn der Relay Minuten später wieder eine offene Seite meldet", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 4, expected: 4 })
+    vi.advanceTimersByTime(2000)
+    expect(t.observe().current.active).toBe(false)
+
+    vi.advanceTimersByTime(5 * 60_000)
+    t.noteDocSync({ docId: "space-spaet", truncated: true })
+    expect(t.observe().current.active).toBe(true)
+  })
+
   it("kehrt zurück, wenn Minuten später die nächste Gruppe angekündigt wird", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })

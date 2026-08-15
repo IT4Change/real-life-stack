@@ -186,6 +186,7 @@ import {
 } from "./attestation-wire.js"
 import { InitialSyncTracker } from "./initial-sync-tracker.js"
 import { countMemberSpaces } from "./personal-doc-spaces.js"
+import { readSyncResponse } from "./sync-frame-watcher.js"
 import { createCoalescedRunner, type CoalescedRunner } from "./coalesced-runner.js"
 
 // --- Constants ---
@@ -1976,6 +1977,12 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // Transitional non-membership messages (currently profile-update) remain
     // separate from inbox/1.0. Membership is owned by YjsReplicationAdapter.
     this.outboxAdapter.onMessage(async (message: WireMessage) => {
+      // Mitlesen, nicht beantworten: die Sync-Antwort des Relays sagt mit
+      // `truncated`, ob für ein Dokument noch eine Seite folgt. Das ist die
+      // einzige belastbare Fortschrittsaussage, die die App erreichen kann —
+      // core hält sie sonst im LogSyncCoordinator (web-of-trust#343, rls#265).
+      const syncFrame = readSyncResponse(message)
+      if (syncFrame) this.initialSync.noteDocSync(syncFrame)
       if (!isDidcommMessage(message)) await this.handleIncomingMessage(message as MessageEnvelope)
     })
 

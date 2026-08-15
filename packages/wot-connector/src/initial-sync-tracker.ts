@@ -1,3 +1,4 @@
+import type { SyncResponseObservation } from "./sync-frame-watcher.js"
 import {
   createObservable,
   type InitialSyncState,
@@ -39,24 +40,29 @@ const DEFAULT_NO_DATA_MS = 20_000
 /**
  * Erkennt, ob dieses Gerät gerade seinen ersten Datenbestand empfängt.
  *
- * Zwei Quellen, in dieser Reihenfolge:
+ * Drei Quellen, absteigend nach Belastbarkeit:
  *
- * 1. **Die Mitgliedschaftsliste** aus dem persönlichen Dokument
+ * 1. **Die Sync-Antworten des Relays** (`noteDocSync`). `truncated: true`
+ *    heisst wörtlich „für dieses Dokument habe ich noch mehr". Solange eine
+ *    Seite offen ist, läuft der Erstsync — das ist eine Tatsache vom
+ *    Gegenüber, keine Ableitung.
+ * 2. **Die Mitgliedschaftsliste** aus dem persönlichen Dokument
  *    (`PersonalDoc.spaces`) sagt, wie viele Gruppen es überhaupt gibt. Solange
- *    weniger geladen sind, LÄUFT der Erstsync — punkt. Keine Zeitheuristik,
- *    und deshalb kann die Anzeige in dieser Phase auch nicht in einer Ruhepause
- *    verschwinden (etwa während des Schlüsselaustauschs).
- * 2. **Der Nachlauf danach**: Gruppen sind vollständig, aber ihre Inhalte
- *    trudeln noch ein. Dafür gibt es in wot-core kein Fertig-Signal pro Space
+ *    weniger geladen sind, fehlt nachweislich etwas.
+ * 3. **Das Ruhefenster** (`settleMs`) für den Rest: Inhalte, die nach der
+ *    letzten Gruppe noch eintrudeln. Dafür gibt es kein Signal pro Space
  *    (`spaceCatchUpsInFlight` ist adapter-privat), also gilt hier das einzige
- *    beobachtbare Kriterium: es trifft nichts Neues mehr ein (`settleMs`).
+ *    beobachtbare Kriterium: es trifft nichts Neues mehr ein.
  *
  * Entscheidend ist, dass der Tracker **nichts vorhersagt**. Die
  * Mitgliedschaftsliste wächst auf einem echten Konto noch Minuten nach dem
- * Login weiter; „sind wir fertig?" ist ohne ein Signal aus dem Adapter
- * (web-of-trust#343) schlicht nicht beantwortbar. Beantwortbar ist nur „fehlt
- * gerade nachweislich etwas?" — und sobald die Liste eine noch fehlende Gruppe
- * nennt, kommt die Anzeige zurück, statt einmalig verbraucht zu sein.
+ * Login weiter; „sind wir fertig?" ist so nicht beantwortbar. Beantwortbar ist
+ * „fehlt gerade nachweislich etwas?" — und sobald wieder etwas fehlt, kommt
+ * die Anzeige zurück, statt einmalig verbraucht zu sein.
+ *
+ * Quelle 1 mitzulesen ist eine Notlösung an der richtigen Stelle: die
+ * Information gehört in den Adapter (web-of-trust#343), läuft aber ohnehin am
+ * Messaging-Adapter des Connectors vorbei.
  *
  * `maxMs` deckelt jeden dieser Abschnitte — eine Anzeige, die nie endet, ist
  * keine Aussage mehr.
@@ -77,6 +83,12 @@ export class InitialSyncTracker {
   private maxTimer: ReturnType<typeof setTimeout> | null = null
   private noDataTimer: ReturnType<typeof setTimeout> | null = null
   private loadedGroups = 0
+  /**
+   * Dokumente, für die der Relay eine offene Seite gemeldet hat
+   * (`truncated: true`) und noch keine abschliessende. Das ist die einzige
+   * TATSACHE über den Fortschritt, die aus der App heraus lesbar ist.
+   */
+  private readonly openDocs = new Set<string>()
   /** Erwartete Mitgliedschaften laut persönlichem Dokument; null = noch unbekannt. */
   private expectedGroups: number | null = null
 
@@ -101,6 +113,7 @@ export class InitialSyncTracker {
    */
   begin({ expectRemoteData, localGroups }: { expectRemoteData: boolean; localGroups: number }): void {
     this.stopped = false
+    this.openDocs.clear()
     this.loadedGroups = localGroups
     if (!expectRemoteData || localGroups > 0) {
       this.expecting = false
@@ -118,6 +131,27 @@ export class InitialSyncTracker {
   noteActivity(): void {
     if (!this.expecting) return
     this.armSettleTimer()
+  }
+
+  /**
+   * Eine Sync-Antwort des Relays. `truncated: true` heisst „für dieses
+   * Dokument kommt noch mehr" — solange mindestens eine offene Seite bekannt
+   * ist, LÄUFT der Erstsync nachweislich, unabhängig von jedem Zeitfenster.
+   */
+  noteDocSync({ docId, truncated }: SyncResponseObservation): void {
+    if (this.stopped) return
+    const wasOpen = this.openDocs.has(docId)
+    if (truncated) this.openDocs.add(docId)
+    else this.openDocs.delete(docId)
+    if (truncated && !this.expecting) {
+      this.expecting = true
+      this.armMaxTimer()
+    }
+    // Jede Antwort ist eingetroffene Ladung, auch die abschliessende — sie
+    // verlängert also das Ruhefenster. Nur `truncated` hält zusätzlich fest,
+    // dass für dieses Dokument nachweislich noch etwas aussteht.
+    this.noteActivity()
+    if (truncated !== wasOpen) this.publish()
   }
 
   /**
@@ -164,6 +198,7 @@ export class InitialSyncTracker {
   end(): void {
     this.stopped = true
     this.expecting = false
+    this.openDocs.clear()
     this.clearSettleTimer()
     this.clearMaxTimer()
     this.clearNoDataTimer()
@@ -207,6 +242,12 @@ export class InitialSyncTracker {
    * ist `noDataMs` zuständig, nicht das Ruhefenster.
    */
   private settle(): void {
+    // Eine offene Seite schlägt jedes Ruhefenster: der Relay hat gesagt, dass
+    // noch etwas kommt, und das ist keine Vermutung.
+    if (this.openDocs.size > 0) {
+      this.armSettleTimer()
+      return
+    }
     const listComplete =
       this.expectedGroups !== null &&
       this.expectedGroups > 0 &&
