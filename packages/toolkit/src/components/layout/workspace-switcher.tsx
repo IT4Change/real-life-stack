@@ -46,16 +46,18 @@ interface WorkspaceSwitcherProps {
  * Hinweiszeile in der Gruppenliste, solange dieses Gerät seinen ersten
  * Datenbestand empfängt.
  *
- * „x von y" steht nur da, wenn y auch belegt ist: die Zahl stammt aus der
- * Mitgliedschaftsliste im persönlichen Dokument. Solange die selbst noch
- * eintrifft, ist sie unbekannt — dann wird nichts erfunden (rls#265).
+ * „x von y" steht nur da, wenn y GRÖSSER als x ist — also wenn die
+ * Mitgliedschaftsliste aus dem persönlichen Dokument nachweislich mehr Gruppen
+ * kennt, als schon da sind. Die Liste trifft selbst stückweise ein: „1 von 1"
+ * wäre im Moment wahr und trotzdem irreführend, weil gleich die zweite Gruppe
+ * kommt (rls#265).
  */
 export function WorkspaceSyncNotice({ loaded, expected }: { loaded: number; expected: number | null }) {
   return (
     <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
       <Loader2 className="h-3.5 w-3.5 animate-spin" />
       <span>
-        {expected !== null && expected > 0
+        {expected !== null && expected > loaded
           ? `${loaded} von ${expected} Gruppen geladen …`
           : loaded > 0
             ? `${loaded} Gruppen geladen, es kommen noch welche …`

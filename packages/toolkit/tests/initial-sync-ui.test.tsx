@@ -61,9 +61,17 @@ describe("WorkspaceSyncNotice", () => {
     expect(el.textContent).toContain("Deine Gruppen werden geladen")
   })
 
-  it("nennt x von y, sobald die Mitgliedschaftsliste die Gesamtzahl hergibt", () => {
+  it("nennt x von y, sobald die Mitgliedschaftsliste mehr kennt als da ist", () => {
     const el = render(<WorkspaceSyncNotice loaded={3} expected={12} />)
     expect(el.textContent).toContain("3 von 12 Gruppen geladen")
+  })
+
+  it("sagt nicht „1 von 1“, während die Liste selbst noch wächst", () => {
+    // Die Mitgliedschaftsliste trifft stückweise ein: „1 von 1" ist im Moment
+    // wahr und trotzdem irreführend, weil gleich die zweite Gruppe kommt.
+    const el = render(<WorkspaceSyncNotice loaded={1} expected={1} />)
+    expect(el.textContent).not.toContain("1 von 1")
+    expect(el.textContent).toContain("es kommen noch welche")
   })
 
   it("erfindet keine Gesamtzahl, solange sie unbekannt ist", () => {

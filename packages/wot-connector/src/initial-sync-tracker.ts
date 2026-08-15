@@ -8,8 +8,14 @@ import {
 export interface InitialSyncTrackerConfig {
   /**
    * Ruhefenster: so lange nichts Neues mehr eintrifft, gilt der Erstsync als
-   * beendet. Muss länger sein als der übliche Abstand zwischen zwei Space-
-   * Dokumenten, sonst blinkt die Anzeige zwischen zwei Paketen aus.
+   * beendet.
+   *
+   * Es muss die Lücke zwischen ZWEI eintreffenden Gruppen überbrücken, und die
+   * ist auf einem echten Konto mehrere Sekunden lang: die Mitgliedschaftsliste
+   * selbst kommt stückweise, dazwischen liegen Schlüsselaustausch und
+   * Space-Catch-up. Mit 2,5 s endete die Anzeige bei Antons sieben Gruppen
+   * nach der ersten. Der Preis für ein grosszügiges Fenster ist ein Nachlauf
+   * am Ende — deutlich billiger als eine Anzeige, die mittendrin abbricht.
    */
   settleMs?: number
   /**
@@ -26,7 +32,7 @@ export interface InitialSyncTrackerConfig {
   noDataMs?: number
 }
 
-const DEFAULT_SETTLE_MS = 2_500
+const DEFAULT_SETTLE_MS = 10_000
 const DEFAULT_MAX_MS = 60_000
 const DEFAULT_NO_DATA_MS = 20_000
 
