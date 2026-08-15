@@ -18,8 +18,10 @@ export const SYNC_RESPONSE_MESSAGE_TYPE = "https://web-of-trust.de/protocols/syn
 
 export interface SyncResponseObservation {
   docId: string
-  /** `true` = der Relay hat für dieses Dokument noch mehr. */
+  /** `true` = der Relay hat für dieses Dokument noch eine weitere Seite. */
   truncated: boolean
+  /** Der Stand des Relays je Gerät (`seq` beginnt bei 0). */
+  heads: Record<string, number>
 }
 
 /**
@@ -34,8 +36,38 @@ export function readSyncResponse(message: unknown): SyncResponseObservation | nu
   const envelope = message as { type?: unknown; body?: unknown }
   if (envelope.type !== SYNC_RESPONSE_MESSAGE_TYPE) return null
   if (!envelope.body || typeof envelope.body !== "object") return null
-  const body = envelope.body as { docId?: unknown; truncated?: unknown }
+  const body = envelope.body as { docId?: unknown; truncated?: unknown; heads?: unknown }
   if (typeof body.docId !== "string" || body.docId.length === 0) return null
   if (typeof body.truncated !== "boolean") return null
-  return { docId: body.docId, truncated: body.truncated }
+  const heads: Record<string, number> = {}
+  if (body.heads && typeof body.heads === "object") {
+    for (const [device, seq] of Object.entries(body.heads as Record<string, unknown>)) {
+      if (typeof seq === "number" && Number.isFinite(seq)) heads[device] = seq
+    }
+  }
+  return { docId: body.docId, truncated: body.truncated, heads }
+}
+
+/**
+ * Liegt der Relay für dieses Dokument vor uns?
+ *
+ * Verglichen wird gegen den STRIKT ZUSAMMENHÄNGENDEN lokalen Stand
+ * (`getStrictContiguousHeads`), nicht gegen den höchsten bekannten: hinter
+ * einer Lücke gilt alles Spätere als noch nicht da. Genau das ist der Fall,
+ * den `CatchUpResult.complete` NICHT abdeckt — dort steht ausdrücklich, dass
+ * „complete" nicht „lückenlos" heisst (offene Lücken werden über Soft-Skip und
+ * GapRepair nachgezogen, nicht über die Paginierung).
+ *
+ * Nur der Rückstand zählt. Eigene Einträge, die der Relay noch nicht hat, sind
+ * Ausgang und kein fehlender Empfang.
+ */
+export function relayIsAhead(
+  relayHeads: Record<string, number>,
+  localHeads: Record<string, number>,
+): boolean {
+  for (const [device, relaySeq] of Object.entries(relayHeads)) {
+    const localSeq = localHeads[device]
+    if (localSeq === undefined || relaySeq > localSeq) return true
+  }
+  return false
 }

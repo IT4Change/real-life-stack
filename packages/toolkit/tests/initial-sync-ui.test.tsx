@@ -74,6 +74,17 @@ describe("WorkspaceSyncNotice", () => {
     expect(el.textContent).toContain("es kommen noch welche")
   })
 
+  it("beugt auch bei „x von 1“ nach der Gesamtzahl", () => {
+    const el = render(<WorkspaceSyncNotice loaded={0} expected={1} />)
+    expect(el.textContent).toContain("0 von 1 Gruppe geladen")
+  })
+
+  it("beugt bei einer einzelnen Gruppe im Singular", () => {
+    const el = render(<WorkspaceSyncNotice loaded={1} expected={null} />)
+    expect(el.textContent).toContain("1 Gruppe geladen")
+    expect(el.textContent).not.toContain("1 Gruppen")
+  })
+
   it("erfindet keine Gesamtzahl, solange sie unbekannt ist", () => {
     const el = render(<WorkspaceSyncNotice loaded={3} expected={null} />)
     expect(el.textContent).toContain("3 Gruppen geladen")

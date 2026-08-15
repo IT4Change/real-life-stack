@@ -9,12 +9,12 @@ function frame(body: unknown) {
 describe("readSyncResponse", () => {
   it("liest docId und truncated aus einer Sync-Antwort", () => {
     const observed = readSyncResponse(frame({ docId: "doc-1", entries: [], heads: {}, truncated: true }))
-    expect(observed).toEqual({ docId: "doc-1", truncated: true })
+    expect(observed).toEqual({ docId: "doc-1", truncated: true, heads: {} })
   })
 
   it("erkennt die abschliessende Seite", () => {
     const observed = readSyncResponse(frame({ docId: "doc-1", entries: ["e"], heads: { d1: 3 }, truncated: false }))
-    expect(observed).toEqual({ docId: "doc-1", truncated: false })
+    expect(observed).toEqual({ docId: "doc-1", truncated: false, heads: { d1: 3 } })
   })
 
   it("ignoriert alles andere auf der Leitung", () => {

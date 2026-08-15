@@ -1,4 +1,3 @@
-import type { SyncResponseObservation } from "./sync-frame-watcher.js"
 import {
   createObservable,
   type InitialSyncState,
@@ -134,24 +133,26 @@ export class InitialSyncTracker {
   }
 
   /**
-   * Eine Sync-Antwort des Relays. `truncated: true` heisst „für dieses
-   * Dokument kommt noch mehr" — solange mindestens eine offene Seite bekannt
-   * ist, LÄUFT der Erstsync nachweislich, unabhängig von jedem Zeitfenster.
+   * Stand eines Dokuments laut Relay. `outstanding` heisst „für dieses
+   * Dokument steht noch etwas aus" — sei es eine weitere Seite (`truncated`)
+   * oder ein Rückstand gegenüber den `heads` des Relays. Solange das für
+   * irgendein Dokument gilt, LÄUFT der Erstsync nachweislich, unabhängig von
+   * jedem Zeitfenster.
    */
-  noteDocSync({ docId, truncated }: SyncResponseObservation): void {
+  noteDocSync({ docId, outstanding }: { docId: string; outstanding: boolean }): void {
     if (this.stopped) return
     const wasOpen = this.openDocs.has(docId)
-    if (truncated) this.openDocs.add(docId)
+    if (outstanding) this.openDocs.add(docId)
     else this.openDocs.delete(docId)
-    if (truncated && !this.expecting) {
+    if (outstanding && !this.expecting) {
       this.expecting = true
       this.armMaxTimer()
     }
     // Jede Antwort ist eingetroffene Ladung, auch die abschliessende — sie
-    // verlängert also das Ruhefenster. Nur `truncated` hält zusätzlich fest,
-    // dass für dieses Dokument nachweislich noch etwas aussteht.
+    // verlängert also das Ruhefenster. `outstanding` hält zusätzlich fest,
+    // dass für dieses Dokument nachweislich noch etwas fehlt.
     this.noteActivity()
-    if (truncated !== wasOpen) this.publish()
+    if (outstanding !== wasOpen) this.publish()
   }
 
   /**

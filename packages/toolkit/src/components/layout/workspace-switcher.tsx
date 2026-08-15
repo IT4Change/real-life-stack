@@ -58,9 +58,9 @@ export function WorkspaceSyncNotice({ loaded, expected }: { loaded: number; expe
       <Loader2 className="h-3.5 w-3.5 animate-spin" />
       <span>
         {expected !== null && expected > loaded
-          ? `${loaded} von ${expected} Gruppen geladen …`
+          ? `${loaded} von ${expected} ${expected === 1 ? "Gruppe" : "Gruppen"} geladen …`
           : loaded > 0
-            ? `${loaded} Gruppen geladen, es kommen noch welche …`
+            ? `${loaded} ${loaded === 1 ? "Gruppe" : "Gruppen"} geladen, es kommen noch welche …`
             : "Deine Gruppen werden geladen …"}
       </span>
     </div>

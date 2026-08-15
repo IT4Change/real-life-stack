@@ -132,12 +132,12 @@ describe("InitialSyncTracker", () => {
     t.begin({ expectRemoteData: true, localGroups: 0 })
     t.setGroupCounts({ loaded: 4, expected: 4 })
     // Der Relay sagt selbst: für dieses Dokument kommt noch mehr.
-    t.noteDocSync({ docId: "personal", truncated: true })
+    t.noteDocSync({ docId: "personal", outstanding: true })
 
     vi.advanceTimersByTime(19_999)
     expect(t.observe().current.active).toBe(true)
 
-    t.noteDocSync({ docId: "personal", truncated: false })
+    t.noteDocSync({ docId: "personal", outstanding: false })
     vi.advanceTimersByTime(2000)
     expect(t.observe().current.active).toBe(false)
   })
@@ -146,14 +146,14 @@ describe("InitialSyncTracker", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
     t.setGroupCounts({ loaded: 2, expected: 2 })
-    t.noteDocSync({ docId: "space-a", truncated: true })
-    t.noteDocSync({ docId: "space-b", truncated: true })
+    t.noteDocSync({ docId: "space-a", outstanding: true })
+    t.noteDocSync({ docId: "space-b", outstanding: true })
 
-    t.noteDocSync({ docId: "space-a", truncated: false })
+    t.noteDocSync({ docId: "space-a", outstanding: false })
     vi.advanceTimersByTime(2000)
     expect(t.observe().current.active).toBe(true)
 
-    t.noteDocSync({ docId: "space-b", truncated: false })
+    t.noteDocSync({ docId: "space-b", outstanding: false })
     vi.advanceTimersByTime(2000)
     expect(t.observe().current.active).toBe(false)
   })
@@ -166,7 +166,7 @@ describe("InitialSyncTracker", () => {
     expect(t.observe().current.active).toBe(false)
 
     vi.advanceTimersByTime(5 * 60_000)
-    t.noteDocSync({ docId: "space-spaet", truncated: true })
+    t.noteDocSync({ docId: "space-spaet", outstanding: true })
     expect(t.observe().current.active).toBe(true)
   })
 

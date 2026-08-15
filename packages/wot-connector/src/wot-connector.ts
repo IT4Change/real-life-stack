@@ -186,7 +186,7 @@ import {
 } from "./attestation-wire.js"
 import { InitialSyncTracker } from "./initial-sync-tracker.js"
 import { countMemberSpaces } from "./personal-doc-spaces.js"
-import { readSyncResponse } from "./sync-frame-watcher.js"
+import { readSyncResponse, relayIsAhead, type SyncResponseObservation } from "./sync-frame-watcher.js"
 import { createCoalescedRunner, type CoalescedRunner } from "./coalesced-runner.js"
 
 // --- Constants ---
@@ -1982,7 +1982,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       // einzige belastbare Fortschrittsaussage, die die App erreichen kann —
       // core hält sie sonst im LogSyncCoordinator (web-of-trust#343, rls#265).
       const syncFrame = readSyncResponse(message)
-      if (syncFrame) this.initialSync.noteDocSync(syncFrame)
+      if (syncFrame) void this.noteSyncFrame(syncFrame)
       if (!isDidcommMessage(message)) await this.handleIncomingMessage(message as MessageEnvelope)
     })
 
@@ -2944,6 +2944,31 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
    * `null`, solange das persönliche Dokument selbst noch nichts hergibt — dann
    * ist die Erwartung unbekannt und nicht etwa null Gruppen.
    */
+  /**
+   * Eine Sync-Antwort auswerten: liegt der Relay für dieses Dokument noch vor
+   * uns?
+   *
+   * Zwei Gründe, warum etwas aussteht, und beide stehen in der Antwort:
+   * `truncated` (es folgt noch eine Seite) und der Vergleich seiner `heads`
+   * mit unserem lückenlosen lokalen Stand. Der zweite fängt genau den Fall,
+   * den `truncated` NICHT abdeckt — Einträge, die hinter einer Lücke oder
+   * hinter einem fehlenden Schlüssel liegen und später nachgezogen werden.
+   * Deshalb kann die Mitgliedschaftsliste noch wachsen, obwohl der Relay
+   * „letzte Seite" gemeldet hat.
+   */
+  private async noteSyncFrame(frame: SyncResponseObservation): Promise<void> {
+    let outstanding = frame.truncated
+    if (!outstanding && this.docLogStore) {
+      try {
+        const local = await this.docLogStore.getStrictContiguousHeads(frame.docId)
+        outstanding = relayIsAhead(frame.heads, local)
+      } catch {
+        // Kein lokaler Stand lesbar — dann bleibt es bei `truncated`.
+      }
+    }
+    this.initialSync.noteDocSync({ docId: frame.docId, outstanding })
+  }
+
   private publishInitialSyncCounts(): void {
     let expected: number | null = null
     try {
