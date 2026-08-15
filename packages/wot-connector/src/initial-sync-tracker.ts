@@ -134,11 +134,17 @@ export class InitialSyncTracker {
   begin({ expectRemoteData, localGroups }: { expectRemoteData: boolean; localGroups: number }): void {
     this.stopped = false
     this.loadedGroups = localGroups
-    this.expectedGroups = null
+    // `expectedGroups` wird hier NICHT zurückgesetzt — das ist Sache von
+    // prepare(). Zwischen beiden kann die Mitgliedschaftsliste längst
+    // eingetroffen sein; sie hier zu verwerfen hiesse, für einen Wimpernschlag
+    // „fertig" zu veröffentlichen, bis der Connector sie erneut einliest.
     if (!expectRemoteData || localGroups > 0) {
       // Belege aus dem Bootstrap-Fenster gelten weiter: ein offenes Dokument
-      // ist auch dann ein offenes Dokument, wenn lokal schon Gruppen liegen.
-      this.expecting = this.openDocs.size > 0
+      // oder eine Liste, die mehr kennt als da ist, bleiben Belege — auch dann,
+      // wenn lokal schon Gruppen liegen.
+      this.expecting =
+        this.openDocs.size > 0 ||
+        (this.expectedGroups !== null && this.expectedGroups > this.loadedGroups)
       if (this.expecting) this.armMaxTimer()
       this.publish()
       return

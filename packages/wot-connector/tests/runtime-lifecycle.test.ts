@@ -58,7 +58,9 @@ describe("noteSyncFrame — Reihenfolge der Head-Vergleiche", () => {
     const slowLookup = deferred<Record<string, number>>()
     const noteDocSync = vi.fn()
     const fake: any = {
+      runtimeGeneration: 1,
       syncFrameTokens: new Map<string, number>(),
+      syncFrameSeq: 0,
       docLogStore: { getStrictContiguousHeads: vi.fn(() => slowLookup.promise) },
       initialSync: { noteDocSync },
     }
@@ -81,10 +83,49 @@ describe("noteSyncFrame — Reihenfolge der Head-Vergleiche", () => {
     expect(noteDocSync).toHaveBeenCalledTimes(1)
   })
 
+  it("überschreibt nach einem Re-Login nicht den Zustand der neuen Runtime (ABA)", async () => {
+    const slowLookup = deferred<Record<string, number>>()
+    const noteDocSync = vi.fn()
+    const oldStore = { getStrictContiguousHeads: vi.fn(() => slowLookup.promise) }
+    const fake: any = {
+      runtimeGeneration: 1,
+      syncFrameTokens: new Map<string, number>(),
+      syncFrameSeq: 0,
+      docLogStore: oldStore,
+      initialSync: { noteDocSync },
+    }
+    Object.setPrototypeOf(fake, WotConnector.prototype)
+
+    // Alter finaler Rahmen hängt im Lookup.
+    const older = (WotConnector.prototype as any).noteSyncFrame.call(fake, {
+      docId: "doc-1", truncated: false, heads: { device: 5 },
+    })
+
+    // Teardown + neue Runtime derselben Identität: Map geleert, neuer Store.
+    fake.syncFrameTokens.clear()
+    fake.runtimeGeneration = 2
+    fake.docLogStore = { getStrictContiguousHeads: vi.fn(async () => ({ device: 0 })) }
+
+    // Erster Rahmen der neuen Runtime für dasselbe deterministische Dokument.
+    await (WotConnector.prototype as any).noteSyncFrame.call(fake, {
+      docId: "doc-1", truncated: true, heads: {},
+    })
+    expect(noteDocSync).toHaveBeenLastCalledWith({ docId: "doc-1", outstanding: true })
+
+    // Die alte Fortsetzung darf den neuen Zustand nicht mehr umschreiben.
+    slowLookup.resolve({ device: 5 })
+    await older
+
+    expect(noteDocSync).toHaveBeenCalledTimes(1)
+    expect(noteDocSync).toHaveBeenLastCalledWith({ docId: "doc-1", outstanding: true })
+  })
+
   it("veröffentlicht die jüngste Auswertung", async () => {
     const noteDocSync = vi.fn()
     const fake: any = {
+      runtimeGeneration: 1,
       syncFrameTokens: new Map<string, number>(),
+      syncFrameSeq: 0,
       docLogStore: { getStrictContiguousHeads: vi.fn(async () => ({ device: 2 })) },
       initialSync: { noteDocSync },
     }

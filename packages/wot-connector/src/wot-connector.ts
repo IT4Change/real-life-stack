@@ -403,8 +403,11 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   private authExpectsRemoteData = true
   private restoreSpacesRunner: CoalescedRunner | null = null
   private syncFrameUnsub: (() => void) | null = null
-  /** Monotones Token je Dokument — nur die jüngste Auswertung darf publizieren. */
+  /** Zuletzt vergebenes Token je Dokument — nur die jüngste Auswertung publiziert. */
   private readonly syncFrameTokens = new Map<string, number>()
+  /** Global monoton, wird NIE zurückgesetzt — sonst wäre ein Token nach dem
+   *  Teardown wiederverwendbar und eine alte Fortsetzung hielte sich für neu. */
+  private syncFrameSeq = 0
   private privateSpaceReconcile: Promise<void> = Promise.resolve()
   private contactsUnsub: (() => void) | null = null
   private attestationsUnsub: (() => void) | null = null
@@ -3003,20 +3006,29 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // Der Head-Vergleich ist asynchron (IndexedDB). Ohne Ordnung könnte die
     // Fortsetzung eines ÄLTEREN Rahmens nach einem neueren fertig werden und
     // dessen Zustand überschreiben — ein „eingeholt" von vorhin würde ein
-    // aktuelles „steht noch aus" löschen. Ein monotones Token je Dokument
-    // sorgt dafür, dass nur die jüngste Auswertung veröffentlicht wird.
-    const token = (this.syncFrameTokens.get(frame.docId) ?? 0) + 1
+    // aktuelles „steht noch aus" löschen.
+    //
+    // Das Token zählt deshalb GLOBAL und wird nie zurückgesetzt. Ein Zähler je
+    // Dokument fiele beim Teardown zurück auf 1, und nach einem Re-Login
+    // derselben Identität bekäme derselbe deterministische docId erneut die 1
+    // — die alte Fortsetzung würde sich für die neue halten (ABA). Zusätzlich
+    // müssen Runtime-Generation und Log-Store dieselben geblieben sein, damit
+    // eine Fortsetzung aus einer abgeräumten Runtime gar nicht erst spricht.
+    const token = ++this.syncFrameSeq
     this.syncFrameTokens.set(frame.docId, token)
+    const generation = this.runtimeGeneration
+    const docLogStore = this.docLogStore
 
     let outstanding = frame.truncated
-    if (!outstanding && this.docLogStore) {
+    if (!outstanding && docLogStore) {
       try {
-        const local = await this.docLogStore.getStrictContiguousHeads(frame.docId)
+        const local = await docLogStore.getStrictContiguousHeads(frame.docId)
         outstanding = relayIsAhead(frame.heads, local)
       } catch {
         // Kein lokaler Stand lesbar — dann bleibt es bei `truncated`.
       }
     }
+    if (generation !== this.runtimeGeneration || docLogStore !== this.docLogStore) return
     if (this.syncFrameTokens.get(frame.docId) !== token) return
     this.initialSync.noteDocSync({ docId: frame.docId, outstanding })
   }

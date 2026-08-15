@@ -232,6 +232,24 @@ describe("InitialSyncTracker", () => {
     expect(t.observe().current.active).toBe(true)
   })
 
+  it("meldet zwischen prepare() und begin() nie zwischendurch „fertig“", () => {
+    const t = tracker()
+    const emitted: boolean[] = []
+    t.observe().subscribe((state) => emitted.push(state.active))
+
+    t.prepare()
+    // Die Mitgliedschaftsliste ist schon da und kennt mehr als lokal liegt.
+    t.setGroupCounts({ loaded: 2, expected: 5 })
+    expect(t.observe().current.active).toBe(true)
+
+    // Der lokale Lesevorgang meldet zwei Gruppen — das ist KEIN Vollzug.
+    t.begin({ expectRemoteData: true, localGroups: 2 })
+
+    expect(t.observe().current.active).toBe(true)
+    expect(t.observe().current.expectedGroups).toBe(5)
+    expect(emitted).not.toContain(false)
+  })
+
   it("verwirft beim Identitätswechsel den Stand der vorigen Identität", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
