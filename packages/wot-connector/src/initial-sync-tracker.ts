@@ -17,10 +17,18 @@ export interface InitialSyncTrackerConfig {
    * etwas nachliefert — die Aussage „Erstsync" wäre dann keine mehr.
    */
   maxMs?: number
+  /**
+   * Wie lange auf die Mitgliedschaftsliste gewartet wird, bevor „keine
+   * Gruppen" als Wahrheit statt als Wartezustand gilt. Trifft den seltenen
+   * Fall, dass jemand tatsächlich in keiner Gruppe ist — ohne diese Grenze
+   * liefe die Anzeige bis zur Obergrenze.
+   */
+  noDataMs?: number
 }
 
 const DEFAULT_SETTLE_MS = 2_500
 const DEFAULT_MAX_MS = 60_000
+const DEFAULT_NO_DATA_MS = 20_000
 
 /**
  * Erkennt, ob dieses Gerät gerade seinen ersten Datenbestand empfängt.
@@ -42,6 +50,7 @@ const DEFAULT_MAX_MS = 60_000
 export class InitialSyncTracker {
   private readonly settleMs: number
   private readonly maxMs: number
+  private readonly noDataMs: number
   private readonly obs: ReactiveObservable<InitialSyncState> =
     createObservable<InitialSyncState>({ active: false, loadedGroups: 0, expectedGroups: null })
 
@@ -50,6 +59,7 @@ export class InitialSyncTracker {
   private relayConnected = true
   private settleTimer: ReturnType<typeof setTimeout> | null = null
   private maxTimer: ReturnType<typeof setTimeout> | null = null
+  private noDataTimer: ReturnType<typeof setTimeout> | null = null
   private loadedGroups = 0
   /** Erwartete Mitgliedschaften laut persönlichem Dokument; null = noch unbekannt. */
   private expectedGroups: number | null = null
@@ -57,6 +67,7 @@ export class InitialSyncTracker {
   constructor(config: InitialSyncTrackerConfig = {}) {
     this.settleMs = config.settleMs ?? DEFAULT_SETTLE_MS
     this.maxMs = config.maxMs ?? DEFAULT_MAX_MS
+    this.noDataMs = config.noDataMs ?? DEFAULT_NO_DATA_MS
   }
 
   observe(): Observable<InitialSyncState> {
@@ -81,6 +92,7 @@ export class InitialSyncTracker {
     }
     this.expecting = true
     this.armMaxTimer()
+    this.armNoDataTimer()
     this.armSettleTimer()
     this.publish()
   }
@@ -99,6 +111,9 @@ export class InitialSyncTracker {
     if (loaded === this.loadedGroups && expected === this.expectedGroups) return
     this.loadedGroups = loaded
     this.expectedGroups = expected
+    // Sobald die Mitgliedschaftsliste etwas nennt, ist die Wartefrage
+    // beantwortet — ab hier entscheidet der Vergleich geladen/erwartet.
+    if (loaded > 0 || (expected !== null && expected > 0)) this.clearNoDataTimer()
     // Eine neu aufgetauchte Gruppe ist Nachschub, kein Ruhezustand.
     this.noteActivity()
     this.publish()
@@ -121,6 +136,7 @@ export class InitialSyncTracker {
     this.expecting = false
     this.clearSettleTimer()
     this.clearMaxTimer()
+    this.clearNoDataTimer()
     this.publish()
   }
 
@@ -132,6 +148,15 @@ export class InitialSyncTracker {
     }, this.settleMs)
   }
 
+  /** Wartefenster auf die Mitgliedschaftsliste; endet, sobald sie etwas nennt. */
+  private armNoDataTimer(): void {
+    this.clearNoDataTimer()
+    this.noDataTimer = setTimeout(() => {
+      this.noDataTimer = null
+      this.finish()
+    }, this.noDataMs)
+  }
+
   private armMaxTimer(): void {
     this.clearMaxTimer()
     this.maxTimer = setTimeout(() => {
@@ -140,10 +165,23 @@ export class InitialSyncTracker {
     }, this.maxMs)
   }
 
-  /** Ruhefenster abgelaufen — aber Ruhe heisst nur „fertig", wenn auch alle
-   *  erwarteten Gruppen da sind. Sonst weiterwarten (bis zur Obergrenze). */
+  /**
+   * Ruhefenster abgelaufen. Das beendet den Erstsync NUR im Nachlauf — also
+   * wenn die Mitgliedschaftsliste steht und alle Gruppen daraus geladen sind.
+   *
+   * Solange die Liste noch keine einzige Gruppe nennt, ist eine Pause kein
+   * Beleg für irgendetwas: das persönliche Dokument ist beim Login zwar schon
+   * initialisiert, aber leer — es meldet dann 0 erwartete Gruppen, und „0 von
+   * 0" hiesse fertig, bevor überhaupt etwas angefangen hat (Antons Test:
+   * Anzeige weg nach 2,5 s, kein einziger Space in der Liste). Für diesen Fall
+   * ist `noDataMs` zuständig, nicht das Ruhefenster.
+   */
   private settle(): void {
-    if (this.expectedGroups !== null && this.loadedGroups < this.expectedGroups) {
+    const listComplete =
+      this.expectedGroups !== null &&
+      this.expectedGroups > 0 &&
+      this.loadedGroups >= this.expectedGroups
+    if (!listComplete) {
       this.armSettleTimer()
       return
     }
@@ -154,6 +192,7 @@ export class InitialSyncTracker {
     this.expecting = false
     this.clearSettleTimer()
     this.clearMaxTimer()
+    this.clearNoDataTimer()
     this.publish()
   }
 
@@ -168,6 +207,13 @@ export class InitialSyncTracker {
     if (this.maxTimer !== null) {
       clearTimeout(this.maxTimer)
       this.maxTimer = null
+    }
+  }
+
+  private clearNoDataTimer(): void {
+    if (this.noDataTimer !== null) {
+      clearTimeout(this.noDataTimer)
+      this.noDataTimer = null
     }
   }
 

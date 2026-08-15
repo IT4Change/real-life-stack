@@ -6,7 +6,7 @@ describe("InitialSyncTracker", () => {
   beforeEach(() => { vi.useFakeTimers() })
   afterEach(() => { vi.useRealTimers() })
 
-  const tracker = () => new InitialSyncTracker({ settleMs: 2000, maxMs: 20_000 })
+  const tracker = () => new InitialSyncTracker({ settleMs: 2000, maxMs: 20_000, noDataMs: 8000 })
 
   it("meldet keinen Erstsync für eine frisch erzeugte Identität", () => {
     const t = tracker()
@@ -20,15 +20,19 @@ describe("InitialSyncTracker", () => {
     expect(t.observe().current.active).toBe(false)
   })
 
-  it("meldet Erstsync, solange auf einem leeren Gerät noch etwas eintrifft", () => {
+  it("meldet Erstsync auf einem leeren Gerät sofort", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
     expect(t.observe().current.active).toBe(true)
+  })
 
+  it("beendet den Nachlauf, wenn nach der letzten Gruppe Ruhe einkehrt", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 2, expected: 2 })
+
+    // Inhalte trudeln noch ein — jedes Eintreffen verlängert.
     vi.advanceTimersByTime(1999)
-    expect(t.observe().current.active).toBe(true)
-
-    // Nachschub setzt das Ruhefenster zurück
     t.noteActivity()
     vi.advanceTimersByTime(1999)
     expect(t.observe().current.active).toBe(true)
@@ -40,6 +44,7 @@ describe("InitialSyncTracker", () => {
   it("beendet den Erstsync spätestens nach der Obergrenze", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 1, expected: 99 })
     // Dauerbetrieb: alle 1000ms trifft etwas ein, das Ruhefenster wird nie leer.
     for (let elapsed = 0; elapsed < 20_000; elapsed += 1000) {
       vi.advanceTimersByTime(1000)
@@ -84,6 +89,44 @@ describe("InitialSyncTracker", () => {
     expect(t.observe().current.expectedGroups).toBe(12)
   })
 
+  it("hält durch, solange überhaupt noch nichts eingetroffen ist", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    // Das persönliche Dokument ist beim Login bereits initialisiert, aber noch
+    // leer: es meldet 0 erwartete Gruppen. „0 von 0" ist hier KEIN
+    // Vollzugsmeldung, sondern schlicht „noch nichts da".
+    t.setGroupCounts({ loaded: 0, expected: 0 })
+
+    vi.advanceTimersByTime(2000)
+    expect(t.observe().current.active).toBe(true)
+
+    // Sobald die Mitgliedschaftsliste eintrifft, greift wieder der Vergleich.
+    t.setGroupCounts({ loaded: 0, expected: 12 })
+    vi.advanceTimersByTime(5000)
+    expect(t.observe().current.active).toBe(true)
+  })
+
+  it("beendet das Wartefenster auch, wenn nur eine Gruppe auftaucht", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    // Gruppe da, Mitgliedschaftsliste (noch) ohne Aussage: das Wartefenster
+    // darf hier nicht mehr zuschlagen, sonst endet die Anzeige mitten im Lauf.
+    t.setGroupCounts({ loaded: 1, expected: null })
+
+    vi.advanceTimersByTime(8000)
+    expect(t.observe().current.active).toBe(true)
+  })
+
+  it("gibt auf, wenn nach dem Wartefenster nichts gekommen ist (leeres Konto)", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 0, expected: 0 })
+
+    // Kein Dauerspinner für jemanden, der wirklich in keiner Gruppe ist.
+    vi.advanceTimersByTime(10_000)
+    expect(t.observe().current.active).toBe(false)
+  })
+
   it("beendet erst, wenn alle erwarteten Gruppen da sind UND Ruhe eingekehrt ist", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
@@ -122,7 +165,10 @@ describe("InitialSyncTracker", () => {
   it("nimmt den Erstsync wieder auf, sobald die Verbindung zurück ist", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 2, expected: 2 })
     t.setRelayConnected(false)
+    expect(t.observe().current.active).toBe(false)
+
     t.setRelayConnected(true)
     expect(t.observe().current.active).toBe(true)
     vi.advanceTimersByTime(2000)
