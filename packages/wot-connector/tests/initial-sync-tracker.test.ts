@@ -127,6 +127,36 @@ describe("InitialSyncTracker", () => {
     expect(t.observe().current.active).toBe(false)
   })
 
+  it("kehrt zurück, wenn Minuten später die nächste Gruppe angekündigt wird", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 4, expected: 4 })
+    vi.advanceTimersByTime(2000)
+    expect(t.observe().current.active).toBe(false)
+
+    // Die Mitgliedschaftsliste wächst weiter — bei Anton Minuten später. Die
+    // Anzeige muss dann wiederkommen, statt einmalig verbraucht zu sein.
+    vi.advanceTimersByTime(5 * 60_000)
+    t.setGroupCounts({ loaded: 4, expected: 5 })
+    expect(t.observe().current.active).toBe(true)
+
+    t.setGroupCounts({ loaded: 5, expected: 5 })
+    vi.advanceTimersByTime(2000)
+    expect(t.observe().current.active).toBe(false)
+  })
+
+  it("kehrt NICHT zurück, wenn die Liste vollständig bleibt", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 3, expected: 3 })
+    vi.advanceTimersByTime(2000)
+    expect(t.observe().current.active).toBe(false)
+
+    // Reines Nachladen von Inhalten ist kein Grund, wieder „lädt" zu behaupten.
+    t.noteActivity()
+    expect(t.observe().current.active).toBe(false)
+  })
+
   it("beendet erst, wenn alle erwarteten Gruppen da sind UND Ruhe eingekehrt ist", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
@@ -151,6 +181,17 @@ describe("InitialSyncTracker", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
     t.end()
+    expect(t.observe().current.active).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("lässt sich nach dem Abmelden nicht von einem Nachzügler wiederbeleben", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.end()
+    // Ein Zähler, der noch aus dem Teardown herausfällt, darf keine Anzeige
+    // über einer abgemeldeten App aufspannen.
+    t.setGroupCounts({ loaded: 0, expected: 5 })
     expect(t.observe().current.active).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
   })

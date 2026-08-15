@@ -51,7 +51,15 @@ const DEFAULT_NO_DATA_MS = 20_000
  *    (`spaceCatchUpsInFlight` ist adapter-privat), also gilt hier das einzige
  *    beobachtbare Kriterium: es trifft nichts Neues mehr ein (`settleMs`).
  *
- * `maxMs` deckelt beides — eine Anzeige, die nie endet, ist keine Aussage mehr.
+ * Entscheidend ist, dass der Tracker **nichts vorhersagt**. Die
+ * Mitgliedschaftsliste wächst auf einem echten Konto noch Minuten nach dem
+ * Login weiter; „sind wir fertig?" ist ohne ein Signal aus dem Adapter
+ * (web-of-trust#343) schlicht nicht beantwortbar. Beantwortbar ist nur „fehlt
+ * gerade nachweislich etwas?" — und sobald die Liste eine noch fehlende Gruppe
+ * nennt, kommt die Anzeige zurück, statt einmalig verbraucht zu sein.
+ *
+ * `maxMs` deckelt jeden dieser Abschnitte — eine Anzeige, die nie endet, ist
+ * keine Aussage mehr.
  */
 export class InitialSyncTracker {
   private readonly settleMs: number
@@ -62,6 +70,8 @@ export class InitialSyncTracker {
 
   /** Erstsync erwartet, unabhängig davon ob die Verbindung gerade steht. */
   private expecting = false
+  /** Abgemeldet: kein Nachzügler darf hier noch eine Anzeige aufspannen. */
+  private stopped = false
   private relayConnected = true
   private settleTimer: ReturnType<typeof setTimeout> | null = null
   private maxTimer: ReturnType<typeof setTimeout> | null = null
@@ -90,6 +100,7 @@ export class InitialSyncTracker {
    *   keine Erstbefüllung.
    */
   begin({ expectRemoteData, localGroups }: { expectRemoteData: boolean; localGroups: number }): void {
+    this.stopped = false
     this.loadedGroups = localGroups
     if (!expectRemoteData || localGroups > 0) {
       this.expecting = false
@@ -120,6 +131,18 @@ export class InitialSyncTracker {
     // Sobald die Mitgliedschaftsliste etwas nennt, ist die Wartefrage
     // beantwortet — ab hier entscheidet der Vergleich geladen/erwartet.
     if (loaded > 0 || (expected !== null && expected > 0)) this.clearNoDataTimer()
+
+    // Nachzügler: die Mitgliedschaftsliste wächst weiter, bei Anton noch
+    // Minuten nach dem Login. Kündigt sie eine Gruppe an, die noch fehlt, ist
+    // das ein BELEG — dann kommt die Anzeige zurück, statt einmalig verbraucht
+    // zu sein. Das ist der Grund, warum hier nichts vorhergesagt werden muss:
+    // die Aussage lautet nicht „wir sind gleich fertig", sondern „es fehlt
+    // nachweislich etwas".
+    if (!this.stopped && !this.expecting && expected !== null && expected > loaded) {
+      this.expecting = true
+      this.armMaxTimer()
+    }
+
     // Eine neu aufgetauchte Gruppe ist Nachschub, kein Ruhezustand.
     this.noteActivity()
     this.publish()
@@ -139,6 +162,7 @@ export class InitialSyncTracker {
 
   /** Abmelden / Teardown: Anzeige aus, keine Timer zurücklassen. */
   end(): void {
+    this.stopped = true
     this.expecting = false
     this.clearSettleTimer()
     this.clearMaxTimer()
