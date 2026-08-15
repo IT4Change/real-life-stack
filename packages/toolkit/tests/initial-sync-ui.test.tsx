@@ -57,12 +57,17 @@ describe("WorkspaceSwitcher während der Erstsynchronisation", () => {
 
 describe("WorkspaceSyncNotice", () => {
   it("sagt beim leeren Gerät, dass die Gruppen noch kommen", () => {
-    const el = render(<WorkspaceSyncNotice loaded={0} />)
+    const el = render(<WorkspaceSyncNotice loaded={0} expected={null} />)
     expect(el.textContent).toContain("Deine Gruppen werden geladen")
   })
 
-  it("nennt den bisherigen Stand, ohne eine Gesamtzahl zu erfinden", () => {
-    const el = render(<WorkspaceSyncNotice loaded={3} />)
+  it("nennt x von y, sobald die Mitgliedschaftsliste die Gesamtzahl hergibt", () => {
+    const el = render(<WorkspaceSyncNotice loaded={3} expected={12} />)
+    expect(el.textContent).toContain("3 von 12 Gruppen geladen")
+  })
+
+  it("erfindet keine Gesamtzahl, solange sie unbekannt ist", () => {
+    const el = render(<WorkspaceSyncNotice loaded={3} expected={null} />)
     expect(el.textContent).toContain("3 Gruppen geladen")
     expect(el.textContent).not.toMatch(/von \d/)
   })
@@ -85,12 +90,12 @@ function ItemsProbe() {
 
 function Probe() {
   const state = useInitialSync()
-  return <span data-testid="state">{state.active ? `laedt:${state.knownGroups}` : "fertig"}</span>
+  return <span data-testid="state">{state.active ? `laedt:${state.loadedGroups}` : "fertig"}</span>
 }
 
 describe("useInitialSync", () => {
   it("folgt dem Connector-Zustand", () => {
-    const obs = createObservable<InitialSyncState>({ active: true, knownGroups: 2 })
+    const obs = createObservable<InitialSyncState>({ active: true, loadedGroups: 2, expectedGroups: 7 })
     const el = render(
       <ConnectorProvider connector={connectorWith(obs)}>
         <Probe />
@@ -98,12 +103,12 @@ describe("useInitialSync", () => {
     )
     expect(el.textContent).toBe("laedt:2")
 
-    act(() => { obs.set({ active: false, knownGroups: 4 }) })
+    act(() => { obs.set({ active: false, loadedGroups: 4, expectedGroups: 4 }) })
     expect(el.textContent).toBe("fertig")
   })
 
   it("hält Item-Listen als ladend, solange die Erstbefüllung läuft", () => {
-    const obs = createObservable<InitialSyncState>({ active: true, knownGroups: 0 })
+    const obs = createObservable<InitialSyncState>({ active: true, loadedGroups: 0, expectedGroups: null })
     const el = render(
       <ConnectorProvider connector={connectorWith(obs)}>
         <ItemsProbe />
@@ -113,12 +118,12 @@ describe("useInitialSync", () => {
     // „nichts vorhanden" behaupten (rls#265).
     expect(el.textContent).toBe("laedt")
 
-    act(() => { obs.set({ active: false, knownGroups: 0 }) })
+    act(() => { obs.set({ active: false, loadedGroups: 0, expectedGroups: 0 }) })
     expect(el.textContent).toBe("fertig")
   })
 
   it("versteckt bereits eingetroffene Items NICHT hinter dem Skelett", () => {
-    const obs = createObservable<InitialSyncState>({ active: true, knownGroups: 1 })
+    const obs = createObservable<InitialSyncState>({ active: true, loadedGroups: 1, expectedGroups: 3 })
     const items = createObservable([{ id: "i1", type: "task", createdAt: "2026-08-14T10:00:00Z" }])
     const el = render(
       <ConnectorProvider connector={connectorWith(obs, items)}>

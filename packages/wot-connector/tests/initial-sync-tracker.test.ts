@@ -48,16 +48,16 @@ describe("InitialSyncTracker", () => {
     expect(t.observe().current.active).toBe(false)
   })
 
-  it("veröffentlicht die Zahl der bereits bekannten Gruppen", () => {
+  it("veröffentlicht die Zahl der bereits geladenen Gruppen", () => {
     const t = tracker()
     const seen: number[] = []
-    t.observe().subscribe(() => seen.push(t.observe().current.knownGroups))
+    t.observe().subscribe(() => seen.push(t.observe().current.loadedGroups))
 
     t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setKnownGroups(2)
-    t.setKnownGroups(5)
+    t.setGroupCounts({ loaded: 2, expected: 5 })
+    t.setGroupCounts({ loaded: 5, expected: 5 })
 
-    expect(t.observe().current.knownGroups).toBe(5)
+    expect(t.observe().current.loadedGroups).toBe(5)
     expect(seen).toContain(2)
     expect(seen).toContain(5)
   })
@@ -66,9 +66,42 @@ describe("InitialSyncTracker", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
     vi.advanceTimersByTime(1500)
-    t.setKnownGroups(1)
+    t.setGroupCounts({ loaded: 1, expected: null })
     vi.advanceTimersByTime(1500)
     expect(t.observe().current.active).toBe(true)
+  })
+
+  it("hört NICHT auf, solange die PersonalDoc mehr Gruppen kennt als da sind", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    // Die Mitgliedschaftsliste sagt 12, angekommen sind 3 — eine Ruhepause
+    // (z.B. während des Schlüsselaustauschs) ist dann KEIN Fertig-Signal.
+    t.setGroupCounts({ loaded: 3, expected: 12 })
+
+    // Weit über dem Ruhefenster von 2000ms, aber unter der Obergrenze.
+    vi.advanceTimersByTime(19_999)
+    expect(t.observe().current.active).toBe(true)
+    expect(t.observe().current.expectedGroups).toBe(12)
+  })
+
+  it("beendet erst, wenn alle erwarteten Gruppen da sind UND Ruhe eingekehrt ist", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 12, expected: 12 })
+
+    vi.advanceTimersByTime(1999)
+    expect(t.observe().current.active).toBe(true)
+    vi.advanceTimersByTime(1)
+    expect(t.observe().current.active).toBe(false)
+  })
+
+  it("gibt auch bei unvollständiger Liste nach der Obergrenze auf", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 1, expected: 12 })
+
+    vi.advanceTimersByTime(20_000)
+    expect(t.observe().current.active).toBe(false)
   })
 
   it("schaltet beim Abmelden ab und lässt keinen Timer zurück", () => {

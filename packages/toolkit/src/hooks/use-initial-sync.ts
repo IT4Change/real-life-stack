@@ -3,7 +3,7 @@ import type { InitialSyncState } from "@real-life-stack/data-interface"
 import { hasInitialSync } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
 
-const NOT_SYNCING: InitialSyncState = { active: false, knownGroups: 0 }
+const NOT_SYNCING: InitialSyncState = { active: false, loadedGroups: 0, expectedGroups: null }
 
 /**
  * Läuft gerade die Erstbefüllung dieses Geräts?

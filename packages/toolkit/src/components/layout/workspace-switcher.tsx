@@ -38,21 +38,28 @@ interface WorkspaceSwitcherProps {
    * dann unvollständig, nicht kurz — das muss man ihr ansehen (rls#265).
    */
   syncing?: boolean
+  /** Erwartete Gruppen laut Mitgliedschaftsliste; `null`/undefined = unbekannt. */
+  syncExpected?: number | null
 }
 
 /**
  * Hinweiszeile in der Gruppenliste, solange dieses Gerät seinen ersten
- * Datenbestand empfängt. Bewusst KEIN „x von y": wie viele Gruppen kommen,
- * weiß das Gerät zu diesem Zeitpunkt selbst noch nicht (rls#265).
+ * Datenbestand empfängt.
+ *
+ * „x von y" steht nur da, wenn y auch belegt ist: die Zahl stammt aus der
+ * Mitgliedschaftsliste im persönlichen Dokument. Solange die selbst noch
+ * eintrifft, ist sie unbekannt — dann wird nichts erfunden (rls#265).
  */
-export function WorkspaceSyncNotice({ loaded }: { loaded: number }) {
+export function WorkspaceSyncNotice({ loaded, expected }: { loaded: number; expected: number | null }) {
   return (
     <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
       <Loader2 className="h-3.5 w-3.5 animate-spin" />
       <span>
-        {loaded > 0
-          ? `${loaded} Gruppen geladen, es kommen noch welche …`
-          : "Deine Gruppen werden geladen …"}
+        {expected !== null && expected > 0
+          ? `${loaded} von ${expected} Gruppen geladen …`
+          : loaded > 0
+            ? `${loaded} Gruppen geladen, es kommen noch welche …`
+            : "Deine Gruppen werden geladen …"}
       </span>
     </div>
   )
@@ -65,6 +72,7 @@ export function WorkspaceSwitcher({
   onCreateWorkspace,
   onEditWorkspace,
   syncing = false,
+  syncExpected = null,
 }: WorkspaceSwitcherProps) {
   // Controlled so the gear (edit) button can close the menu before opening the
   // group dialog — otherwise the menu stays open and overlaps the dialog.
@@ -129,7 +137,7 @@ export function WorkspaceSwitcher({
           </>
         )}
         <DropdownMenuLabel>Gruppen</DropdownMenuLabel>
-        {syncing && <WorkspaceSyncNotice loaded={groupWorkspaces.length} />}
+        {syncing && <WorkspaceSyncNotice loaded={groupWorkspaces.length} expected={syncExpected ?? null} />}
         {groupWorkspaces.map((workspace) => (
           <DropdownMenuItem
             key={workspace.id}

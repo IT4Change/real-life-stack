@@ -25,28 +25,34 @@ const DEFAULT_MAX_MS = 60_000
 /**
  * Erkennt, ob dieses Gerät gerade seinen ersten Datenbestand empfängt.
  *
- * Es gibt in wot-core kein Ereignis „Catch-up für Space X fertig" — der
- * Adapter hält seinen Catch-up-Zustand privat (`spaceCatchUpsInFlight`). Statt
- * ein Fertig-Signal zu erfinden, misst dieser Tracker das, was tatsächlich
- * beobachtbar ist: **es trifft noch etwas ein**. Der Erstsync gilt als beendet,
- * wenn für `settleMs` nichts Neues mehr kam (oder spätestens nach `maxMs`).
+ * Zwei Quellen, in dieser Reihenfolge:
  *
- * Bewusst NICHT als Fortschrittsbalken ausgelegt: die Gesamtzahl der Spaces
- * ist am Anfang unbekannt, „3 von 12" wäre geraten. Veröffentlicht wird
- * deshalb nur, wie viele Gruppen bisher da sind.
+ * 1. **Die Mitgliedschaftsliste** aus dem persönlichen Dokument
+ *    (`PersonalDoc.spaces`) sagt, wie viele Gruppen es überhaupt gibt. Solange
+ *    weniger geladen sind, LÄUFT der Erstsync — punkt. Keine Zeitheuristik,
+ *    und deshalb kann die Anzeige in dieser Phase auch nicht in einer Ruhepause
+ *    verschwinden (etwa während des Schlüsselaustauschs).
+ * 2. **Der Nachlauf danach**: Gruppen sind vollständig, aber ihre Inhalte
+ *    trudeln noch ein. Dafür gibt es in wot-core kein Fertig-Signal pro Space
+ *    (`spaceCatchUpsInFlight` ist adapter-privat), also gilt hier das einzige
+ *    beobachtbare Kriterium: es trifft nichts Neues mehr ein (`settleMs`).
+ *
+ * `maxMs` deckelt beides — eine Anzeige, die nie endet, ist keine Aussage mehr.
  */
 export class InitialSyncTracker {
   private readonly settleMs: number
   private readonly maxMs: number
   private readonly obs: ReactiveObservable<InitialSyncState> =
-    createObservable<InitialSyncState>({ active: false, knownGroups: 0 })
+    createObservable<InitialSyncState>({ active: false, loadedGroups: 0, expectedGroups: null })
 
   /** Erstsync erwartet, unabhängig davon ob die Verbindung gerade steht. */
   private expecting = false
   private relayConnected = true
   private settleTimer: ReturnType<typeof setTimeout> | null = null
   private maxTimer: ReturnType<typeof setTimeout> | null = null
-  private knownGroups = 0
+  private loadedGroups = 0
+  /** Erwartete Mitgliedschaften laut persönlichem Dokument; null = noch unbekannt. */
+  private expectedGroups: number | null = null
 
   constructor(config: InitialSyncTrackerConfig = {}) {
     this.settleMs = config.settleMs ?? DEFAULT_SETTLE_MS
@@ -67,7 +73,7 @@ export class InitialSyncTracker {
    *   keine Erstbefüllung.
    */
   begin({ expectRemoteData, localGroups }: { expectRemoteData: boolean; localGroups: number }): void {
-    this.knownGroups = localGroups
+    this.loadedGroups = localGroups
     if (!expectRemoteData || localGroups > 0) {
       this.expecting = false
       this.publish()
@@ -85,9 +91,14 @@ export class InitialSyncTracker {
     this.armSettleTimer()
   }
 
-  setKnownGroups(count: number): void {
-    if (count === this.knownGroups) return
-    this.knownGroups = count
+  /**
+   * Stand der Gruppenliste. `expected` kommt aus der Mitgliedschaftsliste des
+   * persönlichen Dokuments, `null` solange die noch nichts hergibt.
+   */
+  setGroupCounts({ loaded, expected }: { loaded: number; expected: number | null }): void {
+    if (loaded === this.loadedGroups && expected === this.expectedGroups) return
+    this.loadedGroups = loaded
+    this.expectedGroups = expected
     // Eine neu aufgetauchte Gruppe ist Nachschub, kein Ruhezustand.
     this.noteActivity()
     this.publish()
@@ -117,7 +128,7 @@ export class InitialSyncTracker {
     this.clearSettleTimer()
     this.settleTimer = setTimeout(() => {
       this.settleTimer = null
-      this.finish()
+      this.settle()
     }, this.settleMs)
   }
 
@@ -127,6 +138,16 @@ export class InitialSyncTracker {
       this.maxTimer = null
       this.finish()
     }, this.maxMs)
+  }
+
+  /** Ruhefenster abgelaufen — aber Ruhe heisst nur „fertig", wenn auch alle
+   *  erwarteten Gruppen da sind. Sonst weiterwarten (bis zur Obergrenze). */
+  private settle(): void {
+    if (this.expectedGroups !== null && this.loadedGroups < this.expectedGroups) {
+      this.armSettleTimer()
+      return
+    }
+    this.finish()
   }
 
   private finish(): void {
@@ -153,7 +174,11 @@ export class InitialSyncTracker {
   private publish(): void {
     const active = this.expecting && this.relayConnected
     const current = this.obs.current
-    if (current.active === active && current.knownGroups === this.knownGroups) return
-    this.obs.set({ active, knownGroups: this.knownGroups })
+    if (
+      current.active === active &&
+      current.loadedGroups === this.loadedGroups &&
+      current.expectedGroups === this.expectedGroups
+    ) return
+    this.obs.set({ active, loadedGroups: this.loadedGroups, expectedGroups: this.expectedGroups })
   }
 }

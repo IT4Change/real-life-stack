@@ -665,6 +665,7 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
               onCreateWorkspace={openCreateDialog}
               onEditWorkspace={openEditDialog}
               syncing={initialSync.active}
+              syncExpected={initialSync.expectedGroups}
             />
           ) : (
             <Button

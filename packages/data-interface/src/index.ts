@@ -457,8 +457,16 @@ export interface RelationRecordWriterCapable {
 export interface InitialSyncState {
   /** Es wird noch mit Nachschub gerechnet — die Oberfläche darf nicht „leer" behaupten. */
   active: boolean
-  /** Wie viele Gruppen bisher eingetroffen sind (für „3 Gruppen geladen …"). */
-  knownGroups: number
+  /** Wie viele Gruppen bereits eingetroffen sind. */
+  loadedGroups: number
+  /**
+   * Wie viele Gruppen insgesamt zu erwarten sind, `null` solange das Gerät es
+   * nicht weiß. Im WoT steht die Mitgliedschaftsliste im persönlichen Dokument
+   * — sobald das synchronisiert ist, ist „3 von 12" eine Tatsache und keine
+   * Schätzung. Die Zahl kann anfangs noch wachsen, weil das persönliche
+   * Dokument selbst stückweise eintrifft.
+   */
+  expectedGroups: number | null
 }
 
 /**

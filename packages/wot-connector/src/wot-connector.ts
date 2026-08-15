@@ -185,6 +185,7 @@ import {
   sendAttestationReceipt,
 } from "./attestation-wire.js"
 import { InitialSyncTracker } from "./initial-sync-tracker.js"
+import { countMemberSpaces } from "./personal-doc-spaces.js"
 import { createCoalescedRunner, type CoalescedRunner } from "./coalesced-runner.js"
 
 // --- Constants ---
@@ -1999,6 +2000,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     const restoreSpacesRunner = this.restoreSpacesRunner
     this.personalDocUnsub = onYjsPersonalDocChange(() => {
       this.initialSync.noteActivity()
+      // Die Mitgliedschaftsliste wächst hier — die Erwartung muss sofort mit,
+      // nicht erst wenn die Gruppe auch wiederhergestellt ist.
+      this.publishInitialSyncCounts()
       restoreSpacesRunner()
     })
 
@@ -2101,6 +2105,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       expectRemoteData: this.authExpectsRemoteData,
       localGroups: this.groupsCache.length,
     })
+    this.publishInitialSyncCounts()
 
     // 12. Ensure private space exists (hidden space for personal items)
     await this.queuePrivateSpaceReconcile({ createIfMissing: true })
@@ -2368,7 +2373,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       .map((s) => this.spaceToGroup(s))
 
     this.groupsCache = realGroups
-    this.initialSync.setKnownGroups(realGroups.length)
+    this.publishInitialSyncCounts()
 
     // Update the reactive observable (inherited from BaseConnector)
     this.groupsObservable.set([...this.groupsCache])
@@ -2917,6 +2922,29 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
    */
   observeInitialSync(): Observable<InitialSyncState> {
     return this.initialSync.observe()
+  }
+
+  /**
+   * Wie viele Gruppen sind da, wie viele sind zu erwarten?
+   *
+   * Die Erwartung kommt aus der Mitgliedschaftsliste des persönlichen
+   * Dokuments (`PersonalDoc.spaces`) — derselben Quelle, aus der auch
+   * `restoreSpacesFromMetadata()` die Spaces wiederherstellt. Sie führt die
+   * geladene Liste an: im Messlauf standen dort 6 Spaces, während erst 2
+   * wiederhergestellt waren. Genau diese Differenz ist der ehrliche
+   * Fortschritt.
+   *
+   * `null`, solange das persönliche Dokument selbst noch nichts hergibt — dann
+   * ist die Erwartung unbekannt und nicht etwa null Gruppen.
+   */
+  private publishInitialSyncCounts(): void {
+    let expected: number | null = null
+    try {
+      expected = countMemberSpaces(getYjsPersonalDoc()?.spaces)
+    } catch {
+      // PersonalDoc noch nicht initialisiert — Erwartung bleibt unbekannt.
+    }
+    this.initialSync.setGroupCounts({ loaded: this.groupsCache.length, expected })
   }
 
   // ==================== Confirmation writing ====================
