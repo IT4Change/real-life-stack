@@ -39,11 +39,15 @@ export function readSyncResponse(message: unknown): SyncResponseObservation | nu
   const body = envelope.body as { docId?: unknown; truncated?: unknown; heads?: unknown }
   if (typeof body.docId !== "string" || body.docId.length === 0) return null
   if (typeof body.truncated !== "boolean") return null
+  // `heads` wird GANZ verworfen, wenn irgendetwas daran nicht stimmt. Ein
+  // teilweise gelesener Stand ist gefährlicher als gar keiner: fehlt darin
+  // ausgerechnet das Gerät, das vorausliegt, ergibt der Vergleich „eingeholt"
+  // — und die Anzeige endet mit einem echten Rückstand auf dem Gerät.
+  if (!body.heads || typeof body.heads !== "object" || Array.isArray(body.heads)) return null
   const heads: Record<string, number> = {}
-  if (body.heads && typeof body.heads === "object") {
-    for (const [device, seq] of Object.entries(body.heads as Record<string, unknown>)) {
-      if (typeof seq === "number" && Number.isFinite(seq)) heads[device] = seq
-    }
+  for (const [device, seq] of Object.entries(body.heads as Record<string, unknown>)) {
+    if (typeof seq !== "number" || !Number.isFinite(seq)) return null
+    heads[device] = seq
   }
   return { docId: body.docId, truncated: body.truncated, heads }
 }

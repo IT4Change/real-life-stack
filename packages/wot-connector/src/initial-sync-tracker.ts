@@ -102,6 +102,27 @@ export class InitialSyncTracker {
   }
 
   /**
+   * Eine neue Runtime beginnt (Bootstrap, vor dem ersten Sync-Start).
+   *
+   * Getrennt von {@link begin}, weil zwischen beiden bereits Sync-Antworten
+   * eintreffen: PersonalDoc- und Space-Sync starten VOR dem lokalen
+   * Lesevorgang. `prepare()` verwirft den Stand der vorigen Identität und hebt
+   * die Teardown-Sperre — `begin()` darf danach keine Belege mehr wegräumen,
+   * sonst geht genau die Evidenz des Erstsyncs verloren.
+   */
+  prepare(): void {
+    this.stopped = false
+    this.expecting = false
+    this.openDocs.clear()
+    this.clearSettleTimer()
+    this.clearMaxTimer()
+    this.clearNoDataTimer()
+    this.loadedGroups = 0
+    this.expectedGroups = null
+    this.publish()
+  }
+
+  /**
    * Nach abgeschlossenem Login aufrufen.
    *
    * @param expectRemoteData `false` für eine gerade erzeugte Identität — dort
@@ -112,10 +133,13 @@ export class InitialSyncTracker {
    */
   begin({ expectRemoteData, localGroups }: { expectRemoteData: boolean; localGroups: number }): void {
     this.stopped = false
-    this.openDocs.clear()
     this.loadedGroups = localGroups
+    this.expectedGroups = null
     if (!expectRemoteData || localGroups > 0) {
-      this.expecting = false
+      // Belege aus dem Bootstrap-Fenster gelten weiter: ein offenes Dokument
+      // ist auch dann ein offenes Dokument, wenn lokal schon Gruppen liegen.
+      this.expecting = this.openDocs.size > 0
+      if (this.expecting) this.armMaxTimer()
       this.publish()
       return
     }
@@ -144,6 +168,7 @@ export class InitialSyncTracker {
     const wasOpen = this.openDocs.has(docId)
     if (outstanding) this.openDocs.add(docId)
     else this.openDocs.delete(docId)
+    if (outstanding) this.clearNoDataTimer()
     if (outstanding && !this.expecting) {
       this.expecting = true
       this.armMaxTimer()
@@ -188,9 +213,19 @@ export class InitialSyncTracker {
     this.relayConnected = connected
     if (this.expecting) {
       // Ohne Verbindung kommt nichts — dann darf die Anzeige auch nichts
-      // versprechen. Die Uhr läuft erst weiter, wenn der Relay wieder da ist.
-      if (connected) this.armSettleTimer()
-      else this.clearSettleTimer()
+      // versprechen, und es darf auch keine Frist verstreichen. Offline
+      // stehen ALLE Uhren still (nicht nur das Ruhefenster), sonst ist die
+      // Anzeige nach dem Reconnect schon abgelaufen, bevor der Nachschub
+      // überhaupt beginnen konnte.
+      if (connected) {
+        this.armSettleTimer()
+        this.armMaxTimer()
+        if (this.expectedGroups === null || this.expectedGroups === 0) this.armNoDataTimer()
+      } else {
+        this.clearSettleTimer()
+        this.clearMaxTimer()
+        this.clearNoDataTimer()
+      }
     }
     this.publish()
   }
@@ -219,6 +254,9 @@ export class InitialSyncTracker {
     this.clearNoDataTimer()
     this.noDataTimer = setTimeout(() => {
       this.noDataTimer = null
+      // „Es kam nichts" gilt nur, wenn auch kein Dokument offen gemeldet ist.
+      // Ein offener Rahmen ist Nachschub, auf den zu warten sich lohnt.
+      if (this.openDocs.size > 0) return
       this.finish()
     }, this.noDataMs)
   }

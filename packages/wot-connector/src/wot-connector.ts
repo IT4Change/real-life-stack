@@ -402,6 +402,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
    */
   private authExpectsRemoteData = true
   private restoreSpacesRunner: CoalescedRunner | null = null
+  private syncFrameUnsub: (() => void) | null = null
+  /** Monotones Token je Dokument — nur die jüngste Auswertung darf publizieren. */
+  private readonly syncFrameTokens = new Map<string, number>()
   private privateSpaceReconcile: Promise<void> = Promise.resolve()
   private contactsUnsub: (() => void) | null = null
   private attestationsUnsub: (() => void) | null = null
@@ -539,6 +542,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.personalDocUnsub?.()
     this.restoreSpacesRunner?.cancel()
     this.restoreSpacesRunner = null
+    this.syncFrameUnsub?.()
+    this.syncFrameUnsub = null
+    this.syncFrameTokens.clear()
     this.initialSync.end()
     this.contactsUnsub?.()
     this.attestationsUnsub?.()
@@ -699,6 +705,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.personalDocUnsub?.()
     this.restoreSpacesRunner?.cancel()
     this.restoreSpacesRunner = null
+    this.syncFrameUnsub?.()
+    this.syncFrameUnsub = null
+    this.syncFrameTokens.clear()
     this.initialSync.end()
     this.inboxAttestationUnsub?.()
     this.inboxAttestationUnsub = null
@@ -1885,6 +1894,22 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       void this.applyTransportDeliveryReceipt(receipt)
     })
 
+    // VOR jedem Sync-Start: der PersonalDoc-Logsync beginnt in
+    // initNamespacedYjsPersonalDoc(), der Space-Sync in replication.start().
+    // Der Adapter puffert nur, solange NIEMAND zuhört — sobald diese beiden
+    // ihre Handler haben, werden Antworten nicht mehr nachgeliefert. Wer sich
+    // später anmeldet, verpasst genau die Runden des Erstsyncs, um die es hier
+    // geht. Und diese Runtime beginnt jetzt: alte Belege verwerfen, Sperre auf.
+    //
+    // Hier registrieren ist auch der sichere Zeitpunkt: `onMessage()` LEERT
+    // einen vorhandenen Frühpuffer in den neuen Handler. Vor `connect()` ist
+    // der Puffer garantiert leer, wir nehmen also niemandem etwas weg.
+    this.initialSync.prepare()
+    this.syncFrameUnsub = this.outboxAdapter.onMessage((message: WireMessage) => {
+      const syncFrame = readSyncResponse(message)
+      if (syncFrame) void this.noteSyncFrame(syncFrame)
+    })
+
     this.inboxReception = new InboxReceptionHost({
       messaging: this.outboxAdapter,
       identity: this.identity,
@@ -1977,12 +2002,6 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // Transitional non-membership messages (currently profile-update) remain
     // separate from inbox/1.0. Membership is owned by YjsReplicationAdapter.
     this.outboxAdapter.onMessage(async (message: WireMessage) => {
-      // Mitlesen, nicht beantworten: die Sync-Antwort des Relays sagt mit
-      // `truncated`, ob für ein Dokument noch eine Seite folgt. Das ist die
-      // einzige belastbare Fortschrittsaussage, die die App erreichen kann —
-      // core hält sie sonst im LogSyncCoordinator (web-of-trust#343, rls#265).
-      const syncFrame = readSyncResponse(message)
-      if (syncFrame) void this.noteSyncFrame(syncFrame)
       if (!isDidcommMessage(message)) await this.handleIncomingMessage(message as MessageEnvelope)
     })
 
@@ -1997,13 +2016,16 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // which would mutate PersonalDoc and create an infinite loop).
     // Gebündelt: restoreSpacesFromMetadata() läuft seriell über ALLE Spaces,
     // die PersonalDoc feuert beim Erstsync im Millisekundentakt (rls#265).
-    this.restoreSpacesRunner = createCoalescedRunner(async () => {
-      const p = this.replication?.restoreSpacesFromMetadata?.()
-      if (!p) return
-      await p
-      await this.queuePrivateSpaceReconcile({ createIfMissing: false })
-        .catch((err) => console.error("[WotConnector] private space reconciliation failed", err))
-    }, RESTORE_SPACES_COALESCE_MS)
+    // Ein bereits laufender Flight aus der VORIGEN Runtime kann `cancel()`
+    // nicht mehr stoppen — cancel beendet nur Timer und Vormerkung. Also muss
+    // jeder Flight seine Runtime festhalten und nach der Await-Grenze prüfen,
+    // ob er noch in ihr steht: sonst reconciled eine alte Fortsetzung auf dem
+    // PersonalDoc/Replication-Stack der NEUEN Identität.
+    this.restoreSpacesRunner?.cancel()
+    this.restoreSpacesRunner = createCoalescedRunner(
+      () => this.runRestoreSpacesFlight(),
+      RESTORE_SPACES_COALESCE_MS,
+    )
     const restoreSpacesRunner = this.restoreSpacesRunner
     this.personalDocUnsub = onYjsPersonalDocChange(() => {
       this.initialSync.noteActivity()
@@ -2956,7 +2978,36 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
    * Deshalb kann die Mitgliedschaftsliste noch wachsen, obwohl der Relay
    * „letzte Seite" gemeldet hat.
    */
+  /**
+   * Ein Durchlauf der PersonalDoc-getriebenen Space-Wiederherstellung.
+   *
+   * Hält Generation UND Replication-Instanz fest und prüft nach jeder
+   * Await-Grenze, ob er noch in derselben Runtime steht. `cancel()` am Runner
+   * beendet nur Timer und Vormerkung — ein bereits laufender Flight läuft
+   * weiter, und ein Identitätswechsel während des Awaits würde die alte
+   * Fortsetzung sonst auf dem neuen Stack reconcilen lassen.
+   */
+  private async runRestoreSpacesFlight(): Promise<void> {
+    const generation = this.runtimeGeneration
+    const replication = this.replication
+    const inThisRuntime = () =>
+      generation === this.runtimeGeneration && replication === this.replication
+    if (!replication?.restoreSpacesFromMetadata || !inThisRuntime()) return
+    await replication.restoreSpacesFromMetadata()
+    if (!inThisRuntime()) return
+    await this.queuePrivateSpaceReconcile({ createIfMissing: false })
+      .catch((err) => console.error("[WotConnector] private space reconciliation failed", err))
+  }
+
   private async noteSyncFrame(frame: SyncResponseObservation): Promise<void> {
+    // Der Head-Vergleich ist asynchron (IndexedDB). Ohne Ordnung könnte die
+    // Fortsetzung eines ÄLTEREN Rahmens nach einem neueren fertig werden und
+    // dessen Zustand überschreiben — ein „eingeholt" von vorhin würde ein
+    // aktuelles „steht noch aus" löschen. Ein monotones Token je Dokument
+    // sorgt dafür, dass nur die jüngste Auswertung veröffentlicht wird.
+    const token = (this.syncFrameTokens.get(frame.docId) ?? 0) + 1
+    this.syncFrameTokens.set(frame.docId, token)
+
     let outstanding = frame.truncated
     if (!outstanding && this.docLogStore) {
       try {
@@ -2966,6 +3017,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
         // Kein lokaler Stand lesbar — dann bleibt es bei `truncated`.
       }
     }
+    if (this.syncFrameTokens.get(frame.docId) !== token) return
     this.initialSync.noteDocSync({ docId: frame.docId, outstanding })
   }
 
@@ -4253,6 +4305,14 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
   private async teardownRuntimeForIdentitySwitch(): Promise<void> {
     this.invalidateRuntimeGeneration()
+    // Auch hier: vorgemerkte Restore-Läufe verwerfen und die Erstsync-Anzeige
+    // der alten Identität schliessen, bevor die neue Runtime steht.
+    this.restoreSpacesRunner?.cancel()
+    this.restoreSpacesRunner = null
+    this.syncFrameUnsub?.()
+    this.syncFrameUnsub = null
+    this.syncFrameTokens.clear()
+    this.initialSync.end()
     this.inboxAttestationUnsub?.()
     this.inboxReceiptUnsub?.()
     this.deliveryReceiptUnsub?.()

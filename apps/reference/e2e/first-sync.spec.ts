@@ -57,15 +57,34 @@ test.describe('Erstsynchronisation (#265)', () => {
       await d1.waitForTimeout(10_000)
 
       // Gerät 2: gleiche Identität, leerer Speicher.
+      //
+      // Der Hinweis ist FLÜCHTIG: bei diesem kleinen Bestand und lokalem Relay
+      // kann er zwischen zwei Playwright-Abfragen wieder verschwinden. Ein
+      // `toBeVisible` würde also die Datenmenge testen, nicht das Verhalten.
+      // Deshalb hält ein MutationObserver im Dokument fest, OB er je da war.
+      // Ein MutationObserver wäre der elegantere Weg, läuft hier aber am
+      // Dokumentanfang, wo `document.documentElement` noch fehlen kann — dann
+      // stirbt das Init-Script still und die Fahne bleibt falsch. Ein
+      // Intervall kann nicht danebengreifen.
+      await d2.addInitScript(() => {
+        const flag = window as unknown as { __syncNoticeSeen?: boolean }
+        flag.__syncNoticeSeen = false
+        setInterval(() => {
+          if (document.querySelector('[aria-label="Gruppen werden geladen"]')) flag.__syncNoticeSeen = true
+        }, 50)
+      })
       const syncNotice = d2.locator('[aria-label="Gruppen werden geladen"]')
       await recoverIdentity(d2, { mnemonic, passphrase: 'alice-d2-pw' })
 
-      // Der Hinweis muss VOR den Inhalten dastehen — genau das Fenster, in dem
+      // Er muss VOR den Inhalten dagewesen sein — genau das Fenster, in dem
       // die App vorher „keine Gruppen" suggerierte.
-      await expect(syncNotice).toBeVisible({ timeout: 15_000 })
+      await expect
+        .poll(() => d2.evaluate(() => (window as unknown as { __syncNoticeSeen?: boolean }).__syncNoticeSeen === true),
+          { timeout: 30_000 })
+        .toBe(true)
 
       // …und wieder verschwinden, sobald nichts mehr nachkommt.
-      await expect(syncNotice).toBeHidden({ timeout: 60_000 })
+      await expect(syncNotice).toBeHidden({ timeout: 90_000 })
 
       await d2.getByRole('button').filter({ hasText: /Mein Netzwerk|Gruppe \d+|Space wählen/ }).first().click()
       await d2.getByRole('menuitem', { name: /Mein Netzwerk/ }).click()

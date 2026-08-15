@@ -368,6 +368,8 @@ function createFakeConnectorForLogout() {
     spacesSubscriptionUnsub: vi.fn(),
     personalDocUnsub: vi.fn(),
     restoreSpacesRunner: { cancel: vi.fn() },
+    syncFrameUnsub: vi.fn(),
+    syncFrameTokens: new Map<string, number>(),
     initialSync: new InitialSyncTracker(),
     replication: { stop: vi.fn(async () => {}) },
     outboxAdapter: { disconnect: vi.fn(async () => {}) },

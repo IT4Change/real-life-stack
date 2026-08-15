@@ -220,6 +220,46 @@ describe("InitialSyncTracker", () => {
     expect(t.observe().current.active).toBe(false)
   })
 
+  it("behält Belege, die zwischen prepare() und begin() eintreffen", () => {
+    const t = tracker()
+    t.prepare()
+    // Der Relay antwortet, bevor der lokale Lesevorgang durch ist — genau das
+    // Fenster, in dem PersonalDoc- und Space-Sync bereits laufen.
+    t.noteDocSync({ docId: "personal", outstanding: true })
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+
+    vi.advanceTimersByTime(19_999)
+    expect(t.observe().current.active).toBe(true)
+  })
+
+  it("verwirft beim Identitätswechsel den Stand der vorigen Identität", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 3, expected: 9 })
+    t.end()
+
+    t.prepare()
+    expect(t.observe().current.loadedGroups).toBe(0)
+    expect(t.observe().current.expectedGroups).toBeNull()
+
+    // Und der alte Beleg darf die neue Runtime nicht am Laufen halten.
+    t.begin({ expectRemoteData: false, localGroups: 0 })
+    vi.advanceTimersByTime(60_000)
+    expect(t.observe().current.active).toBe(false)
+  })
+
+  it("hält ohne Verbindung ALLE Uhren an, nicht nur das Ruhefenster", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setRelayConnected(false)
+
+    // Offline verstreicht mehr als jede Frist — trotzdem darf nichts ablaufen,
+    // sonst ist die Anzeige nach dem Reconnect schon verbraucht.
+    vi.advanceTimersByTime(120_000)
+    t.setRelayConnected(true)
+    expect(t.observe().current.active).toBe(true)
+  })
+
   it("schaltet beim Abmelden ab und lässt keinen Timer zurück", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })

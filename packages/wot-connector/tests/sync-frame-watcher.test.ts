@@ -23,6 +23,17 @@ describe("readSyncResponse", () => {
     expect(readSyncResponse({ type: SYNC_RESPONSE_MESSAGE_TYPE })).toBeNull()
   })
 
+  it("verwirft einen Rahmen mit kaputten heads ganz", () => {
+    // Ein teilweise gelesener Stand ist gefährlicher als keiner: fehlt der
+    // Eintrag des Geräts, das vorausliegt, hiesse „eingeholt" — und die
+    // Anzeige endete mit einem echten Rückstand auf dem Gerät.
+    expect(readSyncResponse(frame({ docId: "d", entries: [], heads: { a: "3" }, truncated: false }))).toBeNull()
+    expect(readSyncResponse(frame({ docId: "d", entries: [], heads: [1, 2], truncated: false }))).toBeNull()
+    expect(readSyncResponse(frame({ docId: "d", entries: [], heads: 5, truncated: false }))).toBeNull()
+    expect(readSyncResponse(frame({ docId: "d", entries: [], heads: { a: Number.NaN }, truncated: false }))).toBeNull()
+    expect(readSyncResponse(frame({ docId: "d", entries: [], truncated: false }))).toBeNull()
+  })
+
   it("verwirft Rahmen ohne belastbare Felder, statt sie zu raten", () => {
     // Ein fehlendes `truncated` als „fertig" zu lesen wäre genau die Sorte
     // Annahme, die die Anzeige vorher zu früh beendet hat.
