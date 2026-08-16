@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { InitialSyncState } from "@real-life-stack/data-interface"
 import { hasInitialSync } from "@real-life-stack/data-interface"
 import { useConnector } from "./connector-context"
@@ -14,7 +14,13 @@ const NOT_SYNCING: InitialSyncState = { active: false, loadedGroups: 0, expected
  */
 export function useInitialSync(): InitialSyncState {
   const connector = useConnector()
-  const observable = hasInitialSync(connector) ? connector.observeInitialSync() : null
+  // Über den Connector gemerkt, statt darauf zu vertrauen, dass jede künftige
+  // Implementierung dieselbe Instanz zurückgibt: eine neue Instanz je Render
+  // würde den Effekt in jedem Durchlauf ab- und neu abonnieren.
+  const observable = useMemo(
+    () => (hasInitialSync(connector) ? connector.observeInitialSync() : null),
+    [connector],
+  )
 
   const [state, setState] = useState<InitialSyncState>(observable?.current ?? NOT_SYNCING)
 

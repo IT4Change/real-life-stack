@@ -473,6 +473,20 @@ export interface InitialSyncState {
  * Connectoren, die einen Erstsync kennen. Backends, die synchron oder in einem
  * Zug laden (Local, Mock, Supabase), implementieren das bewusst NICHT — dort
  * gibt es kein Fenster, in dem „leer" gelogen wäre.
+ *
+ * Vertrag der Implementierung:
+ *
+ * - **Stabile Referenz.** `observeInitialSync()` gibt über die Lebensdauer des
+ *   Connectors dieselbe Observable zurück; Aufrufer dürfen sie als Dependency
+ *   verwenden.
+ * - **An den Connector-Lebenszyklus gebunden.** Der Zustand gilt für die
+ *   aktuelle Sitzung. Ein Identitätswechsel setzt ihn zurück, statt Zahlen der
+ *   vorigen Identität weiterzureichen.
+ * - **Nach dem Teardown eingefroren.** Nach Logout oder Dispose ändert sich
+ *   nichts mehr — auch nicht durch Rückläufer aus der abgeräumten Runtime.
+ * - **`active` ist eine Aussage über Belege, keine Vorhersage.** `true` heisst
+ *   „es fehlt nachweislich noch etwas", nicht „gleich fertig". Wer keine
+ *   belastbare Aussage treffen kann, meldet `false`.
  */
 export interface InitialSyncCapable {
   observeInitialSync(): Observable<InitialSyncState>

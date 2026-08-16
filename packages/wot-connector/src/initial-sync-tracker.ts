@@ -191,6 +191,10 @@ export class InitialSyncTracker {
    * persönlichen Dokuments, `null` solange die noch nichts hergibt.
    */
   setGroupCounts({ loaded, expected }: { loaded: number; expected: number | null }): void {
+    // Nach dem Teardown ist der Zustand eingefroren — ein Zähler, der noch aus
+    // der abgeräumten Runtime herausfällt, darf auch die Zahlen nicht mehr
+    // ändern, nicht nur die Anzeige.
+    if (this.stopped) return
     if (loaded === this.loadedGroups && expected === this.expectedGroups) return
     this.loadedGroups = loaded
     this.expectedGroups = expected
@@ -204,7 +208,7 @@ export class InitialSyncTracker {
     // zu sein. Das ist der Grund, warum hier nichts vorhergesagt werden muss:
     // die Aussage lautet nicht „wir sind gleich fertig", sondern „es fehlt
     // nachweislich etwas".
-    if (!this.stopped && !this.expecting && expected !== null && expected > loaded) {
+    if (!this.expecting && expected !== null && expected > loaded) {
       this.expecting = true
       this.armMaxTimer()
     }
@@ -215,6 +219,7 @@ export class InitialSyncTracker {
   }
 
   setRelayConnected(connected: boolean): void {
+    if (this.stopped) return
     if (connected === this.relayConnected) return
     this.relayConnected = connected
     if (this.expecting) {
@@ -247,8 +252,15 @@ export class InitialSyncTracker {
     this.publish()
   }
 
+  /**
+   * Alle drei Fristen werden zentral hier gestellt — und NUR bei bestehender
+   * Verbindung. Ohne Relay kann nichts eintreffen; eine Frist, die währenddessen
+   * verstreicht, misst nichts und würde den Erstsync beenden, bevor er
+   * anfangen konnte (Login im Offline-Zustand). Der Reconnect stellt sie neu.
+   */
   private armSettleTimer(): void {
     this.clearSettleTimer()
+    if (!this.relayConnected) return
     this.settleTimer = setTimeout(() => {
       this.settleTimer = null
       this.settle()
@@ -258,6 +270,7 @@ export class InitialSyncTracker {
   /** Wartefenster auf die Mitgliedschaftsliste; endet, sobald sie etwas nennt. */
   private armNoDataTimer(): void {
     this.clearNoDataTimer()
+    if (!this.relayConnected) return
     this.noDataTimer = setTimeout(() => {
       this.noDataTimer = null
       // „Es kam nichts" gilt nur, wenn auch kein Dokument offen gemeldet ist.
@@ -269,6 +282,7 @@ export class InitialSyncTracker {
 
   private armMaxTimer(): void {
     this.clearMaxTimer()
+    if (!this.relayConnected) return
     this.maxTimer = setTimeout(() => {
       this.maxTimer = null
       this.finish()

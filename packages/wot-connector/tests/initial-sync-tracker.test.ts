@@ -266,6 +266,23 @@ describe("InitialSyncTracker", () => {
     expect(t.observe().current.active).toBe(false)
   })
 
+  it("startet die Fristen erst beim Reconnect, wenn der Login schon offline beginnt", () => {
+    const t = tracker()
+    // Realer Fall: die App startet ohne Verbindung. Bis der Relay da ist,
+    // KANN nichts eintreffen — es darf also auch keine Frist verstreichen.
+    t.setRelayConnected(false)
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    expect(t.observe().current.active).toBe(false)
+
+    vi.advanceTimersByTime(120_000)
+    t.setRelayConnected(true)
+    expect(t.observe().current.active).toBe(true)
+
+    // Und ab jetzt laufen sie normal weiter.
+    vi.advanceTimersByTime(8000)
+    expect(t.observe().current.active).toBe(false)
+  })
+
   it("hält ohne Verbindung ALLE Uhren an, nicht nur das Ruhefenster", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
@@ -289,11 +306,17 @@ describe("InitialSyncTracker", () => {
   it("lässt sich nach dem Abmelden nicht von einem Nachzügler wiederbeleben", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setGroupCounts({ loaded: 2, expected: 6 })
     t.end()
-    // Ein Zähler, der noch aus dem Teardown herausfällt, darf keine Anzeige
-    // über einer abgemeldeten App aufspannen.
+    const afterEnd = { ...t.observe().current }
+
+    // Ein Zähler, der noch aus dem Teardown herausfällt, darf den abgemeldeten
+    // Zustand NICHT mehr anfassen — auch nicht die Zahlen.
     t.setGroupCounts({ loaded: 0, expected: 5 })
-    expect(t.observe().current.active).toBe(false)
+    t.noteDocSync({ docId: "spaet", outstanding: true })
+    t.setRelayConnected(false)
+
+    expect(t.observe().current).toEqual(afterEnd)
     expect(vi.getTimerCount()).toBe(0)
   })
 
