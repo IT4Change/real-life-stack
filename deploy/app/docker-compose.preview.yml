@@ -1,0 +1,30 @@
+# Lokale Vorschau — zum Gestalten von Landingpage und Branding.
+#
+#   docker compose -f docker-compose.preview.yml up -d
+#   → http://localhost:8080
+#
+# Wie docker-compose.yml image-only: die Vorschau soll genau das zeigen, was
+# spaeter laeuft, und ohne Stack-Checkout funktionieren.
+#
+# Bewusst eine eigene Datei statt eines Profils: Compose loest Variablen fuer
+# die GANZE Datei auf, unabhaengig vom aktiven Profil. Die Pflichtangabe
+# RLS_DOMAIN in docker-compose.yml wuerde also auch die Vorschau blockieren —
+# und zum Ausprobieren soll niemand erst eine Domain erfinden muessen.
+
+services:
+  app:
+    # Zum Ausprobieren der neueste Stand; fuer den Betrieb wird gepinnt.
+    image: ghcr.io/real-life-org/rls-app:${RLS_IMAGE_TAG:-edge}
+    ports:
+      - "${RLS_PORT:-8080}:8080"
+    environment:
+      RLS_RELAY_URL: ${RLS_RELAY_URL:-wss://relay.web-of-trust.de}
+      RLS_PROFILES_URL: ${RLS_PROFILES_URL:-}
+      RLS_DEFAULT_CONNECTOR: ${RLS_DEFAULT_CONNECTOR:-wot}
+      RLS_SUPABASE_URL: ${RLS_SUPABASE_URL:-}
+      RLS_SUPABASE_ANON_KEY: ${RLS_SUPABASE_ANON_KEY:-}
+      RLS_APP_NAME: ${RLS_APP_NAME:-Vorschau}
+      RLS_FAVICON_URL: ${RLS_FAVICON_URL:-/branding/favicon.svg}
+    volumes:
+      - ./landing:/srv/landing:ro
+      - ./branding:/srv/branding:ro

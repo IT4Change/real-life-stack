@@ -1,0 +1,18 @@
+# Build-Override — nur im Stack-Repo sinnvoll.
+#
+#   docker compose -f docker-compose.preview.yml -f docker-compose.build.yml up --build
+#
+# Baut das Image aus dem Monorepo, statt es zu ziehen. Eine Instanz braucht
+# diese Datei nie: sie enthaelt keinen Stack-Code und kann deshalb auch
+# nichts bauen.
+#
+# Der Kontext ist der Repo-Stamm, weil der Build das ganze Workspace-Setup
+# braucht (pnpm-workspace.yaml, packages/*). Er stimmt nur, solange diese
+# Datei unter deploy/app/ im Stack liegt.
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/app/Dockerfile
+    image: ghcr.io/real-life-org/rls-app:dev

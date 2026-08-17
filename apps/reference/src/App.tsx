@@ -65,6 +65,7 @@ import {
   AuthScreen,
   AddContactDialog,
   IncomingContactRequestDialog,
+  getRuntimeConfig,
 } from "@real-life-stack/toolkit"
 import type { DataInterface, User } from "@real-life-stack/data-interface"
 import { isAuthenticatable, hasMessaging, hasEncounterVerification, hasProfile, moduleHintsFor } from "@real-life-stack/data-interface"
@@ -846,9 +847,12 @@ async function createConnector(type: string): Promise<DataInterface> {
     const { WotConnector } = await import("@real-life-stack/wot-connector")
     // 0.3.0: vaultUrl entfernt (Connector nutzt kein Vault); Defaults auf die
     // aktiven web-of-trust.de-Dienste (utopia-lab-Legacy ist abgeschaltet).
+    // Endpunkte kommen zur Laufzeit (Spec 11) — dasselbe Artefakt bedient
+    // damit jede Instanz; die VITE_-Werte tragen als Stufe 2 weiter.
+    const { relayUrl, profilesUrl } = getRuntimeConfig().endpoints
     const connector = new WotConnector({
-      relayUrl: import.meta.env.VITE_RELAY_URL ?? "wss://relay.web-of-trust.de",
-      profilesUrl: import.meta.env.VITE_PROFILE_SERVICE_URL ?? "https://profiles.web-of-trust.de",
+      relayUrl: relayUrl ?? "wss://relay.web-of-trust.de",
+      profilesUrl: profilesUrl ?? "https://profiles.web-of-trust.de",
     })
     await connector.init()
     return connector
@@ -860,9 +864,10 @@ async function createConnector(type: string): Promise<DataInterface> {
   }
   if (type === "supabase") {
     const { createSupabaseConnector } = await import("@real-life-stack/supabase-connector")
+    const { supabaseUrl, supabaseAnonKey } = getRuntimeConfig().endpoints
     const connector = createSupabaseConnector(
-      import.meta.env.VITE_SUPABASE_URL ?? "http://127.0.0.1:54321",
-      import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+      supabaseUrl ?? "http://127.0.0.1:54321",
+      supabaseAnonKey ?? "",
     )
     await connector.init()
     // No auto-login: the AuthGate presents the generic AuthScreen (email
@@ -880,8 +885,9 @@ const initialDevMode = new URLSearchParams(window.location.search).has('dev')
 
 function getInitialConnectorId(): string {
   const params = new URLSearchParams(window.location.search)
-  const envDefault = import.meta.env.VITE_DEFAULT_CONNECTOR as string | undefined
-  return params.get("connector") ?? envDefault ?? localStorage.getItem(STORAGE_KEY_CONNECTOR) ?? "wot"
+  // `?connector=` sticht die Instanz-Vorgabe (Spec 11).
+  const configured = getRuntimeConfig().defaultConnector
+  return params.get("connector") ?? configured ?? localStorage.getItem(STORAGE_KEY_CONNECTOR) ?? "wot"
 }
 
 // Lazy-load the DIDAuthScreen to keep WoT bundle separate
