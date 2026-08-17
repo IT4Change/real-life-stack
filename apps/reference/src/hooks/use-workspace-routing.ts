@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
-import { Newspaper, Map as MapIcon, Calendar, Columns3, List, Waves, Share2 } from "lucide-react"
 import {
   useConnector,
   useGroups,
@@ -8,6 +7,10 @@ import {
   useItem,
   getSpacePrimaryColor,
   getReadableTextColor,
+  moduleIds,
+  getModule,
+  resolveSpaceModules,
+  resolveActiveModule,
   type Workspace,
   type Module,
 } from "@real-life-stack/toolkit"
@@ -17,27 +20,16 @@ import { hasGroups, moduleHintsFor, type ModuleHints } from "@real-life-stack/da
 export const STORAGE_KEY_GROUP = "rls-active-group"
 export const STORAGE_KEY_MODULE = "rls-active-module"
 
-const MODULE_ICONS: Record<string, typeof Newspaper> = {
-  feed: Newspaper,
-  map: MapIcon,
-  calendar: Calendar,
-  kanban: Columns3,
-  collection: List,
-  resonance: Waves,
-  graph: Share2,
-}
-
-const MODULE_LABELS: Record<string, string> = {
-  feed: "Feed",
-  map: "Karte",
-  calendar: "Kalender",
-  kanban: "Kanban",
-  collection: "Liste",
-  resonance: "Resonanz",
-  graph: "Graph",
-}
-
-export const VALID_MODULES = ["feed", "kanban", "calendar", "map", "collection", "resonance", "graph"]
+// Modul-Ids und Anzeigenamen kommen aus dem Register — Spec 01,
+// "Modul-Register", Regel 1: keine zweite Aufzaehlung. Frueher standen hier
+// eine eigene Liste UND eigene Labels, unabhaengig vom Katalog des
+// Space-Dialogs; die beiden sind auseinandergelaufen.
+/**
+ * Die gueltigen Modul-Segmente. Als FUNKTION, nicht als Konstante: ein
+ * Snapshot neben dem Import sieht die App-Schicht nicht, die erst in
+ * main.tsx gebunden wird (Review #277).
+ */
+export const validModules = () => moduleIds()
 
 // The aggregate ("Mein Netzwerk") keeps its internal scope id `__overview__`
 // (used across the module views) but appears as `network` in the URL.
@@ -74,6 +66,26 @@ export function resolveDefaultModule(itemOrHints: Item | ModuleHints, available:
   return available.includes(preferred) ? preferred : (available[0] ?? "feed")
 }
 
+/**
+ * Der kanonische Pfad fuer einen Redirect.
+ *
+ * Query und Fragment gehoeren zum Ort, nicht zum Modul: `?connector=` waehlt
+ * den Connector, `?dev` schaltet den Entwicklermodus. Ein Redirect, der sie
+ * abschneidet, aendert stumm das Verhalten der Seite — darum werden sie
+ * durchgereicht statt neu gebildet.
+ *
+ * Als schlichte Funktion exportiert, damit die Regel ohne Router pruefbar ist.
+ */
+export function canonicalPath(
+  slug: string,
+  moduleId: string,
+  itemId: string | undefined,
+  search: string,
+  hash: string,
+): string {
+  return `/${slug}/${moduleId}${itemId ? `/${itemId}` : ""}${search}${hash}`
+}
+
 export interface WorkspaceRouting {
   groups: Group[]
   /** Overview pseudo-workspace + one workspace per group. */
@@ -105,7 +117,7 @@ export interface WorkspaceRouting {
  *   /{scope}/{module}/{itemId} → module + focused item (canonical)
  *   /{scope}/{itemId}          → module-less item → resolveDefaultModule → redirect
  * `scope` is a space id, or `network` for the aggregate. The segment after the
- * scope is a module iff it is in VALID_MODULES, else a (module-less) item id —
+ * scope is a module iff the register knows it, else a (module-less) item id —
  * generated ids never collide with the fixed module names.
  *
  * Pure glue — no rendering, no dialog state. Home composes the shell around this.
@@ -123,7 +135,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   const currentGroup = useCurrentGroup()
 
   // The segment after the scope is a module (known enum) or a module-less item id.
-  const segIsModule = !!urlSeg && VALID_MODULES.includes(urlSeg)
+  const segIsModule = !!urlSeg && validModules().includes(urlSeg)
   const urlModule = segIsModule ? urlSeg : undefined
   const moduleLessItemId = !segIsModule ? urlSeg : undefined
   // Canonical focused item: the 3rd segment (/{scope}/{module}/{itemId}).
@@ -168,15 +180,21 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     return workspaces[0] ?? null
   }, [urlSpaceId, workspaces, groupsLoading])
 
-  // Derive active module from the URL (with localStorage fallback → "feed").
-  const activeModule = urlModule ?? localStorage.getItem(STORAGE_KEY_MODULE) ?? "feed"
-
   // Available modules for the active space (overview = all modules).
   const isOverview = activeWorkspace?.scope === "overview"
   const activeGroup = isOverview ? null : groups.find((g) => g.id === activeWorkspace?.id)
-  const groupModuleIds = isOverview
-    ? VALID_MODULES
-    : (activeGroup?.data?.modules as string[] | undefined) ?? VALID_MODULES
+  const groupModuleIds = resolveSpaceModules(
+    isOverview ? undefined : (activeGroup?.data?.modules as string[] | undefined),
+  )
+
+  // Aktives Modul aus URL, sonst zuletzt benutztes. Die Aufloesung laeuft
+  // ueber dieselbe zentrale Regel wie jede andere Auswahl: eine gespeicherte
+  // Vorauswahl aus einer anderen App-Version oder aus einem Space, der das
+  // Modul nicht fuehrt, darf nicht zu einem leeren Tab werden.
+  const activeModule = resolveActiveModule(
+    urlModule ?? localStorage.getItem(STORAGE_KEY_MODULE) ?? undefined,
+    isOverview ? undefined : (activeGroup?.data?.modules as string[] | undefined),
+  )
 
   // Module-less item link (/{scope}/{itemId}): resolve the item's default module,
   // then redirect to the canonical /{scope}/{module}/{itemId}. The lookup must run
@@ -197,22 +215,39 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   useEffect(() => {
     if (workspaces.length === 0 || !activeWorkspace) return
     const slug = scopeToSlug(activeWorkspace.id)
+    // Query und Fragment gehoeren zum Ort, nicht zum Modul: `?connector=`
+    // waehlt den Connector, `?dev` schaltet den Entwicklermodus. Ein Redirect,
+    // der sie abschneidet, aendert stumm das Verhalten der Seite.
+    const { search, hash } = location
     // (a) No module/item segment (`/` or `/{scope}`) → default module.
     if (!urlSeg) {
-      navigate(`/${slug}/${activeModule}`, { replace: true })
+      navigate(canonicalPath(slug, activeModule, undefined, search, hash), { replace: true })
+      return
+    }
+    // (a2) Die URL nennt ein Modul, das dieser Space nicht fuehrt (oder das
+    // Register nicht kennt). resolveActiveModule hat dann etwas anderes
+    // gewaehlt — ohne diesen Redirect zeigte die URL /map, gerendert wuerde
+    // aber der Feed. Alles, was die URL liest (Verlinken, Zurueck, ein Pick
+    // auf der Karte), liefe gegen eine Flaeche, die gar nicht offen ist.
+    if (urlModule && urlModule !== activeModule) {
+      navigate(canonicalPath(slug, activeModule, urlItemId, search, hash), { replace: true })
       return
     }
     // (b) Module-less item — only once the scope is synced AND the lookup settled.
     if (moduleLessItemId && scopeSynced && !moduleLessLoading) {
       const mod = moduleLessItem
         ? resolveDefaultModule(moduleLessItem, groupModuleIds)
-        : (groupModuleIds[0] ?? "feed")
-      navigate(`/${slug}/${mod}/${moduleLessItemId}`, { replace: true })
+        : groupModuleIds[0]
+      navigate(canonicalPath(slug, mod, moduleLessItemId, search, hash), { replace: true })
     }
   }, [
     workspaces.length,
     activeWorkspace,
     urlSeg,
+    urlModule,
+    urlItemId,
+    location.search,
+    location.hash,
     activeModule,
     moduleLessItemId,
     scopeSynced,
@@ -236,9 +271,12 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   }, [activeWorkspace?.id, urlModule]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const modules: Module[] = useMemo(
+    // displayableModules zuerst: eine Id aus einer anderen App-Version bleibt
+    // gespeichert, bekommt aber keinen Tab (Spec 01, Regel 4). Ohne diesen
+    // Filter waere der Registerzugriff darunter undefined.
     () => groupModuleIds
-      .filter((id) => MODULE_ICONS[id])
-      .map((id) => ({ id, label: MODULE_LABELS[id] ?? id, icon: MODULE_ICONS[id] })),
+      .map((id) => getModule(id)!)
+      .map((m) => ({ id: m.id, label: m.label, icon: m.icon })),
     [groupModuleIds.join(",")] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
@@ -283,7 +321,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   // Switch workspace (keep the module if offered). Item focus is space-scoped → dropped.
   const handleWorkspaceChange = useCallback((workspace: Workspace) => {
     const group = groups.find((g) => g.id === workspace.id)
-    const mods = (group?.data?.modules as string[] | undefined) ?? VALID_MODULES
+    const mods = resolveSpaceModules(group?.data?.modules as string[] | undefined)
     const mod = mods.includes(activeModule) ? activeModule : (mods[0] ?? "feed")
     navigate(`/${scopeToSlug(workspace.id)}/${mod}`)
   }, [groups, activeModule, navigate])

@@ -8,7 +8,7 @@ import {
 } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { DRAFT_ITEM_ID } from "@real-life-stack/toolkit"
-import { VALID_MODULES } from "./use-workspace-routing"
+import { validModules } from "./use-workspace-routing"
 
 export interface ItemFocus {
   /** The currently focused item id from the URL (`/{scope}/{module}/{itemId}`), or undefined. */
@@ -30,7 +30,7 @@ const ItemFocusContext = createContext<ItemFocus | null>(null)
 /** Split a pathname into scope/module/item — module only when it's a real module. */
 export function parsePath(pathname: string): { scope?: string; module?: string; itemId?: string } {
   const [scope, seg, item] = pathname.split("/").filter(Boolean)
-  if (seg && VALID_MODULES.includes(seg)) return { scope, module: seg, itemId: item }
+  if (seg && validModules().includes(seg)) return { scope, module: seg, itemId: item }
   // Module-less or bare path — no module-focus context (e.g. the transient
   // `/{scope}/{itemId}` before use-workspace-routing redirects it).
   return { scope }

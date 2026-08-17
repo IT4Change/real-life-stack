@@ -1,13 +1,13 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import type { LucideIcon } from "lucide-react"
+import type { ModuleEntry } from "@/lib/module-register"
 
-export interface Module {
-  id: string
-  label: string
-  icon: LucideIcon
-}
+/**
+ * Was ein Tab braucht — abgeleitet vom Registereintrag (Spec 01), damit es
+ * keinen zweiten Icon-Vertrag gibt.
+ */
+export type Module = Pick<ModuleEntry, "id" | "label" | "icon">
 
 interface ModuleTabsProps {
   modules: Module[]

@@ -5,6 +5,8 @@ import App from './App'
 // Registers the app's type layer (statement) — must run before first render,
 // so every surface resolves the same register (spec 06).
 import './type-register'
+// Registers the app's module surfaces (spec 01) — must run before first render.
+import './module-register'
 import './index.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { checkForLiveUpdate } from './live-update'

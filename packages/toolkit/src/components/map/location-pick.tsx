@@ -4,7 +4,10 @@ export interface LatLng { lat: number; lng: number }
 export interface PickHandlers { onPick: (position: LatLng) => void; onCancel?: () => void }
 export interface LocationPickValue {
   isPicking: boolean
-  startPick: (handlers: PickHandlers) => void
+  /** `false`, wenn die Karte in diesem Space nicht erreichbar ist — dann beginnt kein Pick. */
+  startPick: (handlers: PickHandlers) => boolean
+  /** Ist die Karte in diesem Space erreichbar? Flaechen blenden den Pick sonst aus. */
+  canPick: boolean
   updatePick: (position: LatLng) => void
   confirmPick: () => void
   cancelPick: () => void
@@ -12,7 +15,8 @@ export interface LocationPickValue {
 
 const unavailablePick: LocationPickValue = {
   isPicking: false,
-  startPick: () => undefined,
+  startPick: () => false,
+  canPick: false,
   updatePick: () => undefined,
   confirmPick: () => undefined,
   cancelPick: () => undefined,
@@ -20,10 +24,16 @@ const unavailablePick: LocationPickValue = {
 const LocationPickContext = createContext<LocationPickValue>(unavailablePick)
 
 /** Shared map hand-off state. Navigation remains shell-owned through these two callbacks. */
-export function LocationPickProvider({ children, navigateToModule, currentModule }: {
+export function LocationPickProvider({ children, navigateToModule, currentModule, canOpenMap = true }: {
   children: ReactNode
   navigateToModule: (moduleId: string, opts?: { replace?: boolean }) => void
   currentModule: string
+  /**
+   * Fuehrt der aktuelle Space die Karte? Wenn nicht, darf ein Pick gar nicht
+   * erst beginnen: Er wartet darauf, dass `currentModule` zu "map" wird, und
+   * das geschieht dann nie — der Composer bliebe im Pick-Zustand haengen.
+   */
+  canOpenMap?: boolean
 }) {
   const [isPicking, setIsPicking] = useState(false)
   const handlers = useRef<PickHandlers | null>(null)
@@ -40,9 +50,15 @@ export function LocationPickProvider({ children, navigateToModule, currentModule
     if (restore) { try { current?.onCancel?.() } catch { /* a composer restore must not trap picking */ } }
     if (navigate && previous && previous !== "map") navigation.current(previous, { replace: true })
   }, [])
-  const startPick = useCallback((next: PickHandlers) => {
+  const reachable = useRef(canOpenMap)
+  reachable.current = canOpenMap
+  const startPick = useCallback((next: PickHandlers): boolean => {
+    // Ohne erreichbare Karte gar nicht anfangen — ein begonnener Pick, der
+    // die Karte nie sieht, laesst sich vom Nutzer nicht mehr beenden.
+    if (!reachable.current) return false
     handlers.current = next; origin.current = module.current; reachedMap.current = false; setIsPicking(true)
     if (module.current !== "map") navigation.current("map")
+    return true
   }, [])
   const updatePick = useCallback((position: LatLng) => handlers.current?.onPick(position), [])
   const confirmPick = useCallback(() => end(false, true), [end])
@@ -52,7 +68,7 @@ export function LocationPickProvider({ children, navigateToModule, currentModule
     if (currentModule === "map") reachedMap.current = true
     else if (reachedMap.current) end(true, false)
   }, [currentModule, end, isPicking])
-  const value = useMemo(() => ({ isPicking, startPick, updatePick, confirmPick, cancelPick }), [cancelPick, confirmPick, isPicking, startPick, updatePick])
+  const value = useMemo(() => ({ isPicking, canPick: canOpenMap, startPick, updatePick, confirmPick, cancelPick }), [canOpenMap, cancelPick, confirmPick, isPicking, startPick, updatePick])
   return <LocationPickContext.Provider value={value}>{children}</LocationPickContext.Provider>
 }
 

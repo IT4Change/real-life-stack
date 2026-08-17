@@ -1,8 +1,8 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import type { ModuleEntry } from "@/lib/module-register"
 import { MoreHorizontal } from "lucide-react"
-import type { LucideIcon } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,11 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "../primitives/dropdown-menu"
 
-export interface NavItem {
-  id: string
-  label: string
-  icon: LucideIcon
-}
+/** Wie `Module` vom Registereintrag abgeleitet — ein Icon-Vertrag, nicht drei. */
+export type NavItem = Pick<ModuleEntry, "id" | "label" | "icon">
 
 interface BottomNavProps {
   items: NavItem[]
