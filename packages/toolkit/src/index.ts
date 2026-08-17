@@ -25,6 +25,20 @@ export {
   type Branding,
 } from "./lib/runtime-config"
 export {
+  CORE_MODULES,
+  registerModules,
+  extendModules,
+  getModules,
+  getModule,
+  moduleIds,
+  defaultModuleIds,
+  displayableModules,
+  type ModuleEntry,
+  type ModuleFragment,
+  type ModuleViewProps,
+  type ModuleFill,
+} from "./lib/module-register"
+export {
   resolveIcon,
   registerIcon,
   getIcon,

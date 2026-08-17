@@ -147,6 +147,42 @@ Beispiele:
 | Quests | Quest-Übersicht, Questlog, QuestRuns, Evidence und Completion-Status | RLNP-Items und Confirmations |
 | Campaign View | Adventures, Campaigns und World State | Game-Projektionen über Items, Relations und Confirmations |
 
+## Modul-Register
+
+**Ein** kanonischer Eintrag pro Modul, geteilt von allen Flächen. Er beantwortet genau eine Frage — *was folgt daraus, dass ein Space dieses Modul führt?* — und beantwortet sie an genau einer Stelle.
+
+Motivation aus der Praxis: Dieselbe Frage wurde an fünf Stellen unabhängig beantwortet — Aktivierbarkeit im Space-Dialog, gültige Modul-Segmente im Routing, Anzeigenamen, Dispatch der Fläche und die Fallback-Liste der Benachrichtigungs-Navigation. Die Listen sind nachweislich auseinandergelaufen: `collection` und `graph` fehlten in der Benachrichtigungs-Liste, und ein neu gebautes Modul erschien in der Space-Übersicht, ließ sich aber in **keinem** Space aktivieren, weil der Eintrag im Space-Dialog fehlte. Beides ist lautlos passiert.
+
+Das Muster folgt dem Typ-Register aus [06-schema-composition.md](06-schema-composition.md) — mit einem Unterschied: Ein Modul ist vollständig eine Darstellungssache. Es braucht darum keine UI-freie Schicht in `data-interface`; das Register lebt im Toolkit, und Apps hängen ihre Flächen an die Ids.
+
+### Eintrag
+
+| Feld | Zweck |
+|---|---|
+| `id` | stabile Modul-Identität; zugleich URL-Segment und Schlüssel in `Group.data.modules` |
+| `label` | Anzeigename in Tabs und Space-Dialog |
+| `icon` | Modul-Icon |
+| `enabledByDefault` | ob ein neu angelegter Space das Modul führt |
+| `fill` | wie das Modul den Content-Bereich füllt: `container` oder `bleed` |
+| `maxWidth` | Container-Breite, nur bei `fill: "container"` |
+| `keepMounted` | Fläche im Baum halten statt beim Wechsel abzubauen — für Module, deren Aufbau teuer ist (Map: WebGL-Kontext, Worker, entfernter Style) |
+| `view` | die Fläche selbst; wird von der App beigesteuert, nicht vom Toolkit |
+
+### Regeln
+
+1. Das Register MUSS die **einzige** Quelle für die Frage sein, welche Module es gibt. Jede Fläche, die Module aufzählt, anbietet, benennt oder anzeigt, MUSS ihre Liste daraus ableiten. Eine zweite Aufzählung von Modul-Ids ist ein Fehler in dieser Spec.
+2. Ein Modul wird durch genau **einen** Registereintrag eingeführt. Schichten werden in der Reihenfolge **Core → App → Space** zusammengesetzt; eine bereits vergebene `id` ist ein Konflikt und MUSS abgelehnt werden. Ein Erweiterungsfragment ergänzt einen vorhandenen Eintrag additiv — insbesondere hängt die App ihre `view` an eine Core-Id.
+3. Welche Module ein Space **führt**, steht in `Group.data.modules` und bleibt Sache des Space. Das Register sagt, was es gibt und was ein neuer Space voreingestellt bekommt — nicht, was ein bestehender Space zeigt.
+4. Eine `id` in `Group.data.modules` ohne Registereintrag ist **kein Fehler**: Sie stammt aus einer anderen App-Version oder einem Modul, das diese App nicht kennt. Sie MUSS erhalten bleiben (nie stillschweigend entfernt) und DARF NICHT dargestellt werden. Zählungen und Garantien — etwa „mindestens ein Modul bleibt aktiv" — MÜSSEN die **darstellbaren** Einträge zählen, nie die rohe Liste.
+5. Ein Registereintrag ohne `view` MUSS sichtbar degradieren (Hinweis statt leerer Fläche). Ein Modul, das im Tab erscheint und dann nichts zeigt, ist schlimmer als eines, das fehlt.
+6. Das Register trägt **keine Aktivierungsregel**: Welche Items ein Modul zeigt, entscheidet Feld-Präsenz (siehe [06-schema-composition.md](06-schema-composition.md)), nie ein Eintrag hier.
+
+### Offener Punkt: Voreinstellung beim Anlegen eines Space
+
+Ein Connector, der einen Space anlegt, schreibt heute selbst eine Modul-Voreinstellung in `Group.data.modules` (`packages/wot-connector`). Das ist die letzte verbliebene Zweitliste — und sie liegt auf der falschen Seite der Grenze: Welche Oberflächen es gibt, ist Darstellungswissen und gehört nicht in einen Connector, der `data-interface` implementiert und das Toolkit nicht kennen darf.
+
+Auflösung ist, dass der Aufrufer die Voreinstellung mitgibt (`defaultModuleIds()` aus dem Register) und der Connector keine eigene Vorstellung davon hat. Bis dahin gilt: Eine dort gesetzte Id **muss** im Register existieren, sonst legt der Connector Spaces mit einem Modul an, das die App nicht zeigen kann.
+
 ## Module Components
 
 Module Components sind wiederverwendbare Bausteine innerhalb von Space Modules. Sie können in mehreren Modulen auftauchen, sind aber nicht selbst pro Space aktivierbare Oberflächen.

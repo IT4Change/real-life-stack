@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from "react"
-import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon, Waves, List, Share2, ChevronUp, ChevronDown, GripVertical } from "lucide-react"
+import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, ChevronUp, ChevronDown, GripVertical } from "lucide-react"
+import { getModule, getModules, defaultModuleIds, displayableModules } from "@/lib/module-register"
 import type { Group, ContactInfo } from "@real-life-stack/data-interface"
 import { useMembers } from "../../hooks/use-groups"
 import { resolveAdminView } from "../../lib/group-admin-view"
@@ -26,16 +27,10 @@ function getInitials(name: string): string {
     .toUpperCase()
 }
 
-const AVAILABLE_MODULES = [
-  { id: "feed", label: "Feed", icon: Newspaper },
-  { id: "kanban", label: "Kanban", icon: Columns3 },
-  { id: "calendar", label: "Kalender", icon: Calendar },
-  { id: "map", label: "Karte", icon: MapIcon },
-  // Opt-in only (not in DEFAULT_MODULES) — spec: docs/spec/modules/resonance.md.
-  { id: "resonance", label: "Resonanz", icon: Waves },
-  { id: "collection", label: "Liste", icon: List },
-  { id: "graph", label: "Graph", icon: Share2 },
-] as const
+// Modul-Katalog kommt aus dem Register — Spec 01, "Modul-Register", Regel 1:
+// keine zweite Aufzaehlung von Modul-Ids. Frueher stand hier eine eigene
+// Liste, und ein neu gebautes Modul liess sich dadurch in KEINEM Space
+// aktivieren, obwohl es in der Uebersicht erschien.
 
 /**
  * Move a module one position within the active list. `data.modules` is an
@@ -76,17 +71,18 @@ export function reorderModule(modules: readonly string[], id: string, toIndex: n
 
 /**
  * The subset of `data.modules` this dialog can actually render — unknown or
- * legacy ids have no entry in AVAILABLE_MODULES and produce no row. Guards
+ * legacy ids have no entry in the module register and produce no row. Guards
  * and positions MUST count this list, not the raw one: otherwise a legacy id
  * silently satisfies the "keep at least one module" rule and the admin can
  * remove the last VISIBLE module, leaving a space with no usable tab
  * (rls#249). Order is preserved.
  */
 export function knownModules(modules: readonly string[]): string[] {
-  return modules.filter((id) => AVAILABLE_MODULES.some((mod) => mod.id === id))
+  return displayableModules(modules)
 }
 
-const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
+// Voreinstellung fuer neue Spaces — ebenfalls aus dem Register.
+const DEFAULT_MODULES = defaultModuleIds()
 
 /**
  * Serialize saves so a slow older request can never overwrite a newer state:
@@ -658,7 +654,7 @@ export function GroupDialog({
               <Label className="text-xs text-muted-foreground">Module (ziehen zum Sortieren)</Label>
               <div className="mt-2 space-y-0.5" onDragOver={(e) => e.preventDefault()} onDrop={handleModuleDrop}>
                 {visibleModules.map((id, index) => {
-                  const mod = AVAILABLE_MODULES.find((m) => m.id === id)!
+                  const mod = getModule(id)!
                   const Icon = mod.icon
                   // Guard and positions count the VISIBLE rows — a legacy id
                   // must not silently satisfy "keep one module" (rls#249).
@@ -729,11 +725,11 @@ export function GroupDialog({
                   )
                 })}
               </div>
-              {AVAILABLE_MODULES.some((m) => !activeModules.includes(m.id)) && (
+              {getModules().some((m) => !activeModules.includes(m.id)) && (
                 <div className="mt-2">
                   <Label className="text-xs text-muted-foreground">Verfügbar</Label>
                   <div className="mt-1 flex flex-wrap gap-1">
-                    {AVAILABLE_MODULES.filter((m) => !activeModules.includes(m.id)).map((mod) => {
+                    {getModules().filter((m) => !activeModules.includes(m.id)).map((mod) => {
                       const Icon = mod.icon
                       return (
                         <button

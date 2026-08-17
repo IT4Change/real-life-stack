@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
-import { Newspaper, Map as MapIcon, Calendar, Columns3, List, Waves, Share2 } from "lucide-react"
 import {
   useConnector,
   useGroups,
@@ -8,6 +7,9 @@ import {
   useItem,
   getSpacePrimaryColor,
   getReadableTextColor,
+  moduleIds,
+  getModule,
+  displayableModules,
   type Workspace,
   type Module,
 } from "@real-life-stack/toolkit"
@@ -17,27 +19,11 @@ import { hasGroups, moduleHintsFor, type ModuleHints } from "@real-life-stack/da
 export const STORAGE_KEY_GROUP = "rls-active-group"
 export const STORAGE_KEY_MODULE = "rls-active-module"
 
-const MODULE_ICONS: Record<string, typeof Newspaper> = {
-  feed: Newspaper,
-  map: MapIcon,
-  calendar: Calendar,
-  kanban: Columns3,
-  collection: List,
-  resonance: Waves,
-  graph: Share2,
-}
-
-const MODULE_LABELS: Record<string, string> = {
-  feed: "Feed",
-  map: "Karte",
-  calendar: "Kalender",
-  kanban: "Kanban",
-  collection: "Liste",
-  resonance: "Resonanz",
-  graph: "Graph",
-}
-
-export const VALID_MODULES = ["feed", "kanban", "calendar", "map", "collection", "resonance", "graph"]
+// Modul-Ids und Anzeigenamen kommen aus dem Register — Spec 01,
+// "Modul-Register", Regel 1: keine zweite Aufzaehlung. Frueher standen hier
+// eine eigene Liste UND eigene Labels, unabhaengig vom Katalog des
+// Space-Dialogs; die beiden sind auseinandergelaufen.
+export const VALID_MODULES = moduleIds()
 
 // The aggregate ("Mein Netzwerk") keeps its internal scope id `__overview__`
 // (used across the module views) but appears as `network` in the URL.
@@ -236,9 +222,12 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   }, [activeWorkspace?.id, urlModule]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const modules: Module[] = useMemo(
-    () => groupModuleIds
-      .filter((id) => MODULE_ICONS[id])
-      .map((id) => ({ id, label: MODULE_LABELS[id] ?? id, icon: MODULE_ICONS[id] })),
+    // displayableModules zuerst: eine Id aus einer anderen App-Version bleibt
+    // gespeichert, bekommt aber keinen Tab (Spec 01, Regel 4). Ohne diesen
+    // Filter waere der Registerzugriff darunter undefined.
+    () => displayableModules(groupModuleIds)
+      .map((id) => getModule(id)!)
+      .map((m) => ({ id: m.id, label: m.label, icon: m.icon })),
     [groupModuleIds.join(",")] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
