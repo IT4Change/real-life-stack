@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest"
 import {
+  CARDLESS_ITEM_TYPES,
   isProject,
   isResource,
+  rendersAsCard,
+  SYSTEM_ITEM_TYPES,
   type GeoJSONGeometry,
   type Item,
   type KnownItemType,
@@ -40,5 +43,31 @@ describe("canonical item types", () => {
     expect(knownTypes).toEqual(["project", "resource", "relation"])
     expect(profile.displayName).toBe("Ada")
     expect(geometry.type).toBe("Polygon")
+  })
+})
+
+describe("rendersAsCard", () => {
+  it("accepts every type that stands on its own as a card", () => {
+    for (const type of ["post", "event", "place", "task", "person", "project", "resource", "statement"]) {
+      expect(rendersAsCard(type)).toBe(true)
+    }
+  })
+
+  it("rejects the types that only exist inside another item's card", () => {
+    // System types speak for someone (comment/reaction/relation), `feature`
+    // is a data-level geometry marker — spec 06.
+    for (const type of ["comment", "reaction", "relation", "feature"]) {
+      expect(rendersAsCard(type)).toBe(false)
+    }
+  })
+
+  it("derives the exclusion set instead of listing it twice", () => {
+    for (const type of SYSTEM_ITEM_TYPES) {
+      expect(CARDLESS_ITEM_TYPES).toContain(type)
+    }
+  })
+
+  it("treats a connector's own type as card-worthy (open catalog)", () => {
+    expect(rendersAsCard("quest")).toBe(true)
   })
 })

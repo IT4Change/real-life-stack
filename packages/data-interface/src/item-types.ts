@@ -464,3 +464,23 @@ export type KnownItemType =
   | (typeof SYSTEM_ITEM_TYPES)[number]
   | "feature"
   | (typeof STATEMENT_TYPE_DEFINITION)["id"]
+
+/**
+ * Types that never appear as a card of their own: the system types speak for
+ * someone inside another item's card (comment, reaction, relation) and
+ * `feature` is a data-level geometry marker. DERIVED from
+ * {@link SYSTEM_ITEM_TYPES} so the two sets can never drift apart.
+ */
+export const CARDLESS_ITEM_TYPES = [...SYSTEM_ITEM_TYPES, "feature"] as const
+
+/**
+ * Does an item of this type stand on its own as a card in an aggregating view
+ * (feed, collection, search)? The catalog is OPEN — a connector's own type is
+ * card-worthy unless it is one of the {@link CARDLESS_ITEM_TYPES}. Aggregating
+ * views MUST ask this instead of enumerating the types they accept, otherwise a
+ * new type silently misses the surfaces that should show it
+ * (docs/spec/06-schema-composition.md → Modul-Konsequenzen).
+ */
+export function rendersAsCard(type: string): boolean {
+  return !(CARDLESS_ITEM_TYPES as readonly string[]).includes(type)
+}

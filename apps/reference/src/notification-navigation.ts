@@ -1,4 +1,4 @@
-import type { Group } from "@real-life-stack/data-interface"
+import { rendersAsCard, type Group } from "@real-life-stack/data-interface"
 import type { NotificationCandidate } from "@real-life-stack/toolkit"
 import { resolveDefaultModule } from "./hooks/use-workspace-routing"
 
@@ -39,8 +39,11 @@ export function moduleCanDisplay(module: string, hints: ModuleHintsLike | undefi
   if (module === "kanban") return Boolean(hints?.hasStatus)
   // Resonance shows statements only — activated by their schema hint (spec 06).
   if (module === "resonance") return Boolean(hints?.hasStatement)
-  // The feed unions content-items (posts), start-items (events) and
-  // statements — anything else (pure tasks, places, people) never appears there.
-  if (module === "feed") return itemType === "post" || Boolean(hints?.hasStart) || Boolean(hints?.hasStatement)
+  // The feed is the aggregating "what's new" view: it shows everything with a
+  // card of its own, so it can display any item the feed's own selection keeps
+  // (selectFeedItems in views/feed-view.tsx asks the SAME predicate — one rule,
+  // not two lists that drift). An unknown type is displayable: the feed renders
+  // it generically rather than escalating away from it.
+  if (module === "feed") return itemType === undefined || rendersAsCard(itemType)
   return true
 }

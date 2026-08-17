@@ -29,11 +29,14 @@ describe("Linsen-Eskalation — moduleCanDisplay", () => {
   const task = { hasPosition: false, hasStart: false, hasStatus: true }
   const place = { hasPosition: true, hasStart: false, hasStatus: false }
   const event = { hasPosition: false, hasStart: true, hasStatus: false }
-  it("feed shows only content/start items — pure tasks and places escalate", () => {
-    expect(moduleCanDisplay("feed", task, "task")).toBe(false)
-    expect(moduleCanDisplay("feed", place, "place")).toBe(false)
+  it("feed shows everything with a card of its own — no escalation for tasks or places", () => {
+    // The feed is the aggregating "what's new" view (Anton, 2026-08-17), so it
+    // can display any card-worthy item. Only the cardless types escalate.
+    expect(moduleCanDisplay("feed", task, "task")).toBe(true)
+    expect(moduleCanDisplay("feed", place, "place")).toBe(true)
     expect(moduleCanDisplay("feed", event, "event")).toBe(true)
     expect(moduleCanDisplay("feed", { hasPosition: false, hasStart: false, hasStatus: false }, "post")).toBe(true)
+    expect(moduleCanDisplay("feed", { hasPosition: false, hasStart: false, hasStatus: false }, "comment")).toBe(false)
     expect(moduleCanDisplay("kanban", task, "task")).toBe(true)
     expect(moduleCanDisplay("map", task, "task")).toBe(false)
   })
