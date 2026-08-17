@@ -642,7 +642,11 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
     <DraftItemProvider>
     <UnsavedChangesProvider>
     <DetailHostProvider>
-    <LocationPickProvider navigateToModule={handleModuleChange} currentModule={activeModule}>
+    <LocationPickProvider
+      navigateToModule={handleModuleChange}
+      currentModule={activeModule}
+      canOpenMap={modules.some((m) => m.id === "map")}
+    >
     <CreateHostProvider>
     <ModulePanelHost onDrawerHeightChange={setDrawerHeight}>
     <ActivityPanelController open={activityOpen} onClose={closeActivity} onOpenNotification={openNotification} onOpenEntryTarget={openEntryTarget} onOpenGroup={(groupId) => { const group = workspaces.find((workspace) => workspace.id === groupId); if (group) handleWorkspaceChange(group); closeActivity() }} />

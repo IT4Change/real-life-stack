@@ -195,9 +195,13 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   useEffect(() => {
     if (workspaces.length === 0 || !activeWorkspace) return
     const slug = scopeToSlug(activeWorkspace.id)
+    // Query und Fragment gehoeren zum Ort, nicht zum Modul: `?connector=`
+    // waehlt den Connector, `?dev` schaltet den Entwicklermodus. Ein Redirect,
+    // der sie abschneidet, aendert stumm das Verhalten der Seite.
+    const rest = `${location.search}${location.hash}`
     // (a) No module/item segment (`/` or `/{scope}`) → default module.
     if (!urlSeg) {
-      navigate(`/${slug}/${activeModule}`, { replace: true })
+      navigate(`/${slug}/${activeModule}${rest}`, { replace: true })
       return
     }
     // (a2) Die URL nennt ein Modul, das dieser Space nicht fuehrt (oder das
@@ -206,8 +210,8 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     // aber der Feed. Alles, was die URL liest (Verlinken, Zurueck, ein Pick
     // auf der Karte), liefe gegen eine Flaeche, die gar nicht offen ist.
     if (urlModule && urlModule !== activeModule) {
-      const rest = urlItemId ? `/${urlItemId}` : ""
-      navigate(`/${slug}/${activeModule}${rest}`, { replace: true })
+      const item = urlItemId ? `/${urlItemId}` : ""
+      navigate(`/${slug}/${activeModule}${item}${rest}`, { replace: true })
       return
     }
     // (b) Module-less item — only once the scope is synced AND the lookup settled.
@@ -215,7 +219,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
       const mod = moduleLessItem
         ? resolveDefaultModule(moduleLessItem, groupModuleIds)
         : groupModuleIds[0]
-      navigate(`/${slug}/${mod}/${moduleLessItemId}`, { replace: true })
+      navigate(`/${slug}/${mod}/${moduleLessItemId}${rest}`, { replace: true })
     }
   }, [
     workspaces.length,
@@ -223,6 +227,8 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     urlSeg,
     urlModule,
     urlItemId,
+    location.search,
+    location.hash,
     activeModule,
     moduleLessItemId,
     scopeSynced,

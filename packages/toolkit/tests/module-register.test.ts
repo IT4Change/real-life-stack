@@ -231,3 +231,22 @@ describe("Gebundenes Register ist technisch unveraenderlich (Re-Review #277)", (
     expect(moduleIds()).toEqual(["garten"])
   })
 })
+
+describe("Erneutes Binden derselben Quelle (Re-Review #277)", () => {
+  beforeEach(() => resetModuleRegistryForTests())
+
+  it("does not let a mutation slip in through a second bind of the same array", () => {
+    const roh = [{ id: "garten", label: "Garten", icon: Dummy }]
+    setModuleRegistry(roh)
+    roh.push({ id: "geschmuggelt", label: "X", icon: Dummy })
+    setModuleRegistry(roh) // dieselbe Quelle — darf nichts uebernehmen
+    expect(moduleIds()).toEqual(["garten"])
+  })
+
+  it("does not let a mutated entry slip in either", () => {
+    const eintrag = { id: "garten", label: "Garten", icon: Dummy }
+    setModuleRegistry([eintrag])
+    eintrag.label = "Umbenannt"
+    expect(getModule("garten")?.label).toBe("Garten")
+  })
+})

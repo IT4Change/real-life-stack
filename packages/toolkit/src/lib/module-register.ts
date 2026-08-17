@@ -199,10 +199,15 @@ export function setModuleRegistry(registry: ModuleRegistry): void {
         "unterschiedlichen Registern zuruecklassen.",
     )
   }
+  // Dieselbe Quelle erneut zu binden ist ein No-op — NICHT ein erneutes
+  // Einfrieren: Wer das Quell-Array zwischendurch veraendert und nochmal
+  // bindet, brachte die Aenderung sonst doch noch durch.
+  if (boundSource === registry) return
   // Einfrieren statt darauf zu vertrauen, dass komponiert wurde: Ein normales
   // Array liesse sich nach dem Binden weiter veraendern, und die Zusicherung
-  // "unveraenderlich" waere nur eine Absichtserklaerung.
-  active = Object.freeze(registry.map((m) => (Object.isFrozen(m) ? m : Object.freeze({ ...m }))))
+  // "unveraenderlich" waere nur eine Absichtserklaerung. Kopiert wird flach,
+  // damit spaetere Mutationen der Quelle nicht durchschlagen.
+  active = Object.freeze(registry.map((m) => Object.freeze({ ...m })))
   boundSource = registry
 }
 
