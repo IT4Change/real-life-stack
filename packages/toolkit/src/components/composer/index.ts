@@ -20,3 +20,12 @@ export {
   type ComposerFullscreenShellProps,
 } from "./composer-fullscreen-shell"
 export { ItemComposer, type ItemComposerProps } from "./item-composer"
+export {
+  InputWidget,
+  createInputWidget,
+  MultiInputWidget,
+  createMultiInputWidget,
+  type InputWidgetConfig,
+  type InputWidgetType,
+  type MultiInputWidgetConfig,
+} from "./widgets"

@@ -9,6 +9,7 @@ import { KanbanView } from "./kanban-view"
 import { CollectionView } from "./collection-view"
 import { ResonanceView } from "./resonance-view"
 import { GraphViewWrapper } from "./graph-view"
+import { AddressBookView } from "./address-book-view"
 
 export interface ModuleOutletProps {
   /**
@@ -95,6 +96,11 @@ export function ModuleOutlet({ activeWorkspace, activeModule, groups, urlSpaceId
         <div className="h-[calc(100dvh-8rem)] min-h-0">
           <GraphViewWrapper groupId={activeWorkspace?.id ?? "__overview__"} />
         </div>
+      ) : activeModule === "address-book" ? (
+        <AddressBookView
+          groupId={activeWorkspace?.id ?? ""}
+          selectionFocusVisibleArea={selectionFocusVisibleArea}
+        />
       ) : null}
     </>
   )

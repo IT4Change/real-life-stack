@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react"
-import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon, Waves, List, Share2, ChevronUp, ChevronDown, GripVertical } from "lucide-react"
+import { LogOut, UserMinus, UserPlus, Check, Loader2, ImagePlus, X, Camera, Pencil, Newspaper, Columns3, Calendar, MapIcon, Waves, List, Share2, ChevronUp, ChevronDown, GripVertical, BookUser } from "lucide-react"
 import type { Group, ContactInfo } from "@real-life-stack/data-interface"
 import { useMembers } from "../../hooks/use-groups"
 import { resolveAdminView } from "../../lib/group-admin-view"
@@ -35,6 +35,8 @@ const AVAILABLE_MODULES = [
   { id: "resonance", label: "Resonanz", icon: Waves },
   { id: "collection", label: "Liste", icon: List },
   { id: "graph", label: "Graph", icon: Share2 },
+  // Opt-in only — spec: docs/spec/modules/address-book.md.
+  { id: "address-book", label: "Adressbuch", icon: BookUser },
 ] as const
 
 /**

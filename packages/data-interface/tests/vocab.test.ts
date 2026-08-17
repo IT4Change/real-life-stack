@@ -10,6 +10,7 @@ import {
   VOCAB_PROJECT,
   VOCAB_RESOURCE,
   VOCAB_STATEMENT,
+  VOCAB_CONTACT,
 } from "../src/index.js"
 
 describe("deriveContext", () => {
@@ -130,5 +131,23 @@ describe("deriveContext", () => {
   it("returns a base-only array for opaque types like 'comment' or 'reaction'", () => {
     expect(deriveContext("comment", { content: "hi" })).toEqual([VOCAB_BASE])
     expect(deriveContext("reaction", { emoji: "🙂" })).toEqual([VOCAB_BASE])
+  })
+
+  it("adds contact/v1 when data.familyName is a non-empty string, regardless of type", () => {
+    expect(deriveContext("person", { familyName: "Hornbach" })).toContain(VOCAB_CONTACT)
+    expect(deriveContext("post", { familyName: "Hornbach" })).toContain(VOCAB_CONTACT)
+  })
+
+  it("does NOT add contact/v1 for missing, empty, or non-string familyName", () => {
+    expect(deriveContext("person", {})).not.toContain(VOCAB_CONTACT)
+    expect(deriveContext("person", { familyName: "" })).not.toContain(VOCAB_CONTACT)
+    expect(deriveContext("person", { familyName: null })).not.toContain(VOCAB_CONTACT)
+    expect(deriveContext("person", { familyName: 42 })).not.toContain(VOCAB_CONTACT)
+  })
+
+  it("composes person + contact for a person item with contact fields", () => {
+    expect(
+      deriveContext("person", { displayName: "Hornbach, Jan", familyName: "Hornbach" }),
+    ).toEqual([VOCAB_BASE, VOCAB_PERSON, VOCAB_CONTACT])
   })
 })

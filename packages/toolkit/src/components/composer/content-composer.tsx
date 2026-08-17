@@ -538,8 +538,24 @@ export function ContentComposer({
     }
   }
 
-  // Submit
-  const canSubmit = !!(data.title?.trim() || data.text?.trim() || (data.media && data.media.length > 0))
+  // Submit — the composer counts a submission as "has content" when at least
+  // one built-in content field carries a value OR any custom widget does.
+  // Without the custom-widget branch, forms that use only custom widgets
+  // (e.g. the address book, whose fields are all custom InputWidgets and
+  // MultiInputWidgets) can never enable Submit.
+  const customWidgetHasValue = customWidgets?.some((cw) => {
+    const v = data[cw.id]
+    if (v == null) return false
+    if (typeof v === "string") return v.trim().length > 0
+    if (Array.isArray(v)) return v.length > 0
+    return true
+  }) ?? false
+  const canSubmit = !!(
+    data.title?.trim()
+    || data.text?.trim()
+    || (data.media && data.media.length > 0)
+    || customWidgetHasValue
+  )
 
   const [submitting, setSubmitting] = React.useState(false)
   const [submitError, setSubmitError] = React.useState<string | null>(null)

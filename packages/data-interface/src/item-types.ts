@@ -332,6 +332,77 @@ export function isProfileItem(item: Item): item is ProfileItem {
 }
 
 // ============================================================
+// Contact (Address Book — contact/v1)
+// ============================================================
+
+/**
+ * Address-book fields at item.data — see docs/spec/schemas/vocab/contact/v1/.
+ *
+ * Complements person/v1 (profile identity: displayName, avatarUrl, bio, did)
+ * with structured contact-book data. Activation is field-driven: an item
+ * carrying `data.familyName` opts into contact/v1 regardless of its `type`.
+ *
+ * Note on `phone`: ProfileItemData (person/v1 legacy) uses `phone: string`
+ * for a single number; the address book stores `string[]` for multiple
+ * numbers. The address-book UI reads both shapes defensively. Long-term
+ * alignment is an open point for the maintainer's review.
+ */
+export interface ContactData {
+  /** Given name (Vorname). Used for sorting and display. */
+  givenName?: string
+  /** Family name (Nachname). Required in contact/v1; primary sort key and activation field. */
+  familyName: string
+  /** Organization / company. */
+  organization?: string
+  /** Role or job title within the organization. */
+  jobTitle?: string
+  /** Email addresses. First entry is the primary. */
+  email?: string[]
+  /** Phone numbers. First entry is the primary. Formatting is not enforced. */
+  phone?: string[]
+  /** URL of the contact's website. Same semantics as project/v1 website. */
+  website?: string
+  /** Street and house number as a single line. */
+  streetAddress?: string
+  /** Postal code (PLZ). */
+  postalCode?: string
+  /** City or locality. */
+  city?: string
+  /** Country name in the writer's language, e.g. "Deutschland". */
+  country?: string
+}
+
+/**
+ * True if the item carries a non-empty contact/v1 activation field
+ * (`data.familyName`), regardless of `type`. Mirrors the deriveContext rule.
+ */
+export function hasContactData(item: Item): boolean {
+  const familyName = item.data?.familyName
+  return typeof familyName === "string" && familyName.length > 0
+}
+
+/**
+ * Derive a stable display name for an address-book entry from the
+ * available name parts. Falls back to the person/v1 displayName, then to
+ * organization, then to a placeholder. Never throws.
+ */
+export function contactDisplayName(item: Item): string {
+  const data = item.data as Record<string, unknown> | undefined
+  if (!data) return "(kein Name)"
+  const family = typeof data.familyName === "string" ? data.familyName.trim() : ""
+  const given = typeof data.givenName === "string" ? data.givenName.trim() : ""
+  if (family && given) return `${family}, ${given}`
+  if (family) return family
+  if (typeof data.displayName === "string" && data.displayName.trim().length > 0) {
+    return data.displayName
+  }
+  if (typeof data.organization === "string" && data.organization.trim().length > 0) {
+    return data.organization
+  }
+  return "(kein Name)"
+}
+
+// ============================================================
 // Reaction
 // ============================================================
 
