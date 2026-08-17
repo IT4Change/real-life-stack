@@ -15,6 +15,7 @@ export const VOCAB_RELATION = "https://real-life-stack.org/vocab/relation/v1"
 export const VOCAB_PROJECT = "https://real-life-stack.org/vocab/project/v1"
 export const VOCAB_RESOURCE = "https://real-life-stack.org/vocab/resource/v1"
 export const VOCAB_STATEMENT = "https://real-life-stack.org/vocab/statement/v1"
+export const VOCAB_CONTACT = "https://real-life-stack.org/vocab/contact/v1"
 
 const TASK_STATUS_VALUES = new Set(["open", "in-progress", "done", "archived"])
 const PLACE_GEOMETRY_TYPES = new Set(["Point", "LineString", "Polygon"])
@@ -44,6 +45,9 @@ function isPlaceGeometry(value: unknown): boolean {
  * - `resource/v1` if `type === "resource"`.
  * - `statement/v1` if `type === "statement"` — the schema (not the type)
  *   then carries the module activation for Resonance/Feed (spec 06).
+ * - `contact/v1` if `data.familyName` is a non-empty string. Field-driven
+ *   activation (spec 06): a person item without contact-book fields stays
+ *   pure person/v1, and the address-book module ignores it.
  */
 export function deriveContext(type: string, data: Record<string, unknown>): string[] {
   const ctx: string[] = [VOCAB_BASE]
@@ -78,6 +82,10 @@ export function deriveContext(type: string, data: Record<string, unknown>): stri
 
   if (type === "statement") {
     ctx.push(VOCAB_STATEMENT)
+  }
+
+  if (typeof data.familyName === "string" && data.familyName.length > 0) {
+    ctx.push(VOCAB_CONTACT)
   }
 
   return ctx

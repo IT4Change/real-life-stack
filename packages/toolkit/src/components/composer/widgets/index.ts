@@ -8,3 +8,14 @@ export { PeopleWidget } from "./people-widget"
 export { TagsWidget } from "./tags-widget"
 export { StatusWidget } from "./status-widget"
 export { GroupWidget } from "./group-widget"
+export {
+  InputWidget,
+  createInputWidget,
+  type InputWidgetConfig,
+  type InputWidgetType,
+} from "./input-widget"
+export {
+  MultiInputWidget,
+  createMultiInputWidget,
+  type MultiInputWidgetConfig,
+} from "./multi-input-widget"

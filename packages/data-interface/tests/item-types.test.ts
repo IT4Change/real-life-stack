@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest"
 import {
+  contactDisplayName,
+  hasContactData,
   isProject,
   isResource,
+  type ContactData,
   type GeoJSONGeometry,
   type Item,
   type KnownItemType,
@@ -40,5 +43,45 @@ describe("canonical item types", () => {
     expect(knownTypes).toEqual(["project", "resource", "relation"])
     expect(profile.displayName).toBe("Ada")
     expect(geometry.type).toBe("Polygon")
+  })
+})
+
+describe("contact/v1 helpers", () => {
+  it("hasContactData is true for items with non-empty familyName, regardless of type", () => {
+    expect(hasContactData(item("person", { familyName: "Hornbach" }))).toBe(true)
+    expect(hasContactData(item("post", { familyName: "Hornbach" }))).toBe(true)
+  })
+
+  it("hasContactData is false for missing, empty, or non-string familyName", () => {
+    expect(hasContactData(item("person", {}))).toBe(false)
+    expect(hasContactData(item("person", { familyName: "" }))).toBe(false)
+    expect(hasContactData(item("person", { familyName: null }))).toBe(false)
+    expect(hasContactData(item("person", { familyName: 42 }))).toBe(false)
+  })
+
+  it("contactDisplayName prefers 'family, given' when both present", () => {
+    expect(contactDisplayName(item("person", { familyName: "Hornbach", givenName: "Jan" }))).toBe(
+      "Hornbach, Jan",
+    )
+  })
+
+  it("contactDisplayName falls back to family, then displayName, then organization", () => {
+    expect(contactDisplayName(item("person", { familyName: "Hornbach" }))).toBe("Hornbach")
+    expect(contactDisplayName(item("person", { displayName: "Anton T." }))).toBe("Anton T.")
+    expect(contactDisplayName(item("person", { organization: "Hornbach AG" }))).toBe(
+      "Hornbach AG",
+    )
+    expect(contactDisplayName(item("person", {}))).toBe("(kein Name)")
+  })
+
+  it("ContactData interface accepts arrays of email and phone", () => {
+    const contact: ContactData = {
+      familyName: "Hornbach",
+      givenName: "Jan",
+      email: ["jan@hornbach.com", "jan.private@example.org"],
+      phone: ["+49 6348 60 0", "+49 170 111 22 33"],
+    }
+    expect(contact.email?.length).toBe(2)
+    expect(contact.phone?.length).toBe(2)
   })
 })

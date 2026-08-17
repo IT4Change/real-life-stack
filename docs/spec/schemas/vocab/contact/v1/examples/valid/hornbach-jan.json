@@ -1,0 +1,26 @@
+{
+  "id": "01H8XYZ-contact-hornbach-jan",
+  "@context": [
+    "https://real-life-stack.org/vocab/base/v1",
+    "https://real-life-stack.org/vocab/person/v1",
+    "https://real-life-stack.org/vocab/contact/v1"
+  ],
+  "type": "person",
+  "createdAt": "2026-08-17T09:00:00Z",
+  "createdBy": "did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp",
+  "data": {
+    "displayName": "Hornbach, Jan",
+    "givenName": "Jan",
+    "familyName": "Hornbach",
+    "organization": "Hornbach Baumarkt AG",
+    "jobTitle": "Vorstand",
+    "email": ["jan.hornbach@hornbach.com"],
+    "phone": ["+49 6348 60 0"],
+    "website": "https://www.hornbach.com",
+    "streetAddress": "Hornbachstraße 11",
+    "postalCode": "76879",
+    "city": "Bornheim",
+    "country": "Deutschland"
+  },
+  "tags": ["hornbach", "pitch-erstkontakt", "vorstand"]
+}

@@ -1,0 +1,19 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "rls": "https://real-life-stack.org/vocab/contact/v1#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "givenName": { "@id": "rls:givenName", "@type": "xsd:string" },
+    "familyName": { "@id": "rls:familyName", "@type": "xsd:string" },
+    "organization": { "@id": "rls:organization", "@type": "xsd:string" },
+    "jobTitle": { "@id": "rls:jobTitle", "@type": "xsd:string" },
+    "email": { "@id": "rls:email", "@container": "@list", "@type": "xsd:string" },
+    "phone": { "@id": "rls:phone", "@container": "@list", "@type": "xsd:string" },
+    "website": { "@id": "rls:website", "@type": "@id" },
+    "streetAddress": { "@id": "rls:streetAddress", "@type": "xsd:string" },
+    "postalCode": { "@id": "rls:postalCode", "@type": "xsd:string" },
+    "city": { "@id": "rls:city", "@type": "xsd:string" },
+    "country": { "@id": "rls:country", "@type": "xsd:string" }
+  }
+}

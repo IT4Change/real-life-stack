@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://real-life-stack.org/vocab/contact/v1/schema.json",
+  "title": "RLS Contact Vocabulary",
+  "description": "Address-book fields for items representing a personal or professional contact. Complements person/v1 (which covers profile identity) with structured contact-book data: name parts for sorting, organization and job title, multiple email addresses and phone numbers, website and postal address.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["familyName"],
+      "properties": {
+        "givenName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Given name (Vorname). Used for sorting and display."
+        },
+        "familyName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Family name (Nachname). Required. Used as the primary sort key and as the activation field for the address-book module."
+        },
+        "organization": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Company or organization the contact is affiliated with."
+        },
+        "jobTitle": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Role or position within the organization."
+        },
+        "email": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "format": "email" },
+          "description": "One or more email addresses. Order is significant; the first entry is the primary."
+        },
+        "phone": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "One or more phone numbers. Order is significant; the first entry is the primary. Formatting is not enforced."
+        },
+        "website": {
+          "type": "string",
+          "minLength": 1,
+          "description": "URL of the contact's personal or professional website. Same semantics as project/v1 website."
+        },
+        "streetAddress": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Street and house number as a single line."
+        },
+        "postalCode": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Postal code (PLZ)."
+        },
+        "city": {
+          "type": "string",
+          "minLength": 1,
+          "description": "City or locality."
+        },
+        "country": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Country name in the writer's language, e.g. Deutschland."
+        }
+      }
+    }
+  },
+  "required": ["data"]
+}
