@@ -12,7 +12,7 @@ import {
   usePersonalGroupId,
   type SelectionFocusVisibleArea,
 } from "@real-life-stack/toolkit"
-import { rendersAsCard, type Item } from "@real-life-stack/data-interface"
+import { isStandaloneItemType, type Item } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 import { ALL_CONTENT_TYPES } from "../content-types"
@@ -23,10 +23,10 @@ import { useRegisterDetail, type DetailConfig } from "../detail-host"
 /** Thin app boundary: collection data, URL focus, and the shared detail host. */
 /**
  * Die Liste ist eine aggregierende Flaeche wie Feed und Suche und fragt
- * darum dieselbe Regel: `rendersAsCard`, statt Typen aufzuzaehlen
+ * darum dieselbe Regel: `isStandaloneItemType`, statt Typen aufzuzaehlen
  * (spec 06 → Modul-Konsequenzen). Ohne diesen Filter standen hier
- * Kommentare, Reaktionen und Relationen als eigenstaendige Karten — Dinge,
- * die nur INNERHALB der Karte eines anderen Items einen Sinn ergeben.
+ * Kommentare, Reaktionen und Relationen als eigene Eintraege — Dinge, die
+ * zu einem anderen Item gehoeren und ausserhalb davon nichts bedeuten.
  *
  * Anders als der Feed sortiert die Liste nicht um: Die Reihenfolge kommt
  * aus der Ansicht selbst.
@@ -35,7 +35,7 @@ import { useRegisterDetail, type DetailConfig } from "../detail-host"
  * ist — wie `selectFeedItems`.
  */
 export function selectCollectionItems(items: readonly Item[]): Item[] {
-  return items.filter((item) => rendersAsCard(item.type))
+  return items.filter((item) => isStandaloneItemType(item.type))
 }
 
 export function CollectionView({

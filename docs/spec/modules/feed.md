@@ -40,7 +40,7 @@ comment, reaction, relation   # sprechen in der Karte eines anderen Items
 feature                       # Geometrie-Marker ohne Karte
 ```
 
-Die Unterscheidung gehört nicht in den Feed: das Prädikat `rendersAsCard` in `data-interface` trägt sie, damit Feed, Liste und Suche dieselbe Antwort geben ([06-schema-composition.md](../06-schema-composition.md) → Modul-Konsequenzen).
+Die Unterscheidung gehört nicht in den Feed: das Prädikat `isStandaloneItemType` in `data-interface` trägt sie, damit Feed, Liste und Suche dieselbe Antwort geben ([06-schema-composition.md](../06-schema-composition.md) → Modul-Konsequenzen).
 
 | Feld | Bedeutung im Feed |
 |---|---|
