@@ -29,15 +29,18 @@ Er unterstützt:
 
 ## Datenmodell
 
-Der Feed liest Items im Current Space. Er darf bekannte Typen speziell darstellen, muss unbekannte Typen aber robust ignorieren oder generisch anzeigen.
+Der Feed liest Items im Current Space. Er darf bekannte Typen speziell darstellen, muss unbekannte Typen aber robust generisch anzeigen statt sie zu verschweigen.
 
-Typische feed-fähige Item-Typen:
+Feed-fähig ist **jedes Item mit eigener Karte**. Der Feed wählt weder nach Typ noch nach Feld aus: ein Ort, eine Aufgabe, ein Projekt oder ein künftiger Typ erscheint, sobald es ihn gibt.
+
+Nicht feed-fähig sind ausschließlich Items ohne eigene Karte:
 
 ```text
-post, event, task, place, project, quest, quest-run, evidence
+comment, reaction, relation   # sprechen in der Karte eines anderen Items
+feature                       # Geometrie-Marker ohne Karte
 ```
 
-Diese Liste ist offen. Entscheidend sind die darstellbaren Felder.
+Die Unterscheidung gehört nicht in den Feed: das Prädikat `isAggregateVisibleItemType` in `data-interface` trägt sie, damit Feed, Liste und Suche dieselbe Antwort geben ([06-schema-composition.md](../06-schema-composition.md) → Modul-Konsequenzen).
 
 | Feld | Bedeutung im Feed |
 |---|---|
@@ -142,7 +145,7 @@ Automatisch generierte Feed-Ereignisse sind nur dann Feed-Inhalte, wenn sie als 
 
 ## Offene Punkte
 
-1. Welche Item-Typen sollen in der Reference App standardmäßig feed-fähig sein?
-2. Wie werden automatisch generierte Aktivitätszeilen modelliert: als Items, Confirmations oder Connector-Events?
-3. Welche Sortierungen gehören in v0 außer `createdAt`?
-4. Wie werden Space-spezifische Sichtbarkeitsregeln im Feed angezeigt, ohne sie im Feed selbst zu definieren?
+1. Wie werden automatisch generierte Aktivitätszeilen modelliert: als Items, Confirmations oder Connector-Events?
+2. Welche Sortierungen gehören in v0 außer `createdAt`?
+3. Wie werden Space-spezifische Sichtbarkeitsregeln im Feed angezeigt, ohne sie im Feed selbst zu definieren?
+4. Welche Typen bietet das „+" im Feed zum Erstellen an? Die Anzeige ist entschieden (jede Karte), das Erstellen noch nicht — heute Post und Event.

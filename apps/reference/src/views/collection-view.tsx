@@ -12,6 +12,7 @@ import {
   usePersonalGroupId,
   type SelectionFocusVisibleArea,
 } from "@real-life-stack/toolkit"
+import { isAggregateVisibleItemType, type Item } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 import { ALL_CONTENT_TYPES } from "../content-types"
@@ -20,6 +21,23 @@ import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 
 /** Thin app boundary: collection data, URL focus, and the shared detail host. */
+/**
+ * Die Liste ist eine aggregierende Flaeche wie Feed und Suche und fragt
+ * darum dieselbe Regel: `isAggregateVisibleItemType`, statt Typen aufzuzaehlen
+ * (spec 06 → Modul-Konsequenzen). Ohne diesen Filter standen hier
+ * Kommentare, Reaktionen und Relationen als eigene Eintraege — Dinge, die
+ * ueber das Item gelesen werden, zu dem sie gehoeren.
+ *
+ * Anders als der Feed sortiert die Liste nicht um: Die Reihenfolge kommt
+ * aus der Ansicht selbst.
+ *
+ * Als schlichte Funktion exportiert, damit die Regel ohne Mounten pruefbar
+ * ist — wie `selectFeedItems`.
+ */
+export function selectCollectionItems(items: readonly Item[]): Item[] {
+  return items.filter((item) => isAggregateVisibleItemType(item.type))
+}
+
 export function CollectionView({
   groupId,
   selectionFocusVisibleArea,
@@ -27,7 +45,8 @@ export function CollectionView({
   groupId: string
   selectionFocusVisibleArea?: SelectionFocusVisibleArea
 }) {
-  const { data: items } = useItems()
+  const { data: allItems } = useItems()
+  const items = useMemo(() => selectCollectionItems(allItems), [allItems])
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
   const { itemId: focusedId, focusItem } = useItemFocus()

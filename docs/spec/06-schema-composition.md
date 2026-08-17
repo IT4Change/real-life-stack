@@ -306,11 +306,15 @@ Für Vokabulare mit eigenem Feld gilt: Da `@context`-Konsistenz nicht erzwingbar
 | Map | `hasField: ['position']` | `hasSchema: ['…/place/v1']` | alles räumlich Darstellbare |
 | Calendar | `hasField: ['start']` | `hasSchema: ['…/event/v1']` | alles zeitlich Darstellbares |
 | Kanban | konfiguriertes `hasField: [statusField]` (Default: `['status']`) plus Spaltenwert-Prüfung | bei Default `hasSchema: ['…/task/v1']`; bei anderem Feld keine Task-Vokabular-Annahme | Nicht-Relation-Items mit verwertbarem konfiguriertem Spaltenfeld; `archived` nur bei expliziter Spalte |
-| Feed | `hasField: ['content']` ∪ `hasField: ['start']` ∪ `hasSchema: ['…/statement/v1']` | — | Posts, Events und Aussagen |
+| Feed | kein Feldfilter — jedes Item mit eigener Karte | — | alles Neue im Space |
 | Resonance | `hasSchema: ['…/statement/v1']` (Marker-Vokabular, s.o.) | — | Aussagen zur Gruppen-Stellungnahme |
 | Contacts | `hasSchema: ['…/person/v1']` | — | Personen-Profile |
 
 Ein Item mit mehreren Schemas erscheint in jedem zuständigen Modul gleichzeitig. Jedes Modul rendert nur den Schema-Anteil, den es kennt.
+
+Der Feed ist als einziger Eintrag der Tabelle **keine feldaktivierte Sicht**, sondern eine aggregierende (oben, „Verhältnis zwischen Schema- und Feldfiltern", zusammen mit der Suche): er beantwortet „was ist hier neu", nicht „welches Feld kann ich rendern". Deshalb MUSS er alle Items des Scopes zeigen, die dort einen eigenen Eintrag bilden, und darf sie nicht nach Feldern oder Typen auswählen. Keinen eigenen Eintrag bilden ausschließlich die System-Typen (`comment`, `reaction`, `relation` — sie werden über das Item gelesen, zu dem sie gehören) und `feature` als Geometrie-Marker; das Prädikat dafür ist `isAggregateVisibleItemType` in `data-interface`.
+
+Das Prädikat beantwortet **nur** die Aggregations-Frage. Es sagt nicht, dass ein solches Item unselbständig wäre: Relation-Records sind nach [08-relation-records.md](08-relation-records.md) eigenständige, autorisierte Datensätze — sie werden nur über die Items gelesen, die sie verbinden, und haben in einer Neuigkeiten-Liste nichts verloren. Und es sagt nichts über die Darstellung: ob eine Fläche aus einem Eintrag eine Karte, eine Zeile oder einen Kartenpin macht, entscheidet sie selbst. Ein Feed, der Typen aufzählt, verliert jeden neuen Typ lautlos — er hat kein Register zu führen.
 
 ## Migrationspfad von Utopia-Map
 
