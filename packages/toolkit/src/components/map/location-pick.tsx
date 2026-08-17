@@ -6,6 +6,8 @@ export interface LocationPickValue {
   isPicking: boolean
   /** `false`, wenn die Karte in diesem Space nicht erreichbar ist — dann beginnt kein Pick. */
   startPick: (handlers: PickHandlers) => boolean
+  /** Ist die Karte in diesem Space erreichbar? Flaechen blenden den Pick sonst aus. */
+  canPick: boolean
   updatePick: (position: LatLng) => void
   confirmPick: () => void
   cancelPick: () => void
@@ -14,6 +16,7 @@ export interface LocationPickValue {
 const unavailablePick: LocationPickValue = {
   isPicking: false,
   startPick: () => false,
+  canPick: false,
   updatePick: () => undefined,
   confirmPick: () => undefined,
   cancelPick: () => undefined,
@@ -65,7 +68,7 @@ export function LocationPickProvider({ children, navigateToModule, currentModule
     if (currentModule === "map") reachedMap.current = true
     else if (reachedMap.current) end(true, false)
   }, [currentModule, end, isPicking])
-  const value = useMemo(() => ({ isPicking, startPick, updatePick, confirmPick, cancelPick }), [cancelPick, confirmPick, isPicking, startPick, updatePick])
+  const value = useMemo(() => ({ isPicking, canPick: canOpenMap, startPick, updatePick, confirmPick, cancelPick }), [canOpenMap, cancelPick, confirmPick, isPicking, startPick, updatePick])
   return <LocationPickContext.Provider value={value}>{children}</LocationPickContext.Provider>
 }
 
