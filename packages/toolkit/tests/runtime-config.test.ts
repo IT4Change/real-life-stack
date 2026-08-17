@@ -181,18 +181,19 @@ describe("Validierung (Review #276)", () => {
     expect(cfg.defaultConnector).toBe("supabase")
   })
 
-  it("drops a relayUrl that is not a websocket URL", async () => {
+  it("skips a relayUrl that is not a websocket URL and takes the next stage", async () => {
     const cfg = await loadRuntimeConfig({
       fetchImpl: stubFetch({ ok: true, json: { endpoints: { relayUrl: "https://not-a-relay.example" } } }),
     })
-    expect(cfg.endpoints.relayUrl).toBeUndefined()
+    // NICHT undefined: der ungueltige Wert faellt durch, der Standard traegt.
+    expect(cfg.endpoints.relayUrl).toBe(DEFAULT_RUNTIME_CONFIG.endpoints.relayUrl)
   })
 
-  it("drops an endpoint that is not a URL at all", async () => {
+  it("skips an endpoint that is not a URL at all", async () => {
     const cfg = await loadRuntimeConfig({
       fetchImpl: stubFetch({ ok: true, json: { endpoints: { profilesUrl: "kaputt" } } }),
     })
-    expect(cfg.endpoints.profilesUrl).toBeUndefined()
+    expect(cfg.endpoints.profilesUrl).toBe(DEFAULT_RUNTIME_CONFIG.endpoints.profilesUrl)
   })
 
   it("keeps the default config immutable", () => {
@@ -322,5 +323,68 @@ describe("Nicht-Strings brechen die Vorrangkette nicht (Re-Review #276)", () => 
       fetchImpl: stubFetch({ ok: true, json: { endpoints: { relayUrl: 1, profilesUrl: null, supabaseUrl: [] } } }),
     })
     for (const v of Object.values(cfg.endpoints)) expect(typeof v).toBe("string")
+    // und die Kette hat getragen, statt die Felder zu verlieren
+    expect(cfg.endpoints.relayUrl).toBe(DEFAULT_RUNTIME_CONFIG.endpoints.relayUrl)
+  })
+})
+
+describe("Ungueltiges faellt DURCH die Kette (Re-Review #276)", () => {
+  beforeEach(() => resetRuntimeConfigForTests())
+  afterEach(() => vi.restoreAllMocks())
+
+  it("falls back to the build-time value when config.json holds a bad URL", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { endpoints: { relayUrl: "https://kein-relay" } } }),
+      buildTimeEnv: { relayUrl: "wss://relay.build.example" },
+    })
+    // Vorher wurde das Feld geloescht — der gueltige Build-Wert kam nie zum Zug.
+    expect(cfg.endpoints.relayUrl).toBe("wss://relay.build.example")
+  })
+
+  it("falls back to the default when both config.json and build-time are bad", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { endpoints: { relayUrl: "kaputt" } } }),
+      buildTimeEnv: { relayUrl: "auch-kaputt" },
+    })
+    expect(cfg.endpoints.relayUrl).toBe(DEFAULT_RUNTIME_CONFIG.endpoints.relayUrl)
+  })
+
+  it("falls back over a non-string too", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { endpoints: { profilesUrl: 42 } } }),
+      buildTimeEnv: { profilesUrl: "https://profiles.build.example" },
+    })
+    expect(cfg.endpoints.profilesUrl).toBe("https://profiles.build.example")
+  })
+
+  it("falls back to the build-time connector when config.json names an unknown one", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { defaultConnector: "wto" } }),
+      buildTimeEnv: { defaultConnector: "supabase" },
+      allowedConnectors: ["wot", "supabase", "local", "mock"],
+    })
+    // Vorher sprang die Kette direkt auf den Standard und uebersprang Stufe 2.
+    expect(cfg.defaultConnector).toBe("supabase")
+  })
+
+  it("keeps a valid config.json value ahead of build-time", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { endpoints: { relayUrl: "wss://runtime.example" } } }),
+      buildTimeEnv: { relayUrl: "wss://build.example" },
+    })
+    expect(cfg.endpoints.relayUrl).toBe("wss://runtime.example")
+  })
+
+  it("freezes branding deeply", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({
+        ok: true,
+        json: { branding: { appName: "X", colors: { light: { primary: "#fff" }, dark: { primary: "#000" } } } },
+      }),
+    })
+    expect(Object.isFrozen(cfg.branding)).toBe(true)
+    expect(Object.isFrozen(cfg.branding?.colors)).toBe(true)
+    expect(Object.isFrozen(cfg.branding?.colors?.light)).toBe(true)
+    expect(Object.isFrozen(cfg.branding?.colors?.dark)).toBe(true)
   })
 })

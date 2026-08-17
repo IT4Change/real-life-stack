@@ -60,9 +60,11 @@ jobs:
             type=match,pattern=app-v(\d+\.\d+),group=1
             type=raw,value=edge,enable={{is_default_branch}}
 
-      # Erst LOKAL bauen, nicht pushen. Ein Tag, der einmal oeffentlich war,
-      # ist fuer Instanzen abrufbar — auch wenn der Test danach rot wird.
-      - name: Image bauen (noch nicht veroeffentlichen)
+      # EINMAL bauen. Zwei Builds — einer zum Testen, einer zum
+      # Veroeffentlichen — ergeben zwei Digests: Getestet waere dann nicht,
+      # was ausgeliefert wird. Das hiesige Image wird geprueft und danach
+      # unveraendert unter allen Tags gepusht.
+      - name: Image bauen
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -70,6 +72,7 @@ jobs:
           push: false
           load: true
           tags: rls-app:candidate
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -93,13 +96,22 @@ jobs:
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["branding"]["appName"]=="Smoke Test", d; print("config.json korrekt erzeugt.")'
           docker rm -f rls-smoke
 
-      # Erst jetzt oeffentlich. Der Cache macht den zweiten Lauf billig.
-      - name: Veroeffentlichen
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/app/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+      # Kein zweiter Build: dasselbe lokale Image bekommt die Tags und wird
+      # gepusht. Was hier hochgeht, ist Byte fuer Byte das getestete.
+      - name: Getestetes Image veroeffentlichen
+        run: |
+          set -euo pipefail
+          GEPRUEFT=$(docker image inspect rls-app:candidate --format '{{.Id}}')
+          echo "Getesteter Image-Id: $GEPRUEFT"
+          echo "${{ steps.meta.outputs.tags }}" | while read -r TAG; do
+            [ -n "$TAG" ] || continue
+            docker tag rls-app:candidate "$TAG"
+            docker push "$TAG"
+            echo "veroeffentlicht: $TAG"
+          done
+
+      - name: Digest melden
+        run: |
+          TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          docker buildx imagetools inspect "$TAG" --format '{{.Manifest.Digest}}' \
+            | sed 's/^/veroeffentlichter Digest: /'

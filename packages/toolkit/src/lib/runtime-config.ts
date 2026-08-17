@@ -90,30 +90,6 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v)
 }
 
-/**
- * Uebernimmt nur gesetzte Felder — ein fehlendes faellt durch, ein leeres
- * Objekt aendert nichts.
- *
- * Nur Strings: `config.json` ist Fremdeingabe. Eine Zahl, ein Objekt oder
- * `true` als Endpunkt wuerde sonst die naechste Stufe der Vorrangkette
- * verdraengen und weiter unten als "gesetzt" gelten — der Standardwert kaeme
- * nie zum Zug, und der Fehler zeigte sich erst beim Verbindungsversuch.
- */
-function mergeDefined<T extends object>(base: T, overlay: Partial<T> | undefined): T {
-  if (!overlay) return base
-  const out = { ...base }
-  for (const [k, v] of Object.entries(overlay)) {
-    if (typeof v !== "string") {
-      if (v !== undefined && v !== null) {
-        console.warn(`[rls] "${k}" ist kein Text (${typeof v}) — ignoriert.`)
-      }
-      continue
-    }
-    if (v !== "") (out as Record<string, unknown>)[k] = v
-  }
-  return out
-}
-
 /** Endpunkte muessen URLs mit erwartetem Schema sein — sonst scheitert erst die Verbindung. */
 const SCHEMES: Record<keyof RuntimeEndpoints, readonly string[] | null> = {
   relayUrl: ["ws:", "wss:"],
@@ -122,32 +98,40 @@ const SCHEMES: Record<keyof RuntimeEndpoints, readonly string[] | null> = {
   supabaseAnonKey: null, // keine URL
 }
 
-function validateEndpoints(ep: RuntimeEndpoints): RuntimeEndpoints {
-  const out: RuntimeEndpoints = { ...ep }
-  for (const key of Object.keys(SCHEMES) as (keyof RuntimeEndpoints)[]) {
-    const value = out[key]
-    if (value === undefined) continue
-    if (typeof value !== "string") {
-      // Nicht ueberspringen, sondern loeschen: ein durchgereichter Nicht-String
-      // haette die Fallback-Kette gebrochen.
-      console.warn(`[rls] ${key} ist kein Text — verworfen.`)
-      delete out[key]
-      continue
-    }
-    const schemes = SCHEMES[key]
-    if (!schemes) continue
-    let ok = false
-    try {
-      ok = schemes.includes(new URL(value).protocol)
-    } catch {
-      ok = false
-    }
-    if (!ok) {
-      console.warn(`[rls] ${key}="${value}" ist keine ${schemes.join("/")}-URL — verworfen.`)
-      delete out[key]
-    }
+/** Ist der Wert als Endpunkt brauchbar? Sonst faellt er durch. */
+function endpointOk(key: keyof RuntimeEndpoints, value: unknown, quelle: string): value is string {
+  if (value === undefined || value === null || value === "") return false
+  if (typeof value !== "string") {
+    console.warn(`[rls] ${key} aus ${quelle} ist kein Text (${typeof value}) — uebersprungen.`)
+    return false
   }
-  return out
+  const schemes = SCHEMES[key]
+  if (!schemes) return true
+  try {
+    if (schemes.includes(new URL(value).protocol)) return true
+  } catch {
+    /* faellt unten durch */
+  }
+  console.warn(`[rls] ${key}="${value}" aus ${quelle} ist keine ${schemes.join("/")}-URL — uebersprungen.`)
+  return false
+}
+
+/**
+ * Nimmt den ersten BRAUCHBAREN Wert der Vorrangkette.
+ *
+ * Die Pruefung gehoert in die Kette, nicht dahinter: Wer erst zusammenfuehrt
+ * und danach Ungueltiges loescht, verliert das Feld ganz — der Wert aus der
+ * naechsten Stufe kommt nie zum Zug, obwohl er gueltig waere. Ein Tippfehler
+ * in config.json nahm der Instanz so ihren Build-Zeit- oder Standardwert.
+ */
+function pickEndpoint(
+  key: keyof RuntimeEndpoints,
+  stufen: readonly { quelle: string; wert: unknown }[],
+): string | undefined {
+  for (const { quelle, wert } of stufen) {
+    if (endpointOk(key, wert, quelle)) return wert
+  }
+  return undefined
 }
 
 async function fetchJson(
@@ -194,34 +178,46 @@ export async function loadRuntimeConfig(opts: LoadOptions = {}): Promise<Runtime
 
     const env = opts.buildTimeEnv ?? {}
     const fileEndpoints = isPlainObject(fromFile.endpoints)
-      ? (fromFile.endpoints as RuntimeEndpoints)
-      : undefined
+      ? (fromFile.endpoints as Record<string, unknown>)
+      : {}
 
-    const endpoints = validateEndpoints(
-      mergeDefined(
-        mergeDefined(DEFAULT_RUNTIME_CONFIG.endpoints, {
-          relayUrl: env.relayUrl,
-          profilesUrl: env.profilesUrl,
-          supabaseUrl: env.supabaseUrl,
-          supabaseAnonKey: env.supabaseAnonKey,
-        }),
-        fileEndpoints,
-      ),
-    )
-
-    // Ein unbekannter Connector wird verworfen, nicht durchgereicht.
-    if (fromFile.defaultConnector !== undefined && typeof fromFile.defaultConnector !== "string") {
-      console.warn("[rls] defaultConnector ist kein Text — ignoriert.")
+    const endpoints: RuntimeEndpoints = {}
+    for (const key of Object.keys(SCHEMES) as (keyof RuntimeEndpoints)[]) {
+      const value = pickEndpoint(key, [
+        { quelle: "config.json", wert: fileEndpoints[key] },
+        { quelle: "Build-Zeit", wert: env[key] },
+        { quelle: "Standard", wert: DEFAULT_RUNTIME_CONFIG.endpoints[key] },
+      ])
+      if (value !== undefined) endpoints[key] = value
     }
-    let connector =
-      (typeof fromFile.defaultConnector === "string" ? fromFile.defaultConnector : undefined) ??
-      env.defaultConnector ??
-      DEFAULT_RUNTIME_CONFIG.defaultConnector
-    if (opts.allowedConnectors && connector && !opts.allowedConnectors.includes(connector)) {
-      console.warn(
-        `[rls] defaultConnector="${connector}" ist unbekannt (erlaubt: ${opts.allowedConnectors.join(", ")}) — es gilt "${DEFAULT_RUNTIME_CONFIG.defaultConnector}".`,
-      )
-      connector = DEFAULT_RUNTIME_CONFIG.defaultConnector
+
+    // Auch der Connector laeuft die Kette entlang: Ein unbekannter Name in
+    // config.json darf nicht die Build-Zeit-Vorgabe ueberspringen.
+    const connectorOk = (v: unknown, quelle: string): v is string => {
+      if (v === undefined || v === null || v === "") return false
+      if (typeof v !== "string") {
+        console.warn(`[rls] defaultConnector aus ${quelle} ist kein Text — uebersprungen.`)
+        return false
+      }
+      if (opts.allowedConnectors && !opts.allowedConnectors.includes(v)) {
+        console.warn(
+          `[rls] defaultConnector="${v}" aus ${quelle} ist unbekannt ` +
+            `(erlaubt: ${opts.allowedConnectors.join(", ")}) — uebersprungen.`,
+        )
+        return false
+      }
+      return true
+    }
+    let connector: string | undefined
+    for (const { quelle, wert } of [
+      { quelle: "config.json", wert: fromFile.defaultConnector },
+      { quelle: "Build-Zeit", wert: env.defaultConnector },
+      { quelle: "Standard", wert: DEFAULT_RUNTIME_CONFIG.defaultConnector },
+    ]) {
+      if (connectorOk(wert, quelle)) {
+        connector = wert
+        break
+      }
     }
 
     let branding = isPlainObject(fromFile.branding) ? (fromFile.branding as Branding) : undefined
@@ -236,12 +232,22 @@ export async function loadRuntimeConfig(opts: LoadOptions = {}): Promise<Runtime
     loaded = Object.freeze({
       endpoints: Object.freeze(endpoints),
       defaultConnector: connector,
-      branding: branding ? Object.freeze(branding) : undefined,
+      branding: branding ? freezeBranding(branding) : undefined,
     }) as RuntimeConfig
     return loaded
   })()
 
   return inFlight
+}
+
+/** Tief einfrieren — sonst bleiben `colors.light` und `colors.dark` mutierbar. */
+function freezeBranding(b: Branding): Branding {
+  if (b.colors) {
+    if (b.colors.light) Object.freeze(b.colors.light)
+    if (b.colors.dark) Object.freeze(b.colors.dark)
+    Object.freeze(b.colors)
+  }
+  return Object.freeze(b)
 }
 
 /** Die geladene Konfiguration. Vor `loadRuntimeConfig` sind es die Standardwerte. */
