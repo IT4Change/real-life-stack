@@ -178,7 +178,10 @@ export function composeModules(layers: readonly ModuleLayer[]): ModuleRegistry {
 // Das aktive Register. Vor `setModuleRegistry` gilt allein die Core-Schicht,
 // damit Toolkit-Flaechen (Storybook, Tests) ohne App-Bootstrap funktionieren.
 let active: ModuleRegistry = composeModules([CORE_MODULE_LAYER])
-let bound = false
+// Was zuletzt uebergeben wurde — nicht was gespeichert ist: Beim Binden
+// wird eingefroren, also entsteht eine Kopie, und ein Identitaetsvergleich
+// gegen `active` wuerde dasselbe Register faelschlich als anderes lesen.
+let boundSource: ModuleRegistry | null = null
 
 /**
  * Bindet das komponierte Register. **Genau einmal**, vor dem ersten Render.
@@ -189,21 +192,24 @@ let bound = false
  * die Importreihenfolgen-Abhaengigkeit, die dieses Design abschafft.
  */
 export function setModuleRegistry(registry: ModuleRegistry): void {
-  if (bound && registry !== active) {
+  if (boundSource !== null && registry !== boundSource) {
     throw new Error(
       "[rls] Das Modul-Register ist bereits gebunden. Es wird einmal vor dem " +
         "ersten Render gesetzt; ein spaeterer Wechsel wuerde Flaechen mit " +
         "unterschiedlichen Registern zuruecklassen.",
     )
   }
-  active = registry
-  bound = true
+  // Einfrieren statt darauf zu vertrauen, dass komponiert wurde: Ein normales
+  // Array liesse sich nach dem Binden weiter veraendern, und die Zusicherung
+  // "unveraenderlich" waere nur eine Absichtserklaerung.
+  active = Object.freeze(registry.map((m) => (Object.isFrozen(m) ? m : Object.freeze({ ...m }))))
+  boundSource = registry
 }
 
 /** Nur fuer Tests. */
 export function resetModuleRegistryForTests(): void {
   active = composeModules([CORE_MODULE_LAYER])
-  bound = false
+  boundSource = null
 }
 
 /**

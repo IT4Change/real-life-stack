@@ -200,6 +200,16 @@ export function useWorkspaceRouting(): WorkspaceRouting {
       navigate(`/${slug}/${activeModule}`, { replace: true })
       return
     }
+    // (a2) Die URL nennt ein Modul, das dieser Space nicht fuehrt (oder das
+    // Register nicht kennt). resolveActiveModule hat dann etwas anderes
+    // gewaehlt — ohne diesen Redirect zeigte die URL /map, gerendert wuerde
+    // aber der Feed. Alles, was die URL liest (Verlinken, Zurueck, ein Pick
+    // auf der Karte), liefe gegen eine Flaeche, die gar nicht offen ist.
+    if (urlModule && urlModule !== activeModule) {
+      const rest = urlItemId ? `/${urlItemId}` : ""
+      navigate(`/${slug}/${activeModule}${rest}`, { replace: true })
+      return
+    }
     // (b) Module-less item — only once the scope is synced AND the lookup settled.
     if (moduleLessItemId && scopeSynced && !moduleLessLoading) {
       const mod = moduleLessItem
@@ -211,6 +221,8 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     workspaces.length,
     activeWorkspace,
     urlSeg,
+    urlModule,
+    urlItemId,
     activeModule,
     moduleLessItemId,
     scopeSynced,

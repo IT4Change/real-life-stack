@@ -213,3 +213,21 @@ describe("keine zweite Modul-Liste", () => {
     }
   })
 })
+
+describe("Gebundenes Register ist technisch unveraenderlich (Re-Review #277)", () => {
+  beforeEach(() => resetModuleRegistryForTests())
+
+  it("freezes a plain array that someone binds directly", () => {
+    const roh = [{ id: "garten", label: "Garten", icon: Dummy }]
+    setModuleRegistry(roh)
+    expect(Object.isFrozen(getModules())).toBe(true)
+    expect(Object.isFrozen(getModules()[0])).toBe(true)
+  })
+
+  it("does not let a later mutation of the source array leak in", () => {
+    const roh = [{ id: "garten", label: "Garten", icon: Dummy }]
+    setModuleRegistry(roh)
+    roh.push({ id: "geschmuggelt", label: "X", icon: Dummy })
+    expect(moduleIds()).toEqual(["garten"])
+  })
+})
