@@ -144,6 +144,28 @@ describe("Das Register ist unveraenderlich (Review #277)", () => {
     expect(b.find((m) => m.id === "feed")?.view).toBeUndefined()
   })
 
+  it("refuses a second, different binding", () => {
+    const a = composeModules([CORE_MODULE_LAYER])
+    const b = composeModules([CORE_MODULE_LAYER, { name: "app", definitions: [{ id: "garten", label: "Garten", icon: Dummy }] }])
+    setModuleRegistry(a)
+    expect(() => setModuleRegistry(b)).toThrow(/bereits gebunden/)
+  })
+
+  it("tolerates binding the very same registry twice", () => {
+    const a = composeModules([CORE_MODULE_LAYER])
+    setModuleRegistry(a)
+    expect(() => setModuleRegistry(a)).not.toThrow()
+  })
+
+  it("rejects a fragment that targets a module a LATER layer introduces", () => {
+    expect(() =>
+      composeModules([
+        { name: "app", extensions: [{ id: "garten", view: Dummy }] },
+        { name: "plugin", definitions: [{ id: "garten", label: "Garten", icon: Dummy }] },
+      ]),
+    ).toThrow(/garten/)
+  })
+
   it("sees a registry bound AFTER the first read — no import-time snapshot", () => {
     expect(isKnownModule("garten")).toBe(false)
     setModuleRegistry(

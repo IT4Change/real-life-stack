@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { getModules, moduleIds } from "@real-life-stack/toolkit"
+import { getModules, moduleIds, resolveSpaceModules, resolveActiveModule } from "@real-life-stack/toolkit"
 import "./module-register"
-import { validModules, resolveGroupModules } from "./hooks/use-workspace-routing"
+import { validModules, resolveDefaultModule } from "./hooks/use-workspace-routing"
 
 const SRC = join(__dirname)
 
@@ -53,22 +53,22 @@ describe("keine zweite Modul-Liste (Spec 01, Regel 1)", () => {
 
 describe("Routing filtert unbekannte Modul-Ids (Review #277)", () => {
   it("keeps only what this app can display", () => {
-    expect(resolveGroupModules(["feed", "quests", "map"])).toEqual(["feed", "map"])
+    expect(resolveSpaceModules(["feed", "quests", "map"])).toEqual(["feed", "map"])
   })
 
   it("never routes to an id the register does not know", () => {
     // Vorher bestimmte eine Legacy-Id das aktive Modul — der Tab fuehrte
     // dann auf eine Flaeche, die es nicht gibt.
-    const resolved = resolveGroupModules(["quests"])
+    const resolved = resolveSpaceModules(["quests"])
     for (const id of resolved) expect(moduleIds()).toContain(id)
   })
 
   it("falls back to the full set instead of leaving a space without tabs", () => {
-    expect(resolveGroupModules(["quests", "campaign"])).toEqual(moduleIds())
+    expect(resolveSpaceModules(["quests", "campaign"])).toEqual(moduleIds())
   })
 
   it("uses the full set when a space stores nothing", () => {
-    expect(resolveGroupModules(undefined)).toEqual(moduleIds())
+    expect(resolveSpaceModules(undefined)).toEqual(moduleIds())
   })
 })
 
@@ -89,5 +89,33 @@ describe("kein Register-Snapshot auf Modulebene (Review #277)", () => {
       .split("\n")
       .filter((z) => /^(export )?const \w+ = (moduleIds|defaultModuleIds)\(\)/.test(z.trim()))
     expect(snapshots).toEqual([])
+  })
+})
+
+describe("Auswahlregeln zentral (Re-Review #277)", () => {
+  it("routes a positioned item to the map even if the space stores only unknown ids", () => {
+    // Der reproduzierbare Fall: displayableModules lieferte leer, die
+    // feldbasierte Wahl fiel dadurch auf "feed" statt auf "map".
+    const available = resolveSpaceModules(["quests"])
+    expect(resolveDefaultModule({ hasPosition: true, hasStart: false, hasStatus: false }, available))
+      .toBe("map")
+  })
+
+  it("keeps a candidate the space actually offers", () => {
+    expect(resolveActiveModule("map", ["feed", "map"])).toBe("map")
+  })
+
+  it("drops a candidate the space does not offer", () => {
+    expect(resolveActiveModule("map", ["feed"])).toBe("feed")
+  })
+
+  it("drops a candidate the register does not know", () => {
+    expect(resolveActiveModule("quests", ["feed", "map"])).toBe("feed")
+  })
+
+  it("never returns an unknown module, whatever it is given", () => {
+    for (const candidate of ["quests", "", undefined]) {
+      expect(moduleIds()).toContain(resolveActiveModule(candidate, ["quests"]))
+    }
   })
 })

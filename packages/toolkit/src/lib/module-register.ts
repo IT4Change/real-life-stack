@@ -85,7 +85,13 @@ export const CORE_MODULES: readonly ModuleEntry[] = Object.freeze([
   { id: "graph", label: "Graph", icon: Share2, fill: "bleed" },
 ])
 
-/** Eine Kompositionsschicht: Core, App oder Space. */
+/**
+ * Eine Kompositionsschicht: Core oder App/Plugin.
+ *
+ * Ein Space ist KEINE Schicht (Spec 01, Regel 4): Das Register steht vor dem
+ * ersten Render fest, der aktive Space wechselt zur Laufzeit. Ein Space waehlt
+ * aus dem Katalog (`Group.data.modules`), er traegt nichts zu ihm bei.
+ */
 export interface ModuleLayer {
   /** Fuer Konfliktmeldungen ("app", "space:garten", …). */
   name: string
@@ -105,7 +111,7 @@ export const CORE_MODULE_LAYER: ModuleLayer = Object.freeze({
 const SCALARS = ["label", "icon", "enabledByDefault", "fill", "maxWidth", "keepMounted", "view"] as const
 
 /**
- * Setzt Schichten in der Reihenfolge Core → App → Space zusammen und friert
+ * Setzt Schichten in der Reihenfolge Core → App zusammen und friert
  * das Ergebnis ein.
  *
  * Bewusst eine Funktion statt globaler Mutation: Wer waehrend des Imports
@@ -123,6 +129,10 @@ export function composeModules(layers: readonly ModuleLayer[]): ModuleRegistry {
   const owner = new Map<string, Map<string, string>>()
 
   for (const layer of layers) {
+    // Definitionen und Erweiterungen werden PRO SCHICHT abgearbeitet, nicht
+    // erst alle Definitionen und dann alle Erweiterungen: Sonst koennte eine
+    // fruehe Schicht ein Modul ergaenzen, das erst eine spaetere einfuehrt —
+    // die Reihenfolge Core → App waere dann nur noch Dekoration.
     for (const def of layer.definitions ?? []) {
       if (byId.has(def.id)) {
         throw new Error(
@@ -136,9 +146,7 @@ export function composeModules(layers: readonly ModuleLayer[]): ModuleRegistry {
       for (const k of SCALARS) if (def[k] !== undefined) fields.set(k, layer.name)
       owner.set(def.id, fields)
     }
-  }
 
-  for (const layer of layers) {
     for (const frag of layer.extensions ?? []) {
       const base = byId.get(frag.id)
       if (!base) {
@@ -170,19 +178,32 @@ export function composeModules(layers: readonly ModuleLayer[]): ModuleRegistry {
 // Das aktive Register. Vor `setModuleRegistry` gilt allein die Core-Schicht,
 // damit Toolkit-Flaechen (Storybook, Tests) ohne App-Bootstrap funktionieren.
 let active: ModuleRegistry = composeModules([CORE_MODULE_LAYER])
+let bound = false
 
 /**
- * Bindet das komponierte Register. Einmal, vor dem ersten Render — danach
- * aendert sich nichts mehr, und keine Fläche muss sich fragen, ob sie zu
- * frueh gelesen hat.
+ * Bindet das komponierte Register. **Genau einmal**, vor dem ersten Render.
+ *
+ * Ein zweiter Aufruf wird abgelehnt statt still zu ersetzen: Wer nach dem
+ * ersten Render neu bindet, laesst Flaechen mit unterschiedlichen Registern
+ * weiterlaufen — je nachdem, wann sie zuletzt gelesen haben. Das ist genau
+ * die Importreihenfolgen-Abhaengigkeit, die dieses Design abschafft.
  */
 export function setModuleRegistry(registry: ModuleRegistry): void {
+  if (bound && registry !== active) {
+    throw new Error(
+      "[rls] Das Modul-Register ist bereits gebunden. Es wird einmal vor dem " +
+        "ersten Render gesetzt; ein spaeterer Wechsel wuerde Flaechen mit " +
+        "unterschiedlichen Registern zuruecklassen.",
+    )
+  }
   active = registry
+  bound = true
 }
 
 /** Nur fuer Tests. */
 export function resetModuleRegistryForTests(): void {
   active = composeModules([CORE_MODULE_LAYER])
+  bound = false
 }
 
 /**
@@ -226,4 +247,40 @@ export function isKnownModule(id: string): boolean {
  */
 export function displayableModules(stored: readonly string[]): string[] {
   return stored.filter((id) => isKnownModule(id))
+}
+
+/**
+ * Welche Module ein Space fuehrt — die EINE Stelle, an der aus einer
+ * gespeicherten Liste eine benutzbare wird.
+ *
+ * Zuvor kombinierte jede Aufrufstelle `displayableModules` und Fallback
+ * unterschiedlich: Routing mit Leer-Fallback, Space-Wechsel und
+ * Benachrichtigungen ohne. Bei einem Space, dessen Liste nur fremde Ids
+ * enthaelt, blieb dort eine leere Menge — und die feldbasierte Wahl fiel auf
+ * das erstbeste Modul zurueck, statt der Position eines Items zu folgen.
+ *
+ * Ergebnis ist NIE leer: Bleibt nach dem Filtern nichts uebrig, gilt der
+ * volle Satz. Ein Space ganz ohne Tab waere schlimmer als einer mit den
+ * Vorgaben.
+ */
+export function resolveSpaceModules(stored?: readonly string[]): string[] {
+  const displayable = displayableModules(stored ?? moduleIds())
+  return displayable.length > 0 ? displayable : moduleIds()
+}
+
+/**
+ * Das aktive Modul fuer einen Space — der Kandidat, wenn dieser Space ihn
+ * fuehrt und das Register ihn kennt, sonst sein erstes Modul.
+ *
+ * Jede Stelle, die ein aktives Modul WAEHLT (URL ohne Modul, Space-Wechsel,
+ * Sprung aus einer Benachrichtigung, gespeicherte Vorauswahl), benutzt
+ * diese Funktion — damit dieselbe Frage nicht an vier Stellen unterschiedlich
+ * beantwortet wird.
+ */
+export function resolveActiveModule(
+  candidate: string | undefined,
+  stored?: readonly string[],
+): string {
+  const available = resolveSpaceModules(stored)
+  return candidate && available.includes(candidate) ? candidate : available[0]
 }

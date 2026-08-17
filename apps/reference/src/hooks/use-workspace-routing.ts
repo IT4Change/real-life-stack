@@ -9,7 +9,8 @@ import {
   getReadableTextColor,
   moduleIds,
   getModule,
-  displayableModules,
+  resolveSpaceModules,
+  resolveActiveModule,
   type Workspace,
   type Module,
 } from "@real-life-stack/toolkit"
@@ -63,21 +64,6 @@ export function resolveDefaultModule(itemOrHints: Item | ModuleHints, available:
           ? "kanban"
           : "feed"
   return available.includes(preferred) ? preferred : (available[0] ?? "feed")
-}
-
-/**
- * Welche Module dieser Space fuehrt — gefiltert auf das, was diese App
- * darstellen kann.
- *
- * Eine gespeicherte Id ohne Registereintrag darf das Routing NICHT bestimmen:
- * Sie stammt aus einer anderen App-Version, und der Nutzer landete sonst auf
- * einem Tab ohne Flaeche (Review #277). Bleibt nach dem Filtern nichts
- * uebrig, greift der volle Satz — ein Space ohne jeden Tab waere schlimmer
- * als einer mit den Vorgaben.
- */
-export function resolveGroupModules(stored: readonly string[] | undefined): string[] {
-  const displayable = displayableModules(stored ?? validModules())
-  return displayable.length > 0 ? displayable : validModules()
 }
 
 export interface WorkspaceRouting {
@@ -174,13 +160,19 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     return workspaces[0] ?? null
   }, [urlSpaceId, workspaces, groupsLoading])
 
-  // Derive active module from the URL (with localStorage fallback → "feed").
-  const activeModule = urlModule ?? localStorage.getItem(STORAGE_KEY_MODULE) ?? "feed"
-
   // Available modules for the active space (overview = all modules).
   const isOverview = activeWorkspace?.scope === "overview"
   const activeGroup = isOverview ? null : groups.find((g) => g.id === activeWorkspace?.id)
-  const groupModuleIds = resolveGroupModules(
+  const groupModuleIds = resolveSpaceModules(
+    isOverview ? undefined : (activeGroup?.data?.modules as string[] | undefined),
+  )
+
+  // Aktives Modul aus URL, sonst zuletzt benutztes. Die Aufloesung laeuft
+  // ueber dieselbe zentrale Regel wie jede andere Auswahl: eine gespeicherte
+  // Vorauswahl aus einer anderen App-Version oder aus einem Space, der das
+  // Modul nicht fuehrt, darf nicht zu einem leeren Tab werden.
+  const activeModule = resolveActiveModule(
+    urlModule ?? localStorage.getItem(STORAGE_KEY_MODULE) ?? undefined,
     isOverview ? undefined : (activeGroup?.data?.modules as string[] | undefined),
   )
 
@@ -212,7 +204,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     if (moduleLessItemId && scopeSynced && !moduleLessLoading) {
       const mod = moduleLessItem
         ? resolveDefaultModule(moduleLessItem, groupModuleIds)
-        : (groupModuleIds[0] ?? "feed")
+        : groupModuleIds[0]
       navigate(`/${slug}/${mod}/${moduleLessItemId}`, { replace: true })
     }
   }, [
@@ -292,7 +284,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   // Switch workspace (keep the module if offered). Item focus is space-scoped → dropped.
   const handleWorkspaceChange = useCallback((workspace: Workspace) => {
     const group = groups.find((g) => g.id === workspace.id)
-    const mods = displayableModules((group?.data?.modules as string[] | undefined) ?? validModules())
+    const mods = resolveSpaceModules(group?.data?.modules as string[] | undefined)
     const mod = mods.includes(activeModule) ? activeModule : (mods[0] ?? "feed")
     navigate(`/${scopeToSlug(workspace.id)}/${mod}`)
   }, [groups, activeModule, navigate])

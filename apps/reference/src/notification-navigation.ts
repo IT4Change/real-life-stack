@@ -1,5 +1,5 @@
 import { isAggregateVisibleItemType, type Group } from "@real-life-stack/data-interface"
-import { displayableModules, moduleIds, type NotificationCandidate } from "@real-life-stack/toolkit"
+import { resolveSpaceModules, type NotificationCandidate } from "@real-life-stack/toolkit"
 import { resolveDefaultModule } from "./hooks/use-workspace-routing"
 
 /**
@@ -19,9 +19,9 @@ export function buildNotificationRoute(
   // hier stehende Aufzaehlung kannte `collection` und `graph` nicht, obwohl
   // beide laengst existierten — Benachrichtigungen zu deren Items landeten
   // im falschen Tab.
-  const available = Array.isArray(group?.data?.modules)
-    ? displayableModules(group.data.modules as string[])
-    : moduleIds()
+  const available = resolveSpaceModules(
+    Array.isArray(group?.data?.modules) ? (group.data.modules as string[]) : undefined,
+  )
   // Statements route via their schema hint (statement/v1 → hasStatement,
   // spec 06) — carried in moduleHints like every other activation signal.
   const module = resolveDefaultModule(

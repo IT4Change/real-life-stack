@@ -30,6 +30,8 @@ export {
   composeModules,
   setModuleRegistry,
   isKnownModule,
+  resolveSpaceModules,
+  resolveActiveModule,
   getModules,
   getModule,
   moduleIds,
