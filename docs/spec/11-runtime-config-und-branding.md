@@ -53,14 +53,15 @@ interface RuntimeConfig {
 interface Branding {
   /** Anzeigename; setzt zugleich den Dokumenttitel. */
   appName?: string
-  /** Pfade relativ zum Auslieferungsstamm. */
-  logoUrl?: string
+  /** Pfad relativ zum Auslieferungsstamm. */
   faviconUrl?: string
-  /** Farbtokens, je Schema. Werte sind CSS-Farben. */
+  /** Farbtokens, je Schema. */
   colors?: {
     light?: Record<string, string>
     dark?: Record<string, string>
   }
+  /** Alternativ: Datei mit denselben Tokens, getrennt geladen. */
+  colorsUrl?: string
 }
 ```
 
@@ -77,17 +78,21 @@ Regeln:
 1. Das Laden MUSS vor dem ersten Render abgeschlossen sein. Eine App, die zuerst mit Standardwerten rendert und dann umschaltet, zeigt fremdes Branding und baut Verbindungen zu falschen Diensten auf.
 2. Fehlt `config.json` oder ist sie fehlerhaft, MUSS die App mit Stufe 2 und 3 starten und den Fehler in der Konsole benennen. Ein Konfigurationsfehler DARF NICHT zu einer weißen Seite führen.
 3. Zusammengeführt wird **feldweise**: Ein in `config.json` gesetztes Feld sticht, ein fehlendes fällt durch. Ein leeres Objekt ändert nichts.
-4. Die geladene Konfiguration ist für die Laufzeit der Seite **unveränderlich**.
+4. Die geladene Konfiguration ist für die Laufzeit der Seite **unveränderlich**; ebenso die Standardwerte.
+5. Werte werden **geprüft, bevor sie gelten**. Ein Endpunkt MUSS eine URL mit passendem Schema sein (`ws:`/`wss:` für das Relay, `http:`/`https:` für die übrigen); ein `defaultConnector` MUSS einer der Connector-Ids der App entsprechen. Ungültige Werte werden verworfen und gemeldet — sie DÜRFEN NICHT durchgereicht werden. Ein Tippfehler im Connector-Namen würde sonst in der letzten Verzweigung der App landen und der Instanz Demo-Daten statt ihres Netzwerks zeigen.
 
 ## Branding
 
 Branding ist **Daten, nicht Code**. Eine Instanz gestaltet über Tokens und Assets, nicht über eigene Komponenten.
 
 1. `appName` setzt den Dokumenttitel und erscheint überall, wo die App sich benennt.
-2. `colors` werden als CSS-Custom-Properties auf das Wurzelelement gelegt, getrennt nach Schema. Sie überschreiben die Token-Vorgaben des Toolkits; unbekannte Tokennamen werden ignoriert.
-3. `logoUrl` und `faviconUrl` verweisen auf Dateien, die der Betreiber ausliefert. Fehlt eine, greift das Standard-Asset.
-4. Branding wird von **App-Shell-Flächen** gelesen. Space Modules DÜRFEN NICHT auf Branding verzweigen — ein Modul sieht in jeder Instanz gleich aus, abgesehen von den Tokens, die ohnehin global wirken.
-5. Freies CSS einer Instanz ist **nicht Teil dieses Vertrags**. Ein Betreiber kann eigene Regeln nachladen; sie stehen außerhalb der Kompatibilitätszusage und können mit jedem Update brechen.
+2. `colors` werden als CSS-Custom-Properties auf das Wurzelelement gelegt, getrennt nach Schema. Ein Token MUSS eines sein, das das Toolkit definiert — ein unbekannter Name wird verworfen und gemeldet, damit ein Tippfehler nicht stumm wirkungslos bleibt.
+3. Token-**Werte** sind CSS-Farbangaben einschließlich Funktionsschreibweisen (`oklch()`, `rgb()`, `hsl()`). Verworfen wird, was die Deklaration verlassen oder etwas nachladen könnte (`;`, `{}`, `@`, `url()`, Kommentare) sowie unangemessen lange Werte.
+4. `colors` und `colorsUrl` sind Alternativen. `colorsUrl` verweist auf eine Datei mit demselben Aufbau; sie wird **getrennt geladen**, damit ein Fehler darin nur die Farben kostet und nicht die übrige Konfiguration mitreißt. Ist `colorsUrl` gesetzt und lesbar, sticht sie ein gleichzeitig vorhandenes `colors`.
+5. `faviconUrl` verweist auf eine Datei, die der Betreiber ausliefert. Fehlt sie, greift das Standard-Asset.
+6. Branding wird von **App-Shell-Flächen** gelesen. Space Modules DÜRFEN NICHT auf Branding verzweigen — ein Modul sieht in jeder Instanz gleich aus, abgesehen von den Tokens, die ohnehin global wirken.
+7. Ein **Instanz-Logo ist in v0.1 nicht Teil des Vertrags**: Die App-Shell hat heute keine Fläche dafür, und ein Feld ohne Wirkung wäre ein Versprechen, das nichts einlöst. Landingpages liefern ihr Logo als eigene Datei aus und brauchen dafür keine Konfiguration.
+8. Freies CSS einer Instanz ist **nicht Teil dieses Vertrags**. Ein Betreiber kann eigene Regeln nachladen; sie stehen außerhalb der Kompatibilitätszusage und können mit jedem Update brechen.
 
 ## Landingpage
 

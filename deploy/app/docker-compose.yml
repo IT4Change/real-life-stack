@@ -2,28 +2,31 @@
 #
 # Start:  cp .env.example .env && $EDITOR .env && docker compose up -d
 #
+# Diese Datei zieht ausschliesslich ein fertiges Image. Sie enthaelt bewusst
+# KEINEN Build-Kontext: Eine Instanz besteht aus Konfiguration und Assets,
+# nicht aus Stack-Code — sonst braeuchte jeder Betreiber das Monorepo, und
+# genau die Abhaengigkeit soll Self-Hosting aufloesen.
+# Zum Bauen im Stack-Repo: docker-compose.build.yml als Override.
+#
 # RLS_DOMAIN hat bewusst keinen Standardwert. Eine Instanz tritt unter ihrer
-# eigenen Domain auf; eine geerbte Vorgabe waere entweder falsch oder
-# jemandes anderes Adresse.
+# eigenen Domain auf; eine geerbte Vorgabe waere jemandes andere Adresse.
 
 services:
   app:
-    image: ghcr.io/real-life-org/rls-app:latest
-    # Lokal bauen statt ziehen:  docker compose build
-    build:
-      context: ../..
-      dockerfile: deploy/app/Dockerfile
+    image: ghcr.io/real-life-org/rls-app:${RLS_IMAGE_TAG:-1}
     restart: unless-stopped
     environment:
       # --- Dienste ---
-      # Solange es ein Relay gibt, ist es die Vorbelegung. Sobald Relays
-      # foederiert sind, traegt eine Instanz hier ihr eigenes ein.
-      RLS_RELAY_URL: ${RLS_RELAY_URL:-wss://relay.utopia-lab.org}
+      # Solange es ein gemeinsames Relay gibt, ist es die Vorbelegung. Sobald
+      # Relays foederiert sind, traegt eine Instanz hier ihr eigenes ein.
+      RLS_RELAY_URL: ${RLS_RELAY_URL:-wss://relay.web-of-trust.de}
       RLS_PROFILES_URL: ${RLS_PROFILES_URL:-}
       RLS_DEFAULT_CONNECTOR: ${RLS_DEFAULT_CONNECTOR:-wot}
+      # Nur noetig, wenn die Instanz auf Supabase statt WoT laeuft.
+      RLS_SUPABASE_URL: ${RLS_SUPABASE_URL:-}
+      RLS_SUPABASE_ANON_KEY: ${RLS_SUPABASE_ANON_KEY:-}
       # --- Identitaet ---
       RLS_APP_NAME: ${RLS_APP_NAME:?RLS_APP_NAME fehlt — wie heisst diese Instanz?}
-      RLS_LOGO_URL: ${RLS_LOGO_URL:-/branding/logo.svg}
       RLS_FAVICON_URL: ${RLS_FAVICON_URL:-/branding/favicon.svg}
     volumes:
       # Beides gehoert dem Betreiber. Read-only: der Container schreibt nie
@@ -35,7 +38,8 @@ services:
       traefik.http.routers.rls-app.rule: Host(`${RLS_DOMAIN:?RLS_DOMAIN fehlt — unter welcher Domain laeuft die Instanz?}`)
       traefik.http.routers.rls-app.entrypoints: websecure
       traefik.http.routers.rls-app.tls.certresolver: letsencrypt
-      traefik.http.services.rls-app.loadbalancer.server.port: "80"
+      # Das Image laeuft unprivilegiert und lauscht darum auf 8080, nicht 80.
+      traefik.http.services.rls-app.loadbalancer.server.port: "8080"
     networks:
       - web
 

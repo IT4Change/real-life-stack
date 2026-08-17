@@ -160,3 +160,125 @@ describe("the config carries no secrets", () => {
     for (const f of forbidden) expect(flat).not.toContain(f.toLowerCase())
   })
 })
+
+describe("Validierung (Review #276)", () => {
+  beforeEach(() => resetRuntimeConfigForTests())
+  afterEach(() => vi.restoreAllMocks())
+
+  it("rejects an unknown connector instead of passing it through to the mock", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { defaultConnector: "wto" } }),
+      allowedConnectors: ["wot", "local", "supabase", "mock"],
+    })
+    expect(cfg.defaultConnector).toBe("wot")
+  })
+
+  it("keeps a known connector", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { defaultConnector: "supabase" } }),
+      allowedConnectors: ["wot", "local", "supabase", "mock"],
+    })
+    expect(cfg.defaultConnector).toBe("supabase")
+  })
+
+  it("drops a relayUrl that is not a websocket URL", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { endpoints: { relayUrl: "https://not-a-relay.example" } } }),
+    })
+    expect(cfg.endpoints.relayUrl).toBeUndefined()
+  })
+
+  it("drops an endpoint that is not a URL at all", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { endpoints: { profilesUrl: "kaputt" } } }),
+    })
+    expect(cfg.endpoints.profilesUrl).toBeUndefined()
+  })
+
+  it("keeps the default config immutable", () => {
+    expect(Object.isFrozen(DEFAULT_RUNTIME_CONFIG)).toBe(true)
+    expect(Object.isFrozen(DEFAULT_RUNTIME_CONFIG.endpoints)).toBe(true)
+  })
+
+  it("freezes the loaded config tree", async () => {
+    const cfg = await loadRuntimeConfig({ fetchImpl: stubFetch({ ok: true, json: {} }) })
+    expect(Object.isFrozen(cfg)).toBe(true)
+    expect(Object.isFrozen(cfg.endpoints)).toBe(true)
+  })
+
+  it("loads colours from colorsUrl into branding", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      const body = url.endsWith("config.json")
+        ? { branding: { appName: "Waldgarten", colorsUrl: "/branding/theme.json" } }
+        : { light: { primary: "#2f6b3a" } }
+      return { ok: true, status: 200, json: async () => body } as unknown as Response
+    })
+    const cfg = await loadRuntimeConfig({ fetchImpl: fetchImpl as unknown as typeof fetch })
+    expect(cfg.branding?.colors?.light?.primary).toBe("#2f6b3a")
+  })
+
+  it("keeps the rest of the config when the colour file is broken", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith("config.json")) {
+        return {
+          ok: true, status: 200,
+          json: async () => ({ endpoints: { relayUrl: "wss://relay.example" }, branding: { appName: "Waldgarten", colorsUrl: "/branding/theme.json" } }),
+        } as unknown as Response
+      }
+      return { ok: true, status: 200, json: async () => { throw new SyntaxError("kaputt") } } as unknown as Response
+    })
+    const cfg = await loadRuntimeConfig({ fetchImpl: fetchImpl as unknown as typeof fetch })
+    // Farben weg, alles andere steht — das ist der Sinn der Trennung.
+    expect(cfg.branding?.colors).toBeUndefined()
+    expect(cfg.branding?.appName).toBe("Waldgarten")
+    expect(cfg.endpoints.relayUrl).toBe("wss://relay.example")
+  })
+})
+
+describe("applyBranding — Tokenpruefung (Review #276)", () => {
+  beforeEach(() => {
+    resetRuntimeConfigForTests()
+    document.documentElement.removeAttribute("style")
+    document.getElementById("rls-branding-dark")?.remove()
+    document.querySelectorAll("style[data-toolkit]").forEach((e) => e.remove())
+  })
+
+  /** Simuliert die Tokens des Toolkits, damit die Herkunftspruefung greifen kann. */
+  function withToolkitTokens(names: string[]) {
+    const style = document.createElement("style")
+    style.setAttribute("data-toolkit", "")
+    style.textContent = `:root { ${names.map((n) => `--${n}: red;`).join(" ")} }`
+    document.head.appendChild(style)
+  }
+
+  it("accepts oklch() and other function notations", () => {
+    withToolkitTokens(["primary"])
+    applyBranding({ colors: { light: { primary: "oklch(0.63 0.16 55)" } } })
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("oklch(0.63 0.16 55)")
+  })
+
+  it("ignores a syntactically valid but unknown token name", () => {
+    withToolkitTokens(["primary"])
+    applyBranding({ colors: { light: { "erfundenes-token": "#123456" } } })
+    expect(document.documentElement.style.getPropertyValue("--erfundenes-token")).toBe("")
+  })
+
+  it("still applies tokens when no stylesheet is readable", () => {
+    // Kein Toolkit-CSS im Dokument -> nicht filtern, sonst waere frueh
+    // aufgerufenes Branding komplett wirkungslos.
+    applyBranding({ colors: { light: { primary: "#123456" } } })
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("#123456")
+  })
+
+  it("rejects a value that tries to smuggle a url()", () => {
+    withToolkitTokens(["primary"])
+    applyBranding({ colors: { light: { primary: "url(https://evil.example/x)" } } })
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("")
+  })
+
+  it("rejects an over-long value", () => {
+    withToolkitTokens(["primary"])
+    applyBranding({ colors: { light: { primary: "#".padEnd(200, "a") } } })
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("")
+  })
+})

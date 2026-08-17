@@ -41,6 +41,10 @@ const router = createBrowserRouter([{ path: '*', element: <App /> }], { basename
 async function start() {
   const config = await loadRuntimeConfig({
     baseUrl: basename,
+    // Die App kennt ihre Connector-Ids (siehe createConnector in App.tsx).
+    // Ohne diese Liste liefe ein Tippfehler in der Instanz-Konfiguration im
+    // Mock-Connector auf — die Instanz zeigte Demo-Daten statt ihres Netzes.
+    allowedConnectors: ["wot", "local", "supabase", "mock"],
     buildTimeEnv: {
       relayUrl: import.meta.env.VITE_RELAY_URL,
       profilesUrl: import.meta.env.VITE_PROFILE_SERVICE_URL,

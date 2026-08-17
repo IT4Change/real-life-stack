@@ -50,18 +50,14 @@ ENDPOINTS=$(sed -e '$ s/,$//' "$BUF")
 # --- branding ---
 : > "$BUF"
 emit_field appName "${RLS_APP_NAME:-}"
-emit_field logoUrl "${RLS_LOGO_URL:-}"
 emit_field faviconUrl "${RLS_FAVICON_URL:-}"
 
-# Farben sind ein Objekt und gehoeren nicht in eine Umgebungsvariable. Liegt
-# eine theme.json im Branding-Verzeichnis, wird ihr Inhalt eingebettet.
+# Farben sind ein Objekt und gehoeren nicht in eine Umgebungsvariable. Sie
+# werden NICHT hier eingebettet, sondern nur referenziert: Die App laedt die
+# Datei getrennt, damit ein Fehler darin nur die Farben kostet statt die
+# ganze Konfiguration unlesbar zu machen. (Review #276)
 if [ -f "$BRANDING/theme.json" ]; then
-  if head -c 1 "$BRANDING/theme.json" | grep -q '{'; then
-    printf '      "colors": %s\n' "$(cat "$BRANDING/theme.json")" >> "$BUF"
-  else
-    echo "[rls] WARNUNG: theme.json ist kein JSON-Objekt — Farben ignoriert." >&2
-    sed -i -e '$ s/,$//' "$BUF"
-  fi
+  printf '      "colorsUrl": "/branding/theme.json"\n' >> "$BUF"
 else
   sed -i -e '$ s/,$//' "$BUF"
 fi
