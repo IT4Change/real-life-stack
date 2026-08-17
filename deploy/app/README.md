@@ -100,6 +100,10 @@ etwas ändert.
 | `0.2` | folgt Korrekturen innerhalb der Minor-Version |
 | `edge` | Stand des Hauptzweigs, nur zum Ausprobieren |
 
+Ein `latest` gibt es bewusst **nicht**: Ein Tag, das unangekündigt die
+Minor-Version wechselt, widerspricht genau der Zusage, dass eine Instanz ihre
+Version kennt.
+
 Die Release-Tags des Repos heißen `app-v0.2.4`; das Image trägt daraus `0.2.4`
 und `0.2`. Ein **Major-Tag gibt es erst ab 1.0** — vorher verspräche `0` eine
 Stabilität, die es in `0.x` nicht gibt.
