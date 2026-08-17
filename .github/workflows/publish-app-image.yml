@@ -27,9 +27,11 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/publish-app-image.yml"
-    tags:
-      - "app-v*.*.*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'App-Tag, der veroeffentlicht werden soll (z.B. app-v0.2.5). Leer = edge vom aktuellen master.'
+        required: false
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/rls-app
@@ -42,6 +44,35 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Bei einem Nachlauf fuer ein Release den Tag bauen, nicht master.
+          ref: ${{ inputs.tag || github.ref }}
+
+      - id: ver
+        name: Version aus dem Tag ableiten
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAG:-}" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Kein Tag angegeben — es entsteht nur edge."
+            exit 0
+          fi
+          case "$TAG" in
+            app-v*) ;;
+            *) echo "ABBRUCH: '$TAG' ist kein App-Tag (erwartet app-vX.Y.Z)." >&2; exit 1;;
+          esac
+          V=${TAG#app-v}
+          case "$V" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "ABBRUCH: '$V' ist keine X.Y.Z-Version." >&2; exit 1;;
+          esac
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "minor=${V%.*}" >> "$GITHUB_OUTPUT"
+          echo "Veroeffentliche $V und ${V%.*}."
+
 
       - uses: docker/setup-buildx-action@v3
 
@@ -55,10 +86,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
+          # `latest` waere hier der Standard — bewusst aus, siehe Kopf.
+          flavor: latest=false
           tags: |
-            type=match,pattern=app-v(\d+\.\d+\.\d+),group=1
-            type=match,pattern=app-v(\d+\.\d+),group=1
-            type=raw,value=edge,enable={{is_default_branch}}
+            type=raw,value=${{ steps.ver.outputs.version }},enable=${{ steps.ver.outputs.release == 'true' }}
+            type=raw,value=${{ steps.ver.outputs.minor }},enable=${{ steps.ver.outputs.release == 'true' }}
+            type=raw,value=edge,enable=${{ steps.ver.outputs.release != 'true' }}
 
       # EINMAL bauen. Zwei Builds — einer zum Testen, einer zum
       # Veroeffentlichen — ergeben zwei Digests: Getestet waere dann nicht,

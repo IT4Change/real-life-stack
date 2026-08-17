@@ -138,3 +138,8 @@ jobs:
           fi
           echo "starte build-on-tag fuer $APP_TAG"
           gh workflow run build-on-tag.yml --repo "$GITHUB_REPOSITORY" -f tag="$APP_TAG"
+          # Das Instanz-Image braucht denselben Anstoss: Ein Tag von
+          # release-please traegt das GITHUB_TOKEN und loest von sich aus
+          # keinen Workflow aus (siehe Kopf von publish-app-image.yml).
+          echo "starte publish-app-image fuer $APP_TAG"
+          gh workflow run publish-app-image.yml --repo "$GITHUB_REPOSITORY" -f tag="$APP_TAG"
