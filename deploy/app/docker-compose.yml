@@ -1,0 +1,45 @@
+# Eine RLS-Instanz: Landingpage auf /, App auf /app.
+#
+# Start:  cp .env.example .env && $EDITOR .env && docker compose up -d
+#
+# RLS_DOMAIN hat bewusst keinen Standardwert. Eine Instanz tritt unter ihrer
+# eigenen Domain auf; eine geerbte Vorgabe waere entweder falsch oder
+# jemandes anderes Adresse.
+
+services:
+  app:
+    image: ghcr.io/real-life-org/rls-app:latest
+    # Lokal bauen statt ziehen:  docker compose build
+    build:
+      context: ../..
+      dockerfile: deploy/app/Dockerfile
+    restart: unless-stopped
+    environment:
+      # --- Dienste ---
+      # Solange es ein Relay gibt, ist es die Vorbelegung. Sobald Relays
+      # foederiert sind, traegt eine Instanz hier ihr eigenes ein.
+      RLS_RELAY_URL: ${RLS_RELAY_URL:-wss://relay.utopia-lab.org}
+      RLS_PROFILES_URL: ${RLS_PROFILES_URL:-}
+      RLS_DEFAULT_CONNECTOR: ${RLS_DEFAULT_CONNECTOR:-wot}
+      # --- Identitaet ---
+      RLS_APP_NAME: ${RLS_APP_NAME:?RLS_APP_NAME fehlt — wie heisst diese Instanz?}
+      RLS_LOGO_URL: ${RLS_LOGO_URL:-/branding/logo.svg}
+      RLS_FAVICON_URL: ${RLS_FAVICON_URL:-/branding/favicon.svg}
+    volumes:
+      # Beides gehoert dem Betreiber. Read-only: der Container schreibt nie
+      # in das, was der Mensch bearbeitet.
+      - ./landing:/srv/landing:ro
+      - ./branding:/srv/branding:ro
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.rls-app.rule: Host(`${RLS_DOMAIN:?RLS_DOMAIN fehlt — unter welcher Domain laeuft die Instanz?}`)
+      traefik.http.routers.rls-app.entrypoints: websecure
+      traefik.http.routers.rls-app.tls.certresolver: letsencrypt
+      traefik.http.services.rls-app.loadbalancer.server.port: "80"
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
+    name: ${TRAEFIK_NETWORK:-web}

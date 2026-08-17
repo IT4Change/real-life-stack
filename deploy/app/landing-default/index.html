@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diese Instanz hat noch keine Landingpage</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1a1c1a; --bg: #fbfaf7; --muted: #5c635c; --accent: #2f6b3a; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e8eae7; --bg: #141715; --muted: #9aa39a; --accent: #8fd19e; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 2rem;
+    background: var(--bg); color: var(--fg);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 34rem; }
+  h1 { font-size: clamp(1.6rem, 4vw, 2.2rem); line-height: 1.2; margin: 0 0 1rem; }
+  p { color: var(--muted); margin: 0 0 1rem; }
+  code {
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
+    padding: .15em .4em; border-radius: .3em; font-size: .9em;
+  }
+  a.cta {
+    display: inline-block; margin-top: .5rem; padding: .7rem 1.2rem;
+    background: var(--accent); color: var(--bg); text-decoration: none;
+    border-radius: .5rem; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Diese Instanz läuft.</h1>
+  <p>
+    Was du hier siehst, ist die mitgelieferte Platzhalterseite. Eure eigene
+    Landingpage entsteht in <code>landing/index.html</code> — sie wird
+    einfach hierher gemountet, ohne dass etwas neu gebaut werden muss.
+  </p>
+  <p>
+    Die App selbst ist bereits einsatzbereit und liegt unter <code>/app</code>.
+  </p>
+  <a class="cta" href="/app">Zur App</a>
+</main>
+</body>
+</html>

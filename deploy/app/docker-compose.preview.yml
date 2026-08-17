@@ -1,0 +1,26 @@
+# Lokale Vorschau — zum Gestalten von Landingpage und Branding.
+#
+#   docker compose -f docker-compose.preview.yml up --build
+#   → http://localhost:8080
+#
+# Bewusst eine eigene Datei statt eines Profils: Compose loest Variablen fuer
+# die GANZE Datei auf, unabhaengig vom aktiven Profil. Die Pflichtangabe
+# RLS_DOMAIN in docker-compose.yml wuerde also auch die Vorschau blockieren —
+# und zum Ausprobieren soll niemand erst eine Domain erfinden muessen.
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/app/Dockerfile
+    ports:
+      - "${RLS_PORT:-8080}:80"
+    environment:
+      RLS_RELAY_URL: ${RLS_RELAY_URL:-wss://relay.utopia-lab.org}
+      RLS_DEFAULT_CONNECTOR: ${RLS_DEFAULT_CONNECTOR:-wot}
+      RLS_APP_NAME: ${RLS_APP_NAME:-Vorschau}
+      RLS_LOGO_URL: ${RLS_LOGO_URL:-/branding/logo.svg}
+      RLS_FAVICON_URL: ${RLS_FAVICON_URL:-/branding/favicon.svg}
+    volumes:
+      - ./landing:/srv/landing:ro
+      - ./branding:/srv/branding:ro

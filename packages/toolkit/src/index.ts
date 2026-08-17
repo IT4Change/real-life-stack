@@ -16,6 +16,15 @@ export {
   type ColorSchemePreference,
 } from "./lib/color-scheme"
 export {
+  loadRuntimeConfig,
+  getRuntimeConfig,
+  applyBranding,
+  DEFAULT_RUNTIME_CONFIG,
+  type RuntimeConfig,
+  type RuntimeEndpoints,
+  type Branding,
+} from "./lib/runtime-config"
+export {
   resolveIcon,
   registerIcon,
   getIcon,
