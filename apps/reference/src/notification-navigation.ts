@@ -1,4 +1,4 @@
-import { isStandaloneItemType, type Group } from "@real-life-stack/data-interface"
+import { isAggregateVisibleItemType, type Group } from "@real-life-stack/data-interface"
 import type { NotificationCandidate } from "@real-life-stack/toolkit"
 import { resolveDefaultModule } from "./hooks/use-workspace-routing"
 
@@ -44,6 +44,6 @@ export function moduleCanDisplay(module: string, hints: ModuleHintsLike | undefi
   // (selectFeedItems in views/feed-view.tsx asks the SAME predicate — one rule,
   // not two lists that drift). An unknown type is displayable: the feed renders
   // it generically rather than escalating away from it.
-  if (module === "feed") return itemType === undefined || isStandaloneItemType(itemType)
+  if (module === "feed") return itemType === undefined || isAggregateVisibleItemType(itemType)
   return true
 }

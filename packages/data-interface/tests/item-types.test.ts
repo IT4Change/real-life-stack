@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest"
 import {
-  NON_STANDALONE_ITEM_TYPES,
+  AGGREGATE_HIDDEN_ITEM_TYPES,
   isProject,
   isResource,
-  isStandaloneItemType,
+  isAggregateVisibleItemType,
   SYSTEM_ITEM_TYPES,
   type GeoJSONGeometry,
   type Item,
@@ -46,10 +46,10 @@ describe("canonical item types", () => {
   })
 })
 
-describe("isStandaloneItemType", () => {
+describe("isAggregateVisibleItemType", () => {
   it("accepts every type that stands on its own as a card", () => {
     for (const type of ["post", "event", "place", "task", "person", "project", "resource", "statement"]) {
-      expect(isStandaloneItemType(type)).toBe(true)
+      expect(isAggregateVisibleItemType(type)).toBe(true)
     }
   })
 
@@ -57,17 +57,17 @@ describe("isStandaloneItemType", () => {
     // System types speak for someone (comment/reaction/relation), `feature`
     // is a data-level geometry marker — spec 06.
     for (const type of ["comment", "reaction", "relation", "feature"]) {
-      expect(isStandaloneItemType(type)).toBe(false)
+      expect(isAggregateVisibleItemType(type)).toBe(false)
     }
   })
 
   it("derives the exclusion set instead of listing it twice", () => {
     for (const type of SYSTEM_ITEM_TYPES) {
-      expect(NON_STANDALONE_ITEM_TYPES).toContain(type)
+      expect(AGGREGATE_HIDDEN_ITEM_TYPES).toContain(type)
     }
   })
 
   it("treats a connector's own type as card-worthy (open catalog)", () => {
-    expect(isStandaloneItemType("quest")).toBe(true)
+    expect(isAggregateVisibleItemType("quest")).toBe(true)
   })
 })

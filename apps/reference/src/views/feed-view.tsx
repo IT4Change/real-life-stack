@@ -30,7 +30,7 @@ import {
 } from "@real-life-stack/toolkit"
 import { FileText, Search, SearchX } from "lucide-react"
 import { Input, renderTypeFooter } from "@real-life-stack/toolkit"
-import { isStandaloneItemType, type Item, type User } from "@real-life-stack/data-interface"
+import { isAggregateVisibleItemType, type Item, type User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
@@ -42,7 +42,7 @@ import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
  * Everything new in the network, newest first: the feed is an AGGREGATING view
  * (spec 06 §"Verhältnis zwischen Schema- und Feldfiltern" names it alongside
  * search), not a field-activated module like map or calendar. So it shows every
- * item that stands on its own and asks `isStandaloneItemType` instead of
+ * item that forms an entry of its own and asks `isAggregateVisibleItemType` instead of
  * enumerating types — a place, task or project reaches the feed the day it
  * exists, without a second list to maintain here (Anton, 2026-08-17: the feed
  * shows all that is new, not only posts).
@@ -51,7 +51,7 @@ import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
  * mounting the feed.
  */
 export function selectFeedItems(items: readonly Item[]): Item[] {
-  return items.filter((item) => isStandaloneItemType(item.type)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return items.filter((item) => isAggregateVisibleItemType(item.type)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
 export function FeedView({ groupId }: { groupId: string }) {
