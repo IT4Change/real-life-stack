@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { getModules, moduleIds, resolveSpaceModules, resolveActiveModule } from "@real-life-stack/toolkit"
 import "./module-register"
-import { validModules, resolveDefaultModule } from "./hooks/use-workspace-routing"
+import { validModules, resolveDefaultModule, canonicalPath } from "./hooks/use-workspace-routing"
 
 const SRC = join(__dirname)
 
@@ -117,5 +117,33 @@ describe("Auswahlregeln zentral (Re-Review #277)", () => {
     for (const candidate of ["quests", "", undefined]) {
       expect(moduleIds()).toContain(resolveActiveModule(candidate, ["quests"]))
     }
+  })
+})
+
+describe("Redirect behält Query und Fragment (Re-Review #277)", () => {
+  it("carries the query through — ?connector= must survive", () => {
+    // Ohne das waehlte ein Redirect stumm einen anderen Connector.
+    expect(canonicalPath("garten", "feed", undefined, "?connector=local", "")).toBe(
+      "/garten/feed?connector=local",
+    )
+  })
+
+  it("carries the fragment through", () => {
+    expect(canonicalPath("garten", "feed", undefined, "", "#abschnitt")).toBe("/garten/feed#abschnitt")
+  })
+
+  it("carries both, and keeps a focused item in between", () => {
+    expect(canonicalPath("garten", "map", "item-7", "?dev", "#pin")).toBe(
+      "/garten/map/item-7?dev#pin",
+    )
+  })
+
+  it("adds nothing when there is neither", () => {
+    expect(canonicalPath("garten", "feed", undefined, "", "")).toBe("/garten/feed")
+  })
+
+  it("puts query and fragment AFTER the item, not before", () => {
+    // `/garten/map?dev/item-7` waere eine kaputte URL.
+    expect(canonicalPath("garten", "map", "item-7", "?dev", "")).toBe("/garten/map/item-7?dev")
   })
 })

@@ -66,6 +66,26 @@ export function resolveDefaultModule(itemOrHints: Item | ModuleHints, available:
   return available.includes(preferred) ? preferred : (available[0] ?? "feed")
 }
 
+/**
+ * Der kanonische Pfad fuer einen Redirect.
+ *
+ * Query und Fragment gehoeren zum Ort, nicht zum Modul: `?connector=` waehlt
+ * den Connector, `?dev` schaltet den Entwicklermodus. Ein Redirect, der sie
+ * abschneidet, aendert stumm das Verhalten der Seite — darum werden sie
+ * durchgereicht statt neu gebildet.
+ *
+ * Als schlichte Funktion exportiert, damit die Regel ohne Router pruefbar ist.
+ */
+export function canonicalPath(
+  slug: string,
+  moduleId: string,
+  itemId: string | undefined,
+  search: string,
+  hash: string,
+): string {
+  return `/${slug}/${moduleId}${itemId ? `/${itemId}` : ""}${search}${hash}`
+}
+
 export interface WorkspaceRouting {
   groups: Group[]
   /** Overview pseudo-workspace + one workspace per group. */
@@ -198,10 +218,10 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     // Query und Fragment gehoeren zum Ort, nicht zum Modul: `?connector=`
     // waehlt den Connector, `?dev` schaltet den Entwicklermodus. Ein Redirect,
     // der sie abschneidet, aendert stumm das Verhalten der Seite.
-    const rest = `${location.search}${location.hash}`
+    const { search, hash } = location
     // (a) No module/item segment (`/` or `/{scope}`) → default module.
     if (!urlSeg) {
-      navigate(`/${slug}/${activeModule}${rest}`, { replace: true })
+      navigate(canonicalPath(slug, activeModule, undefined, search, hash), { replace: true })
       return
     }
     // (a2) Die URL nennt ein Modul, das dieser Space nicht fuehrt (oder das
@@ -210,8 +230,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     // aber der Feed. Alles, was die URL liest (Verlinken, Zurueck, ein Pick
     // auf der Karte), liefe gegen eine Flaeche, die gar nicht offen ist.
     if (urlModule && urlModule !== activeModule) {
-      const item = urlItemId ? `/${urlItemId}` : ""
-      navigate(`/${slug}/${activeModule}${item}${rest}`, { replace: true })
+      navigate(canonicalPath(slug, activeModule, urlItemId, search, hash), { replace: true })
       return
     }
     // (b) Module-less item — only once the scope is synced AND the lookup settled.
@@ -219,7 +238,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
       const mod = moduleLessItem
         ? resolveDefaultModule(moduleLessItem, groupModuleIds)
         : groupModuleIds[0]
-      navigate(`/${slug}/${mod}/${moduleLessItemId}${rest}`, { replace: true })
+      navigate(canonicalPath(slug, mod, moduleLessItemId, search, hash), { replace: true })
     }
   }, [
     workspaces.length,
