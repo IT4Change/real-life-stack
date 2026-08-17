@@ -24,12 +24,17 @@ export class InitialSyncTracker {
   private readonly obs: ReactiveObservable<InitialSyncState> =
     createObservable<InitialSyncState>({ active: false, loadedGroups: 0, expectedGroups: null })
 
+
+  /** Von aussen zu erwartende Daten (falsch nur bei frisch erzeugter Identität). */
+  private expectRemoteData = false
   /**
-   * Erstsync ERWARTET: dieses Gerät hat noch keine Gruppen und meldet sich
-   * nicht gerade frisch erzeugt an. Ohne diese Erwartung ist ein laufender
-   * Catch-up normaler Betrieb und keine Erstbefüllung.
+   * Die Erstbefüllung dieses Geräts ist durch.
+   *
+   * Einmal gesetzt, bleibt es gesetzt: ab da ist ein Catch-up normaler Betrieb
+   * — eine Einladung am nächsten Tag soll nicht wieder als „Erstsync"
+   * erscheinen.
    */
-  private expecting = false
+  private firstFillDone = false
   private stopped = false
   /** Läuft laut Adapter gerade ein Catch-up, dem etwas fehlt? */
   private outstanding = false
@@ -43,7 +48,8 @@ export class InitialSyncTracker {
   /** Eine neue Runtime beginnt (Bootstrap, vor dem ersten Sync-Start). */
   prepare(): void {
     this.stopped = false
-    this.expecting = false
+    this.expectRemoteData = false
+    this.firstFillDone = false
     this.outstanding = false
     this.loadedGroups = 0
     this.expectedGroups = null
@@ -60,20 +66,44 @@ export class InitialSyncTracker {
    */
   begin({ expectRemoteData, localGroups }: { expectRemoteData: boolean; localGroups: number }): void {
     this.stopped = false
+    this.expectRemoteData = expectRemoteData
     this.loadedGroups = localGroups
-    this.expecting = expectRemoteData && localGroups === 0
+    // NICHT „hat schon Gruppen" als Kriterium: der Sync startet vor dem
+    // lokalen Lesevorgang, eine erste eingetroffene Gruppe würde den laufenden
+    // Erstsync sonst unsichtbar machen. Entscheidend ist, ob die
+    // Mitgliedschaftsliste mehr kennt als da ist.
+    this.firstFillDone = this.completeAtLogin()
     this.publish()
+  }
+
+  /** Fehlt nachweislich eine Gruppe, die die Liste schon kennt? */
+  private missingGroups(): boolean {
+    return this.expectedGroups !== null && this.expectedGroups > this.loadedGroups
+  }
+
+  /**
+   * Beim Login: gilt der Bestand als vollständig?
+   *
+   * NUR über tatsächlich vorhandene Gruppen. `expected === 0` zählt hier
+   * ausdrücklich NICHT — beim Login ist das persönliche Dokument zwar schon
+   * initialisiert, aber leer, und „0 von 0" hiesse fertig, bevor überhaupt
+   * etwas angefangen hat. Diese Aussage darf erst nach einem abgeschlossenen
+   * Catch-up gelten (siehe {@link setOutstanding}).
+   */
+  private completeAtLogin(): boolean {
+    return this.loadedGroups > 0 && !this.missingGroups()
   }
 
   /** Der Adapter meldet, ob für irgendein Dokument noch etwas aussteht. */
   setOutstanding(outstanding: boolean): void {
     if (this.stopped || outstanding === this.outstanding) return
     this.outstanding = outstanding
-    // Erstbefüllung abgeschlossen: nichts steht mehr aus UND es sind Gruppen
-    // da. Ab hier ist ein Catch-up normaler Betrieb — eine Einladung morgen
-    // soll nicht wieder als „Erstsync" erscheinen. Ohne Gruppen bleibt die
-    // Erwartung bestehen: eine Ruhepause ist kein Beleg für Vollständigkeit.
-    if (!outstanding && this.loadedGroups > 0) this.expecting = false
+    // Erstbefüllung abgeschlossen: nichts steht mehr aus UND nichts fehlt.
+    // Hier — nach einem abgeschlossenen Lauf — darf auch „die Liste kennt
+    // keine Gruppe" als Vollzug gelten; beim Login wäre das verfrüht.
+    if (!outstanding && !this.missingGroups() && (this.loadedGroups > 0 || this.expectedGroups === 0)) {
+      this.firstFillDone = true
+    }
     this.publish()
   }
 
@@ -93,13 +123,13 @@ export class InitialSyncTracker {
   /** Abmelden / Teardown: Anzeige aus, Zustand eingefroren. */
   end(): void {
     this.stopped = true
-    this.expecting = false
+    this.expectRemoteData = false
     this.outstanding = false
     this.publish()
   }
 
   private publish(): void {
-    const active = this.expecting && this.outstanding
+    const active = this.expectRemoteData && !this.firstFillDone && this.outstanding
     const current = this.obs.current
     if (
       current.active === active &&

@@ -25,6 +25,42 @@ describe("InitialSyncTracker", () => {
     expect(t.observe().current.active).toBe(false)
   })
 
+  it("bleibt sichtbar, wenn beim Login schon EINE von mehreren Gruppen da ist", () => {
+    const t = tracker()
+    // Bootstrap-Reihenfolge: der Sync läuft, bevor der lokale Lesevorgang
+    // durch ist. Trifft die erste Gruppe vorher ein, meldet `begin()` sie als
+    // „lokal vorhanden" — der laufende Erstsync darf davon nicht unsichtbar
+    // werden, solange die Mitgliedschaftsliste mehr kennt.
+    t.setOutstanding(true)
+    t.setGroupCounts({ loaded: 1, expected: 7 })
+    t.begin({ expectRemoteData: true, localGroups: 1 })
+
+    expect(t.observe().current).toMatchObject({ active: true, loadedGroups: 1, expectedGroups: 7 })
+  })
+
+  it("liest ein leeres persönliches Dokument beim Login NICHT als „fertig“", () => {
+    const t = tracker()
+    // Beim Login ist die PersonalDoc initialisiert, aber leer: sie meldet 0
+    // erwartete Gruppen. „0 von 0" ist hier kein Vollzug, sondern „noch
+    // nichts da" — sonst bleibt der ganze Erstsync unsichtbar.
+    t.setGroupCounts({ loaded: 0, expected: 0 })
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setOutstanding(true)
+
+    expect(t.observe().current.active).toBe(true)
+  })
+
+  it("schweigt beim Reload eines vollständigen Geräts", () => {
+    const t = tracker()
+    // Alle Gruppen liegen lokal, die Liste kennt keine weiteren: ein laufender
+    // Catch-up ist hier normaler Betrieb, keine Erstbefüllung.
+    t.setGroupCounts({ loaded: 7, expected: 7 })
+    t.begin({ expectRemoteData: true, localGroups: 7 })
+    t.setOutstanding(true)
+
+    expect(t.observe().current.active).toBe(false)
+  })
+
   it("meldet Erstsync, solange der Adapter etwas Offenes kennt", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })

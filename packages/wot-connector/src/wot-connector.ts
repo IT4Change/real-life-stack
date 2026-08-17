@@ -2123,11 +2123,15 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // ist das Ergebnis leer, obwohl die eigenen Gruppen noch unterwegs sind —
     // ohne diesen Tracker lädt die App zum Anlegen einer neuen Gruppe ein,
     // während die alten ankommen (rls#265).
+    // Zahlen VOR `begin()`: die Entscheidung „ist die Erstbefüllung schon
+    // durch?" braucht die Mitgliedschaftsliste. Andersherum sähe `begin()` nur
+    // die lokal vorhandenen Gruppen und hielte ein Gerät mit 1 von 7 für
+    // vollständig.
+    this.publishInitialSyncCounts()
     this.initialSync.begin({
       expectRemoteData: this.authExpectsRemoteData,
       localGroups: this.groupsCache.length,
     })
-    this.publishInitialSyncCounts()
 
     // 12. Ensure private space exists (hidden space for personal items)
     await this.queuePrivateSpaceReconcile({ createIfMissing: true })
