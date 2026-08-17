@@ -6,7 +6,7 @@ import { MockConnector } from "@real-life-stack/mock-connector"
 import { ConnectorProvider } from "@real-life-stack/toolkit"
 
 import { ItemDetailRead } from "./detail-host"
-import { feedFooter, mergeFeedItems } from "./views/feed-view"
+import { feedFooter, mergeFeedItems, showFeedSkeleton } from "./views/feed-view"
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -231,5 +231,21 @@ describe("feed item union", () => {
   it("still excludes comments and dedupes across the queries", () => {
     const merged = mergeFeedItems([post as never, comment as never], [post as never], [])
     expect(merged.map((item) => item.id)).toEqual(["p1"])
+  })
+})
+
+describe("Feed-Skelett während des Erstsyncs (rls#265)", () => {
+  it("zeigt vorhandene Beiträge, auch wenn eine der Abfragen noch leer ist", () => {
+    // Beiträge sind da, Termine noch nicht: die Veroderung meldet „lädt",
+    // aber es gibt etwas zu zeigen — Skelett wäre hier Verstecken.
+    expect(showFeedSkeleton(true, 3)).toBe(false)
+  })
+
+  it("zeigt das Skelett, solange nichts da ist und noch etwas kommen kann", () => {
+    expect(showFeedSkeleton(true, 0)).toBe(true)
+  })
+
+  it("zeigt kein Skelett, wenn nichts mehr kommt", () => {
+    expect(showFeedSkeleton(false, 0)).toBe(false)
   })
 })

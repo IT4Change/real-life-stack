@@ -38,6 +38,22 @@ describe("InitialSyncTracker", () => {
     expect(t.observe().current).toMatchObject({ active: true, loadedGroups: 1, expectedGroups: 7 })
   })
 
+  it("behält einen VOR dem Login abgeschlossenen Erstsync als abgeschlossen", () => {
+    const t = tracker()
+    // Der Sync startet vor dem lokalen Lesevorgang: ein Konto ohne Gruppen
+    // kann seinen Catch-up bereits autoritativ beendet haben, bevor `begin()`
+    // läuft. Dieses Latch darf `begin()` nicht wieder aufheben, sonst
+    // erscheint der nächste normale Catch-up als Erstsync.
+    t.setGroupCounts({ loaded: 0, expected: 0 })
+    t.setOutstanding(true)
+    t.setOutstanding(false)
+
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setOutstanding(true)
+
+    expect(t.observe().current.active).toBe(false)
+  })
+
   it("liest ein leeres persönliches Dokument beim Login NICHT als „fertig“", () => {
     const t = tracker()
     // Beim Login ist die PersonalDoc initialisiert, aber leer: sie meldet 0

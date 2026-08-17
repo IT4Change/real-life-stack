@@ -48,6 +48,20 @@ const FEED_TYPES: FilterTypeOption[] = [
  * item can satisfy several queries), newest first. Exported as a plain
  * function so the membership rule is testable without mounting the feed.
  */
+/**
+ * Skelett statt Inhalt — nur wenn es nichts zu zeigen gibt.
+ *
+ * `isLoading` heisst je Abfrage „diese Liste ist leer und es kann noch etwas
+ * kommen". Der Feed vereinigt drei Abfragen; verodert bedeutet das „mindestens
+ * eine könnte sich noch füllen" und NICHT „ich habe nichts zu zeigen". Ohne
+ * die zweite Bedingung versteckt der Feed vorhandene Beiträge, solange noch
+ * kein Termin eingetroffen ist — während des Erstsyncs dauert das die ganze
+ * Zeit (rls#265).
+ */
+export function showFeedSkeleton(mayStillFill: boolean, visibleItems: number): boolean {
+  return mayStillFill && visibleItems === 0
+}
+
 export function mergeFeedItems(...queries: Item[][]): Item[] {
   const merged = queries.flat().filter((it) => it.type !== "comment")
   const unique = Array.from(new Map(merged.map((it) => [it.id, it])).values())
@@ -66,8 +80,14 @@ export function FeedView({ groupId }: { groupId: string }) {
   const { data: posts, isLoading: postsLoading } = useItemsWithDraft({ hasField: ["content"] })
   const { data: events, isLoading: eventsLoading } = useItemsWithDraft({ hasField: ["start"] })
   const { data: statements, isLoading: statementsLoading } = useItemsWithDraft({ hasSchema: [VOCAB_STATEMENT] })
-  // Feed is the union of the queries → it has "loaded" only once all have.
-  const isLoading = postsLoading || eventsLoading || statementsLoading
+  // Der Feed ist die Vereinigung dreier Abfragen. `isLoading` heisst je
+  // Abfrage „diese Liste ist leer und es kann noch etwas kommen" — verodert
+  // ergibt das „mindestens eine meiner Listen könnte sich noch füllen", NICHT
+  // „ich habe nichts zu zeigen". Wer daraus ein Skelett STATT der Inhalte
+  // macht, versteckt vorhandene Beiträge, nur weil noch kein Termin da ist
+  // (rls#265: während des Erstsyncs dauert dieser Zustand die ganze Zeit).
+  // Das Skelett hängt deshalb unten zusätzlich am tatsächlich Gerenderten.
+  const mayStillFill = postsLoading || eventsLoading || statementsLoading
   // `groupId === "__overview__"` is the cross-space aggregate view
   // ("Mein Netzwerk"). useMembers(null) returns the union of all
   // members the connector knows about, so author resolution still
@@ -235,7 +255,7 @@ export function FeedView({ groupId }: { groupId: string }) {
       {/* Feed items — skeleton while loading, empty state once loaded with
           nothing, otherwise the list. */}
       <div className="space-y-4">
-        {isLoading ? (
+        {showFeedSkeleton(mayStillFill, filteredFeedItems.length) ? (
           Array.from({ length: 4 }).map((_, i) => <ItemPreviewSkeleton key={`skeleton-${i}`} />)
         ) : filteredFeedItems.length === 0 ? (
           <EmptyState

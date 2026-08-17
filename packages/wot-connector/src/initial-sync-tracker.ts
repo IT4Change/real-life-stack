@@ -72,7 +72,11 @@ export class InitialSyncTracker {
     // lokalen Lesevorgang, eine erste eingetroffene Gruppe würde den laufenden
     // Erstsync sonst unsichtbar machen. Entscheidend ist, ob die
     // Mitgliedschaftsliste mehr kennt als da ist.
-    this.firstFillDone = this.completeAtLogin()
+    // Ein bereits gesetztes Latch bleibt: der Sync startet VOR dem lokalen
+    // Lesevorgang und kann seinen Abschluss autoritativ gemeldet haben, bevor
+    // `begin()` läuft. Das zurückzunehmen liesse den nächsten normalen
+    // Catch-up als Erstsync erscheinen.
+    this.firstFillDone = this.firstFillDone || this.completeAtLogin()
     this.publish()
   }
 
