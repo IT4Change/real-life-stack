@@ -1,342 +1,106 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import { describe, it, expect } from "vitest"
 
 import { InitialSyncTracker } from "../src/initial-sync-tracker.js"
 
+/**
+ * Der Tracker ist seit web-of-trust#343 eine Übersetzung, keine
+ * Zustandsmaschine: der Adapter sagt, ob noch etwas aussteht, die
+ * Mitgliedschaftsliste liefert die Zahlen für die Anzeige. Entsprechend braucht
+ * es hier keine falschen Uhren mehr — und keine echten.
+ */
 describe("InitialSyncTracker", () => {
-  beforeEach(() => { vi.useFakeTimers() })
-  afterEach(() => { vi.useRealTimers() })
-
-  const tracker = () => new InitialSyncTracker({ settleMs: 2000, maxMs: 20_000, noDataMs: 8000 })
+  const tracker = () => new InitialSyncTracker()
 
   it("meldet keinen Erstsync für eine frisch erzeugte Identität", () => {
     const t = tracker()
     t.begin({ expectRemoteData: false, localGroups: 0 })
+    t.setOutstanding(true)
     expect(t.observe().current.active).toBe(false)
   })
 
   it("meldet keinen Erstsync, wenn das Gerät die Gruppen schon lokal hat", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 3 })
+    t.setOutstanding(true)
     expect(t.observe().current.active).toBe(false)
   })
 
-  it("meldet Erstsync auf einem leeren Gerät sofort", () => {
+  it("meldet Erstsync, solange der Adapter etwas Offenes kennt", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
+    expect(t.observe().current.active).toBe(false)
+
+    t.setOutstanding(true)
     expect(t.observe().current.active).toBe(true)
   })
 
-  it("beendet den Nachlauf, wenn nach der letzten Gruppe Ruhe einkehrt", () => {
+  it("endet erst, wenn nichts mehr aussteht", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 2, expected: 2 })
-
-    // Inhalte trudeln noch ein — jedes Eintreffen verlängert.
-    vi.advanceTimersByTime(1999)
-    t.noteActivity()
-    vi.advanceTimersByTime(1999)
+    t.setOutstanding(true)
+    t.setGroupCounts({ loaded: 7, expected: 7 })
     expect(t.observe().current.active).toBe(true)
 
-    vi.advanceTimersByTime(1)
+    t.setOutstanding(false)
     expect(t.observe().current.active).toBe(false)
   })
 
-  it("beendet den Erstsync spätestens nach der Obergrenze", () => {
+  it("kehrt zurück, wenn Minuten später wieder etwas aussteht — solange nichts da ist", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 1, expected: 99 })
-    // Dauerbetrieb: alle 1000ms trifft etwas ein, das Ruhefenster wird nie leer.
-    for (let elapsed = 0; elapsed < 20_000; elapsed += 1000) {
-      vi.advanceTimersByTime(1000)
-      t.noteActivity()
-    }
+    t.setOutstanding(true)
+    t.setOutstanding(false)
     expect(t.observe().current.active).toBe(false)
-  })
 
-  it("veröffentlicht die Zahl der bereits geladenen Gruppen", () => {
-    const t = tracker()
-    const seen: number[] = []
-    t.observe().subscribe(() => seen.push(t.observe().current.loadedGroups))
-
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 2, expected: 5 })
-    t.setGroupCounts({ loaded: 5, expected: 5 })
-
-    expect(t.observe().current.loadedGroups).toBe(5)
-    expect(seen).toContain(2)
-    expect(seen).toContain(5)
-  })
-
-  it("zählt eine neue Gruppe als Nachschub — die Anzeige bleibt", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    vi.advanceTimersByTime(1500)
-    t.setGroupCounts({ loaded: 1, expected: null })
-    vi.advanceTimersByTime(1500)
+    // Ohne eine einzige Gruppe ist die Ruhe kein Beleg für Vollständigkeit.
+    t.setOutstanding(true)
     expect(t.observe().current.active).toBe(true)
   })
 
-  it("hört NICHT auf, solange die PersonalDoc mehr Gruppen kennt als da sind", () => {
+  it("behandelt spätere Catch-ups als normalen Betrieb, sobald Gruppen da sind", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
-    // Die Mitgliedschaftsliste sagt 12, angekommen sind 3 — eine Ruhepause
-    // (z.B. während des Schlüsselaustauschs) ist dann KEIN Fertig-Signal.
+    t.setOutstanding(true)
+    t.setGroupCounts({ loaded: 7, expected: 7 })
+    t.setOutstanding(false)
+
+    // Eine Einladung am nächsten Tag ist kein Erstsync mehr.
+    t.setOutstanding(true)
+    expect(t.observe().current.active).toBe(false)
+  })
+
+  it("veröffentlicht die Gruppenzahlen für die Anzeige", () => {
+    const t = tracker()
+    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setOutstanding(true)
     t.setGroupCounts({ loaded: 3, expected: 12 })
 
-    // Weit über dem Ruhefenster von 2000ms, aber unter der Obergrenze.
-    vi.advanceTimersByTime(19_999)
-    expect(t.observe().current.active).toBe(true)
-    expect(t.observe().current.expectedGroups).toBe(12)
-  })
-
-  it("hält durch, solange überhaupt noch nichts eingetroffen ist", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    // Das persönliche Dokument ist beim Login bereits initialisiert, aber noch
-    // leer: es meldet 0 erwartete Gruppen. „0 von 0" ist hier KEIN
-    // Vollzugsmeldung, sondern schlicht „noch nichts da".
-    t.setGroupCounts({ loaded: 0, expected: 0 })
-
-    vi.advanceTimersByTime(2000)
-    expect(t.observe().current.active).toBe(true)
-
-    // Sobald die Mitgliedschaftsliste eintrifft, greift wieder der Vergleich.
-    t.setGroupCounts({ loaded: 0, expected: 12 })
-    vi.advanceTimersByTime(5000)
-    expect(t.observe().current.active).toBe(true)
-  })
-
-  it("beendet das Wartefenster auch, wenn nur eine Gruppe auftaucht", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    // Gruppe da, Mitgliedschaftsliste (noch) ohne Aussage: das Wartefenster
-    // darf hier nicht mehr zuschlagen, sonst endet die Anzeige mitten im Lauf.
-    t.setGroupCounts({ loaded: 1, expected: null })
-
-    vi.advanceTimersByTime(8000)
-    expect(t.observe().current.active).toBe(true)
-  })
-
-  it("gibt auf, wenn nach dem Wartefenster nichts gekommen ist (leeres Konto)", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 0, expected: 0 })
-
-    // Kein Dauerspinner für jemanden, der wirklich in keiner Gruppe ist.
-    vi.advanceTimersByTime(10_000)
-    expect(t.observe().current.active).toBe(false)
-  })
-
-  it("hält durch, solange der Relay offene Seiten gemeldet hat", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 4, expected: 4 })
-    // Der Relay sagt selbst: für dieses Dokument kommt noch mehr.
-    t.noteDocSync({ docId: "personal", outstanding: true })
-
-    vi.advanceTimersByTime(19_999)
-    expect(t.observe().current.active).toBe(true)
-
-    t.noteDocSync({ docId: "personal", outstanding: false })
-    vi.advanceTimersByTime(2000)
-    expect(t.observe().current.active).toBe(false)
-  })
-
-  it("wartet auf jedes Dokument einzeln", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 2, expected: 2 })
-    t.noteDocSync({ docId: "space-a", outstanding: true })
-    t.noteDocSync({ docId: "space-b", outstanding: true })
-
-    t.noteDocSync({ docId: "space-a", outstanding: false })
-    vi.advanceTimersByTime(2000)
-    expect(t.observe().current.active).toBe(true)
-
-    t.noteDocSync({ docId: "space-b", outstanding: false })
-    vi.advanceTimersByTime(2000)
-    expect(t.observe().current.active).toBe(false)
-  })
-
-  it("kehrt zurück, wenn der Relay Minuten später wieder eine offene Seite meldet", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 4, expected: 4 })
-    vi.advanceTimersByTime(2000)
-    expect(t.observe().current.active).toBe(false)
-
-    vi.advanceTimersByTime(5 * 60_000)
-    t.noteDocSync({ docId: "space-spaet", outstanding: true })
-    expect(t.observe().current.active).toBe(true)
-  })
-
-  it("kehrt zurück, wenn Minuten später die nächste Gruppe angekündigt wird", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 4, expected: 4 })
-    vi.advanceTimersByTime(2000)
-    expect(t.observe().current.active).toBe(false)
-
-    // Die Mitgliedschaftsliste wächst weiter — bei Anton Minuten später. Die
-    // Anzeige muss dann wiederkommen, statt einmalig verbraucht zu sein.
-    vi.advanceTimersByTime(5 * 60_000)
-    t.setGroupCounts({ loaded: 4, expected: 5 })
-    expect(t.observe().current.active).toBe(true)
-
-    t.setGroupCounts({ loaded: 5, expected: 5 })
-    vi.advanceTimersByTime(2000)
-    expect(t.observe().current.active).toBe(false)
-  })
-
-  it("kehrt NICHT zurück, wenn die Liste vollständig bleibt", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 3, expected: 3 })
-    vi.advanceTimersByTime(2000)
-    expect(t.observe().current.active).toBe(false)
-
-    // Reines Nachladen von Inhalten ist kein Grund, wieder „lädt" zu behaupten.
-    t.noteActivity()
-    expect(t.observe().current.active).toBe(false)
-  })
-
-  it("beendet erst, wenn alle erwarteten Gruppen da sind UND Ruhe eingekehrt ist", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 12, expected: 12 })
-
-    vi.advanceTimersByTime(1999)
-    expect(t.observe().current.active).toBe(true)
-    vi.advanceTimersByTime(1)
-    expect(t.observe().current.active).toBe(false)
-  })
-
-  it("gibt auch bei unvollständiger Liste nach der Obergrenze auf", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 1, expected: 12 })
-
-    vi.advanceTimersByTime(20_000)
-    expect(t.observe().current.active).toBe(false)
-  })
-
-  it("behält Belege, die zwischen prepare() und begin() eintreffen", () => {
-    const t = tracker()
-    t.prepare()
-    // Der Relay antwortet, bevor der lokale Lesevorgang durch ist — genau das
-    // Fenster, in dem PersonalDoc- und Space-Sync bereits laufen.
-    t.noteDocSync({ docId: "personal", outstanding: true })
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-
-    vi.advanceTimersByTime(19_999)
-    expect(t.observe().current.active).toBe(true)
-  })
-
-  it("meldet zwischen prepare() und begin() nie zwischendurch „fertig“", () => {
-    const t = tracker()
-    const emitted: boolean[] = []
-    t.observe().subscribe((state) => emitted.push(state.active))
-
-    t.prepare()
-    // Die Mitgliedschaftsliste ist schon da und kennt mehr als lokal liegt.
-    t.setGroupCounts({ loaded: 2, expected: 5 })
-    expect(t.observe().current.active).toBe(true)
-
-    // Der lokale Lesevorgang meldet zwei Gruppen — das ist KEIN Vollzug.
-    t.begin({ expectRemoteData: true, localGroups: 2 })
-
-    expect(t.observe().current.active).toBe(true)
-    expect(t.observe().current.expectedGroups).toBe(5)
-    expect(emitted).not.toContain(false)
+    expect(t.observe().current).toMatchObject({ active: true, loadedGroups: 3, expectedGroups: 12 })
   })
 
   it("verwirft beim Identitätswechsel den Stand der vorigen Identität", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setOutstanding(true)
     t.setGroupCounts({ loaded: 3, expected: 9 })
     t.end()
 
     t.prepare()
-    expect(t.observe().current.loadedGroups).toBe(0)
-    expect(t.observe().current.expectedGroups).toBeNull()
-
-    // Und der alte Beleg darf die neue Runtime nicht am Laufen halten.
-    t.begin({ expectRemoteData: false, localGroups: 0 })
-    vi.advanceTimersByTime(60_000)
-    expect(t.observe().current.active).toBe(false)
+    expect(t.observe().current).toEqual({ active: false, loadedGroups: 0, expectedGroups: null })
   })
 
-  it("startet die Fristen erst beim Reconnect, wenn der Login schon offline beginnt", () => {
-    const t = tracker()
-    // Realer Fall: die App startet ohne Verbindung. Bis der Relay da ist,
-    // KANN nichts eintreffen — es darf also auch keine Frist verstreichen.
-    t.setRelayConnected(false)
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    expect(t.observe().current.active).toBe(false)
-
-    vi.advanceTimersByTime(120_000)
-    t.setRelayConnected(true)
-    expect(t.observe().current.active).toBe(true)
-
-    // Und ab jetzt laufen sie normal weiter.
-    vi.advanceTimersByTime(8000)
-    expect(t.observe().current.active).toBe(false)
-  })
-
-  it("hält ohne Verbindung ALLE Uhren an, nicht nur das Ruhefenster", () => {
+  it("friert den Zustand nach dem Abmelden ein", () => {
     const t = tracker()
     t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setRelayConnected(false)
-
-    // Offline verstreicht mehr als jede Frist — trotzdem darf nichts ablaufen,
-    // sonst ist die Anzeige nach dem Reconnect schon verbraucht.
-    vi.advanceTimersByTime(120_000)
-    t.setRelayConnected(true)
-    expect(t.observe().current.active).toBe(true)
-  })
-
-  it("schaltet beim Abmelden ab und lässt keinen Timer zurück", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.end()
-    expect(t.observe().current.active).toBe(false)
-    expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it("lässt sich nach dem Abmelden nicht von einem Nachzügler wiederbeleben", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
+    t.setOutstanding(true)
     t.setGroupCounts({ loaded: 2, expected: 6 })
     t.end()
     const afterEnd = { ...t.observe().current }
 
-    // Ein Zähler, der noch aus dem Teardown herausfällt, darf den abgemeldeten
-    // Zustand NICHT mehr anfassen — auch nicht die Zahlen.
+    // Nachzügler aus der abgeräumten Runtime dürfen nichts mehr ändern.
+    t.setOutstanding(true)
     t.setGroupCounts({ loaded: 0, expected: 5 })
-    t.noteDocSync({ docId: "spaet", outstanding: true })
-    t.setRelayConnected(false)
 
     expect(t.observe().current).toEqual(afterEnd)
-    expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it("hört auf zu behaupten, es käme noch etwas, wenn die Verbindung weg ist", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setRelayConnected(false)
-    expect(t.observe().current.active).toBe(false)
-  })
-
-  it("nimmt den Erstsync wieder auf, sobald die Verbindung zurück ist", () => {
-    const t = tracker()
-    t.begin({ expectRemoteData: true, localGroups: 0 })
-    t.setGroupCounts({ loaded: 2, expected: 2 })
-    t.setRelayConnected(false)
-    expect(t.observe().current.active).toBe(false)
-
-    t.setRelayConnected(true)
-    expect(t.observe().current.active).toBe(true)
-    vi.advanceTimersByTime(2000)
-    expect(t.observe().current.active).toBe(false)
   })
 })

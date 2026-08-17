@@ -5,118 +5,46 @@ import {
   type ReactiveObservable,
 } from "@real-life-stack/data-interface"
 
-export interface InitialSyncTrackerConfig {
-  /**
-   * Ruhefenster: so lange nichts Neues mehr eintrifft, gilt der Erstsync als
-   * beendet.
-   *
-   * Es muss die Lücke zwischen ZWEI eintreffenden Gruppen überbrücken, und die
-   * ist auf einem echten Konto mehrere Sekunden lang: die Mitgliedschaftsliste
-   * selbst kommt stückweise, dazwischen liegen Schlüsselaustausch und
-   * Space-Catch-up. Mit 2,5 s endete die Anzeige bei Antons sieben Gruppen
-   * nach der ersten. Der Preis für ein grosszügiges Fenster ist ein Nachlauf
-   * am Ende — deutlich billiger als eine Anzeige, die mittendrin abbricht.
-   */
-  settleMs?: number
-  /**
-   * Obergrenze. Ohne sie hinge die Anzeige an einem Relay, das dauerhaft
-   * etwas nachliefert — die Aussage „Erstsync" wäre dann keine mehr.
-   */
-  maxMs?: number
-  /**
-   * Wie lange auf die Mitgliedschaftsliste gewartet wird, bevor „keine
-   * Gruppen" als Wahrheit statt als Wartezustand gilt. Trifft den seltenen
-   * Fall, dass jemand tatsächlich in keiner Gruppe ist — ohne diese Grenze
-   * liefe die Anzeige bis zur Obergrenze.
-   */
-  noDataMs?: number
-}
-
-const DEFAULT_SETTLE_MS = 10_000
-const DEFAULT_MAX_MS = 60_000
-const DEFAULT_NO_DATA_MS = 20_000
-
 /**
- * Erkennt, ob dieses Gerät gerade seinen ersten Datenbestand empfängt.
+ * Erstsync-Zustand dieses Geräts, abgeleitet aus dem Catch-up-Zustand des
+ * Adapters (web-of-trust#343).
  *
- * Drei Quellen, absteigend nach Belastbarkeit:
+ * **Vorher stand hier eine Zustandsmaschine mit drei Zeitfenstern.** Die App
+ * hatte keinen Zugang zum Catch-up-Zustand und musste ihn aus mitgelesenen
+ * Wire-Rahmen plus Ruhepausen erraten — mit allen Folgeproblemen, die das mit
+ * sich brachte: Reihenfolge asynchroner Auswertungen, Lebenszyklus über
+ * Re-Logins, Fristen, die offline ablaufen. Nichts davon war ein
+ * Anwendungsproblem, und nichts davon ist noch hier.
  *
- * 1. **Die Sync-Antworten des Relays** (`noteDocSync`). `truncated: true`
- *    heisst wörtlich „für dieses Dokument habe ich noch mehr". Solange eine
- *    Seite offen ist, läuft der Erstsync — das ist eine Tatsache vom
- *    Gegenüber, keine Ableitung.
- * 2. **Die Mitgliedschaftsliste** aus dem persönlichen Dokument
- *    (`PersonalDoc.spaces`) sagt, wie viele Gruppen es überhaupt gibt. Solange
- *    weniger geladen sind, fehlt nachweislich etwas.
- * 3. **Das Ruhefenster** (`settleMs`) für den Rest: Inhalte, die nach der
- *    letzten Gruppe noch eintrudeln. Dafür gibt es kein Signal pro Space
- *    (`spaceCatchUpsInFlight` ist adapter-privat), also gilt hier das einzige
- *    beobachtbare Kriterium: es trifft nichts Neues mehr ein.
- *
- * Entscheidend ist, dass der Tracker **nichts vorhersagt**. Die
- * Mitgliedschaftsliste wächst auf einem echten Konto noch Minuten nach dem
- * Login weiter; „sind wir fertig?" ist so nicht beantwortbar. Beantwortbar ist
- * „fehlt gerade nachweislich etwas?" — und sobald wieder etwas fehlt, kommt
- * die Anzeige zurück, statt einmalig verbraucht zu sein.
- *
- * Quelle 1 mitzulesen ist eine Notlösung an der richtigen Stelle: die
- * Information gehört in den Adapter (web-of-trust#343), läuft aber ohnehin am
- * Messaging-Adapter des Connectors vorbei.
- *
- * `maxMs` deckelt jeden dieser Abschnitte — eine Anzeige, die nie endet, ist
- * keine Aussage mehr.
+ * Übrig bleibt eine Übersetzung: `CatchUpOverview.syncing` sagt, ob noch etwas
+ * aussteht; die Gruppenzahlen kommen aus der Mitgliedschaftsliste und dienen
+ * nur der Anzeige („3 von 12"). Keine Timer, keine Heuristik, keine Vermutung.
  */
 export class InitialSyncTracker {
-  private readonly settleMs: number
-  private readonly maxMs: number
-  private readonly noDataMs: number
   private readonly obs: ReactiveObservable<InitialSyncState> =
     createObservable<InitialSyncState>({ active: false, loadedGroups: 0, expectedGroups: null })
 
-  /** Erstsync erwartet, unabhängig davon ob die Verbindung gerade steht. */
-  private expecting = false
-  /** Abgemeldet: kein Nachzügler darf hier noch eine Anzeige aufspannen. */
-  private stopped = false
-  private relayConnected = true
-  private settleTimer: ReturnType<typeof setTimeout> | null = null
-  private maxTimer: ReturnType<typeof setTimeout> | null = null
-  private noDataTimer: ReturnType<typeof setTimeout> | null = null
-  private loadedGroups = 0
   /**
-   * Dokumente, für die der Relay eine offene Seite gemeldet hat
-   * (`truncated: true`) und noch keine abschliessende. Das ist die einzige
-   * TATSACHE über den Fortschritt, die aus der App heraus lesbar ist.
+   * Erstsync ERWARTET: dieses Gerät hat noch keine Gruppen und meldet sich
+   * nicht gerade frisch erzeugt an. Ohne diese Erwartung ist ein laufender
+   * Catch-up normaler Betrieb und keine Erstbefüllung.
    */
-  private readonly openDocs = new Set<string>()
-  /** Erwartete Mitgliedschaften laut persönlichem Dokument; null = noch unbekannt. */
+  private expecting = false
+  private stopped = false
+  /** Läuft laut Adapter gerade ein Catch-up, dem etwas fehlt? */
+  private outstanding = false
+  private loadedGroups = 0
   private expectedGroups: number | null = null
-
-  constructor(config: InitialSyncTrackerConfig = {}) {
-    this.settleMs = config.settleMs ?? DEFAULT_SETTLE_MS
-    this.maxMs = config.maxMs ?? DEFAULT_MAX_MS
-    this.noDataMs = config.noDataMs ?? DEFAULT_NO_DATA_MS
-  }
 
   observe(): Observable<InitialSyncState> {
     return this.obs
   }
 
-  /**
-   * Eine neue Runtime beginnt (Bootstrap, vor dem ersten Sync-Start).
-   *
-   * Getrennt von {@link begin}, weil zwischen beiden bereits Sync-Antworten
-   * eintreffen: PersonalDoc- und Space-Sync starten VOR dem lokalen
-   * Lesevorgang. `prepare()` verwirft den Stand der vorigen Identität und hebt
-   * die Teardown-Sperre — `begin()` darf danach keine Belege mehr wegräumen,
-   * sonst geht genau die Evidenz des Erstsyncs verloren.
-   */
+  /** Eine neue Runtime beginnt (Bootstrap, vor dem ersten Sync-Start). */
   prepare(): void {
     this.stopped = false
     this.expecting = false
-    this.openDocs.clear()
-    this.clearSettleTimer()
-    this.clearMaxTimer()
-    this.clearNoDataTimer()
+    this.outstanding = false
     this.loadedGroups = 0
     this.expectedGroups = null
     this.publish()
@@ -128,227 +56,50 @@ export class InitialSyncTracker {
    * @param expectRemoteData `false` für eine gerade erzeugte Identität — dort
    *   ist „keine Gruppe" die Wahrheit und keine Wartesituation.
    * @param localGroups Gruppen, die schon lokal vorliegen. Sind welche da, hat
-   *   die Oberfläche etwas zu zeigen; dann ist der Nachlauf normaler Sync und
-   *   keine Erstbefüllung.
+   *   die Oberfläche etwas zu zeigen; der Nachlauf ist dann normaler Sync.
    */
   begin({ expectRemoteData, localGroups }: { expectRemoteData: boolean; localGroups: number }): void {
     this.stopped = false
     this.loadedGroups = localGroups
-    // `expectedGroups` wird hier NICHT zurückgesetzt — das ist Sache von
-    // prepare(). Zwischen beiden kann die Mitgliedschaftsliste längst
-    // eingetroffen sein; sie hier zu verwerfen hiesse, für einen Wimpernschlag
-    // „fertig" zu veröffentlichen, bis der Connector sie erneut einliest.
-    if (!expectRemoteData || localGroups > 0) {
-      // Belege aus dem Bootstrap-Fenster gelten weiter: ein offenes Dokument
-      // oder eine Liste, die mehr kennt als da ist, bleiben Belege — auch dann,
-      // wenn lokal schon Gruppen liegen.
-      this.expecting =
-        this.openDocs.size > 0 ||
-        (this.expectedGroups !== null && this.expectedGroups > this.loadedGroups)
-      if (this.expecting) this.armMaxTimer()
-      this.publish()
-      return
-    }
-    this.expecting = true
-    this.armMaxTimer()
-    this.armNoDataTimer()
-    this.armSettleTimer()
+    this.expecting = expectRemoteData && localGroups === 0
     this.publish()
   }
 
-  /** Es ist etwas eingetroffen (Space-Liste, Remote-Update, PersonalDoc). */
-  noteActivity(): void {
-    if (!this.expecting) return
-    this.armSettleTimer()
+  /** Der Adapter meldet, ob für irgendein Dokument noch etwas aussteht. */
+  setOutstanding(outstanding: boolean): void {
+    if (this.stopped || outstanding === this.outstanding) return
+    this.outstanding = outstanding
+    // Erstbefüllung abgeschlossen: nichts steht mehr aus UND es sind Gruppen
+    // da. Ab hier ist ein Catch-up normaler Betrieb — eine Einladung morgen
+    // soll nicht wieder als „Erstsync" erscheinen. Ohne Gruppen bleibt die
+    // Erwartung bestehen: eine Ruhepause ist kein Beleg für Vollständigkeit.
+    if (!outstanding && this.loadedGroups > 0) this.expecting = false
+    this.publish()
   }
 
   /**
-   * Stand eines Dokuments laut Relay. `outstanding` heisst „für dieses
-   * Dokument steht noch etwas aus" — sei es eine weitere Seite (`truncated`)
-   * oder ein Rückstand gegenüber den `heads` des Relays. Solange das für
-   * irgendein Dokument gilt, LÄUFT der Erstsync nachweislich, unabhängig von
-   * jedem Zeitfenster.
-   */
-  noteDocSync({ docId, outstanding }: { docId: string; outstanding: boolean }): void {
-    if (this.stopped) return
-    const wasOpen = this.openDocs.has(docId)
-    if (outstanding) this.openDocs.add(docId)
-    else this.openDocs.delete(docId)
-    if (outstanding) this.clearNoDataTimer()
-    if (outstanding && !this.expecting) {
-      this.expecting = true
-      this.armMaxTimer()
-    }
-    // Jede Antwort ist eingetroffene Ladung, auch die abschliessende — sie
-    // verlängert also das Ruhefenster. `outstanding` hält zusätzlich fest,
-    // dass für dieses Dokument nachweislich noch etwas fehlt.
-    this.noteActivity()
-    if (outstanding !== wasOpen) this.publish()
-  }
-
-  /**
-   * Stand der Gruppenliste. `expected` kommt aus der Mitgliedschaftsliste des
-   * persönlichen Dokuments, `null` solange die noch nichts hergibt.
+   * Stand der Gruppenliste — reine Anzeige. `expected` kommt aus der
+   * Mitgliedschaftsliste des persönlichen Dokuments, `null` solange die noch
+   * nichts hergibt.
    */
   setGroupCounts({ loaded, expected }: { loaded: number; expected: number | null }): void {
-    // Nach dem Teardown ist der Zustand eingefroren — ein Zähler, der noch aus
-    // der abgeräumten Runtime herausfällt, darf auch die Zahlen nicht mehr
-    // ändern, nicht nur die Anzeige.
     if (this.stopped) return
     if (loaded === this.loadedGroups && expected === this.expectedGroups) return
     this.loadedGroups = loaded
     this.expectedGroups = expected
-    // Sobald die Mitgliedschaftsliste etwas nennt, ist die Wartefrage
-    // beantwortet — ab hier entscheidet der Vergleich geladen/erwartet.
-    if (loaded > 0 || (expected !== null && expected > 0)) this.clearNoDataTimer()
-
-    // Nachzügler: die Mitgliedschaftsliste wächst weiter, bei Anton noch
-    // Minuten nach dem Login. Kündigt sie eine Gruppe an, die noch fehlt, ist
-    // das ein BELEG — dann kommt die Anzeige zurück, statt einmalig verbraucht
-    // zu sein. Das ist der Grund, warum hier nichts vorhergesagt werden muss:
-    // die Aussage lautet nicht „wir sind gleich fertig", sondern „es fehlt
-    // nachweislich etwas".
-    if (!this.expecting && expected !== null && expected > loaded) {
-      this.expecting = true
-      this.armMaxTimer()
-    }
-
-    // Eine neu aufgetauchte Gruppe ist Nachschub, kein Ruhezustand.
-    this.noteActivity()
     this.publish()
   }
 
-  setRelayConnected(connected: boolean): void {
-    if (this.stopped) return
-    if (connected === this.relayConnected) return
-    this.relayConnected = connected
-    if (this.expecting) {
-      // Ohne Verbindung kommt nichts — dann darf die Anzeige auch nichts
-      // versprechen, und es darf auch keine Frist verstreichen. Offline
-      // stehen ALLE Uhren still (nicht nur das Ruhefenster), sonst ist die
-      // Anzeige nach dem Reconnect schon abgelaufen, bevor der Nachschub
-      // überhaupt beginnen konnte.
-      if (connected) {
-        this.armSettleTimer()
-        this.armMaxTimer()
-        if (this.expectedGroups === null || this.expectedGroups === 0) this.armNoDataTimer()
-      } else {
-        this.clearSettleTimer()
-        this.clearMaxTimer()
-        this.clearNoDataTimer()
-      }
-    }
-    this.publish()
-  }
-
-  /** Abmelden / Teardown: Anzeige aus, keine Timer zurücklassen. */
+  /** Abmelden / Teardown: Anzeige aus, Zustand eingefroren. */
   end(): void {
     this.stopped = true
     this.expecting = false
-    this.openDocs.clear()
-    this.clearSettleTimer()
-    this.clearMaxTimer()
-    this.clearNoDataTimer()
+    this.outstanding = false
     this.publish()
-  }
-
-  /**
-   * Alle drei Fristen werden zentral hier gestellt — und NUR bei bestehender
-   * Verbindung. Ohne Relay kann nichts eintreffen; eine Frist, die währenddessen
-   * verstreicht, misst nichts und würde den Erstsync beenden, bevor er
-   * anfangen konnte (Login im Offline-Zustand). Der Reconnect stellt sie neu.
-   */
-  private armSettleTimer(): void {
-    this.clearSettleTimer()
-    if (!this.relayConnected) return
-    this.settleTimer = setTimeout(() => {
-      this.settleTimer = null
-      this.settle()
-    }, this.settleMs)
-  }
-
-  /** Wartefenster auf die Mitgliedschaftsliste; endet, sobald sie etwas nennt. */
-  private armNoDataTimer(): void {
-    this.clearNoDataTimer()
-    if (!this.relayConnected) return
-    this.noDataTimer = setTimeout(() => {
-      this.noDataTimer = null
-      // „Es kam nichts" gilt nur, wenn auch kein Dokument offen gemeldet ist.
-      // Ein offener Rahmen ist Nachschub, auf den zu warten sich lohnt.
-      if (this.openDocs.size > 0) return
-      this.finish()
-    }, this.noDataMs)
-  }
-
-  private armMaxTimer(): void {
-    this.clearMaxTimer()
-    if (!this.relayConnected) return
-    this.maxTimer = setTimeout(() => {
-      this.maxTimer = null
-      this.finish()
-    }, this.maxMs)
-  }
-
-  /**
-   * Ruhefenster abgelaufen. Das beendet den Erstsync NUR im Nachlauf — also
-   * wenn die Mitgliedschaftsliste steht und alle Gruppen daraus geladen sind.
-   *
-   * Solange die Liste noch keine einzige Gruppe nennt, ist eine Pause kein
-   * Beleg für irgendetwas: das persönliche Dokument ist beim Login zwar schon
-   * initialisiert, aber leer — es meldet dann 0 erwartete Gruppen, und „0 von
-   * 0" hiesse fertig, bevor überhaupt etwas angefangen hat (Antons Test:
-   * Anzeige weg nach 2,5 s, kein einziger Space in der Liste). Für diesen Fall
-   * ist `noDataMs` zuständig, nicht das Ruhefenster.
-   */
-  private settle(): void {
-    // Eine offene Seite schlägt jedes Ruhefenster: der Relay hat gesagt, dass
-    // noch etwas kommt, und das ist keine Vermutung.
-    if (this.openDocs.size > 0) {
-      this.armSettleTimer()
-      return
-    }
-    const listComplete =
-      this.expectedGroups !== null &&
-      this.expectedGroups > 0 &&
-      this.loadedGroups >= this.expectedGroups
-    if (!listComplete) {
-      this.armSettleTimer()
-      return
-    }
-    this.finish()
-  }
-
-  private finish(): void {
-    this.expecting = false
-    this.clearSettleTimer()
-    this.clearMaxTimer()
-    this.clearNoDataTimer()
-    this.publish()
-  }
-
-  private clearSettleTimer(): void {
-    if (this.settleTimer !== null) {
-      clearTimeout(this.settleTimer)
-      this.settleTimer = null
-    }
-  }
-
-  private clearMaxTimer(): void {
-    if (this.maxTimer !== null) {
-      clearTimeout(this.maxTimer)
-      this.maxTimer = null
-    }
-  }
-
-  private clearNoDataTimer(): void {
-    if (this.noDataTimer !== null) {
-      clearTimeout(this.noDataTimer)
-      this.noDataTimer = null
-    }
   }
 
   private publish(): void {
-    const active = this.expecting && this.relayConnected
+    const active = this.expecting && this.outstanding
     const current = this.obs.current
     if (
       current.active === active &&

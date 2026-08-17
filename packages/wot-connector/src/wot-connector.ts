@@ -121,6 +121,7 @@ import {
   onYjsPersonalDocChange,
   changeYjsPersonalDoc,
   flushYjsPersonalDoc,
+  CatchUpRegistry,
 } from "@real-life/adapter-yjs"
 import type { YjsCompactStore } from "@real-life/adapter-yjs"
 
@@ -186,7 +187,6 @@ import {
 } from "./attestation-wire.js"
 import { InitialSyncTracker } from "./initial-sync-tracker.js"
 import { countMemberSpaces } from "./personal-doc-spaces.js"
-import { readSyncResponse, relayIsAhead, type SyncResponseObservation } from "./sync-frame-watcher.js"
 import { createCoalescedRunner, type CoalescedRunner } from "./coalesced-runner.js"
 
 // --- Constants ---
@@ -402,12 +402,13 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
    */
   private authExpectsRemoteData = true
   private restoreSpacesRunner: CoalescedRunner | null = null
-  private syncFrameUnsub: (() => void) | null = null
-  /** Zuletzt vergebenes Token je Dokument — nur die jüngste Auswertung publiziert. */
-  private readonly syncFrameTokens = new Map<string, number>()
-  /** Global monoton, wird NIE zurückgesetzt — sonst wäre ein Token nach dem
-   *  Teardown wiederverwendbar und eine alte Fortsetzung hielte sich für neu. */
-  private syncFrameSeq = 0
+  /**
+   * Catch-up-Zustand des Adapters (web-of-trust#343). Ersetzt das Mitlesen der
+   * `sync-response`-Rahmen samt Token-Ordnung und Head-Vergleich: der Adapter
+   * führt diesen Zustand ohnehin, jetzt gibt er ihn heraus.
+   */
+  private catchUpRegistry: CatchUpRegistry | null = null
+  private catchUpUnsub: (() => void) | null = null
   private privateSpaceReconcile: Promise<void> = Promise.resolve()
   private contactsUnsub: (() => void) | null = null
   private attestationsUnsub: (() => void) | null = null
@@ -545,9 +546,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.personalDocUnsub?.()
     this.restoreSpacesRunner?.cancel()
     this.restoreSpacesRunner = null
-    this.syncFrameUnsub?.()
-    this.syncFrameUnsub = null
-    this.syncFrameTokens.clear()
+    this.catchUpUnsub?.()
+    this.catchUpUnsub = null
+    this.catchUpRegistry?.clear()
     this.initialSync.end()
     this.contactsUnsub?.()
     this.attestationsUnsub?.()
@@ -708,9 +709,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.personalDocUnsub?.()
     this.restoreSpacesRunner?.cancel()
     this.restoreSpacesRunner = null
-    this.syncFrameUnsub?.()
-    this.syncFrameUnsub = null
-    this.syncFrameTokens.clear()
+    this.catchUpUnsub?.()
+    this.catchUpUnsub = null
+    this.catchUpRegistry?.clear()
     this.initialSync.end()
     this.inboxAttestationUnsub?.()
     this.inboxAttestationUnsub = null
@@ -1883,7 +1884,6 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // its initial queue immediately after authentication.
     this.outboxAdapter.onStateChange((state) => {
       this.relayStateObs.set(state as RelayState)
-      this.initialSync.setRelayConnected(state === "connected")
       getMetrics().setRelayStatus(state === "connected", this.config.relayUrl, 0)
       if (state === "connected") {
         this.syncDiscoveryPending().catch(() => {})
@@ -1897,20 +1897,13 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       void this.applyTransportDeliveryReceipt(receipt)
     })
 
-    // VOR jedem Sync-Start: der PersonalDoc-Logsync beginnt in
-    // initNamespacedYjsPersonalDoc(), der Space-Sync in replication.start().
-    // Der Adapter puffert nur, solange NIEMAND zuhört — sobald diese beiden
-    // ihre Handler haben, werden Antworten nicht mehr nachgeliefert. Wer sich
-    // später anmeldet, verpasst genau die Runden des Erstsyncs, um die es hier
-    // geht. Und diese Runtime beginnt jetzt: alte Belege verwerfen, Sperre auf.
-    //
-    // Hier registrieren ist auch der sichere Zeitpunkt: `onMessage()` LEERT
-    // einen vorhandenen Frühpuffer in den neuen Handler. Vor `connect()` ist
-    // der Puffer garantiert leer, wir nehmen also niemandem etwas weg.
+    // Diese Runtime beginnt: alter Stand weg, Sperre auf. Die Registry wird
+    // dem PersonalDoc-Logsync und der Replication mitgegeben; beide melden
+    // ihren Catch-up-Zustand hinein, wir hören an EINER Stelle zu.
     this.initialSync.prepare()
-    this.syncFrameUnsub = this.outboxAdapter.onMessage((message: WireMessage) => {
-      const syncFrame = readSyncResponse(message)
-      if (syncFrame) void this.noteSyncFrame(syncFrame)
+    this.catchUpRegistry = new CatchUpRegistry()
+    this.catchUpUnsub = this.catchUpRegistry.subscribe((overview) => {
+      this.initialSync.setOutstanding(overview.syncing)
     })
 
     this.inboxReception = new InboxReceptionHost({
@@ -1932,7 +1925,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     await initNamespacedYjsPersonalDoc(
       this.identity,
       this.outboxAdapter,
-      { docLogStore: this.docLogStore, deviceId },
+      { docLogStore: this.docLogStore, deviceId, catchUpRegistry: this.catchUpRegistry ?? undefined },
     )
 
     // OutboxMessagingAdapter.connect() immediately starts a fire-and-forget
@@ -1981,6 +1974,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       docLogStore: this.docLogStore,
       deviceId,
       enableLogSync: true,
+      catchUpRegistry: this.catchUpRegistry ?? undefined,
     })
     // Membership inbox ownership lives in the replication adapter. Subscribe
     // before start(), because the relay may deliver a queued invite immediately.
@@ -2031,9 +2025,8 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     )
     const restoreSpacesRunner = this.restoreSpacesRunner
     this.personalDocUnsub = onYjsPersonalDocChange(() => {
-      this.initialSync.noteActivity()
-      // Die Mitgliedschaftsliste wächst hier — die Erwartung muss sofort mit,
-      // nicht erst wenn die Gruppe auch wiederhergestellt ist.
+      // Die Mitgliedschaftsliste wächst hier — die Zahlen für die Anzeige
+      // müssen sofort mit, nicht erst wenn die Gruppe wiederhergestellt ist.
       this.publishInitialSyncCounts()
       restoreSpacesRunner()
     })
@@ -2112,9 +2105,6 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     )
     this.crossGroupIndex.start()
     this.crossGroupUnsub = this.crossGroupIndex.onChange(() => {
-      // Eintreffende Items sind der ehrlichste Beleg dafür, dass der Erstsync
-      // noch läuft — Metadaten allein sagen nichts über Inhalte.
-      this.initialSync.noteActivity()
       // Scoped activity is deliberately workspace-independent; a background
       // group changing must refresh it even while another space is active.
       this.notifyAllObservers(true)
@@ -2970,18 +2960,6 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
    * ist die Erwartung unbekannt und nicht etwa null Gruppen.
    */
   /**
-   * Eine Sync-Antwort auswerten: liegt der Relay für dieses Dokument noch vor
-   * uns?
-   *
-   * Zwei Gründe, warum etwas aussteht, und beide stehen in der Antwort:
-   * `truncated` (es folgt noch eine Seite) und der Vergleich seiner `heads`
-   * mit unserem lückenlosen lokalen Stand. Der zweite fängt genau den Fall,
-   * den `truncated` NICHT abdeckt — Einträge, die hinter einer Lücke oder
-   * hinter einem fehlenden Schlüssel liegen und später nachgezogen werden.
-   * Deshalb kann die Mitgliedschaftsliste noch wachsen, obwohl der Relay
-   * „letzte Seite" gemeldet hat.
-   */
-  /**
    * Ein Durchlauf der PersonalDoc-getriebenen Space-Wiederherstellung.
    *
    * Hält Generation UND Replication-Instanz fest und prüft nach jeder
@@ -3000,37 +2978,6 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     if (!inThisRuntime()) return
     await this.queuePrivateSpaceReconcile({ createIfMissing: false })
       .catch((err) => console.error("[WotConnector] private space reconciliation failed", err))
-  }
-
-  private async noteSyncFrame(frame: SyncResponseObservation): Promise<void> {
-    // Der Head-Vergleich ist asynchron (IndexedDB). Ohne Ordnung könnte die
-    // Fortsetzung eines ÄLTEREN Rahmens nach einem neueren fertig werden und
-    // dessen Zustand überschreiben — ein „eingeholt" von vorhin würde ein
-    // aktuelles „steht noch aus" löschen.
-    //
-    // Das Token zählt deshalb GLOBAL und wird nie zurückgesetzt. Ein Zähler je
-    // Dokument fiele beim Teardown zurück auf 1, und nach einem Re-Login
-    // derselben Identität bekäme derselbe deterministische docId erneut die 1
-    // — die alte Fortsetzung würde sich für die neue halten (ABA). Zusätzlich
-    // müssen Runtime-Generation und Log-Store dieselben geblieben sein, damit
-    // eine Fortsetzung aus einer abgeräumten Runtime gar nicht erst spricht.
-    const token = ++this.syncFrameSeq
-    this.syncFrameTokens.set(frame.docId, token)
-    const generation = this.runtimeGeneration
-    const docLogStore = this.docLogStore
-
-    let outstanding = frame.truncated
-    if (!outstanding && docLogStore) {
-      try {
-        const local = await docLogStore.getStrictContiguousHeads(frame.docId)
-        outstanding = relayIsAhead(frame.heads, local)
-      } catch {
-        // Kein lokaler Stand lesbar — dann bleibt es bei `truncated`.
-      }
-    }
-    if (generation !== this.runtimeGeneration || docLogStore !== this.docLogStore) return
-    if (this.syncFrameTokens.get(frame.docId) !== token) return
-    this.initialSync.noteDocSync({ docId: frame.docId, outstanding })
   }
 
   private publishInitialSyncCounts(): void {
@@ -4321,9 +4268,9 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // der alten Identität schliessen, bevor die neue Runtime steht.
     this.restoreSpacesRunner?.cancel()
     this.restoreSpacesRunner = null
-    this.syncFrameUnsub?.()
-    this.syncFrameUnsub = null
-    this.syncFrameTokens.clear()
+    this.catchUpUnsub?.()
+    this.catchUpUnsub = null
+    this.catchUpRegistry?.clear()
     this.initialSync.end()
     this.inboxAttestationUnsub?.()
     this.inboxReceiptUnsub?.()

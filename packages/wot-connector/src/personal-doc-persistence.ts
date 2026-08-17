@@ -1,3 +1,4 @@
+import type { CatchUpRegistry } from "@real-life/adapter-yjs"
 import {
   CompactStorageManager,
   type PublicIdentitySession,
@@ -21,7 +22,7 @@ export function personalDocCompactStoreName(did: string): string {
 export async function initNamespacedYjsPersonalDoc(
   identity: PublicIdentitySession,
   messaging?: MessagingAdapter,
-  logSync?: { docLogStore: DocLogStore; deviceId: string },
+  logSync?: { docLogStore: DocLogStore; deviceId: string; catchUpRegistry?: CatchUpRegistry },
 ): Promise<void> {
   const compactStore = new CompactStorageManager(
     personalDocCompactStoreName(identity.getDid()),

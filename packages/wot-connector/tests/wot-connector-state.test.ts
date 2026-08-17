@@ -30,6 +30,16 @@ const yjsMockState = vi.hoisted(() => ({
 
 vi.mock("@real-life/adapter-yjs", () => ({
   YjsReplicationAdapter: vi.fn(),
+  // Sammelstelle für den Catch-up-Zustand (web-of-trust#343) — echte Klasse,
+  // sie ist reine Buchführung ohne Netz.
+  CatchUpRegistry: class {
+    update = () => {}
+    source = () => ({ update: () => {}, release: () => {} })
+    forget = () => {}
+    clear = () => {}
+    getOverview = () => ({ outstanding: [], syncing: false })
+    subscribe = () => () => {}
+  },
   YjsStorageAdapter: vi.fn(),
   initYjsPersonalDoc: vi.fn(),
   getYjsPersonalDoc: vi.fn(() => yjsMockState.personalDoc),
