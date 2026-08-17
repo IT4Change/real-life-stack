@@ -4,12 +4,16 @@
 # ziehen bewusst nur ein fertiges Artefakt und koennen selbst nichts bauen
 # (Spec 11 — eine Instanz besteht aus Konfiguration und Assets).
 #
-# Tags:
-#   1, 1.4, 1.4.2   aus einem Release-Tag v1.4.2 — Instanzen folgen "1" und
-#                   bekommen Korrekturen, aber keinen Umbau
-#   edge            jeder Push auf master, fuer uns zum Testen
+# Release-Tags dieses Repos heissen `app-v0.2.4` (release-please, mehrere
+# Pakete im Monorepo) — NICHT `v0.2.4`. Danach richten sich Trigger und Tags.
 #
-# Instanzen sollten NICHT auf "edge" zeigen.
+# Tags:
+#   0.2.4, 0.2   aus einem Release-Tag app-v0.2.4
+#   edge         jeder Push auf master, fuer uns zum Testen
+#
+# Bewusst KEIN Major-Tag, solange die App bei 0.x steht: "0" verspraeche
+# Stabilitaet innerhalb einer Major-Version, die es vor 1.0 nicht gibt.
+# Instanzen pinnen die Minor-Version und sollten NICHT auf "edge" zeigen.
 
 name: Publish app image
 
@@ -24,7 +28,7 @@ on:
       - "pnpm-workspace.yaml"
       - ".github/workflows/publish-app-image.yml"
     tags:
-      - "v*.*.*"
+      - "app-v*.*.*"
   workflow_dispatch:
 
 env:
@@ -52,31 +56,32 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=semver,pattern={{major}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{version}}
+            type=match,pattern=app-v(\d+\.\d+\.\d+),group=1
+            type=match,pattern=app-v(\d+\.\d+),group=1
             type=raw,value=edge,enable={{is_default_branch}}
 
-      - uses: docker/build-push-action@v6
+      # Erst LOKAL bauen, nicht pushen. Ein Tag, der einmal oeffentlich war,
+      # ist fuer Instanzen abrufbar — auch wenn der Test danach rot wird.
+      - name: Image bauen (noch nicht veroeffentlichen)
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/app/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: false
+          load: true
+          tags: rls-app:candidate
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       # Ein Image, das startet und ausliefert, ist die Mindestzusage an
-      # Instanzen — geprueft am gerade gebauten Artefakt, nicht am Dockerfile.
-      - name: Smoke-Test des veroeffentlichten Images
+      # Instanzen — geprueft am gebauten Artefakt, nicht am Dockerfile.
+      - name: Smoke-Test des Kandidaten
         run: |
           set -euo pipefail
-          TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
           docker run -d --name rls-smoke -p 8080:8080 \
             -e RLS_APP_NAME="Smoke Test" \
             -e RLS_RELAY_URL="wss://relay.web-of-trust.de" \
-            "$TAG"
+            rls-app:candidate
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/app/index.html >/dev/null 2>&1; then break; fi
             [ "$i" = 30 ] && { docker logs rls-smoke; exit 1; }
@@ -84,6 +89,17 @@ jobs:
           done
           echo "App wird ausgeliefert."
           curl -fsS http://127.0.0.1:8080/ | grep -q "<html" && echo "Landingpage wird ausgeliefert."
-          CFG=$(curl -fsS http://127.0.0.1:8080/app/config.json)
-          echo "$CFG" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["branding"]["appName"]=="Smoke Test", d; print("config.json korrekt erzeugt.")'
+          curl -fsS http://127.0.0.1:8080/app/config.json \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["branding"]["appName"]=="Smoke Test", d; print("config.json korrekt erzeugt.")'
           docker rm -f rls-smoke
+
+      # Erst jetzt oeffentlich. Der Cache macht den zweiten Lauf billig.
+      - name: Veroeffentlichen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/app/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha

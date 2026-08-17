@@ -13,7 +13,8 @@
 
 services:
   app:
-    image: ghcr.io/real-life-org/rls-app:${RLS_IMAGE_TAG:-1}
+    # Zum Ausprobieren der neueste Stand; fuer den Betrieb wird gepinnt.
+    image: ghcr.io/real-life-org/rls-app:${RLS_IMAGE_TAG:-edge}
     ports:
       - "${RLS_PORT:-8080}:8080"
     environment:

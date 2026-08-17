@@ -90,12 +90,26 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v)
 }
 
-/** Uebernimmt nur gesetzte Felder — ein fehlendes faellt durch, ein leeres Objekt aendert nichts. */
+/**
+ * Uebernimmt nur gesetzte Felder — ein fehlendes faellt durch, ein leeres
+ * Objekt aendert nichts.
+ *
+ * Nur Strings: `config.json` ist Fremdeingabe. Eine Zahl, ein Objekt oder
+ * `true` als Endpunkt wuerde sonst die naechste Stufe der Vorrangkette
+ * verdraengen und weiter unten als "gesetzt" gelten — der Standardwert kaeme
+ * nie zum Zug, und der Fehler zeigte sich erst beim Verbindungsversuch.
+ */
 function mergeDefined<T extends object>(base: T, overlay: Partial<T> | undefined): T {
   if (!overlay) return base
   const out = { ...base }
   for (const [k, v] of Object.entries(overlay)) {
-    if (v !== undefined && v !== null && v !== "") (out as Record<string, unknown>)[k] = v
+    if (typeof v !== "string") {
+      if (v !== undefined && v !== null) {
+        console.warn(`[rls] "${k}" ist kein Text (${typeof v}) — ignoriert.`)
+      }
+      continue
+    }
+    if (v !== "") (out as Record<string, unknown>)[k] = v
   }
   return out
 }
@@ -111,9 +125,17 @@ const SCHEMES: Record<keyof RuntimeEndpoints, readonly string[] | null> = {
 function validateEndpoints(ep: RuntimeEndpoints): RuntimeEndpoints {
   const out: RuntimeEndpoints = { ...ep }
   for (const key of Object.keys(SCHEMES) as (keyof RuntimeEndpoints)[]) {
-    const schemes = SCHEMES[key]
     const value = out[key]
-    if (!schemes || typeof value !== "string") continue
+    if (value === undefined) continue
+    if (typeof value !== "string") {
+      // Nicht ueberspringen, sondern loeschen: ein durchgereichter Nicht-String
+      // haette die Fallback-Kette gebrochen.
+      console.warn(`[rls] ${key} ist kein Text — verworfen.`)
+      delete out[key]
+      continue
+    }
+    const schemes = SCHEMES[key]
+    if (!schemes) continue
     let ok = false
     try {
       ok = schemes.includes(new URL(value).protocol)
@@ -188,6 +210,9 @@ export async function loadRuntimeConfig(opts: LoadOptions = {}): Promise<Runtime
     )
 
     // Ein unbekannter Connector wird verworfen, nicht durchgereicht.
+    if (fromFile.defaultConnector !== undefined && typeof fromFile.defaultConnector !== "string") {
+      console.warn("[rls] defaultConnector ist kein Text — ignoriert.")
+    }
     let connector =
       (typeof fromFile.defaultConnector === "string" ? fromFile.defaultConnector : undefined) ??
       env.defaultConnector ??

@@ -92,12 +92,20 @@ etwas ändert.
 
 ## Updates
 
-Das Image trägt Tags: `1` folgt Korrekturen innerhalb der Major-Version, `1.4`
-und `1.4.2` pinnen genauer. `RLS_IMAGE_TAG` in der `.env` bestimmt, welchem
-eine Instanz folgt; voreingestellt ist `1`.
+`RLS_IMAGE_TAG` ist **Pflicht** — es gibt kein „immer richtiges" Tag.
 
-`edge` ist der Stand des Hauptzweigs und für uns zum Testen gedacht — eine
-betriebene Instanz sollte nicht darauf zeigen.
+| Tag | Bedeutung |
+|---|---|
+| `0.2.4` | genau diese Fassung |
+| `0.2` | folgt Korrekturen innerhalb der Minor-Version |
+| `edge` | Stand des Hauptzweigs, nur zum Ausprobieren |
+
+Die Release-Tags des Repos heißen `app-v0.2.4`; das Image trägt daraus `0.2.4`
+und `0.2`. Ein **Major-Tag gibt es erst ab 1.0** — vorher verspräche `0` eine
+Stabilität, die es in `0.x` nicht gibt.
+
+Verfügbare Tags:
+<https://github.com/real-life-org/real-life-stack/pkgs/container/rls-app>
 
 ## Für Entwickler: lokal bauen
 

@@ -13,7 +13,10 @@
 
 services:
   app:
-    image: ghcr.io/real-life-org/rls-app:${RLS_IMAGE_TAG:-1}
+    # Kein Standardwert: Es gibt kein "immer richtiges" Tag. Solange die App bei
+    # 0.x steht, gibt es auch kein Major-Tag, das Stabilitaet verspraeche —
+    # eine Instanz pinnt die Minor-Version, die sie geprueft hat.
+    image: ghcr.io/real-life-org/rls-app:${RLS_IMAGE_TAG:?RLS_IMAGE_TAG fehlt — welche Version soll laufen? Siehe .env.example}
     restart: unless-stopped
     environment:
       # --- Dienste ---

@@ -282,3 +282,45 @@ describe("applyBranding — Tokenpruefung (Review #276)", () => {
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe("")
   })
 })
+
+describe("Nicht-Strings brechen die Vorrangkette nicht (Re-Review #276)", () => {
+  beforeEach(() => resetRuntimeConfigForTests())
+  afterEach(() => vi.restoreAllMocks())
+
+  it("ignores a numeric endpoint and keeps the build-time value", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { endpoints: { relayUrl: 42 } } }),
+      buildTimeEnv: { relayUrl: "wss://relay.build.example" },
+    })
+    expect(cfg.endpoints.relayUrl).toBe("wss://relay.build.example")
+  })
+
+  it("ignores an object endpoint and keeps the default", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { endpoints: { relayUrl: { url: "wss://x" } } } }),
+    })
+    expect(cfg.endpoints.relayUrl).toBe(DEFAULT_RUNTIME_CONFIG.endpoints.relayUrl)
+  })
+
+  it("ignores a boolean endpoint", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { endpoints: { profilesUrl: true } } }),
+    })
+    expect(cfg.endpoints.profilesUrl).toBe(DEFAULT_RUNTIME_CONFIG.endpoints.profilesUrl)
+  })
+
+  it("ignores a non-string defaultConnector", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { defaultConnector: ["wot"] } }),
+      allowedConnectors: ["wot", "mock"],
+    })
+    expect(cfg.defaultConnector).toBe(DEFAULT_RUNTIME_CONFIG.defaultConnector)
+  })
+
+  it("never leaves a non-string in the endpoints", async () => {
+    const cfg = await loadRuntimeConfig({
+      fetchImpl: stubFetch({ ok: true, json: { endpoints: { relayUrl: 1, profilesUrl: null, supabaseUrl: [] } } }),
+    })
+    for (const v of Object.values(cfg.endpoints)) expect(typeof v).toBe("string")
+  })
+})
