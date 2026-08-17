@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach } from "vitest"
 import {
   CORE_MODULES,
-  registerModules,
-  extendModules,
+  CORE_MODULE_LAYER,
+  composeModules,
+  setModuleRegistry,
   getModules,
   getModule,
   moduleIds,
   defaultModuleIds,
   displayableModules,
+  isKnownModule,
   resetModuleRegistryForTests,
 } from "../src/lib/module-register"
 
@@ -35,42 +37,121 @@ describe("Modul-Register", () => {
   })
 
   it("lets a layer add a new module", () => {
-    registerModules("app", [{ id: "garten", label: "Garten", icon: Dummy }])
+    setModuleRegistry(
+      composeModules([CORE_MODULE_LAYER, { name: "app", definitions: [{ id: "garten", label: "Garten", icon: Dummy }] }]),
+    )
     expect(moduleIds()).toContain("garten")
     expect(getModule("garten")?.label).toBe("Garten")
   })
 
-  it("rejects a duplicate id — no silent shadowing", () => {
-    expect(() => registerModules("app", [{ id: "feed", label: "Anderer Feed", icon: Dummy }])).toThrow(
-      /feed/,
+  it("keeps composition order — the tab order follows it", () => {
+    setModuleRegistry(
+      composeModules([CORE_MODULE_LAYER, { name: "app", definitions: [{ id: "garten", label: "Garten", icon: Dummy }] }]),
     )
-  })
-
-  it("lets an app attach its view to a core id", () => {
-    extendModules("app", [{ id: "feed", view: Dummy }])
-    expect(getModule("feed")?.view).toBe(Dummy)
-    // Label und Icon des Core-Eintrags bleiben
-    expect(getModule("feed")?.label).toBe(CORE_MODULES.find((m) => m.id === "feed")!.label)
-  })
-
-  it("refuses to extend an unknown id", () => {
-    expect(() => extendModules("app", [{ id: "gibtsnicht", view: Dummy }])).toThrow(/gibtsnicht/)
-  })
-
-  it("refuses to overwrite a label that the base already sets", () => {
-    expect(() => extendModules("app", [{ id: "feed", label: "Umbenannt" }])).toThrow(/feed/)
-  })
-
-  it("keeps registration order — the tab order follows it", () => {
-    registerModules("app", [{ id: "garten", label: "Garten", icon: Dummy }])
     expect(moduleIds().at(-1)).toBe("garten")
   })
 
-  it("re-registering the same layer replaces it (HMR)", () => {
-    registerModules("app", [{ id: "garten", label: "Garten", icon: Dummy }])
-    registerModules("app", [{ id: "beete", label: "Beete", icon: Dummy }])
-    expect(moduleIds()).toContain("beete")
-    expect(moduleIds()).not.toContain("garten")
+  it("lets an app attach its view to a core id", () => {
+    setModuleRegistry(
+      composeModules([CORE_MODULE_LAYER, { name: "app", extensions: [{ id: "feed", view: Dummy }] }]),
+    )
+    expect(getModule("feed")?.view).toBe(Dummy)
+    expect(getModule("feed")?.label).toBe(CORE_MODULES.find((m) => m.id === "feed")!.label)
+  })
+})
+
+describe("Konflikte werden abgelehnt, nicht aufgeloest (Review #277)", () => {
+  beforeEach(() => resetModuleRegistryForTests())
+
+  it("rejects a duplicate id across layers", () => {
+    expect(() =>
+      composeModules([CORE_MODULE_LAYER, { name: "app", definitions: [{ id: "feed", label: "Anderer Feed", icon: Dummy }] }]),
+    ).toThrow(/feed/)
+  })
+
+  it("rejects a duplicate id WITHIN one layer", () => {
+    expect(() =>
+      composeModules([
+        { name: "app", definitions: [
+          { id: "garten", label: "Garten", icon: Dummy },
+          { id: "garten", label: "Garten nochmal", icon: Dummy },
+        ] },
+      ]),
+    ).toThrow(/garten/)
+  })
+
+  it("rejects two layers setting the same field on one module", () => {
+    expect(() =>
+      composeModules([
+        CORE_MODULE_LAYER,
+        { name: "app", extensions: [{ id: "feed", view: Dummy }] },
+        { name: "space", extensions: [{ id: "feed", view: Dummy }] },
+      ]),
+    ).toThrow(/feed/)
+  })
+
+  it("rejects two fragments in the SAME layer setting the same field", () => {
+    expect(() =>
+      composeModules([
+        CORE_MODULE_LAYER,
+        { name: "app", extensions: [{ id: "feed", view: Dummy }, { id: "feed", view: Dummy }] },
+      ]),
+    ).toThrow(/feed/)
+  })
+
+  it("rejects a fragment that would overwrite a field the base sets", () => {
+    expect(() =>
+      composeModules([CORE_MODULE_LAYER, { name: "app", extensions: [{ id: "feed", label: "Umbenannt" }] }]),
+    ).toThrow(/feed/)
+  })
+
+  it("refuses to extend an unknown id", () => {
+    expect(() =>
+      composeModules([CORE_MODULE_LAYER, { name: "app", extensions: [{ id: "gibtsnicht", view: Dummy }] }]),
+    ).toThrow(/gibtsnicht/)
+  })
+
+  it("names both the field and the layers in the message", () => {
+    try {
+      composeModules([
+        CORE_MODULE_LAYER,
+        { name: "app", extensions: [{ id: "feed", view: Dummy }] },
+        { name: "space:garten", extensions: [{ id: "feed", view: Dummy }] },
+      ])
+      throw new Error("kein Konflikt gemeldet")
+    } catch (e) {
+      expect(String(e)).toContain("view")
+      expect(String(e)).toContain("app")
+      expect(String(e)).toContain("space:garten")
+    }
+  })
+})
+
+describe("Das Register ist unveraenderlich (Review #277)", () => {
+  beforeEach(() => resetModuleRegistryForTests())
+
+  it("freezes the registry and its entries", () => {
+    const reg = composeModules([CORE_MODULE_LAYER])
+    expect(Object.isFrozen(reg)).toBe(true)
+    expect(Object.isFrozen(reg[0])).toBe(true)
+  })
+
+  it("does not leak the composed entries into a later composition", () => {
+    const a = composeModules([CORE_MODULE_LAYER, { name: "app", extensions: [{ id: "feed", view: Dummy }] }])
+    const b = composeModules([CORE_MODULE_LAYER])
+    expect(a.find((m) => m.id === "feed")?.view).toBe(Dummy)
+    // Die zweite Komposition darf von der ersten nichts wissen.
+    expect(b.find((m) => m.id === "feed")?.view).toBeUndefined()
+  })
+
+  it("sees a registry bound AFTER the first read — no import-time snapshot", () => {
+    expect(isKnownModule("garten")).toBe(false)
+    setModuleRegistry(
+      composeModules([CORE_MODULE_LAYER, { name: "app", definitions: [{ id: "garten", label: "Garten", icon: Dummy }] }]),
+    )
+    // Wer moduleIds() beim Import festhaelt, sieht das hier nicht.
+    expect(isKnownModule("garten")).toBe(true)
+    expect(moduleIds()).toContain("garten")
   })
 })
 

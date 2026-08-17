@@ -8,7 +8,13 @@
 // Einmal importieren, vor dem ersten Render (main.tsx).
 
 import type { Group } from "@real-life-stack/data-interface"
-import { extendModules, type ModuleViewProps, type SelectionFocusVisibleArea } from "@real-life-stack/toolkit"
+import {
+  CORE_MODULE_LAYER,
+  composeModules,
+  setModuleRegistry,
+  type ModuleViewProps,
+  type SelectionFocusVisibleArea,
+} from "@real-life-stack/toolkit"
 import { FeedView } from "./views/feed-view"
 import { MapView } from "./views/map-view"
 import { CalendarViewWrapper } from "./views/calendar-view"
@@ -37,12 +43,19 @@ const Collection = ({ groupId, selectionFocusVisibleArea }: ModuleViewProps) => 
   />
 )
 
-extendModules("app", [
-  { id: "feed", view: Feed },
-  { id: "kanban", view: Kanban },
-  { id: "calendar", view: Calendar },
-  { id: "map", view: Map },
-  { id: "resonance", view: Resonance },
-  { id: "collection", view: Collection },
-  { id: "graph", view: Graph },
+// Einmal komponiert, einmal gebunden, danach unveraenderlich. Kein Konsument
+// muss sich fragen, ob er zu frueh gelesen hat (Review #277).
+export const MODULE_REGISTRY = composeModules([
+  CORE_MODULE_LAYER,
+  { name: "app", extensions: [
+    { id: "feed", view: Feed },
+    { id: "kanban", view: Kanban },
+    { id: "calendar", view: Calendar },
+    { id: "map", view: Map },
+    { id: "resonance", view: Resonance },
+    { id: "collection", view: Collection },
+    { id: "graph", view: Graph },
+  ] },
 ])
+
+setModuleRegistry(MODULE_REGISTRY)

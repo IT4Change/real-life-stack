@@ -81,8 +81,10 @@ export function knownModules(modules: readonly string[]): string[] {
   return displayableModules(modules)
 }
 
-// Voreinstellung fuer neue Spaces — ebenfalls aus dem Register.
-const DEFAULT_MODULES = defaultModuleIds()
+// Voreinstellung fuer neue Spaces — beim Aufruf gelesen, nie als Konstante
+// festgehalten: ein Snapshot auf Modulebene sieht eine spaeter gebundene
+// App-Schicht nicht mehr (Review #277).
+const defaults = () => defaultModuleIds()
 
 /**
  * Serialize saves so a slow older request can never overwrite a newer state:
@@ -205,7 +207,7 @@ export function GroupDialog({
 
   // Module state
   const [activeModules, setActiveModules] = useState<string[]>(() =>
-    isEdit ? (mode.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES : DEFAULT_MODULES
+    isEdit ? (mode.group.data?.modules as string[] | undefined) ?? defaults() : defaults()
   )
 
   // Module-save errors get their OWN state: sharing the dialog-wide `error`
@@ -243,8 +245,8 @@ export function GroupDialog({
         setActiveModules(
           lastSaved ??
             (current.type === "edit"
-              ? ((current.group.data?.modules as string[] | undefined) ?? DEFAULT_MODULES)
-              : DEFAULT_MODULES),
+              ? ((current.group.data?.modules as string[] | undefined) ?? defaults())
+              : defaults()),
         )
         setModuleError(err instanceof Error ? err.message : "Module konnten nicht gespeichert werden")
       },

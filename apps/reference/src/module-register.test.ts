@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { getModules, moduleIds } from "@real-life-stack/toolkit"
 import "./module-register"
-import { VALID_MODULES } from "./hooks/use-workspace-routing"
+import { validModules, resolveGroupModules } from "./hooks/use-workspace-routing"
 
 const SRC = join(__dirname)
 
@@ -16,7 +16,7 @@ describe("Modul-Register — App-Schicht", () => {
   })
 
   it("derives the routing list from the register", () => {
-    expect(VALID_MODULES).toEqual(moduleIds())
+    expect(validModules()).toEqual(moduleIds())
   })
 
   it("gives every module a label and an icon", () => {
@@ -48,5 +48,46 @@ describe("keine zweite Modul-Liste (Spec 01, Regel 1)", () => {
       .filter((zeile) => !zeile.trimStart().startsWith("//"))
       .filter((zeile) => ids.filter((id) => zeile.includes(`"${id}"`)).length >= 3)
     expect(treffer).toEqual([])
+  })
+})
+
+describe("Routing filtert unbekannte Modul-Ids (Review #277)", () => {
+  it("keeps only what this app can display", () => {
+    expect(resolveGroupModules(["feed", "quests", "map"])).toEqual(["feed", "map"])
+  })
+
+  it("never routes to an id the register does not know", () => {
+    // Vorher bestimmte eine Legacy-Id das aktive Modul — der Tab fuehrte
+    // dann auf eine Flaeche, die es nicht gibt.
+    const resolved = resolveGroupModules(["quests"])
+    for (const id of resolved) expect(moduleIds()).toContain(id)
+  })
+
+  it("falls back to the full set instead of leaving a space without tabs", () => {
+    expect(resolveGroupModules(["quests", "campaign"])).toEqual(moduleIds())
+  })
+
+  it("uses the full set when a space stores nothing", () => {
+    expect(resolveGroupModules(undefined)).toEqual(moduleIds())
+  })
+})
+
+describe("kein Register-Snapshot auf Modulebene (Review #277)", () => {
+  // Ein `const X = moduleIds()` neben dem Import friert das Register zum
+  // Importzeitpunkt ein — eine spaeter gebundene App-Schicht ist darin
+  // unsichtbar, und der Fehler zeigt sich nur bei bestimmter Importreihenfolge.
+  const DATEIEN = [
+    "hooks/use-workspace-routing.ts",
+    "detail-host.tsx",
+    "notification-navigation.ts",
+    "views/module-outlet.tsx",
+  ]
+
+  it.each(DATEIEN)("%s holds no module list at import time", (datei) => {
+    const quelle = readFileSync(join(SRC, datei), "utf8")
+    const snapshots = quelle
+      .split("\n")
+      .filter((z) => /^(export )?const \w+ = (moduleIds|defaultModuleIds)\(\)/.test(z.trim()))
+    expect(snapshots).toEqual([])
   })
 })

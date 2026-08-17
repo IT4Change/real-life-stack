@@ -85,120 +85,132 @@ export const CORE_MODULES: readonly ModuleEntry[] = Object.freeze([
   { id: "graph", label: "Graph", icon: Share2, fill: "bleed" },
 ])
 
-interface Layer {
+/** Eine Kompositionsschicht: Core, App oder Space. */
+export interface ModuleLayer {
+  /** Fuer Konfliktmeldungen ("app", "space:garten", …). */
   name: string
-  definitions: ModuleEntry[]
-  extensions: ModuleFragment[]
+  definitions?: readonly ModuleEntry[]
+  extensions?: readonly ModuleFragment[]
 }
 
-const layers = new Map<string, Layer>()
+/** Das fertig zusammengesetzte, unveraenderliche Register. */
+export type ModuleRegistry = readonly ModuleEntry[]
 
-function coreLayer(): Layer {
-  return { name: "core", definitions: [...CORE_MODULES], extensions: [] }
+/** Die Core-Schicht. */
+export const CORE_MODULE_LAYER: ModuleLayer = Object.freeze({
+  name: "core",
+  definitions: CORE_MODULES,
+})
+
+const SCALARS = ["label", "icon", "enabledByDefault", "fill", "maxWidth", "keepMounted", "view"] as const
+
+/**
+ * Setzt Schichten in der Reihenfolge Core → App → Space zusammen und friert
+ * das Ergebnis ein.
+ *
+ * Bewusst eine Funktion statt globaler Mutation: Wer waehrend des Imports
+ * registriert und woanders beim Import liest, bekommt je nach
+ * Importreihenfolge ein anderes Register — und merkt es nicht. Hier wird
+ * einmal komponiert, einmal gesetzt, danach ist es unveraenderlich.
+ *
+ * Konflikte werden abgelehnt, nicht aufgeloest: Es gibt kein Shadowing,
+ * still oder ausdruecklich (Spec 01, Regel 2).
+ */
+export function composeModules(layers: readonly ModuleLayer[]): ModuleRegistry {
+  const order: string[] = []
+  const byId = new Map<string, ModuleEntry>()
+  /** Wer hat welches skalare Feld gesetzt — fuer die Konfliktmeldung. */
+  const owner = new Map<string, Map<string, string>>()
+
+  for (const layer of layers) {
+    for (const def of layer.definitions ?? []) {
+      if (byId.has(def.id)) {
+        throw new Error(
+          `[rls] Modul "${def.id}": Schicht "${layer.name}" definiert es erneut. ` +
+            `Ein vorhandenes Modul wird ergaenzt (extensions), nicht neu definiert.`,
+        )
+      }
+      byId.set(def.id, { ...def })
+      order.push(def.id)
+      const fields = new Map<string, string>()
+      for (const k of SCALARS) if (def[k] !== undefined) fields.set(k, layer.name)
+      owner.set(def.id, fields)
+    }
+  }
+
+  for (const layer of layers) {
+    for (const frag of layer.extensions ?? []) {
+      const base = byId.get(frag.id)
+      if (!base) {
+        throw new Error(
+          `[rls] Modul "${frag.id}": Schicht "${layer.name}" will es ergaenzen, ` +
+            `aber kein Eintrag fuehrt diese Id ein.`,
+        )
+      }
+      const fields = owner.get(frag.id)!
+      for (const k of SCALARS) {
+        const value = frag[k]
+        if (value === undefined) continue
+        const held = fields.get(k)
+        if (held !== undefined) {
+          throw new Error(
+            `[rls] Modul "${frag.id}": "${k}" ist bereits von "${held}" gesetzt, ` +
+              `Schicht "${layer.name}" wuerde es ueberschreiben.`,
+          )
+        }
+        ;(base as unknown as Record<string, unknown>)[k] = value
+        fields.set(k, layer.name)
+      }
+    }
+  }
+
+  return Object.freeze(order.map((id) => Object.freeze(byId.get(id)!)))
+}
+
+// Das aktive Register. Vor `setModuleRegistry` gilt allein die Core-Schicht,
+// damit Toolkit-Flaechen (Storybook, Tests) ohne App-Bootstrap funktionieren.
+let active: ModuleRegistry = composeModules([CORE_MODULE_LAYER])
+
+/**
+ * Bindet das komponierte Register. Einmal, vor dem ersten Render — danach
+ * aendert sich nichts mehr, und keine Fläche muss sich fragen, ob sie zu
+ * frueh gelesen hat.
+ */
+export function setModuleRegistry(registry: ModuleRegistry): void {
+  active = registry
 }
 
 /** Nur fuer Tests. */
 export function resetModuleRegistryForTests(): void {
-  layers.clear()
-  layers.set("core", coreLayer())
-}
-layers.set("core", coreLayer())
-
-/**
- * Fuehrt neue Module ein. Eine bereits vergebene Id ist ein Konflikt und wird
- * abgelehnt — es gibt kein Shadowing, still oder ausdruecklich (Spec 01,
- * Regel 2). Dieselbe Schicht erneut zu registrieren ersetzt sie (Vite-HMR).
- */
-export function registerModules(layerName: string, definitions: readonly ModuleEntry[]): void {
-  if (layerName === "core") throw new Error("[rls] Die Core-Schicht ist nicht überschreibbar.")
-  const others = [...layers.entries()].filter(([name]) => name !== layerName)
-  for (const entry of definitions) {
-    for (const [name, layer] of others) {
-      if (layer.definitions.some((d) => d.id === entry.id)) {
-        throw new Error(
-          `[rls] Modul "${entry.id}" ist schon in der Schicht "${name}" definiert. ` +
-            `Ein vorhandenes Modul wird ergaenzt (extendModules), nicht neu definiert.`,
-        )
-      }
-    }
-  }
-  const existing = layers.get(layerName)
-  layers.set(layerName, {
-    name: layerName,
-    definitions: [...definitions],
-    extensions: existing?.extensions ?? [],
-  })
+  active = composeModules([CORE_MODULE_LAYER])
 }
 
 /**
- * Ergaenzt vorhandene Module additiv — so haengt eine App ihre `view` an eine
- * Core-Id. Ein skalares Feld, das die Basis bereits setzt, ist ein Konflikt.
+ * Alle Module. IMMER aufrufen, nie das Ergebnis auf Modulebene festhalten:
+ * `const IDS = moduleIds()` neben dem Import ist ein Schnappschuss, der eine
+ * spaeter gebundene App-Schicht nicht mehr sieht.
  */
-export function extendModules(layerName: string, fragments: readonly ModuleFragment[]): void {
-  const base = new Map(allDefinitions().map((d) => [d.id, d]))
-  for (const f of fragments) {
-    const b = base.get(f.id)
-    if (!b) {
-      throw new Error(
-        `[rls] Modul "${f.id}" ist unbekannt — ein Fragment kann nur ergaenzen, was es gibt.`,
-      )
-    }
-    for (const key of ["label", "icon", "fill", "maxWidth"] as const) {
-      if (f[key] !== undefined && b[key] !== undefined && f[key] !== b[key]) {
-        throw new Error(
-          `[rls] Modul "${f.id}": "${key}" ist in der Basis gesetzt und darf nicht ueberschrieben werden.`,
-        )
-      }
-    }
-  }
-  const existing = layers.get(layerName)
-  layers.set(layerName, {
-    name: layerName,
-    definitions: existing?.definitions ?? [],
-    extensions: [...fragments],
-  })
-}
-
-function allDefinitions(): ModuleEntry[] {
-  const out: ModuleEntry[] = []
-  for (const layer of layers.values()) out.push(...layer.definitions)
-  return out
-}
-
-/** Alle Module, Core zuerst, danach in Registrierungsreihenfolge. */
-export function getModules(): ModuleEntry[] {
-  const merged = new Map<string, ModuleEntry>()
-  for (const d of allDefinitions()) merged.set(d.id, { ...d })
-  for (const layer of layers.values()) {
-    for (const f of layer.extensions) {
-      const base = merged.get(f.id)
-      if (!base) continue
-      merged.set(f.id, { ...base, ...stripUndefined(f) })
-    }
-  }
-  return [...merged.values()]
-}
-
-function stripUndefined(f: ModuleFragment): Partial<ModuleEntry> {
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(f)) if (v !== undefined && k !== "id") out[k] = v
-  return out as Partial<ModuleEntry>
+export function getModules(): ModuleRegistry {
+  return active
 }
 
 export function getModule(id: string): ModuleEntry | undefined {
-  return getModules().find((m) => m.id === id)
+  return active.find((m) => m.id === id)
 }
 
 /** Alle bekannten Ids. Jede Flaeche, die Module aufzaehlt, leitet hieraus ab. */
 export function moduleIds(): string[] {
-  return getModules().map((m) => m.id)
+  return active.map((m) => m.id)
 }
 
 /** Was ein neu angelegter Space fuehrt. */
 export function defaultModuleIds(): string[] {
-  return getModules()
-    .filter((m) => m.enabledByDefault)
-    .map((m) => m.id)
+  return active.filter((m) => m.enabledByDefault).map((m) => m.id)
+}
+
+/** Kennt das Register diese Id? */
+export function isKnownModule(id: string): boolean {
+  return active.some((m) => m.id === id)
 }
 
 /**
@@ -207,11 +219,11 @@ export function defaultModuleIds(): string[] {
  *
  * Eine unbekannte Id ist KEIN Fehler: Sie stammt aus einer anderen
  * App-Version. Sie bleibt gespeichert und wird nur nicht gezeigt. Wer
- * Garantien zaehlt ("mindestens ein Modul bleibt aktiv"), MUSS diese Liste
- * zaehlen und nicht die rohe — sonst erfuellt eine Legacy-Id die Bedingung
- * und der Space endet ohne nutzbaren Tab (rls#249).
+ * Garantien zaehlt ("mindestens ein Modul bleibt aktiv") oder ein Modul
+ * AUSWAEHLT (Routing, Default-Tab), MUSS diese Liste nehmen und nicht die
+ * rohe — sonst landet der Nutzer auf einem Modul, das diese App nicht
+ * darstellen kann (rls#249).
  */
 export function displayableModules(stored: readonly string[]): string[] {
-  const known = new Set(moduleIds())
-  return stored.filter((id) => known.has(id))
+  return stored.filter((id) => isKnownModule(id))
 }

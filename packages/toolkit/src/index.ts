@@ -26,8 +26,10 @@ export {
 } from "./lib/runtime-config"
 export {
   CORE_MODULES,
-  registerModules,
-  extendModules,
+  CORE_MODULE_LAYER,
+  composeModules,
+  setModuleRegistry,
+  isKnownModule,
   getModules,
   getModule,
   moduleIds,
@@ -35,6 +37,8 @@ export {
   displayableModules,
   type ModuleEntry,
   type ModuleFragment,
+  type ModuleLayer,
+  type ModuleRegistry,
   type ModuleViewProps,
   type ModuleFill,
 } from "./lib/module-register"

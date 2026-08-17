@@ -31,7 +31,7 @@ import { useItemFocus } from "./hooks/use-item-focus"
  * them. Derived from the register instead of enumerated (spec 01, rule 1):
  * a new module was silently missing here too.
  */
-const HOST_MODULES = moduleIds()
+const hostModules = () => moduleIds()
 
 /**
  * Per-item detail config a module registers with the host. Mirrors the old
@@ -288,7 +288,7 @@ export function DetailHostController({
   const { itemId: focusedId, clearFocus } = useItemFocus()
   const store = useConfigStore()
   const config = useActiveDetailConfig()
-  const hostOwns = HOST_MODULES.includes(activeModule)
+  const hostOwns = hostModules().includes(activeModule)
   const panelOwnedRef = useRef(false)
   const openedIdRef = useRef<string | null>(null)
 

@@ -23,7 +23,12 @@ export const STORAGE_KEY_MODULE = "rls-active-module"
 // "Modul-Register", Regel 1: keine zweite Aufzaehlung. Frueher standen hier
 // eine eigene Liste UND eigene Labels, unabhaengig vom Katalog des
 // Space-Dialogs; die beiden sind auseinandergelaufen.
-export const VALID_MODULES = moduleIds()
+/**
+ * Die gueltigen Modul-Segmente. Als FUNKTION, nicht als Konstante: ein
+ * Snapshot neben dem Import sieht die App-Schicht nicht, die erst in
+ * main.tsx gebunden wird (Review #277).
+ */
+export const validModules = () => moduleIds()
 
 // The aggregate ("Mein Netzwerk") keeps its internal scope id `__overview__`
 // (used across the module views) but appears as `network` in the URL.
@@ -60,6 +65,21 @@ export function resolveDefaultModule(itemOrHints: Item | ModuleHints, available:
   return available.includes(preferred) ? preferred : (available[0] ?? "feed")
 }
 
+/**
+ * Welche Module dieser Space fuehrt — gefiltert auf das, was diese App
+ * darstellen kann.
+ *
+ * Eine gespeicherte Id ohne Registereintrag darf das Routing NICHT bestimmen:
+ * Sie stammt aus einer anderen App-Version, und der Nutzer landete sonst auf
+ * einem Tab ohne Flaeche (Review #277). Bleibt nach dem Filtern nichts
+ * uebrig, greift der volle Satz — ein Space ohne jeden Tab waere schlimmer
+ * als einer mit den Vorgaben.
+ */
+export function resolveGroupModules(stored: readonly string[] | undefined): string[] {
+  const displayable = displayableModules(stored ?? validModules())
+  return displayable.length > 0 ? displayable : validModules()
+}
+
 export interface WorkspaceRouting {
   groups: Group[]
   /** Overview pseudo-workspace + one workspace per group. */
@@ -91,7 +111,7 @@ export interface WorkspaceRouting {
  *   /{scope}/{module}/{itemId} → module + focused item (canonical)
  *   /{scope}/{itemId}          → module-less item → resolveDefaultModule → redirect
  * `scope` is a space id, or `network` for the aggregate. The segment after the
- * scope is a module iff it is in VALID_MODULES, else a (module-less) item id —
+ * scope is a module iff the register knows it, else a (module-less) item id —
  * generated ids never collide with the fixed module names.
  *
  * Pure glue — no rendering, no dialog state. Home composes the shell around this.
@@ -109,7 +129,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   const currentGroup = useCurrentGroup()
 
   // The segment after the scope is a module (known enum) or a module-less item id.
-  const segIsModule = !!urlSeg && VALID_MODULES.includes(urlSeg)
+  const segIsModule = !!urlSeg && validModules().includes(urlSeg)
   const urlModule = segIsModule ? urlSeg : undefined
   const moduleLessItemId = !segIsModule ? urlSeg : undefined
   // Canonical focused item: the 3rd segment (/{scope}/{module}/{itemId}).
@@ -160,9 +180,9 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   // Available modules for the active space (overview = all modules).
   const isOverview = activeWorkspace?.scope === "overview"
   const activeGroup = isOverview ? null : groups.find((g) => g.id === activeWorkspace?.id)
-  const groupModuleIds = isOverview
-    ? VALID_MODULES
-    : (activeGroup?.data?.modules as string[] | undefined) ?? VALID_MODULES
+  const groupModuleIds = resolveGroupModules(
+    isOverview ? undefined : (activeGroup?.data?.modules as string[] | undefined),
+  )
 
   // Module-less item link (/{scope}/{itemId}): resolve the item's default module,
   // then redirect to the canonical /{scope}/{module}/{itemId}. The lookup must run
@@ -225,7 +245,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
     // displayableModules zuerst: eine Id aus einer anderen App-Version bleibt
     // gespeichert, bekommt aber keinen Tab (Spec 01, Regel 4). Ohne diesen
     // Filter waere der Registerzugriff darunter undefined.
-    () => displayableModules(groupModuleIds)
+    () => groupModuleIds
       .map((id) => getModule(id)!)
       .map((m) => ({ id: m.id, label: m.label, icon: m.icon })),
     [groupModuleIds.join(",")] // eslint-disable-line react-hooks/exhaustive-deps
@@ -272,7 +292,7 @@ export function useWorkspaceRouting(): WorkspaceRouting {
   // Switch workspace (keep the module if offered). Item focus is space-scoped → dropped.
   const handleWorkspaceChange = useCallback((workspace: Workspace) => {
     const group = groups.find((g) => g.id === workspace.id)
-    const mods = (group?.data?.modules as string[] | undefined) ?? VALID_MODULES
+    const mods = displayableModules((group?.data?.modules as string[] | undefined) ?? validModules())
     const mod = mods.includes(activeModule) ? activeModule : (mods[0] ?? "feed")
     navigate(`/${scopeToSlug(workspace.id)}/${mod}`)
   }, [groups, activeModule, navigate])
