@@ -49,7 +49,7 @@ export function ContactsDialog({
 }: ContactsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[80dvh] flex flex-col">
+      <DialogContent className="sm:max-w-md max-h-[80dvh] flex flex-col" errorLabel="Die Kontaktliste">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />

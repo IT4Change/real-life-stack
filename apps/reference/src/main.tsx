@@ -11,7 +11,7 @@ import './index.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { checkForLiveUpdate } from './live-update'
 import { prefetchMapLibre } from '@real-life-stack/toolkit/maplibre'
-import { loadRuntimeConfig, applyBranding } from '@real-life-stack/toolkit'
+import { loadRuntimeConfig, applyBranding, ErrorBoundary, type ErrorFallbackProps } from '@real-life-stack/toolkit'
 
 // Check for OTA updates before rendering (no-op in browser/dev)
 checkForLiveUpdate()
@@ -30,6 +30,27 @@ warmMapOnIdle()
 
 // Use VITE_BASE_PATH for GitHub Pages deployment
 const basename = import.meta.env.VITE_BASE_PATH || '/'
+
+/**
+ * Wurzel-Fehleranzeige. Bewusst OHNE „Erneut versuchen": auf dieser Ebene ist
+ * der ganze Baum hin, und ein Zurücksetzen würde denselben Fehler sofort
+ * wiederholen. Ein Neuladen ist die einzige Handlung, die hier etwas ändert.
+ */
+function renderAppError({ error }: ErrorFallbackProps) {
+  return (
+    <div role="alert" className="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
+      <p className="text-base font-medium">Die App konnte nicht geladen werden</p>
+      <p className="max-w-sm break-words font-mono text-xs text-muted-foreground">{error.message}</p>
+      <button
+        type="button"
+        className="mt-2 rounded-md border px-3 py-1.5 text-sm"
+        onClick={() => window.location.reload()}
+      >
+        Neu laden
+      </button>
+    </div>
+  )
+}
 
 // A data router (vs. the declarative <BrowserRouter>) so descendant components
 // can use `useBlocker` to guard unsaved composer content against navigation.
@@ -59,7 +80,13 @@ async function start() {
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <RouterProvider router={router} />
+      {/* Auffangnetz um die Wurzel. Die feinen Grenzen sitzen weiter innen
+          (Dialog-Familie, Modul-Flächen) und halten den Ausfall lokal; kommt
+          ein Fehler bis hierher, ist der Baum ohnehin verloren, und die Wahl
+          steht nur noch zwischen einer Meldung und einer weissen Seite. */}
+      <ErrorBoundary label="Die App" fallback={renderAppError}>
+        <RouterProvider router={router} />
+      </ErrorBoundary>
     </StrictMode>,
   )
 }
