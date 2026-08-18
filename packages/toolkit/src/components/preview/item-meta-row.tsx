@@ -4,6 +4,8 @@ import type { Item } from "@real-life-stack/data-interface"
 import { Calendar, MapPin } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
+import { formatDate, formatTime, t } from "@/i18n"
+import { useLanguage } from "@/i18n/use-i18n"
 
 /**
  * `ItemMetaRow` — small inline meta row showing the temporal and
@@ -21,9 +23,7 @@ import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
  * Date formatting handles the common event shapes: single date, single
  * datetime, same-day range, and multi-day range. Bare YYYY-MM-DD dates
  * are treated as all-day (no clock time) — see `lib/date-utils.ts` for
- * the parsing rationale. Locale defaults to German because the demo
- * data and references currently target a German audience; future
- * polish can lift the locale into a prop or read a context.
+ * the parsing rationale. Formatting follows the active language (`@/i18n`).
  */
 export interface ItemMetaRowProps {
   item: Item
@@ -31,6 +31,7 @@ export interface ItemMetaRowProps {
 }
 
 export function ItemMetaRow({ item, className }: ItemMetaRowProps) {
+  useLanguage() // Sprachwechsel → Datum/Zeit neu formatieren
   const data = item.data as Record<string, unknown>
   const start = typeof data.start === "string" ? data.start : undefined
   const end = typeof data.end === "string" ? data.end : undefined
@@ -71,10 +72,8 @@ export function formatEventRange(start: string, end?: string): string {
   const s = parseEventDate(start)
   if (Number.isNaN(s.getTime())) return start
 
-  const dateStr = s.toLocaleDateString("de-DE", { day: "numeric", month: "short" })
-  const timeStr = startAllDay
-    ? null
-    : s.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+  const dateStr = formatDate(s)
+  const timeStr = startAllDay ? null : formatTime(s)
 
   if (!end) return timeStr ? `${dateStr}, ${timeStr}` : dateStr
 
@@ -82,9 +81,7 @@ export function formatEventRange(start: string, end?: string): string {
   const e = parseEventDate(end)
   if (Number.isNaN(e.getTime())) return timeStr ? `${dateStr}, ${timeStr}` : dateStr
 
-  const endTimeStr = endAllDay
-    ? null
-    : e.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+  const endTimeStr = endAllDay ? null : formatTime(e)
 
   // Same day — four cases, handle the mixed ones explicitly so a null
   // side doesn't get interpolated into the string.
@@ -92,10 +89,10 @@ export function formatEventRange(start: string, end?: string): string {
     if (!timeStr && !endTimeStr) return dateStr
     if (timeStr && endTimeStr) return `${dateStr}, ${timeStr} – ${endTimeStr}`
     if (timeStr) return `${dateStr}, ${timeStr}`
-    return `${dateStr}, bis ${endTimeStr}`
+    return `${dateStr}, ${t("time.until")} ${endTimeStr}`
   }
 
-  const endDateStr = e.toLocaleDateString("de-DE", { day: "numeric", month: "short" })
+  const endDateStr = formatDate(e)
   const startPart = timeStr ? `${dateStr}, ${timeStr}` : dateStr
   const endPart = endTimeStr ? `${endDateStr}, ${endTimeStr}` : endDateStr
   return `${startPart} – ${endPart}`

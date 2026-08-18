@@ -4,6 +4,8 @@ import type { Item } from "@real-life-stack/data-interface"
 import { Clock, MapPin } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
+import { formatDate, formatTime, t } from "@/i18n"
+import { useLanguage } from "@/i18n/use-i18n"
 
 /**
  * `ItemTimeRange` — inline row showing the time-of-day for an event
@@ -37,6 +39,7 @@ export interface ItemTimeRangeProps {
 }
 
 export function ItemTimeRange({ item, locationLabel, className }: ItemTimeRangeProps) {
+  useLanguage() // Sprachwechsel → Zeiten und „Ganztägig" neu formatieren
   const data = item.data as Record<string, unknown>
   const start = typeof data.start === "string" ? data.start : undefined
   const end = typeof data.end === "string" ? data.end : undefined
@@ -80,9 +83,7 @@ export function formatTimeRange(start: string, end?: string): string {
   const s = parseEventDate(start)
   if (Number.isNaN(s.getTime())) return start
 
-  const startTime = startAllDay
-    ? "Ganztägig"
-    : s.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+  const startTime = startAllDay ? t("time.allDay") : formatTime(s)
 
   if (!end) return startTime
 
@@ -94,20 +95,16 @@ export function formatTimeRange(start: string, end?: string): string {
   // festival — the surrounding UI implies the *current* day, never the range.
   if (startAllDay) {
     if (s.toDateString() === e.toDateString()) return startTime
-    const endDay = e.toLocaleDateString("de-DE", { day: "numeric", month: "short" })
-    return `Ganztägig, bis ${endDay}`
+    return `${startTime}, ${t("time.until")} ${formatDate(e)}`
   }
 
   if (s.toDateString() === e.toDateString()) {
     if (isAllDayDate(end)) return startTime
-    const endTime = e.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
-    return `${startTime} – ${endTime}`
+    return `${startTime} – ${formatTime(e)}`
   }
 
   // Multi-day — hint at the end date so the user knows it isn't same-day.
-  const endDate = e.toLocaleDateString("de-DE", { day: "numeric", month: "short" })
-  const endTime = isAllDayDate(end)
-    ? null
-    : e.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+  const endDate = formatDate(e)
+  const endTime = isAllDayDate(end) ? null : formatTime(e)
   return endTime ? `${startTime} – ${endDate}, ${endTime}` : `${startTime} – ${endDate}`
 }
