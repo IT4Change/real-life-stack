@@ -4,6 +4,10 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// Agent-Sandboxen haben kein /usr/bin/chromium; ein vorhandenes Chrome >= 137
+// (Ed25519-WebCrypto) lässt sich hierüber einhängen, ohne die Config zu ändern.
+const CHROMIUM_PATH = process.env.E2E_CHROMIUM_PATH ?? '/usr/bin/chromium'
+
 const RELAY_PORT = 9787
 const PROFILES_PORT = 9788
 const VAULT_PORT = 9789
@@ -27,7 +31,7 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     launchOptions: {
-      executablePath: '/usr/bin/chromium',
+      executablePath: CHROMIUM_PATH,
     },
     permissions: ['clipboard-read', 'clipboard-write'],
     locale: 'de-DE',
@@ -38,7 +42,7 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        launchOptions: { executablePath: '/usr/bin/chromium' },
+        launchOptions: { executablePath: CHROMIUM_PATH },
         locale: 'de-DE',
       },
     },

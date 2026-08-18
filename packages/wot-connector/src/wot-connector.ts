@@ -31,6 +31,8 @@ import type {
   NotificationState,
   NotificationStateCapable,
   NotificationStatePatch,
+  InitialSyncCapable,
+  InitialSyncState,
 } from "@real-life-stack/data-interface"
 import {
   deriveActivitySummary,
@@ -119,6 +121,7 @@ import {
   onYjsPersonalDocChange,
   changeYjsPersonalDoc,
   flushYjsPersonalDoc,
+  CatchUpRegistry,
 } from "@real-life/adapter-yjs"
 import type { YjsCompactStore } from "@real-life/adapter-yjs"
 
@@ -182,6 +185,9 @@ import {
   sendAttestationInbox,
   sendAttestationReceipt,
 } from "./attestation-wire.js"
+import { InitialSyncTracker } from "./initial-sync-tracker.js"
+import { countMemberSpaces } from "./personal-doc-spaces.js"
+import { createCoalescedRunner, type CoalescedRunner } from "./coalesced-runner.js"
 
 // --- Constants ---
 
@@ -190,6 +196,8 @@ const DEFAULT_MODULES = ["feed", "kanban", "calendar", "map"]
 const CONTACT_PROFILE_REFRESH_INTERVAL_MS = 10_000
 const CONTACT_PROFILE_FULL_RESOLVE_INTERVAL_MS = 5 * 60_000
 const CONTACT_PROFILE_REFRESH_CONCURRENCY = 3
+/** Bündelfenster für die PersonalDoc-getriebene Space-Wiederherstellung (rls#265). */
+const RESTORE_SPACES_COALESCE_MS = 150
 // Overview mode: setCurrentGroup(null) = show all items from all spaces
 
 type DeliveryStatus = "sending" | "queued" | "delivered" | "acknowledged" | "failed"
@@ -335,7 +343,7 @@ function isVerificationConfirmation(c: ConfirmationView): boolean {
 
 // --- WotConnector ---
 
-export class WotConnector extends BaseConnector implements ActivityLogCapable, ScopedActivityLogCapable, NotificationStateCapable {
+export class WotConnector extends BaseConnector implements ActivityLogCapable, ScopedActivityLogCapable, NotificationStateCapable, InitialSyncCapable {
   private config: WotConnectorConfig
   private runtimeOverrides: WotConnectorRuntimeOverrides
   private identity: WorkflowBackedIdentity
@@ -385,6 +393,22 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   private crossGroupUnsub: (() => void) | null = null
   private spacesSubscriptionUnsub: (() => void) | null = null
   private personalDocUnsub: (() => void) | null = null
+  /** Erkennt die Erstbefüllung eines frisch angemeldeten Geräts (rls#265). */
+  private initialSync = new InitialSyncTracker()
+  /**
+   * Ob bei DIESER Anmeldung überhaupt Daten von aussen zu erwarten sind. Nur
+   * eine gerade erzeugte Identität weiss sicher, dass nichts kommt; jede
+   * Wiederherstellung und jeder Reload können einen Erstsync auslösen.
+   */
+  private authExpectsRemoteData = true
+  private restoreSpacesRunner: CoalescedRunner | null = null
+  /**
+   * Catch-up-Zustand des Adapters (web-of-trust#343). Ersetzt das Mitlesen der
+   * `sync-response`-Rahmen samt Token-Ordnung und Head-Vergleich: der Adapter
+   * führt diesen Zustand ohnehin, jetzt gibt er ihn heraus.
+   */
+  private catchUpRegistry: CatchUpRegistry | null = null
+  private catchUpUnsub: (() => void) | null = null
   private privateSpaceReconcile: Promise<void> = Promise.resolve()
   private contactsUnsub: (() => void) | null = null
   private attestationsUnsub: (() => void) | null = null
@@ -520,6 +544,12 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.deterministicPrivateSpaceId = null
     this.spacesSubscriptionUnsub?.()
     this.personalDocUnsub?.()
+    this.restoreSpacesRunner?.cancel()
+    this.restoreSpacesRunner = null
+    this.catchUpUnsub?.()
+    this.catchUpUnsub = null
+    this.catchUpRegistry?.clear()
+    this.initialSync.end()
     this.contactsUnsub?.()
     this.attestationsUnsub?.()
     this.profileUnsub?.()
@@ -592,6 +622,11 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       }
       return user
     }
+
+    // Eine frisch erzeugte Identität hat nachweislich nichts, worauf sie
+    // warten könnte — bei jedem anderen Weg (Wiederherstellung, Entsperren,
+    // Reload) kann ein Erstsync anstehen.
+    this.authExpectsRemoteData = method !== "create"
 
     // Finalize identity creation with mnemonic + passphrase
     if (method === "create") {
@@ -672,6 +707,12 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     this.deterministicPrivateSpaceId = null
     this.spacesSubscriptionUnsub?.()
     this.personalDocUnsub?.()
+    this.restoreSpacesRunner?.cancel()
+    this.restoreSpacesRunner = null
+    this.catchUpUnsub?.()
+    this.catchUpUnsub = null
+    this.catchUpRegistry?.clear()
+    this.initialSync.end()
     this.inboxAttestationUnsub?.()
     this.inboxAttestationUnsub = null
     this.inboxReceiptUnsub?.()
@@ -1856,6 +1897,15 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       void this.applyTransportDeliveryReceipt(receipt)
     })
 
+    // Diese Runtime beginnt: alter Stand weg, Sperre auf. Die Registry wird
+    // dem PersonalDoc-Logsync und der Replication mitgegeben; beide melden
+    // ihren Catch-up-Zustand hinein, wir hören an EINER Stelle zu.
+    this.initialSync.prepare()
+    this.catchUpRegistry = new CatchUpRegistry()
+    this.catchUpUnsub = this.catchUpRegistry.subscribe((overview) => {
+      this.initialSync.setOutstanding(overview.syncing)
+    })
+
     this.inboxReception = new InboxReceptionHost({
       messaging: this.outboxAdapter,
       identity: this.identity,
@@ -1875,7 +1925,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     await initNamespacedYjsPersonalDoc(
       this.identity,
       this.outboxAdapter,
-      { docLogStore: this.docLogStore, deviceId },
+      { docLogStore: this.docLogStore, deviceId, catchUpRegistry: this.catchUpRegistry ?? undefined },
     )
 
     // OutboxMessagingAdapter.connect() immediately starts a fire-and-forget
@@ -1924,6 +1974,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       docLogStore: this.docLogStore,
       deviceId,
       enableLogSync: true,
+      catchUpRegistry: this.catchUpRegistry ?? undefined,
     })
     // Membership inbox ownership lives in the replication adapter. Subscribe
     // before start(), because the relay may deliver a queued invite immediately.
@@ -1960,24 +2011,24 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
     // PersonalDoc changes -> discover new spaces (not full state broadcast,
     // which would mutate PersonalDoc and create an infinite loop).
-    let restoring = false
-    let pending = false
+    // Gebündelt: restoreSpacesFromMetadata() läuft seriell über ALLE Spaces,
+    // die PersonalDoc feuert beim Erstsync im Millisekundentakt (rls#265).
+    // Ein bereits laufender Flight aus der VORIGEN Runtime kann `cancel()`
+    // nicht mehr stoppen — cancel beendet nur Timer und Vormerkung. Also muss
+    // jeder Flight seine Runtime festhalten und nach der Await-Grenze prüfen,
+    // ob er noch in ihr steht: sonst reconciled eine alte Fortsetzung auf dem
+    // PersonalDoc/Replication-Stack der NEUEN Identität.
+    this.restoreSpacesRunner?.cancel()
+    this.restoreSpacesRunner = createCoalescedRunner(
+      () => this.runRestoreSpacesFlight(),
+      RESTORE_SPACES_COALESCE_MS,
+    )
+    const restoreSpacesRunner = this.restoreSpacesRunner
     this.personalDocUnsub = onYjsPersonalDocChange(() => {
-      if (restoring) { pending = true; return }
-      restoring = true
-      const run = () => {
-        const p = this.replication?.restoreSpacesFromMetadata?.()
-        if (!p) { restoring = false; pending = false; return }
-        p.then(() => {
-          void this.queuePrivateSpaceReconcile({ createIfMissing: false })
-            .catch((err) => console.error("[WotConnector] private space reconciliation failed", err))
-        }).catch(() => {})
-          .finally(() => {
-            if (pending) { pending = false; run() }
-            else { restoring = false }
-          })
-      }
-      run()
+      // Die Mitgliedschaftsliste wächst hier — die Zahlen für die Anzeige
+      // müssen sofort mit, nicht erst wenn die Gruppe wiederhergestellt ist.
+      this.publishInitialSyncCounts()
+      restoreSpacesRunner()
     })
 
     // Reactive contacts via StorageAdapter
@@ -2068,6 +2119,19 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
     // so the groups observable is now "loaded" (even if the user has zero spaces).
     this.updateGroupsFromSpaces(spacesSubscribable.getValue())
     this.groupsObservable.markLoaded()
+    // `loaded` heisst nur "lokal gelesen". Auf einem frisch angemeldeten Gerät
+    // ist das Ergebnis leer, obwohl die eigenen Gruppen noch unterwegs sind —
+    // ohne diesen Tracker lädt die App zum Anlegen einer neuen Gruppe ein,
+    // während die alten ankommen (rls#265).
+    // Zahlen VOR `begin()`: die Entscheidung „ist die Erstbefüllung schon
+    // durch?" braucht die Mitgliedschaftsliste. Andersherum sähe `begin()` nur
+    // die lokal vorhandenen Gruppen und hielte ein Gerät mit 1 von 7 für
+    // vollständig.
+    this.publishInitialSyncCounts()
+    this.initialSync.begin({
+      expectRemoteData: this.authExpectsRemoteData,
+      localGroups: this.groupsCache.length,
+    })
 
     // 12. Ensure private space exists (hidden space for personal items)
     await this.queuePrivateSpaceReconcile({ createIfMissing: true })
@@ -2335,6 +2399,7 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
       .map((s) => this.spaceToGroup(s))
 
     this.groupsCache = realGroups
+    this.publishInitialSyncCounts()
 
     // Update the reactive observable (inherited from BaseConnector)
     this.groupsObservable.set([...this.groupsCache])
@@ -2874,6 +2939,59 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
   /** Connector-specific observability until core exposes richer sync counters. */
   observeSyncState(): Observable<WotSyncState> {
     return this.syncStateObs
+  }
+
+  /**
+   * Läuft auf diesem Gerät gerade die Erstbefüllung? Siehe
+   * {@link InitialSyncTracker} — abgeleitet aus „es trifft noch etwas ein",
+   * weil wot-core kein Fertig-Signal pro Space anbietet.
+   */
+  observeInitialSync(): Observable<InitialSyncState> {
+    return this.initialSync.observe()
+  }
+
+  /**
+   * Wie viele Gruppen sind da, wie viele sind zu erwarten?
+   *
+   * Die Erwartung kommt aus der Mitgliedschaftsliste des persönlichen
+   * Dokuments (`PersonalDoc.spaces`) — derselben Quelle, aus der auch
+   * `restoreSpacesFromMetadata()` die Spaces wiederherstellt. Sie führt die
+   * geladene Liste an: im Messlauf standen dort 6 Spaces, während erst 2
+   * wiederhergestellt waren. Genau diese Differenz ist der ehrliche
+   * Fortschritt.
+   *
+   * `null`, solange das persönliche Dokument selbst noch nichts hergibt — dann
+   * ist die Erwartung unbekannt und nicht etwa null Gruppen.
+   */
+  /**
+   * Ein Durchlauf der PersonalDoc-getriebenen Space-Wiederherstellung.
+   *
+   * Hält Generation UND Replication-Instanz fest und prüft nach jeder
+   * Await-Grenze, ob er noch in derselben Runtime steht. `cancel()` am Runner
+   * beendet nur Timer und Vormerkung — ein bereits laufender Flight läuft
+   * weiter, und ein Identitätswechsel während des Awaits würde die alte
+   * Fortsetzung sonst auf dem neuen Stack reconcilen lassen.
+   */
+  private async runRestoreSpacesFlight(): Promise<void> {
+    const generation = this.runtimeGeneration
+    const replication = this.replication
+    const inThisRuntime = () =>
+      generation === this.runtimeGeneration && replication === this.replication
+    if (!replication?.restoreSpacesFromMetadata || !inThisRuntime()) return
+    await replication.restoreSpacesFromMetadata()
+    if (!inThisRuntime()) return
+    await this.queuePrivateSpaceReconcile({ createIfMissing: false })
+      .catch((err) => console.error("[WotConnector] private space reconciliation failed", err))
+  }
+
+  private publishInitialSyncCounts(): void {
+    let expected: number | null = null
+    try {
+      expected = countMemberSpaces(getYjsPersonalDoc()?.spaces)
+    } catch {
+      // PersonalDoc noch nicht initialisiert — Erwartung bleibt unbekannt.
+    }
+    this.initialSync.setGroupCounts({ loaded: this.groupsCache.length, expected })
   }
 
   // ==================== Confirmation writing ====================
@@ -4150,6 +4268,14 @@ export class WotConnector extends BaseConnector implements ActivityLogCapable, S
 
   private async teardownRuntimeForIdentitySwitch(): Promise<void> {
     this.invalidateRuntimeGeneration()
+    // Auch hier: vorgemerkte Restore-Läufe verwerfen und die Erstsync-Anzeige
+    // der alten Identität schliessen, bevor die neue Runtime steht.
+    this.restoreSpacesRunner?.cancel()
+    this.restoreSpacesRunner = null
+    this.catchUpUnsub?.()
+    this.catchUpUnsub = null
+    this.catchUpRegistry?.clear()
+    this.initialSync.end()
     this.inboxAttestationUnsub?.()
     this.inboxReceiptUnsub?.()
     this.deliveryReceiptUnsub?.()

@@ -232,3 +232,4 @@ describe("feed selection", () => {
     expect(selectFeedItems([post as never, comment as never]).map((item) => item.id)).toEqual(["p1"])
   })
 })
+

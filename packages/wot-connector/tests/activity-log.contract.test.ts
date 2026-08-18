@@ -23,6 +23,16 @@ const bootstrapHarness = vi.hoisted(() => {
 
 vi.mock("@real-life/adapter-yjs", () => ({
   YjsReplicationAdapter: vi.fn(),
+  // Sammelstelle für den Catch-up-Zustand (web-of-trust#343) — echte Klasse,
+  // sie ist reine Buchführung ohne Netz.
+  CatchUpRegistry: class {
+    update = () => {}
+    source = () => ({ update: () => {}, release: () => {} })
+    forget = () => {}
+    clear = () => {}
+    getOverview = () => ({ outstanding: [], syncing: false })
+    subscribe = () => () => {}
+  },
   YjsStorageAdapter: class { constructor() { return bootstrapHarness.storage } },
   getYjsPersonalDoc: vi.fn(() => bootstrapHarness.personalDoc),
   resetYjsPersonalDoc: vi.fn(),

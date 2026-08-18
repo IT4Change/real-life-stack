@@ -45,6 +45,7 @@ import {
   useRemoveMember,
   useCurrentGroup,
   useCurrentUser,
+  useInitialSync,
   useMembers,
   useConnector,
   useContacts,
@@ -474,6 +475,9 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
   const inviteMember = useInviteMember()
   const removeMember = useRemoveMember()
   const { data: currentUser } = useCurrentUser()
+  // Erstbefüllung dieses Geräts — die Gruppenliste ist dann unvollständig,
+  // nicht leer (rls#265).
+  const initialSync = useInitialSync()
   const { activeContacts, pendingContacts, contacts: allContacts, isLoading: contactsLoading, addContact, activateContact, removeContact, updateContactName, supportsContacts } = useContacts()
   const verification = useVerification()
 
@@ -665,6 +669,8 @@ function Home({ activeConnectorId, onConnectorChange }: { activeConnectorId: str
               onWorkspaceChange={handleWorkspaceChange}
               onCreateWorkspace={openCreateDialog}
               onEditWorkspace={openEditDialog}
+              syncing={initialSync.active}
+              syncExpected={initialSync.expectedGroups}
             />
           ) : (
             <Button

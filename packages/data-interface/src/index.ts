@@ -445,6 +445,57 @@ export interface RelationRecordWriterCapable {
   deleteRelationRecord(id: string): Promise<void>
 }
 
+/**
+ * Zustand der Erstsynchronisation auf DIESEM Gerät.
+ *
+ * `Observable.loaded` beantwortet nur „ist der erste LOKALE Lesevorgang
+ * durch?" — auf einem frisch angemeldeten Gerät ist das sofort der Fall,
+ * obwohl noch keine einzige Gruppe eingetroffen ist. Die Oberfläche kann
+ * „leer" dann nicht von „kommt noch" unterscheiden und lädt zum Anlegen einer
+ * neuen Gruppe ein, während die eigenen gerade unterwegs sind (rls#265).
+ */
+export interface InitialSyncState {
+  /** Es wird noch mit Nachschub gerechnet — die Oberfläche darf nicht „leer" behaupten. */
+  active: boolean
+  /** Wie viele Gruppen bereits eingetroffen sind. */
+  loadedGroups: number
+  /**
+   * Wie viele Gruppen insgesamt zu erwarten sind, `null` solange das Gerät es
+   * nicht weiß. Im WoT steht die Mitgliedschaftsliste im persönlichen Dokument
+   * — sobald das synchronisiert ist, ist „3 von 12" eine Tatsache und keine
+   * Schätzung. Die Zahl kann anfangs noch wachsen, weil das persönliche
+   * Dokument selbst stückweise eintrifft.
+   */
+  expectedGroups: number | null
+}
+
+/**
+ * Connectoren, die einen Erstsync kennen. Backends, die synchron oder in einem
+ * Zug laden (Local, Mock, Supabase), implementieren das bewusst NICHT — dort
+ * gibt es kein Fenster, in dem „leer" gelogen wäre.
+ *
+ * Vertrag der Implementierung:
+ *
+ * - **Stabile Referenz.** `observeInitialSync()` gibt über die Lebensdauer des
+ *   Connectors dieselbe Observable zurück; Aufrufer dürfen sie als Dependency
+ *   verwenden.
+ * - **An den Connector-Lebenszyklus gebunden.** Der Zustand gilt für die
+ *   aktuelle Sitzung. Ein Identitätswechsel setzt ihn zurück, statt Zahlen der
+ *   vorigen Identität weiterzureichen.
+ * - **Nach dem Teardown eingefroren.** Nach Logout oder Dispose ändert sich
+ *   nichts mehr — auch nicht durch Rückläufer aus der abgeräumten Runtime.
+ * - **`active` ist eine Aussage über Belege, keine Vorhersage.** `true` heisst
+ *   „es fehlt nachweislich noch etwas", nicht „gleich fertig". Wer keine
+ *   belastbare Aussage treffen kann, meldet `false`.
+ */
+export interface InitialSyncCapable {
+  observeInitialSync(): Observable<InitialSyncState>
+}
+
+export function hasInitialSync(c: DataInterface): c is DataInterface & InitialSyncCapable {
+  return typeof (c as Partial<InitialSyncCapable>).observeInitialSync === "function"
+}
+
 export interface GroupManager {
   getGroups(): Promise<Group[]>
   observeGroups(): Observable<Group[]>

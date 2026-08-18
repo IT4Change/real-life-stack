@@ -21,6 +21,7 @@ import type { SpaceInfo } from "@real-life/wot-core"
 import { derivePrivateSpaceGenesis } from "@real-life/wot-core/protocol"
 
 import { WotConnector } from "../src/wot-connector.js"
+import { InitialSyncTracker } from "../src/initial-sync-tracker.js"
 import type { RlsSpaceDoc, SerializedItem, WotSyncState } from "../src/types.js"
 
 const yjsMockState = vi.hoisted(() => ({
@@ -29,6 +30,16 @@ const yjsMockState = vi.hoisted(() => ({
 
 vi.mock("@real-life/adapter-yjs", () => ({
   YjsReplicationAdapter: vi.fn(),
+  // Sammelstelle für den Catch-up-Zustand (web-of-trust#343) — echte Klasse,
+  // sie ist reine Buchführung ohne Netz.
+  CatchUpRegistry: class {
+    update = () => {}
+    source = () => ({ update: () => {}, release: () => {} })
+    forget = () => {}
+    clear = () => {}
+    getOverview = () => ({ outstanding: [], syncing: false })
+    subscribe = () => () => {}
+  },
   YjsStorageAdapter: vi.fn(),
   initYjsPersonalDoc: vi.fn(),
   getYjsPersonalDoc: vi.fn(() => yjsMockState.personalDoc),
@@ -366,6 +377,10 @@ function createFakeConnectorForLogout() {
     privateSpaceId: "private-space",
     spacesSubscriptionUnsub: vi.fn(),
     personalDocUnsub: vi.fn(),
+    restoreSpacesRunner: { cancel: vi.fn() },
+    syncFrameUnsub: vi.fn(),
+    syncFrameTokens: new Map<string, number>(),
+    initialSync: new InitialSyncTracker(),
     replication: { stop: vi.fn(async () => {}) },
     outboxAdapter: { disconnect: vi.fn(async () => {}) },
     transportAdapter: { disconnect: vi.fn(async () => {}) },
@@ -826,6 +841,7 @@ describe("WotConnector Yjs membership routing", () => {
       },
       groupsCache: [] as Group[],
       groupsObservable,
+      initialSync: new InitialSyncTracker(),
       privateSpaceId: null,
       currentGroupId: null,
       currentGroupObservable: createObservable<Group | null>(null),
