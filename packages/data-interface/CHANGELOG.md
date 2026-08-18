@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/real-life-org/real-life-stack/compare/data-interface-v0.1.1...data-interface-v0.1.2) (2026-08-17)
+
+
+### Features
+
+* Space-Mitglieder dürfen Inhalte bearbeiten, Bearbeitung wird sichtbar ([#263](https://github.com/real-life-org/real-life-stack/issues/263)) ([bdd7ac9](https://github.com/real-life-org/real-life-stack/commit/bdd7ac987dbdcec0d6fff7794bea681e9593b92d))
+
 ## [0.1.1](https://github.com/real-life-org/real-life-stack/compare/data-interface-v0.1.0...data-interface-v0.1.1) (2026-08-06)
 
 

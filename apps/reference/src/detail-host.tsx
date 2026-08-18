@@ -23,10 +23,15 @@ import {
   type WidgetData,
 } from "@real-life-stack/toolkit"
 import type { Item, User } from "@real-life-stack/data-interface"
+import { moduleIds } from "@real-life-stack/toolkit"
 import { useItemFocus } from "./hooks/use-item-focus"
 
-/** Modules whose detail (read↔edit) is owned by the host. */
-const HOST_MODULES = ["feed", "calendar", "map", "kanban", "collection", "resonance", "graph"]
+/**
+ * Modules whose detail (read↔edit) is owned by the host — that is all of
+ * them. Derived from the register instead of enumerated (spec 01, rule 1):
+ * a new module was silently missing here too.
+ */
+const hostModules = () => moduleIds()
 
 /**
  * Per-item detail config a module registers with the host. Mirrors the old
@@ -283,7 +288,7 @@ export function DetailHostController({
   const { itemId: focusedId, clearFocus } = useItemFocus()
   const store = useConfigStore()
   const config = useActiveDetailConfig()
-  const hostOwns = HOST_MODULES.includes(activeModule)
+  const hostOwns = hostModules().includes(activeModule)
   const panelOwnedRef = useRef(false)
   const openedIdRef = useRef<string | null>(null)
 

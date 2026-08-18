@@ -46,6 +46,7 @@ Die Kern-Dokumente bauen in dieser Reihenfolge aufeinander auf:
 | [08-relation-records.md](08-relation-records.md) | Normativer Entwurf | Relationen als eigenständige Items (`type: "relation"`), `RelationStoreCapable`, Trust-Bindung an Confirmations |
 | [09-mirror-bridge.md](09-mirror-bridge.md) | Normativer Entwurf (Implementierung ab Netzwerk-App P2) | Items in mehreren Spaces: Canonical Home, read-only Mirror-Snapshots, Brücken-Clients |
 | [10-activity-log.md](10-activity-log.md) | Normativer Entwurf | CRUD-Historie pro Space: Collection-Form, ID-/Merge-Ordnung, Retention, Atomarität |
+| [11-runtime-config-und-branding.md](11-runtime-config-und-branding.md) | Normativer Entwurf | Ein Artefakt, viele Instanzen: Endpunkte und Identität zur Laufzeit statt zur Build-Zeit |
 | [glossary.md](glossary.md) | Lebendes Dokument | Kurzdefinitionen der Spec-Begrifflichkeit mit Verweisen auf die normative Quelle |
 
 ## Formale Schemas

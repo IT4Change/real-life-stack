@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.5](https://github.com/real-life-org/real-life-stack/compare/app-v0.2.4...app-v0.2.5) (2026-08-17)
+
+
+### Features
+
+* **instanz:** Runtime-Konfiguration, Branding und Container-Paket ([#276](https://github.com/real-life-org/real-life-stack/issues/276)) ([717d451](https://github.com/real-life-org/real-life-stack/commit/717d451a19db5b1f6734f3b2edf4d9ca98876f5c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @real-life-stack/data-interface bumped to 0.1.2
+    * @real-life-stack/local-connector bumped to 0.1.2
+    * @real-life-stack/mock-connector bumped to 0.1.2
+    * @real-life-stack/supabase-connector bumped to 0.1.2
+    * @real-life-stack/toolkit bumped to 0.1.2
+    * @real-life-stack/wot-connector bumped to 0.1.2
+
 ## [0.2.4](https://github.com/real-life-org/real-life-stack/compare/app-v0.2.3...app-v0.2.4) (2026-08-06)
 
 

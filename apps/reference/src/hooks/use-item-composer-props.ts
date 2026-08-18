@@ -18,7 +18,7 @@ import { useLocationPick } from "../location-pick"
  * this is only the per-scope runtime callbacks.
  */
 export function useItemComposerProps(members: User[]): Partial<ContentComposerProps> {
-  const { startPick } = useLocationPick()
+  const { startPick, canPick } = useLocationPick()
   const peopleOptions = useMemo<PersonOption[]>(
     () => members.map((m) => ({ id: m.id, name: m.displayName ?? m.id })),
     [members],
@@ -27,10 +27,14 @@ export function useItemComposerProps(members: User[]): Partial<ContentComposerPr
     () => ({
       geocode: nominatimGeocode,
       reverseGeocode: nominatimReverseGeocode,
-      requestMapPick: startPick,
+      // Fuehrt dieser Space keine Karte, wird der Pick gar nicht erst
+      // angeboten: Das Widget zeigt den Karten-Knopf nur, wenn er da ist.
+      // Ein Ort bleibt trotzdem eingebbar — die Adresssuche setzt die
+      // Position, und ein Ort ist ein Datenfeld, keine Ansicht.
+      requestMapPick: canPick ? startPick : undefined,
       peopleOptions,
       peopleQuickSuggestions: peopleOptions.slice(0, 10),
     }),
-    [startPick, peopleOptions],
+    [startPick, canPick, peopleOptions],
   )
 }

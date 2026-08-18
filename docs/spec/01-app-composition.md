@@ -147,6 +147,46 @@ Beispiele:
 | Quests | Quest-Übersicht, Questlog, QuestRuns, Evidence und Completion-Status | RLNP-Items und Confirmations |
 | Campaign View | Adventures, Campaigns und World State | Game-Projektionen über Items, Relations und Confirmations |
 
+## Modul-Register
+
+**Ein** kanonischer Eintrag pro Modul, geteilt von allen Flächen. Er beantwortet genau eine Frage — *was folgt daraus, dass ein Space dieses Modul führt?* — und beantwortet sie an genau einer Stelle.
+
+Motivation aus der Praxis: Dieselbe Frage wurde an fünf Stellen unabhängig beantwortet — Aktivierbarkeit im Space-Dialog, gültige Modul-Segmente im Routing, Anzeigenamen, Dispatch der Fläche und die Fallback-Liste der Benachrichtigungs-Navigation. Die Listen sind nachweislich auseinandergelaufen: `collection` und `graph` fehlten in der Benachrichtigungs-Liste, und ein neu gebautes Modul erschien in der Space-Übersicht, ließ sich aber in **keinem** Space aktivieren, weil der Eintrag im Space-Dialog fehlte. Beides ist lautlos passiert.
+
+Das Muster folgt dem Typ-Register aus [06-schema-composition.md](06-schema-composition.md) — mit einem Unterschied: Ein Modul ist vollständig eine Darstellungssache. Es braucht darum keine UI-freie Schicht in `data-interface`; das Register lebt im Toolkit, und Apps hängen ihre Flächen an die Ids.
+
+### Eintrag
+
+| Feld | Zweck |
+|---|---|
+| `id` | stabile Modul-Identität; zugleich URL-Segment und Schlüssel in `Group.data.modules` |
+| `label` | Anzeigename in Tabs und Space-Dialog |
+| `icon` | Modul-Icon |
+| `enabledByDefault` | ob ein neu angelegter Space das Modul führt |
+| `fill` | wie das Modul den Content-Bereich füllt: `container` oder `bleed` |
+| `maxWidth` | Container-Breite, nur bei `fill: "container"` |
+| `keepMounted` | Fläche im Baum halten statt beim Wechsel abzubauen — für Module, deren Aufbau teuer ist (Map: WebGL-Kontext, Worker, entfernter Style) |
+| `view` | die Fläche selbst; wird von der App beigesteuert, nicht vom Toolkit |
+
+### Regeln
+
+1. Das Register MUSS die **einzige** Quelle für die Frage sein, welche Module es gibt. Jede Fläche, die Module aufzählt, anbietet, benennt oder anzeigt, MUSS ihre Liste daraus ableiten. Eine zweite Aufzählung von Modul-Ids ist ein Fehler in dieser Spec.
+2. Ein Modul wird durch genau **einen** Registereintrag eingeführt. Schichten werden in der Reihenfolge **Core → App** zusammengesetzt, jede Schicht vollständig (erst ihre Definitionen, dann ihre Erweiterungen), bevor die nächste an der Reihe ist — sonst könnte eine frühere Schicht ergänzen, was erst eine spätere einführt; eine bereits vergebene `id` ist ein Konflikt und MUSS abgelehnt werden — auch innerhalb derselben Schicht. Ein Erweiterungsfragment ergänzt einen vorhandenen Eintrag additiv; ein Feld, das eine frühere Schicht bereits gesetzt hat, DARF ein Fragment nicht überschreiben. Auch das ist ein Konflikt und MUSS die Zusammensetzung abbrechen, mit Nennung des Feldes und beider Schichten. Es gibt kein Shadowing, still oder ausdrücklich.
+
+3. **Lebenszyklus: einmal zusammensetzen, dann unveränderlich.** Das Register wird vor dem ersten Render aus seinen Schichten komponiert, **genau einmal** gebunden und danach nicht mehr verändert; das Ergebnis ist eingefroren. Ein zweites Binden mit einem **anderen** Register MUSS abgelehnt werden — sonst liefen Flächen mit unterschiedlichen Registern weiter, je nachdem, wann sie zuletzt gelesen haben. Dasselbe Register erneut zu binden ist **folgenlos erlaubt**: Der Vorgang ist idempotent, damit ein zweiter Import derselben Bindung nicht bestraft wird. Er wiederholt das Einfrieren dabei ausdrücklich NICHT — eine zwischenzeitliche Änderung an der Quelle darf nicht doch noch durchschlagen. Eine Fläche DARF das Register NICHT beim Import in eine Konstante schreiben — ein solcher Schnappschuss sieht eine später gebundene Schicht nicht, und der Fehler zeigt sich nur bei bestimmter Importreihenfolge. Jede Abfrage liest den aktuellen Stand.
+4. **Ein Space ist keine Registerschicht.** Das Register ist ein globaler Katalog, der vor dem ersten Render feststeht; der aktive Space wechselt dagegen zur Laufzeit. Ein Space *definiert* darum keine Module, er **wählt** aus dem Katalog: `Group.data.modules` ist eine Auswahl, kein Beitrag. Das Register sagt, was es gibt und was ein neuer Space voreingestellt bekommt — nicht, was ein bestehender Space zeigt. (Ein späteres Plugin-Konzept, das Module zur Laufzeit nachlädt, wäre eine eigene Sache mit eigenen Regeln und nicht diese Schicht.)
+
+5. **Die Auswahl gehört ebenfalls an eine Stelle.** Aus einer gespeicherten Liste eine benutzbare zu machen und daraus ein aktives Modul zu wählen, sind zwei Operationen, die das Register anbietet und die jede Fläche benutzt — Routing, Tabs, Space-Wechsel und Benachrichtigungen. Sie selbst zusammenzusetzen ist derselbe Fehler wie eine zweite Modul-Liste: Es hat bereits dazu geführt, dass ein Sprung aus einer Benachrichtigung im Feed statt auf der Karte landete, weil eine Aufrufstelle den Leer-Fall anders behandelte als die andere.
+6. Eine `id` in `Group.data.modules` ohne Registereintrag ist **kein Fehler**: Sie stammt aus einer anderen App-Version oder einem Modul, das diese App nicht kennt. Sie MUSS erhalten bleiben (nie stillschweigend entfernt) und DARF NICHT dargestellt werden. Zählungen, Garantien — etwa „mindestens ein Modul bleibt aktiv" — **und jede Auswahl eines aktiven Moduls** MÜSSEN die darstellbaren Einträge nehmen, nie die rohe Liste: Sonst bestimmt eine fremde Id das Routing, und der Nutzer landet auf einem Tab ohne Fläche. Bleibt nach dem Filtern nichts übrig, greift der volle Satz — ein Space ganz ohne Tab wäre schlimmer als einer mit den Vorgaben.
+7. Ein Registereintrag ohne `view` MUSS sichtbar degradieren (Hinweis statt leerer Fläche). Ein Modul, das im Tab erscheint und dann nichts zeigt, ist schlimmer als eines, das fehlt.
+8. Das Register trägt **keine Aktivierungsregel**: Welche Items ein Modul zeigt, entscheidet Feld-Präsenz (siehe [06-schema-composition.md](06-schema-composition.md)), nie ein Eintrag hier.
+
+### Offener Punkt: Voreinstellung beim Anlegen eines Space
+
+Ein Connector, der einen Space anlegt, schreibt heute selbst eine Modul-Voreinstellung in `Group.data.modules` (`packages/wot-connector`). Das ist die letzte verbliebene Zweitliste — und sie liegt auf der falschen Seite der Grenze: Welche Oberflächen es gibt, ist Darstellungswissen und gehört nicht in einen Connector, der `data-interface` implementiert und das Toolkit nicht kennen darf.
+
+Auflösung ist, dass der Aufrufer die Voreinstellung mitgibt (`defaultModuleIds()` aus dem Register) und der Connector keine eigene Vorstellung davon hat. Bis dahin gilt: Eine dort gesetzte Id **muss** im Register existieren, sonst legt der Connector Spaces mit einem Modul an, das die App nicht zeigen kann.
+
 ## Module Components
 
 Module Components sind wiederverwendbare Bausteine innerhalb von Space Modules. Sie können in mehreren Modulen auftauchen, sind aber nicht selbst pro Space aktivierbare Oberflächen.

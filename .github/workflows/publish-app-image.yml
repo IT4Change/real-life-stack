@@ -1,0 +1,164 @@
+# Veroeffentlicht das Instanz-Image nach GHCR.
+#
+# Ohne dieses Image sind die compose-Dateien unter deploy/app/ wertlos: Sie
+# ziehen bewusst nur ein fertiges Artefakt und koennen selbst nichts bauen
+# (Spec 11 — eine Instanz besteht aus Konfiguration und Assets).
+#
+# Release-Tags dieses Repos heissen `app-v0.2.4` (release-please, mehrere
+# Pakete im Monorepo) — NICHT `v0.2.4`. Danach richten sich Trigger und Tags.
+#
+# Tags:
+#   0.2.4, 0.2   aus einem Release-Tag app-v0.2.4
+#   edge         jeder Push auf master, fuer uns zum Testen
+#
+# Bewusst KEIN Major-Tag, solange die App bei 0.x steht: "0" verspraeche
+# Stabilitaet innerhalb einer Major-Version, die es vor 1.0 nicht gibt.
+# Instanzen pinnen die Minor-Version und sollten NICHT auf "edge" zeigen.
+
+name: Publish app image
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "apps/reference/**"
+      - "packages/**"
+      - "deploy/app/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/publish-app-image.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'App-Tag, der veroeffentlicht werden soll (z.B. app-v0.2.5). Leer = edge vom aktuellen master.'
+        required: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/rls-app
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Bei einem Nachlauf fuer ein Release den Tag bauen, nicht master.
+          ref: ${{ inputs.tag || github.ref }}
+
+      - id: ver
+        name: Version aus dem Tag ableiten
+        env:
+          TAG: ${{ inputs.tag }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAG:-}" ]; then
+            # Ohne Tag entsteht `edge` — aber NUR vom Standardzweig. Ein
+            # manueller Dispatch von einem beliebigen Branch wuerde sonst das
+            # global geteilte `edge` mit ungepruefter Arbeit ueberschreiben,
+            # und jede Vorschau-Instanz zoege es beim naechsten Start.
+            if [ "$REF" != "refs/heads/master" ]; then
+              echo "ABBRUCH: Ohne Tag wird nur von master veroeffentlicht (hier: $REF)." >&2
+              echo "Fuer ein Release den Tag angeben: -f tag=app-vX.Y.Z" >&2
+              exit 1
+            fi
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Kein Tag angegeben — es entsteht nur edge."
+            exit 0
+          fi
+          case "$TAG" in
+            app-v*) ;;
+            *) echo "ABBRUCH: '$TAG' ist kein App-Tag (erwartet app-vX.Y.Z)." >&2; exit 1;;
+          esac
+          V=${TAG#app-v}
+          # Streng genau X.Y.Z: Ein `case`-Glob wie [0-9]*.[0-9]*.[0-9]* laesst
+          # 0.2.5-rc, 0.2.5.6 und 0x.2.5 durch. Beim Prerelease waere das
+          # gefaehrlich — `${V%.*}` ergaebe daraus 0.2 und wuerde den stabilen
+          # Minor-Tag mit einem Vorabstand ueberschreiben.
+          if ! printf '%s' "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ABBRUCH: '$V' ist keine stabile X.Y.Z-Version." >&2
+            echo "Vorabversionen und vierstellige Nummern werden nicht veroeffentlicht." >&2
+            exit 1
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "minor=${V%.*}" >> "$GITHUB_OUTPUT"
+          echo "Veroeffentliche $V und ${V%.*}."
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # `latest` waere hier der Standard — bewusst aus, siehe Kopf.
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ steps.ver.outputs.version }},enable=${{ steps.ver.outputs.release == 'true' }}
+            type=raw,value=${{ steps.ver.outputs.minor }},enable=${{ steps.ver.outputs.release == 'true' }}
+            type=raw,value=edge,enable=${{ steps.ver.outputs.release != 'true' }}
+
+      # EINMAL bauen. Zwei Builds — einer zum Testen, einer zum
+      # Veroeffentlichen — ergeben zwei Digests: Getestet waere dann nicht,
+      # was ausgeliefert wird. Das hiesige Image wird geprueft und danach
+      # unveraendert unter allen Tags gepusht.
+      - name: Image bauen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/app/Dockerfile
+          push: false
+          load: true
+          tags: rls-app:candidate
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Ein Image, das startet und ausliefert, ist die Mindestzusage an
+      # Instanzen — geprueft am gebauten Artefakt, nicht am Dockerfile.
+      - name: Smoke-Test des Kandidaten
+        run: |
+          set -euo pipefail
+          docker run -d --name rls-smoke -p 8080:8080 \
+            -e RLS_APP_NAME="Smoke Test" \
+            -e RLS_RELAY_URL="wss://relay.web-of-trust.de" \
+            rls-app:candidate
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/app/index.html >/dev/null 2>&1; then break; fi
+            [ "$i" = 30 ] && { docker logs rls-smoke; exit 1; }
+            sleep 1
+          done
+          echo "App wird ausgeliefert."
+          curl -fsS http://127.0.0.1:8080/ | grep -q "<html" && echo "Landingpage wird ausgeliefert."
+          curl -fsS http://127.0.0.1:8080/app/config.json \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["branding"]["appName"]=="Smoke Test", d; print("config.json korrekt erzeugt.")'
+          docker rm -f rls-smoke
+
+      # Kein zweiter Build: dasselbe lokale Image bekommt die Tags und wird
+      # gepusht. Was hier hochgeht, ist Byte fuer Byte das getestete.
+      - name: Getestetes Image veroeffentlichen
+        run: |
+          set -euo pipefail
+          GEPRUEFT=$(docker image inspect rls-app:candidate --format '{{.Id}}')
+          echo "Getesteter Image-Id: $GEPRUEFT"
+          echo "${{ steps.meta.outputs.tags }}" | while read -r TAG; do
+            [ -n "$TAG" ] || continue
+            docker tag rls-app:candidate "$TAG"
+            docker push "$TAG"
+            echo "veroeffentlicht: $TAG"
+          done
+
+      - name: Digest melden
+        run: |
+          TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          docker buildx imagetools inspect "$TAG" --format '{{.Manifest.Digest}}' \
+            | sed 's/^/veroeffentlichter Digest: /'

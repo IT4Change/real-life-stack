@@ -1,6 +1,6 @@
 {
   "name": "@real-life-stack/graphql-connector",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

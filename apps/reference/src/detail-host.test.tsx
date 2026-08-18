@@ -6,7 +6,7 @@ import { MockConnector } from "@real-life-stack/mock-connector"
 import { ConnectorProvider } from "@real-life-stack/toolkit"
 
 import { ItemDetailRead } from "./detail-host"
-import { feedFooter, mergeFeedItems, showFeedSkeleton } from "./views/feed-view"
+import { feedFooter, selectFeedItems } from "./views/feed-view"
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -219,33 +219,17 @@ describe("feed card footer", () => {
   })
 })
 
-describe("feed item union", () => {
+describe("feed selection", () => {
   const post = { id: "p1", type: "post", createdAt: "2026-08-01T10:00:00.000Z", createdBy: ME, data: { content: "Hallo" } }
   const comment = { id: "c1", type: "comment", createdAt: "2026-08-01T11:00:00.000Z", createdBy: ME, data: { content: "Antwort" } }
 
   it("includes statements — polls surface in the feed", () => {
-    const merged = mergeFeedItems([post as never], [], [statement() as never])
-    expect(merged.map((item) => item.id)).toEqual(["p1", "statement-1"])
+    const selected = selectFeedItems([post as never, statement() as never])
+    expect(selected.map((item) => item.id).sort()).toEqual(["p1", "statement-1"])
   })
 
-  it("still excludes comments and dedupes across the queries", () => {
-    const merged = mergeFeedItems([post as never, comment as never], [post as never], [])
-    expect(merged.map((item) => item.id)).toEqual(["p1"])
+  it("still excludes comments, which carry data.content like a post", () => {
+    expect(selectFeedItems([post as never, comment as never]).map((item) => item.id)).toEqual(["p1"])
   })
 })
 
-describe("Feed-Skelett während des Erstsyncs (rls#265)", () => {
-  it("zeigt vorhandene Beiträge, auch wenn eine der Abfragen noch leer ist", () => {
-    // Beiträge sind da, Termine noch nicht: die Veroderung meldet „lädt",
-    // aber es gibt etwas zu zeigen — Skelett wäre hier Verstecken.
-    expect(showFeedSkeleton(true, 3)).toBe(false)
-  })
-
-  it("zeigt das Skelett, solange nichts da ist und noch etwas kommen kann", () => {
-    expect(showFeedSkeleton(true, 0)).toBe(true)
-  })
-
-  it("zeigt kein Skelett, wenn nichts mehr kommt", () => {
-    expect(showFeedSkeleton(false, 0)).toBe(false)
-  })
-})

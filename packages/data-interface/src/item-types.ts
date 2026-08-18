@@ -464,3 +464,38 @@ export type KnownItemType =
   | (typeof SYSTEM_ITEM_TYPES)[number]
   | "feature"
   | (typeof STATEMENT_TYPE_DEFINITION)["id"]
+
+/**
+ * Types an aggregating view does not list on their own: the system types are
+ * read through the item they belong to (comment, reaction, relation) and
+ * `feature` is a data-level geometry marker. DERIVED from
+ * {@link SYSTEM_ITEM_TYPES} so the two sets can never drift apart.
+ *
+ * "Hidden" means hidden FROM AGGREGATION, not unimportant and not dependent:
+ * a relation record is a first-class, authorised record of its own (spec 08).
+ * It simply has no place in a "what is new here" list.
+ */
+export const AGGREGATE_HIDDEN_ITEM_TYPES = [...SYSTEM_ITEM_TYPES, "feature"] as const
+
+/**
+ * Does an item of this type appear as its own entry in an aggregating view —
+ * feed, collection, search?
+ *
+ * Deliberately narrow. It answers ONLY the aggregation question, not whether
+ * an item is standalone in general: spec 08 calls relation records
+ * eigenständige Datensätze, and they are — they carry their own claims and
+ * authorisation. They are still read through the items they connect, so they
+ * do not belong in a "what is new" list.
+ *
+ * Equally not a widget property: this package is UI-free, and whether an
+ * entry is drawn as a card, a row or a map pin is the surface's decision.
+ *
+ * Aggregating views MUST ask this instead of enumerating the types they
+ * accept — the catalog is OPEN, so a connector's own type is visible unless
+ * it is listed in {@link AGGREGATE_HIDDEN_ITEM_TYPES}, and a new type must
+ * not silently miss the surfaces that should show it
+ * (docs/spec/06-schema-composition.md → Modul-Konsequenzen).
+ */
+export function isAggregateVisibleItemType(type: string): boolean {
+  return !(AGGREGATE_HIDDEN_ITEM_TYPES as readonly string[]).includes(type)
+}

@@ -26,10 +26,11 @@ import {
   useItemGroupResolver,
   useItemPrivacyResolver,
   getActivePanelGlow,
+  resolveTypePresentation,
 } from "@real-life-stack/toolkit"
-import { Calendar, FileText, MessageSquareQuote, Search, SearchX } from "lucide-react"
+import { FileText, Search, SearchX } from "lucide-react"
 import { Input, renderTypeFooter } from "@real-life-stack/toolkit"
-import { VOCAB_STATEMENT, type Item, type User } from "@real-life-stack/data-interface"
+import { isAggregateVisibleItemType, type Item, type User } from "@real-life-stack/data-interface"
 import { useItemFocus } from "../hooks/use-item-focus"
 import { useRegisterDetail, type DetailConfig } from "../detail-host"
 import { mapComposerSubmission, withGroupOptions } from "../composer-mapping"
@@ -37,57 +38,29 @@ import { FEED_CREATE_TYPES } from "../content-types"
 import { useItemDetailEdit } from "../hooks/use-item-detail-edit"
 import { useCreate, useRegisterCreate, type CreateConfig } from "../create-host"
 
-const FEED_TYPES: FilterTypeOption[] = [
-  { id: "post", label: "Posts", icon: FileText },
-  { id: "event", label: "Events", icon: Calendar },
-  { id: "statement", label: "Aussagen", icon: MessageSquareQuote },
-]
-
 /**
- * Feed union: posts + events + statements, comments excluded, deduped (one
- * item can satisfy several queries), newest first. Exported as a plain
- * function so the membership rule is testable without mounting the feed.
- */
-/**
- * Skelett statt Inhalt — nur wenn es nichts zu zeigen gibt.
+ * Everything new in the network, newest first: the feed is an AGGREGATING view
+ * (spec 06 §"Verhältnis zwischen Schema- und Feldfiltern" names it alongside
+ * search), not a field-activated module like map or calendar. So it shows every
+ * item that forms an entry of its own and asks `isAggregateVisibleItemType` instead of
+ * enumerating types — a place, task or project reaches the feed the day it
+ * exists, without a second list to maintain here (Anton, 2026-08-17: the feed
+ * shows all that is new, not only posts).
  *
- * `isLoading` heisst je Abfrage „diese Liste ist leer und es kann noch etwas
- * kommen". Der Feed vereinigt drei Abfragen; verodert bedeutet das „mindestens
- * eine könnte sich noch füllen" und NICHT „ich habe nichts zu zeigen". Ohne
- * die zweite Bedingung versteckt der Feed vorhandene Beiträge, solange noch
- * kein Termin eingetroffen ist — während des Erstsyncs dauert das die ganze
- * Zeit (rls#265).
+ * Exported as a plain function so the membership rule is testable without
+ * mounting the feed.
  */
-export function showFeedSkeleton(mayStillFill: boolean, visibleItems: number): boolean {
-  return mayStillFill && visibleItems === 0
-}
-
-export function mergeFeedItems(...queries: Item[][]): Item[] {
-  const merged = queries.flat().filter((it) => it.type !== "comment")
-  const unique = Array.from(new Map(merged.map((it) => [it.id, it])).values())
-  return unique.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+export function selectFeedItems(items: readonly Item[]): Item[] {
+  return items.filter((item) => isAggregateVisibleItemType(item.type)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
 export function FeedView({ groupId }: { groupId: string }) {
-  // Spec 06 §"Verhältnis zwischen Schema- und Feldfiltern": modules activate
-  // items by field presence, not the legacy `type` UI hint.
-  // - Posts carry data.content (base/v1)
-  // - Events carry data.start (event/v1)
-  // - Statements carry the statement/v1 schema (no discriminator field, so
-  //   hasSchema is their activation — spec 06); polls belong in the feed too.
-  // Cross-context items (e.g. an event-with-place) naturally show up in
-  // multiple modules without any extra handling.
-  const { data: posts, isLoading: postsLoading } = useItemsWithDraft({ hasField: ["content"] })
-  const { data: events, isLoading: eventsLoading } = useItemsWithDraft({ hasField: ["start"] })
-  const { data: statements, isLoading: statementsLoading } = useItemsWithDraft({ hasSchema: [VOCAB_STATEMENT] })
-  // Der Feed ist die Vereinigung dreier Abfragen. `isLoading` heisst je
-  // Abfrage „diese Liste ist leer und es kann noch etwas kommen" — verodert
-  // ergibt das „mindestens eine meiner Listen könnte sich noch füllen", NICHT
-  // „ich habe nichts zu zeigen". Wer daraus ein Skelett STATT der Inhalte
-  // macht, versteckt vorhandene Beiträge, nur weil noch kein Termin da ist
-  // (rls#265: während des Erstsyncs dauert dieser Zustand die ganze Zeit).
-  // Das Skelett hängt deshalb unten zusätzlich am tatsächlich Gerenderten.
-  const mayStillFill = postsLoading || eventsLoading || statementsLoading
+  // ONE unfiltered query: the feed's job is "what's new here", so it reads the
+  // scope's items and drops only what has no card of its own (see
+  // selectFeedItems). A field-based query would tie feed membership to
+  // `data.content` — a place with a description would show up, the same place
+  // without one would not.
+  const { data: items, isLoading } = useItemsWithDraft()
   // `groupId === "__overview__"` is the cross-space aggregate view
   // ("Mein Netzwerk"). useMembers(null) returns the union of all
   // members the connector knows about, so author resolution still
@@ -95,16 +68,7 @@ export function FeedView({ groupId }: { groupId: string }) {
   const { data: members } = useMembers(groupId === "__overview__" ? null : groupId)
   const { data: currentUser } = useCurrentUser()
 
-  // Comment items also carry `data.content` (use-comments writes them
-  // as `type: "comment"` with `data.content`). Without the exclusion in
-  // mergeFeedItems they'd surface in the feed as if they were posts. Use
-  // the `type` UI-hint as a discriminator — spec 06 keeps `type` valid for
-  // that role even when activation runs on field presence. A future
-  // comment/v1 vocab + hasSchema would make this redundant.
-  const feedItems = useMemo(
-    () => mergeFeedItems(posts, events, statements),
-    [posts, events, statements],
-  )
+  const feedItems = useMemo(() => selectFeedItems(items), [items])
 
   // Resolve author info as a User the shared ItemPreview can render
   // directly. Falls back to undefined when the createdBy id isn't a
@@ -206,6 +170,19 @@ export function FeedView({ groupId }: { groupId: string }) {
     for (const item of feedItems) for (const tag of item.tags ?? []) seen.add(tag)
     return Array.from(seen).sort()
   }, [feedItems])
+  // The type filter offers the types actually PRESENT — same derivation as the
+  // tags above. Label and icon come from the type register (spec 06), so a new
+  // type is filterable without touching this view. `type` may drive a user
+  // filter (spec 06 Z.93), it just must not decide feed membership.
+  const availableTypes = useMemo<FilterTypeOption[]>(() => {
+    const present = new Set(feedItems.map(({ type }) => type))
+    return Array.from(present)
+      .map((id) => {
+        const presentation = resolveTypePresentation(id)
+        return { id, label: presentation.label, icon: presentation.badge?.icon }
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, "de"))
+  }, [feedItems])
   // Distinguishes "no items at all" from "filtered/searched to nothing" for the
   // empty state copy.
   const filterActive =
@@ -229,7 +206,7 @@ export function FeedView({ groupId }: { groupId: string }) {
         value={filterBarValue}
         onChange={setFilterBarValue}
         availableTags={availableTags}
-        availableTypes={FEED_TYPES}
+        availableTypes={availableTypes}
         leadingActions={
           <div className="relative min-w-0 flex-1 sm:flex-none">
             <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -255,16 +232,16 @@ export function FeedView({ groupId }: { groupId: string }) {
       {/* Feed items — skeleton while loading, empty state once loaded with
           nothing, otherwise the list. */}
       <div className="space-y-4">
-        {showFeedSkeleton(mayStillFill, filteredFeedItems.length) ? (
+        {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <ItemPreviewSkeleton key={`skeleton-${i}`} />)
         ) : filteredFeedItems.length === 0 ? (
           <EmptyState
             icon={filterActive ? SearchX : FileText}
-            title={filterActive ? "Keine Treffer" : "Noch keine Beiträge"}
+            title={filterActive ? "Keine Treffer" : "Noch nichts hier"}
             description={
               filterActive
                 ? "Passe Suche oder Filter an."
-                : "Teile den ersten Beitrag mit deinem Space."
+                : "Hier erscheint alles Neue — Beiträge, Termine, Orte, Aufgaben."
             }
           />
         ) : (

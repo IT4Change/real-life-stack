@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.2](https://github.com/real-life-org/real-life-stack/compare/toolkit-v0.1.1...toolkit-v0.1.2) (2026-08-17)
+
+
+### Features
+
+* **instanz:** Runtime-Konfiguration, Branding und Container-Paket ([#276](https://github.com/real-life-org/real-life-stack/issues/276)) ([717d451](https://github.com/real-life-org/real-life-stack/commit/717d451a19db5b1f6734f3b2edf4d9ca98876f5c))
+* Space-Mitglieder dürfen Inhalte bearbeiten, Bearbeitung wird sichtbar ([#263](https://github.com/real-life-org/real-life-stack/issues/263)) ([bdd7ac9](https://github.com/real-life-org/real-life-stack/commit/bdd7ac987dbdcec0d6fff7794bea681e9593b92d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @real-life-stack/data-interface bumped to 0.1.2
+
 ## [0.1.1](https://github.com/real-life-org/real-life-stack/compare/toolkit-v0.1.0...toolkit-v0.1.1) (2026-08-06)
 
 

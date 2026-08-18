@@ -16,6 +16,35 @@ export {
   type ColorSchemePreference,
 } from "./lib/color-scheme"
 export {
+  loadRuntimeConfig,
+  getRuntimeConfig,
+  applyBranding,
+  DEFAULT_RUNTIME_CONFIG,
+  type RuntimeConfig,
+  type RuntimeEndpoints,
+  type Branding,
+} from "./lib/runtime-config"
+export {
+  CORE_MODULES,
+  CORE_MODULE_LAYER,
+  composeModules,
+  setModuleRegistry,
+  isKnownModule,
+  resolveSpaceModules,
+  resolveActiveModule,
+  getModules,
+  getModule,
+  moduleIds,
+  defaultModuleIds,
+  displayableModules,
+  type ModuleEntry,
+  type ModuleFragment,
+  type ModuleLayer,
+  type ModuleRegistry,
+  type ModuleViewProps,
+  type ModuleFill,
+} from "./lib/module-register"
+export {
   resolveIcon,
   registerIcon,
   getIcon,
