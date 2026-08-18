@@ -5,6 +5,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { XIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { ErrorBoundary, type ErrorFallbackProps } from "./error-boundary"
 
 function Dialog({
   ...props
@@ -46,13 +47,38 @@ function DialogOverlay({
   )
 }
 
+/**
+ * Fehleranzeige INNERHALB eines Dialogs.
+ *
+ * Sie bringt einen eigenen `DialogTitle` mit: Radix verlangt ihn für den
+ * zugänglichen Namen, und der lag bis eben im weggebrochenen Inhalt. Ein
+ * Dialog, der nur noch eine Fehlermeldung zeigt, wäre sonst für Screenreader
+ * namenlos — und die Konsole voller Radix-Warnungen statt der Ursache.
+ */
+function renderDialogError({ error, label }: ErrorFallbackProps) {
+  return (
+    <div role="alert" className="flex flex-col gap-2 text-center">
+      <DialogTitle className="text-base">
+        {label ?? 'Dieser Dialog'} konnte nicht angezeigt werden
+      </DialogTitle>
+      <DialogDescription>
+        Du kannst ihn schliessen — der Rest der App funktioniert weiter.
+      </DialogDescription>
+      <p className="break-words font-mono text-xs text-muted-foreground/70">{error.message}</p>
+    </div>
+  )
+}
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  errorLabel,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  /** Name des Bereichs in der Fehlermeldung („Die Kontaktliste"). */
+  errorLabel?: string
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
@@ -65,7 +91,12 @@ function DialogContent({
         )}
         {...props}
       >
-        {children}
+        {/* Jeder Dialog ist für sich ausfallbar. Die Grenze liegt INNEN, der
+            Schliessen-Knopf aussen: wer eine Fehlermeldung sieht, muss den
+            Dialog immer noch wegklicken können. */}
+        <ErrorBoundary label={errorLabel} fallback={renderDialogError}>
+          {children}
+        </ErrorBoundary>
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"

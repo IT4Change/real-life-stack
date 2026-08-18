@@ -12,6 +12,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { checkForLiveUpdate } from './live-update'
 import { prefetchMapLibre } from '@real-life-stack/toolkit/maplibre'
 import { loadRuntimeConfig, applyBranding } from '@real-life-stack/toolkit'
+import { RootError } from './root-error'
 
 // Check for OTA updates before rendering (no-op in browser/dev)
 checkForLiveUpdate()
@@ -34,7 +35,13 @@ const basename = import.meta.env.VITE_BASE_PATH || '/'
 // A data router (vs. the declarative <BrowserRouter>) so descendant components
 // can use `useBlocker` to guard unsaved composer content against navigation.
 // App keeps its own <Routes>; this is just a trivial splat route around it.
-const router = createBrowserRouter([{ path: '*', element: <App /> }], { basename })
+// `errorElement` ist die einzige Stelle, an der eine eigene Fehleranzeige den
+// Router-Standard ersetzt: React Router fängt Render-Fehler der Route in seiner
+// eigenen Grenze ab, bevor irgendetwas ausserhalb des Providers sie sähe.
+const router = createBrowserRouter(
+  [{ path: '*', element: <App />, errorElement: <RootError /> }],
+  { basename },
+)
 
 // Instanz-Konfiguration VOR dem ersten Render (Spec 11): eine App, die erst
 // mit Standardwerten rendert und dann umschaltet, zeigt fremdes Branding und
