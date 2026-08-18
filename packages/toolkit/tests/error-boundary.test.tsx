@@ -151,20 +151,31 @@ describe("ErrorBoundary", () => {
     )
 
     const body = document.body.textContent ?? ""
-    expect(body).toContain("Dieser Dialog konnte nicht angezeigt werden")
+    // Das Label muss auch die eigene Darstellung erreichen — sonst verspricht
+    // `errorLabel` eine spezifische Meldung, die nur der Standard einlöst.
+    expect(body).toContain("Die Kontaktliste konnte nicht angezeigt werden")
     // Radix braucht einen Titel für den zugänglichen Namen — der lag im
     // weggebrochenen Inhalt und muss aus der Fehleranzeige kommen.
     expect(document.querySelector("[data-slot=dialog-title]")).not.toBeNull()
     expect(document.querySelector("[data-slot=dialog-close]")).not.toBeNull()
   })
 
-  it("lässt eine eigene Darstellung zu", async () => {
+  it("ohne Label bleibt der Dialog bei der allgemeinen Meldung", async () => {
+    await render(
+      createElement(Dialog, { open: true }, createElement(DialogContent, null, createElement(Boom))),
+    )
+
+    expect(document.body.textContent).toContain("Dieser Dialog konnte nicht angezeigt werden")
+  })
+
+  it("lässt eine eigene Darstellung zu und reicht ihr das Label", async () => {
     await render(
       createElement(ErrorBoundary, {
-        fallback: ({ error }) => createElement("p", null, `eigene Meldung: ${error.message}`),
+        label: "Die Kontaktliste",
+        fallback: ({ error, label }) => createElement("p", null, `${label}: ${error.message}`),
       }, createElement(Boom, { message: "x" })),
     )
 
-    expect(container.textContent).toBe("eigene Meldung: x")
+    expect(container.textContent).toBe("Die Kontaktliste: x")
   })
 })

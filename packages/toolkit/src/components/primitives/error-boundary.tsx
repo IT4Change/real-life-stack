@@ -6,6 +6,14 @@ import { cn } from "@/lib/utils"
 
 export interface ErrorFallbackProps {
   error: Error
+  /**
+   * Der Name des Bereichs aus `label` — auch für eigene Darstellungen.
+   *
+   * Ohne ihn verspricht `label="Die Kontaktliste"` eine spezifische Meldung,
+   * die nur die eingebaute Darstellung einlöst; jede eigene bliebe beim
+   * allgemeinen „Dieser Bereich".
+   */
+  label?: string
   /** Verwirft den Fehler und rendert den Bereich erneut. */
   reset: () => void
 }
@@ -26,7 +34,7 @@ export interface ErrorBoundaryProps {
    * Gedacht für den Bezug, an dem der Bereich hängt (Space-Id, Item-Id): nach
    * einem Wechsel ist der alte Fehler keine Aussage über den neuen Inhalt.
    */
-  resetKeys?: unknown[]
+  resetKeys?: readonly unknown[]
   className?: string
 }
 
@@ -34,7 +42,7 @@ interface ErrorBoundaryState {
   error: Error | null
 }
 
-function sameKeys(a: unknown[] | undefined, b: unknown[] | undefined): boolean {
+function sameKeys(a: readonly unknown[] | undefined, b: readonly unknown[] | undefined): boolean {
   if (a === b) return true
   if (!a || !b || a.length !== b.length) return false
   return a.every((value, i) => Object.is(value, b[i]))
@@ -90,7 +98,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   render(): ReactNode {
     const { error } = this.state
     if (!error) return this.props.children
-    if (this.props.fallback) return this.props.fallback({ error, reset: this.reset })
+    if (this.props.fallback) {
+      return this.props.fallback({ error, label: this.props.label, reset: this.reset })
+    }
 
     return (
       <div

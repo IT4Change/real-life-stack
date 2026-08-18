@@ -11,7 +11,8 @@ import './index.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { checkForLiveUpdate } from './live-update'
 import { prefetchMapLibre } from '@real-life-stack/toolkit/maplibre'
-import { loadRuntimeConfig, applyBranding, ErrorBoundary, type ErrorFallbackProps } from '@real-life-stack/toolkit'
+import { loadRuntimeConfig, applyBranding } from '@real-life-stack/toolkit'
+import { RootError } from './root-error'
 
 // Check for OTA updates before rendering (no-op in browser/dev)
 checkForLiveUpdate()
@@ -31,31 +32,16 @@ warmMapOnIdle()
 // Use VITE_BASE_PATH for GitHub Pages deployment
 const basename = import.meta.env.VITE_BASE_PATH || '/'
 
-/**
- * Wurzel-Fehleranzeige. Bewusst OHNE „Erneut versuchen": auf dieser Ebene ist
- * der ganze Baum hin, und ein Zurücksetzen würde denselben Fehler sofort
- * wiederholen. Ein Neuladen ist die einzige Handlung, die hier etwas ändert.
- */
-function renderAppError({ error }: ErrorFallbackProps) {
-  return (
-    <div role="alert" className="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
-      <p className="text-base font-medium">Die App konnte nicht geladen werden</p>
-      <p className="max-w-sm break-words font-mono text-xs text-muted-foreground">{error.message}</p>
-      <button
-        type="button"
-        className="mt-2 rounded-md border px-3 py-1.5 text-sm"
-        onClick={() => window.location.reload()}
-      >
-        Neu laden
-      </button>
-    </div>
-  )
-}
-
 // A data router (vs. the declarative <BrowserRouter>) so descendant components
 // can use `useBlocker` to guard unsaved composer content against navigation.
 // App keeps its own <Routes>; this is just a trivial splat route around it.
-const router = createBrowserRouter([{ path: '*', element: <App /> }], { basename })
+// `errorElement` ist die einzige Stelle, an der eine eigene Fehleranzeige den
+// Router-Standard ersetzt: React Router fängt Render-Fehler der Route in seiner
+// eigenen Grenze ab, bevor irgendetwas ausserhalb des Providers sie sähe.
+const router = createBrowserRouter(
+  [{ path: '*', element: <App />, errorElement: <RootError /> }],
+  { basename },
+)
 
 // Instanz-Konfiguration VOR dem ersten Render (Spec 11): eine App, die erst
 // mit Standardwerten rendert und dann umschaltet, zeigt fremdes Branding und
@@ -80,13 +66,7 @@ async function start() {
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      {/* Auffangnetz um die Wurzel. Die feinen Grenzen sitzen weiter innen
-          (Dialog-Familie, Modul-Flächen) und halten den Ausfall lokal; kommt
-          ein Fehler bis hierher, ist der Baum ohnehin verloren, und die Wahl
-          steht nur noch zwischen einer Meldung und einer weissen Seite. */}
-      <ErrorBoundary label="Die App" fallback={renderAppError}>
-        <RouterProvider router={router} />
-      </ErrorBoundary>
+      <RouterProvider router={router} />
     </StrictMode>,
   )
 }

@@ -55,10 +55,12 @@ function DialogOverlay({
  * Dialog, der nur noch eine Fehlermeldung zeigt, wäre sonst für Screenreader
  * namenlos — und die Konsole voller Radix-Warnungen statt der Ursache.
  */
-function renderDialogError({ error }: ErrorFallbackProps) {
+function renderDialogError({ error, label }: ErrorFallbackProps) {
   return (
     <div role="alert" className="flex flex-col gap-2 text-center">
-      <DialogTitle className="text-base">Dieser Dialog konnte nicht angezeigt werden</DialogTitle>
+      <DialogTitle className="text-base">
+        {label ?? 'Dieser Dialog'} konnte nicht angezeigt werden
+      </DialogTitle>
       <DialogDescription>
         Du kannst ihn schliessen — der Rest der App funktioniert weiter.
       </DialogDescription>

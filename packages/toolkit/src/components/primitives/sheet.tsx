@@ -46,10 +46,12 @@ function SheetOverlay({
 }
 
 /** Wie {@link renderDialogError}, nur für die Sheet-Variante der Dialog-Familie. */
-function renderSheetError({ error }: ErrorFallbackProps) {
+function renderSheetError({ error, label }: ErrorFallbackProps) {
   return (
     <div role="alert" className="flex flex-col gap-2 p-6 text-center">
-      <SheetTitle className="text-base">Dieser Bereich konnte nicht angezeigt werden</SheetTitle>
+      <SheetTitle className="text-base">
+        {label ?? 'Dieser Bereich'} konnte nicht angezeigt werden
+      </SheetTitle>
       <SheetDescription>
         Du kannst ihn schliessen — der Rest der App funktioniert weiter.
       </SheetDescription>
