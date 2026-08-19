@@ -1,19 +1,22 @@
 "use client"
 
-import { useSyncExternalStore } from "react"
+import { useMemo, useSyncExternalStore } from "react"
 
-import { getLanguage, subscribeLanguage } from "./runtime"
-import type { Language } from "./runtime"
+import { getI18n, getLanguage, subscribeLanguage, type I18n } from "./runtime"
 
 /**
- * Abonniert die aktive Sprache.
+ * Übersetzung und Formatierung für Komponenten — Abo inklusive (rls#290).
  *
- * Das ist der EINZIGE Weg, auf dem eine Komponente vom Sprachwechsel erfährt:
- * `t()` und die Formatierer lesen die Sprache zum Aufrufzeitpunkt, aber erst
- * dieser Hook sorgt dafür, dass der Aufruf nach dem Wechsel erneut passiert.
- * Eine Komponente, die übersetzt oder Datum/Zeit anzeigt und diesen Hook nicht
- * ruft, bleibt beim Umschalten sichtbar auf der alten Sprache stehen.
+ * `t` und die Formatierer gibt es in React NUR über diesen Hook: wer sie
+ * benutzt, ist damit zwangsläufig auf den Sprachwechsel abonniert, und die
+ * Komponente rendert nach dem Umschalten neu. Einen separaten „Subscription-
+ * Hook", den man vergessen könnte, gibt es absichtlich nicht mehr.
+ *
+ * Das Bündel wechselt seine Identität genau beim Sprachwechsel — es taugt
+ * damit als Dependency für `useMemo`/`useCallback` über übersetzten Werten.
  */
-export function useLanguage(): Language {
-  return useSyncExternalStore(subscribeLanguage, getLanguage, getLanguage)
+export function useI18n(): I18n {
+  const language = useSyncExternalStore(subscribeLanguage, getLanguage, getLanguage)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- getI18n() hängt nur von der Sprache ab
+  return useMemo(() => getI18n(), [language])
 }

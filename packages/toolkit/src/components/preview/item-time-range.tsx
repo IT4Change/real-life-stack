@@ -4,8 +4,7 @@ import type { Item } from "@real-life-stack/data-interface"
 import { Clock, MapPin } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
-import { formatDate, formatTime, t } from "@/i18n"
-import { useLanguage } from "@/i18n/use-i18n"
+import { useI18n, type I18n } from "@/i18n"
 
 /**
  * `ItemTimeRange` — inline row showing the time-of-day for an event
@@ -39,7 +38,7 @@ export interface ItemTimeRangeProps {
 }
 
 export function ItemTimeRange({ item, locationLabel, className }: ItemTimeRangeProps) {
-  useLanguage() // Sprachwechsel → Zeiten und „Ganztägig" neu formatieren
+  const i18n = useI18n()
   const data = item.data as Record<string, unknown>
   const start = typeof data.start === "string" ? data.start : undefined
   const end = typeof data.end === "string" ? data.end : undefined
@@ -56,7 +55,7 @@ export function ItemTimeRange({ item, locationLabel, className }: ItemTimeRangeP
       {start && (
         <span className="inline-flex items-center gap-1">
           <Clock className="h-3 w-3" />
-          {formatTimeRange(start, end)}
+          {formatTimeRange(i18n, start, end)}
         </span>
       )}
       {location && (
@@ -76,9 +75,12 @@ export function ItemTimeRange({ item, locationLabel, className }: ItemTimeRangeP
  * read them as same-day — "Ganztägig, bis 24. Juli" / "18:00 – 24. Juli".
  *
  * Exported for callers that want the string outside the inline row
- * (e.g. tooltip, list cell).
+ * (e.g. tooltip, list cell). Takes the i18n bundle as a parameter — in
+ * components it comes from `useI18n()` (which carries the language
+ * subscription), outside React from `getI18n()`. See rls#290.
  */
-export function formatTimeRange(start: string, end?: string): string {
+export function formatTimeRange(i18n: I18n, start: string, end?: string): string {
+  const { t, formatDate, formatTime } = i18n
   const startAllDay = isAllDayDate(start)
   const s = parseEventDate(start)
   if (Number.isNaN(s.getTime())) return start

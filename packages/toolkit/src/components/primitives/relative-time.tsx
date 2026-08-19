@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react"
 
-import { formatFullDateTime, formatRelativeTime } from "@/i18n"
-import { useLanguage } from "@/i18n/use-i18n"
+import { useI18n } from "@/i18n"
 import { cn } from "@/lib/utils"
 
 // Die Formatierer leben seit der i18n-Laufzeit in `@/i18n` und folgen der
@@ -36,7 +35,7 @@ export interface RelativeTimeProps {
  */
 export function RelativeTime({ date, className }: RelativeTimeProps) {
   const [, setTick] = useState(0)
-  useLanguage() // Sprachwechsel → neu formatieren
+  const { formatFullDateTime, formatRelativeTime } = useI18n()
 
   useEffect(() => {
     const interval = getUpdateInterval(date)

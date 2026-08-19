@@ -5,6 +5,7 @@ import {
   t,
   getLanguage,
   setLanguage,
+  getLocale,
   subscribeLanguage,
   applyLanguageConfig,
   extendMessages,
@@ -12,6 +13,7 @@ import {
   formatRelativeTime,
   formatFullDateTime,
 } from "../src/i18n"
+
 
 /**
  * Die i18n-Laufzeit ist eine dünne Schicht über `Intl` — getestet werden die
@@ -28,6 +30,9 @@ describe("i18n-Laufzeit", () => {
   afterEach(() => {
     resetI18nForTests()
     vi.restoreAllMocks()
+    // fakeBrowserLanguages legt eine eigene Instanz-Eigenschaft an (configurable),
+    // die die jsdom-Vorgabe am Prototyp nur ÜBERDECKT — löschen stellt sie wieder her.
+    delete (navigator as unknown as Record<string, unknown>).languages
   })
 
   describe("Sprachzustand", () => {
@@ -87,6 +92,48 @@ describe("i18n-Laufzeit", () => {
       applyLanguageConfig({ defaultLanguage: "fr" })
       expect(getLanguage()).toBe("de")
     })
+
+    it("übernimmt nur String-Werte aus strings — ein Objekt verdeckt sonst den Rückfall", () => {
+      // config.json ist ungeprüftes JSON: ein Objekt an dieser Stelle wäre für
+      // t() ein „vorhandener" Eintrag, den es nicht rendern kann — der Rückfall
+      // aufs Wörterbuch käme nie zum Zug.
+      applyLanguageConfig({
+        strings: {
+          de: { "userMenu.contacts": { nested: "kaputt" }, "userMenu.profile": "Steckbrief" },
+          fr: { "userMenu.contacts": "Contacts" },
+        } as unknown as Record<string, Record<string, string>>,
+      })
+
+      expect(t("userMenu.contacts")).toBe("Kontakte") // Wörterbuch, nicht das Objekt
+      expect(t("userMenu.profile")).toBe("Steckbrief") // der gültige Nachbar gilt trotzdem
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("userMenu.contacts"))
+    })
+  })
+
+  describe("Formatierungs-Locale ≠ Nachrichtensprache", () => {
+    function fakeBrowserLanguages(languages: string[]) {
+      Object.defineProperty(navigator, "languages", { value: languages, configurable: true })
+    }
+
+    it("behält die regionale Locale des Browsers, wenn sie zur Sprache passt", () => {
+      // en-GB-Nutzer: Wörterbuch „en", aber Datum 18/08/2026 — nicht 8/18/26.
+      fakeBrowserLanguages(["en-GB", "de-DE"])
+      setLanguage("en")
+      expect(getLocale()).toBe("en-GB")
+      expect(formatFullDateTime(new Date("2026-08-18T14:32:00"))).toContain("18 August")
+    })
+
+    it("fällt auf die nackte Sprache zurück, wenn keine Browser-Locale passt", () => {
+      fakeBrowserLanguages(["de-DE"])
+      setLanguage("en")
+      expect(getLocale()).toBe("en")
+    })
+
+    it("nimmt die passende Locale auch von hinterer Position", () => {
+      fakeBrowserLanguages(["en-US", "de-AT"])
+      setLanguage("de")
+      expect(getLocale()).toBe("de-AT")
+    })
   })
 
   describe("Textauflösung", () => {
@@ -140,6 +187,22 @@ describe("i18n-Laufzeit", () => {
       expect(formatRelativeTime(threeHoursAgo)).toContain("vor 3")
       setLanguage("en")
       expect(formatRelativeTime(threeHoursAgo)).toContain("3 hr")
+    })
+
+    it("zeigt Zukunftszeiten als Zukunft, nicht als „gerade eben“", () => {
+      // Mit Vorzeichen-Schwellen fiel JEDE Zukunftszeit in den ersten Ast:
+      // ein Termin in drei Stunden hieß „gerade eben".
+      const inThreeHours = new Date(Date.now() + 3 * 3600_000)
+      expect(formatRelativeTime(inThreeHours)).toContain("in 3")
+      setLanguage("en")
+      expect(formatRelativeTime(inThreeHours)).toContain("in 3 hr")
+    })
+
+    it("sagt „morgen“ für den nächsten Tag", () => {
+      const tomorrow = new Date(Date.now() + 25 * 3600_000)
+      expect(formatRelativeTime(tomorrow)).toBe("morgen")
+      setLanguage("en")
+      expect(formatRelativeTime(tomorrow)).toBe("tomorrow")
     })
 
     it("sagt „gestern“ in der Sprache des Nutzers", () => {

@@ -3,20 +3,20 @@ import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
-import { t, setLanguage, resetI18nForTests } from "../src/i18n"
-import { useLanguage } from "../src/i18n/use-i18n"
+import { setLanguage, resetI18nForTests } from "../src/i18n"
+import { useI18n } from "../src/i18n/use-i18n"
 import { RelativeTime } from "../src/components/primitives/relative-time"
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 /**
- * `t()` liest die Sprache zum Aufrufzeitpunkt — erst `useLanguage()` sorgt
- * dafür, dass der Aufruf nach einem Wechsel erneut passiert. Diese Kopplung
- * ist die eine Stelle, an der i18n in React kaputtgehen kann, ohne dass es
- * ein Test der reinen Laufzeit je sähe.
+ * In React kommen `t` und die Formatierer NUR aus `useI18n()` — wer sie
+ * benutzt, ist damit zwangsläufig abonniert (rls#290). Genau diese Kopplung
+ * prüft dieser Test: das aus dem Hook bezogene `t` MUSS nach dem Wechsel
+ * neu rendern, ohne dass die Komponente an etwas Zweites denken müsste.
  */
 function Probe() {
-  useLanguage()
+  const { t } = useI18n()
   return createElement("span", null, t("userMenu.contacts"))
 }
 

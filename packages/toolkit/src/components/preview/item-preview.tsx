@@ -11,8 +11,7 @@ import { cn, getActivePanelGlow } from "../../lib/utils"
 import { useItemTags } from "../../hooks/use-item-tags"
 import { useUserNameResolver } from "../../hooks/use-user-names"
 import { useCommentCount } from "../../hooks/use-comment-count"
-import { formatFullDateTime, t } from "@/i18n"
-import { useLanguage } from "@/i18n/use-i18n"
+import { useI18n } from "@/i18n"
 import { MessageSquare } from "lucide-react"
 
 /**
@@ -138,7 +137,7 @@ export function ItemPreview({
   className,
   style,
 }: ItemPreviewProps) {
-  useLanguage() // Sprachwechsel → Edit-Stempel neu formatieren
+  const { t, formatFullDateTime } = useI18n()
   const data = item.data as Record<string, unknown>
   const title = typeof data.title === "string" ? data.title : undefined
   const description =
@@ -226,7 +225,7 @@ export function ItemPreview({
                     className="text-xs text-muted-foreground"
                     title={editedTitle}
                   >
-                    · bearbeitet
+                    · {t("item.edited")}
                   </span>
                 )}
               </span>

@@ -40,6 +40,10 @@ function isLanguage(value: unknown): value is Language {
   return typeof value === "string" && (SUPPORTED_LANGUAGES as readonly string[]).includes(value)
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
 function storedLanguage(): Language | null {
   try {
     const raw = typeof localStorage === "undefined" ? null : localStorage.getItem(STORAGE_KEY)
@@ -54,6 +58,30 @@ function browserLanguage(): Language | null {
   // Nur der primäre Subtag zählt: `en-US` und `en-GB` sind beide unser `en`.
   const primary = (navigator.language ?? "").toLowerCase().split("-")[0]
   return isLanguage(primary) ? primary : null
+}
+
+/**
+ * Formatierungs-Locale ≠ Nachrichtensprache (rls#289).
+ *
+ * `en` wählt das Wörterbuch — aber ein `en-GB`-Browser erwartet `18/08/2026`,
+ * kein `8/18/26`. Für `Intl` bleibt deshalb die volle regionale Locale des
+ * Browsers erhalten, sofern ihr primärer Subtag zur gewählten Sprache passt;
+ * erst wenn keine passt (deutscher Browser, englisch gewählt), fällt die
+ * Formatierung auf die nackte Sprache zurück.
+ */
+function resolveLocale(language: Language): string {
+  if (typeof navigator !== "undefined") {
+    const candidates = navigator.languages ?? [navigator.language]
+    for (const tag of candidates) {
+      if (typeof tag === "string" && tag.toLowerCase().split("-")[0] === language) return tag
+    }
+  }
+  return language
+}
+
+/** Die Locale, mit der `Intl` formatiert — regional, nicht nur die Sprache. */
+export function getLocale(): string {
+  return resolveLocale(current)
 }
 
 /** Instanz-Vorgabe aus der Runtime-Config; `null` bis {@link applyLanguageConfig}. */
@@ -106,10 +134,26 @@ export function applyLanguageConfig(config: {
       notify()
     }
   }
-  if (config.strings) {
+  if (isRecord(config.strings)) {
     for (const [lang, messages] of Object.entries(config.strings)) {
-      if (!isLanguage(lang)) continue
-      Object.assign(overrides[lang], messages)
+      if (!isLanguage(lang)) {
+        console.warn(`[i18n] strings["${lang}"] aus config.json: unbekannte Sprache — übersprungen.`)
+        continue
+      }
+      if (!isRecord(messages)) {
+        console.warn(`[i18n] strings["${lang}"] aus config.json ist kein Objekt — übersprungen.`)
+        continue
+      }
+      // Nur Strings übernehmen: ein Objekt oder eine Zahl an dieser Stelle
+      // würde den Rückfall auf das Wörterbuch VERDECKEN statt übersteuern —
+      // t() fände einen Eintrag, könnte ihn aber nicht rendern.
+      for (const [key, value] of Object.entries(messages)) {
+        if (typeof value === "string") {
+          overrides[lang][key] = value
+        } else {
+          console.warn(`[i18n] strings["${lang}"]["${key}"] ist kein Text — übersprungen.`)
+        }
+      }
     }
     notify()
   }
@@ -185,45 +229,87 @@ export function t(key: MessageKey | (string & {}), params?: MessageParams): stri
   return interpolate(message[category] ?? message.other, params)
 }
 
-// --- Datum und Zeit — immer über die aktive Sprache ---
+/**
+ * Übersetzung + Formatierung als EIN Bündel (rls#290).
+ *
+ * In React kommt es ausschliesslich aus `useI18n()` — wer `t` hat, hat damit
+ * zwangsläufig auch das Abo auf den Sprachwechsel. Die frühere Gestalt („`t()`
+ * importieren und zusätzlich an einen scheinbar ungenutzten Hook denken")
+ * konnte lautlos kaputtgehen: ohne den Hook war nur der Live-Wechsel defekt,
+ * ohne Typfehler. String-Helfer ausserhalb von Komponenten nehmen das Bündel
+ * als Parameter und zwingen so ihren Aufrufer, es zu besitzen.
+ */
+export interface I18n {
+  language: Language
+  /** Regionale Formatierungs-Locale — kann feiner sein als `language`. */
+  locale: string
+  setLanguage: typeof setLanguage
+  t: typeof t
+  formatDate: typeof formatDate
+  formatTime: typeof formatTime
+  formatFullDateTime: typeof formatFullDateTime
+  formatRelativeTime: typeof formatRelativeTime
+}
+
+/**
+ * Schnappschuss für Code AUSSERHALB von React (Tests, Nicht-React-Aufrufer
+ * der String-Helfer). In Komponenten stattdessen `useI18n()` — dieser
+ * Schnappschuss abonniert nichts.
+ */
+export function getI18n(): I18n {
+  return {
+    language: current,
+    locale: getLocale(),
+    setLanguage,
+    t,
+    formatDate,
+    formatTime,
+    formatFullDateTime,
+    formatRelativeTime,
+  }
+}
+
+// --- Datum und Zeit — über die REGIONALE Locale, nicht die Sprache (rls#289) ---
 
 export function formatDate(date: string | Date, options?: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat(current, options ?? { day: "numeric", month: "short" }).format(new Date(date))
+  return new Intl.DateTimeFormat(getLocale(), options ?? { day: "numeric", month: "short" }).format(new Date(date))
 }
 
 export function formatTime(date: string | Date): string {
-  return new Intl.DateTimeFormat(current, { hour: "2-digit", minute: "2-digit" }).format(new Date(date))
+  return new Intl.DateTimeFormat(getLocale(), { hour: "2-digit", minute: "2-digit" }).format(new Date(date))
 }
 
 /** Voller Zeitstempel für Tooltips („18. August 2026 um 14:32"). */
 export function formatFullDateTime(date: string | Date): string {
-  return new Intl.DateTimeFormat(current, { dateStyle: "long", timeStyle: "short" }).format(new Date(date))
+  return new Intl.DateTimeFormat(getLocale(), { dateStyle: "long", timeStyle: "short" }).format(new Date(date))
 }
 
 /**
  * Relative Zeit („vor 3 Std." / „3 hr. ago"), jenseits einer Woche das Datum.
  *
- * `numeric: "auto"` liefert „gestern"/„yesterday" statt „vor 1 Tag" — das
- * entspricht dem bisherigen deutschen Verhalten, nur jetzt aus `Intl` statt
- * aus selbst zusammengesetzten Wörtern.
+ * Trägt beide Richtungen: ein Termin in drei Stunden ist „in 3 Std.", nicht
+ * „gerade eben" — mit Vorzeichen-Schwellen fielen alle Zukunftszeiten in den
+ * ersten Ast. `numeric: "auto"` liefert „gestern"/„morgen" statt „vor 1 Tag".
  */
 export function formatRelativeTime(date: string | Date): string {
   const then = new Date(date)
-  const diffMs = Date.now() - then.getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  const diffH = Math.floor(diffMin / 60)
-  const diffD = Math.floor(diffH / 24)
+  const diffMs = Date.now() - then.getTime() // > 0 = Vergangenheit, < 0 = Zukunft
+  // Runden, nicht stutzen: „in 3 Stunden" liegt 2:59:59,9 in der Zukunft —
+  // trunc machte daraus −179 Minuten und damit „in 2 Std.".
+  const minutes = Math.round(diffMs / 60000)
+  const hours = Math.trunc(minutes / 60)
+  const days = Math.trunc(hours / 24)
 
-  if (diffMin < 1) return t("time.justNow")
-  const short = new Intl.RelativeTimeFormat(current, { numeric: "always", style: "short" })
-  if (diffMin < 60) return short.format(-diffMin, "minute")
-  if (diffH < 24) return short.format(-diffH, "hour")
-  if (diffD < 7) {
-    return new Intl.RelativeTimeFormat(current, { numeric: "auto" }).format(-diffD, "day")
+  if (Math.abs(minutes) < 1) return t("time.justNow")
+  const short = new Intl.RelativeTimeFormat(getLocale(), { numeric: "always", style: "short" })
+  if (Math.abs(minutes) < 60) return short.format(-minutes, "minute")
+  if (Math.abs(hours) < 24) return short.format(-hours, "hour")
+  if (Math.abs(days) < 7) {
+    return new Intl.RelativeTimeFormat(getLocale(), { numeric: "auto" }).format(-days, "day")
   }
 
   const sameYear = then.getFullYear() === new Date().getFullYear()
-  return new Intl.DateTimeFormat(current, {
+  return new Intl.DateTimeFormat(getLocale(), {
     day: "numeric",
     month: "long",
     ...(sameYear ? {} : { year: "numeric" }),

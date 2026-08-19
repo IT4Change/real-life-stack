@@ -31,6 +31,7 @@ export const de = {
 
   // --- Item-Karte ---
   "item.editedBy": "Bearbeitet von {name} am {date}",
+  "item.edited": "bearbeitet",
 } as const
 
 /** Ein Eintrag: fester Text oder Plural-Formen nach `Intl.PluralRules`. */

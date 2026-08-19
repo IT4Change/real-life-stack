@@ -1,18 +1,19 @@
 "use client"
 
-import { Check, Languages, LogOut, QrCode, Settings, User, Users } from "lucide-react"
+import { Languages, LogOut, QrCode, Settings, User, Users } from "lucide-react"
 
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/primitives/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/primitives/avatar"
-import { t, setLanguage, SUPPORTED_LANGUAGES, type Language } from "@/i18n"
-import { useLanguage } from "@/i18n/use-i18n"
+import { useI18n, SUPPORTED_LANGUAGES, type Language } from "@/i18n"
 
 /**
  * Eigennamen der Sprachen — bewusst NICHT übersetzt: wer in der falschen
@@ -50,7 +51,7 @@ export function UserMenu({
   onSettings,
   onLogout,
 }: UserMenuProps) {
-  const language = useLanguage()
+  const { t, language, setLanguage } = useI18n()
 
   const getInitials = (name: string) => {
     return name
@@ -111,19 +112,15 @@ export function UserMenu({
           <Languages className="h-3.5 w-3.5" />
           {t("userMenu.language")}
         </DropdownMenuLabel>
-        {SUPPORTED_LANGUAGES.map((lang) => (
-          <DropdownMenuItem
-            key={lang}
-            onClick={() => setLanguage(lang)}
-            className="flex items-center gap-2"
-            data-testid={`language-${lang}`}
-          >
-            <span className="w-4" aria-hidden>
-              {lang === language && <Check className="h-4 w-4" />}
-            </span>
-            <span>{LANGUAGE_NAMES[lang]}</span>
-          </DropdownMenuItem>
-        ))}
+        {/* RadioGroup statt einfacher Items: der aktive Eintrag trägt damit
+            `aria-checked` (role menuitemradio) — sichtbar UND hörbar markiert. */}
+        <DropdownMenuRadioGroup value={language} onValueChange={(v) => setLanguage(v as Language)}>
+          {SUPPORTED_LANGUAGES.map((lang) => (
+            <DropdownMenuRadioItem key={lang} value={lang} data-testid={`language-${lang}`}>
+              {LANGUAGE_NAMES[lang]}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
         {onLogout && (
           <>
             <DropdownMenuSeparator />

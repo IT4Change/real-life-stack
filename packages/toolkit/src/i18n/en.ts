@@ -19,4 +19,5 @@ export const en = {
   "time.allDay": "All day",
 
   "item.editedBy": "Edited by {name} on {date}",
+  "item.edited": "edited",
 } satisfies Record<MessageKey, Message>

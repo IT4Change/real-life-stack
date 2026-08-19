@@ -4,8 +4,7 @@ import type { Item } from "@real-life-stack/data-interface"
 import { Calendar, MapPin } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { isAllDayDate, parseEventDate } from "../../lib/date-utils"
-import { formatDate, formatTime, t } from "@/i18n"
-import { useLanguage } from "@/i18n/use-i18n"
+import { useI18n, type I18n } from "@/i18n"
 
 /**
  * `ItemMetaRow` — small inline meta row showing the temporal and
@@ -31,7 +30,7 @@ export interface ItemMetaRowProps {
 }
 
 export function ItemMetaRow({ item, className }: ItemMetaRowProps) {
-  useLanguage() // Sprachwechsel → Datum/Zeit neu formatieren
+  const i18n = useI18n()
   const data = item.data as Record<string, unknown>
   const start = typeof data.start === "string" ? data.start : undefined
   const end = typeof data.end === "string" ? data.end : undefined
@@ -50,7 +49,7 @@ export function ItemMetaRow({ item, className }: ItemMetaRowProps) {
       {start && (
         <span className="inline-flex items-center gap-1">
           <Calendar className="h-3 w-3" />
-          {formatEventRange(start, end)}
+          {formatEventRange(i18n, start, end)}
         </span>
       )}
       {place && (
@@ -66,8 +65,12 @@ export function ItemMetaRow({ item, className }: ItemMetaRowProps) {
 /**
  * Format a single date or a range. Exported for callers that need the
  * string outside of the inline meta row (e.g. a table cell, a tooltip).
+ * Takes the i18n bundle as a parameter — in components it comes from
+ * `useI18n()` (which carries the language subscription), outside React
+ * from `getI18n()`. See rls#290.
  */
-export function formatEventRange(start: string, end?: string): string {
+export function formatEventRange(i18n: I18n, start: string, end?: string): string {
+  const { t, formatDate, formatTime } = i18n
   const startAllDay = isAllDayDate(start)
   const s = parseEventDate(start)
   if (Number.isNaN(s.getTime())) return start
