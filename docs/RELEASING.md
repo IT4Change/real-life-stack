@@ -34,8 +34,7 @@ bumpen. Damit die Änderung auch **Play** erreicht (Play hat kein OTA, updated n
 über ein getaggtes AAB), kaskadiert das release-please-Plugin **`node-workspace`**
 den Bump auf jeden Dependent — also auf die App. Ergebnis: ein Paket-Fix, der in
 die App kompiliert, erzeugt zuverlässig auch einen `app-v*`-Tag → nativen Build →
-Play-Auslieferung. (`graphql-connector` konsumiert die App nicht, kaskadiert also
-nicht.)
+Play-Auslieferung.
 
 > **Der Vertrag dahinter ist zerbrechlich** — `node-workspace` nimmt nur
 > Komponenten mit aufgelöstem `release-type: node` in den Graphen; eine als
@@ -69,7 +68,7 @@ nicht.)
 
 Konfiguriert in `release-please-config.json` — **sechs** publizierbare Pakete:
 `data-interface`, `toolkit`, `mock-connector`, `local-connector`, `wot-connector`,
-`graphql-connector`. (`graphql-server` ist `private` und bleibt draußen.)
+`supabase-connector`.
 
 1. Conventional Commits unter `packages/<x>/**` bumpen das jeweilige Paket.
 2. Merge der Release-PR → Tag `<component>-vX.Y.Z` (z. B. `toolkit-v0.1.1`).

@@ -21,8 +21,8 @@ packages/toolkit/        → UI-Komponenten (shadcn/ui, Storybook) + Hooks + Con
 packages/data-interface/ → TypeScript-Typen, Interfaces, BaseConnector, Shared Helpers
 packages/mock-connector/ → In-Memory-Implementierung
 packages/local-connector/  → IndexedDB-Implementierung mit Cross-Tab-Sync
-packages/graphql-connector/ → GraphQL-Client (graphql-request + graphql-ws)
-packages/graphql-server/   → GraphQL-Server (Fastify + Mercurius + Pothos)
+packages/supabase-connector/ → Supabase-Implementierung (Auth, Rows, Realtime)
+packages/wot-connector/    → WoT-Implementierung (E2EE, DID-Identität)
 ```
 
 ### Datenfluss
@@ -128,10 +128,6 @@ Relation-Targets nutzen Scope-Prefixe:
 - **User** = Identity (nur id + cached displayName/avatarUrl). User ist KEIN Item.
 - **Profil** = Item (`type: "profile"`) mit zwei Sichtbarkeitsstufen (public + contacts-only). Profil IST ein Item.
 
-### GraphQL Subscriptions
-
-WebSocket via `graphql-ws` (npm-Paket), NICHT `graphql-sse`. Mercurius nutzt das `graphql-transport-ws` Subprotokoll.
-
 ## Packages
 
 ### `@real-life-stack/data-interface`
@@ -154,17 +150,6 @@ WebSocket via `graphql-ws` (npm-Paket), NICHT `graphql-sse`. Mercurius nutzt das
 - IndexedDB-Persistenz via `idb-keyval`
 - BroadcastChannel für Cross-Tab-Sync
 - Seed-Daten über Constructor
-
-### `@real-life-stack/graphql-connector`
-
-- `GraphQLConnector` implementiert `FullConnector`
-- `graphql-request` für Queries/Mutations, `graphql-ws` für Subscriptions
-- HTTP-URL wird automatisch zu WS-URL konvertiert
-
-### `@real-life-stack/graphql-server`
-
-- Fastify + Mercurius + Pothos Schema Builder
-- Port 4000, GraphiQL Playground, CORS aktiviert
 
 ### `@real-life-stack/toolkit`
 

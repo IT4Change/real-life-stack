@@ -1,0 +1,45 @@
+# Real Life Stack
+
+> Real Life Stack (RLS) is a modular, backend-agnostic app and UI toolkit for local communities, commons, and decentralized collaboration. Apps compose published npm packages: a shared `DataInterface` contract, pluggable connectors (mock, local, Supabase, Web-of-Trust), and a React UI toolkit with ready-made modules (map, calendar, kanban, feed, graph, profiles).
+
+Architecture in one line: `App Shell / Space Modules -> hooks -> DataInterface -> connector -> data source`. Apps never talk to a backend directly; they talk to the `DataInterface`, and the connector decides whether data lives in memory, in Supabase, or in an end-to-end-encrypted Web-of-Trust network. Swapping the connector swaps the backend without touching the UI.
+
+Most spec documents are written in German. The type definitions in `@real-life-stack/data-interface` are the precise, English source of truth for all data shapes.
+
+## Building apps on Real Life Stack
+
+- [AGENTS.md template for RLS apps](https://github.com/real-life-org/real-life-stack/blob/master/docs/templates/AGENTS.md): Drop-in guide for coding agents that build a new app on top of the published packages. Install matrix, bootstrap code, composition pattern, rules.
+
+## Packages (npm)
+
+- [@real-life-stack/data-interface](https://www.npmjs.com/package/@real-life-stack/data-interface): The core contract. `Item`, `Relation`, `Group` (Space), `User`, `ItemFilter`, `Observable`, capability interfaces (`isWritable`, `hasGroups`, `isAuthenticatable`, ...). Zero dependencies.
+- [@real-life-stack/toolkit](https://www.npmjs.com/package/@real-life-stack/toolkit): React UI toolkit: `AppShell`, `ConnectorProvider`, `MapView`, `CalendarView`, `KanbanBoard`, `GraphView`, `CollectionView`, `ItemPreview`, `ItemDetailPanel`, `ItemComposer`, activity/notification centers, plus hooks (`useItems`, `useCurrentGroup`, `useMembers`, ...). Import styles from `@real-life-stack/toolkit/styles/globals.css`; map adapters from `@real-life-stack/toolkit/maplibre` or `/leaflet`.
+- [@real-life-stack/mock-connector](https://www.npmjs.com/package/@real-life-stack/mock-connector): In-memory connector with seed data. Best starting point for prototypes and vibe-coded demos.
+- [@real-life-stack/local-connector](https://www.npmjs.com/package/@real-life-stack/local-connector): Local persistence connector (offline-first, single device).
+- [@real-life-stack/supabase-connector](https://github.com/real-life-org/real-life-stack/tree/master/packages/supabase-connector): Connector for a central Supabase backend (auth, rows, realtime). Actively developed; npm release pending — until then, consume via the repository.
+- [@real-life-stack/wot-connector](https://www.npmjs.com/package/@real-life-stack/wot-connector): Decentralized connector on the Web of Trust stack (BIP39/Ed25519 identity, end-to-end encrypted sync via [@web_of_trust/core](https://www.npmjs.com/package/@web_of_trust/core) and [@web_of_trust/adapter-yjs](https://www.npmjs.com/package/@web_of_trust/adapter-yjs)).
+
+## Specification (normative, German)
+
+- [Spec index](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/README.md): Entry point; the spec is the single source of truth of the repository.
+- [00 Architecture](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/00-architecture.md): Layer model and architecture rules.
+- [01 App composition](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/01-app-composition.md): App shell, current space, space modules, module components.
+- [02 DataInterface](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/02-data-interface.md): Core read contract, items, observables, filters.
+- [03 Capabilities](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/03-capabilities.md): Optional connector capabilities and feature detection.
+- [04 Items, Relations, Groups/Spaces](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/04-items-relations-groups-spaces.md): The generic data model.
+- [06 Schema composition](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/06-schema-composition.md): Item shapes, fields, vocabularies.
+- [Module contracts](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/modules/): Map, calendar, kanban, feed module specs.
+- [Reactivity](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/reaktivitaet.md): Observables and relation reactivity.
+- [Glossary](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/glossary.md): Shared vocabulary.
+
+## Contributing to the stack itself
+
+- [AGENTS.md](https://github.com/real-life-org/real-life-stack/blob/master/AGENTS.md): Rules for agents and humans contributing to this repository (as opposed to building apps on it).
+- [Agent workspace context](https://github.com/real-life-org/real-life-stack/blob/master/docs/agent-workspace.md): Detailed repository context.
+
+## Optional
+
+- [Reference app](https://github.com/real-life-org/real-life-stack/tree/master/apps/reference): Full app wiring all modules together.
+- [Network app](https://github.com/real-life-org/real-life-stack/tree/master/apps/network): Focused example: graph, map, calendar, kanban on the mock connector.
+- [Web of Trust](https://github.com/real-life-org/web-of-trust): The decentralized identity and sync layer behind the wot-connector.
+- [Real Life Agent Protocol](https://github.com/real-life-org/real-life-agent-protocol): Agent workflow specs used to develop this stack.

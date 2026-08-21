@@ -2,8 +2,7 @@
 # (data-interface, toolkit, vier Konnektoren) UND die Reference App in EINER
 # Release-PR. Merge der PR erzeugt die Tags → npm-Publish (publish.yml) bzw.
 # App-Build (build-on-tag), beide per Dispatch (GITHUB_TOKEN-Tags triggern keine
-# Workflows). graphql-server ist private und bleibt draussen. Siehe
-# docs/RELEASING.md.
+# Workflows). Siehe docs/RELEASING.md.
 name: Release Please
 
 on:
@@ -31,8 +30,6 @@ jobs:
       local_connector_tag: ${{ steps.release.outputs['packages/local-connector--tag_name'] }}
       wot_connector_released: ${{ steps.release.outputs['packages/wot-connector--release_created'] }}
       wot_connector_tag: ${{ steps.release.outputs['packages/wot-connector--tag_name'] }}
-      graphql_connector_released: ${{ steps.release.outputs['packages/graphql-connector--release_created'] }}
-      graphql_connector_tag: ${{ steps.release.outputs['packages/graphql-connector--tag_name'] }}
       supabase_connector_released: ${{ steps.release.outputs['packages/supabase-connector--release_created'] }}
       supabase_connector_tag: ${{ steps.release.outputs['packages/supabase-connector--tag_name'] }}
       # App (component "app") → Tag app-vX.Y.Z, loest build-on-tag per Dispatch aus.
@@ -69,8 +66,6 @@ jobs:
           LOCAL_TAG: ${{ needs.release-please.outputs.local_connector_tag }}
           WOT_RELEASED: ${{ needs.release-please.outputs.wot_connector_released }}
           WOT_TAG: ${{ needs.release-please.outputs.wot_connector_tag }}
-          GRAPHQL_RELEASED: ${{ needs.release-please.outputs.graphql_connector_released }}
-          GRAPHQL_TAG: ${{ needs.release-please.outputs.graphql_connector_tag }}
           SUPABASE_RELEASED: ${{ needs.release-please.outputs.supabase_connector_released }}
           SUPABASE_TAG: ${{ needs.release-please.outputs.supabase_connector_tag }}
         run: |
@@ -103,7 +98,6 @@ jobs:
           dispatch "$MOCK_RELEASED"           "$MOCK_TAG"           "mock-connector"
           dispatch "$LOCAL_RELEASED"          "$LOCAL_TAG"          "local-connector"
           dispatch "$WOT_RELEASED"            "$WOT_TAG"            "wot-connector"
-          dispatch "$GRAPHQL_RELEASED"        "$GRAPHQL_TAG"        "graphql-connector"
           dispatch "$SUPABASE_RELEASED"       "$SUPABASE_TAG"       "supabase-connector"
 
           if [ "$missing" -eq 1 ]; then

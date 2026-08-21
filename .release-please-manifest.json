@@ -4,7 +4,6 @@
   "packages/mock-connector": "0.1.2",
   "packages/local-connector": "0.1.2",
   "packages/wot-connector": "0.1.2",
-  "packages/graphql-connector": "0.1.2",
   "packages/supabase-connector": "0.1.2",
   "apps/reference": "0.2.5"
 }
