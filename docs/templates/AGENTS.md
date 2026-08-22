@@ -30,7 +30,7 @@ Pick one connector:
 |---|---|---|
 | Mock | `@real-life-stack/mock-connector` | Prototyping, demos, seed data in memory. Start here. |
 | Local | `@real-life-stack/local-connector` | Offline-first, single device, persistent. |
-| Supabase | `@real-life-stack/supabase-connector` | Central backend on Supabase (auth, rows, realtime). Not yet on npm — until the release, consume it via the repository. |
+| Supabase | `@real-life-stack/supabase-connector` | Central backend on Supabase (auth, rows, realtime). |
 | Web of Trust | `@real-life-stack/wot-connector` | Decentralized, end-to-end encrypted groups, DID identity. |
 
 The UI code is identical for all of them. Build against the mock connector first; switch later.
