@@ -27,6 +27,7 @@ Most spec documents are written in German. The type definitions in `@real-life-s
 - [02 DataInterface](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/02-data-interface.md): Core read contract, items, observables, filters.
 - [03 Capabilities](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/03-capabilities.md): Optional connector capabilities and feature detection.
 - [04 Items, Relations, Groups/Spaces](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/04-items-relations-groups-spaces.md): The generic data model.
+- [05 Confirmations and trust](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/05-confirmations-and-trust.md): Backend-agnostic projections onto claims, confirmations, and trust.
 - [06 Schema composition](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/06-schema-composition.md): Item shapes, fields, vocabularies.
 - [Module contracts](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/modules/): Map, calendar, kanban, feed module specs.
 - [Reactivity](https://github.com/real-life-org/real-life-stack/blob/master/docs/spec/reaktivitaet.md): Observables and relation reactivity.

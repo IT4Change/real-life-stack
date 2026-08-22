@@ -19,7 +19,8 @@ Status: packages are `0.x` — the API is usable but still moving. Pin exact ver
 ## Install
 
 ```bash
-npm install react react-dom @real-life-stack/data-interface @real-life-stack/toolkit @real-life-stack/mock-connector
+npm install react react-dom
+npm install --save-exact @real-life-stack/data-interface @real-life-stack/toolkit @real-life-stack/mock-connector
 # for the map module:
 npm install maplibre-gl
 ```
