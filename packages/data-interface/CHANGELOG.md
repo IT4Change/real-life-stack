@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.3](https://github.com/real-life-org/real-life-stack/compare/data-interface-v0.1.2...data-interface-v0.1.3) (2026-08-23)
+
+
+### Features
+
+* Erstsync auf neuen Geräten sichtbar machen ([#274](https://github.com/real-life-org/real-life-stack/issues/274)) ([dc02cf6](https://github.com/real-life-org/real-life-stack/commit/dc02cf6ffb255ae8aa90fba50f8209817c4d4641))
+
+
+### Bug Fixes
+
+* Feed zeigt alles Neue, nicht nur Posts, Events und Aussagen ([#278](https://github.com/real-life-org/real-life-stack/issues/278)) ([95b7397](https://github.com/real-life-org/real-life-stack/commit/95b73976c91d267112416cf4f4027fac5cb2f6cb))
+
 ## [0.1.2](https://github.com/real-life-org/real-life-stack/compare/data-interface-v0.1.1...data-interface-v0.1.2) (2026-08-17)
 
 

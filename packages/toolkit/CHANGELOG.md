@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.3](https://github.com/real-life-org/real-life-stack/compare/toolkit-v0.1.2...toolkit-v0.1.3) (2026-08-23)
+
+
+### Features
+
+* Erstsync auf neuen Geräten sichtbar machen ([#274](https://github.com/real-life-org/real-life-stack/issues/274)) ([dc02cf6](https://github.com/real-life-org/real-life-stack/commit/dc02cf6ffb255ae8aa90fba50f8209817c4d4641))
+* **module:** Modul-Register als einzige Quelle ([#277](https://github.com/real-life-org/real-life-stack/issues/277)) ([1d3ee58](https://github.com/real-life-org/real-life-stack/commit/1d3ee5837270ada76f1ffbac5d28b44e50bf856a))
+* **toolkit:** ErrorBoundary — ein kaputter Bereich reisst nicht die App ab ([#285](https://github.com/real-life-org/real-life-stack/issues/285)) ([e252911](https://github.com/real-life-org/real-life-stack/commit/e252911f0ec3a5f43a088d0e95e962b14fbf3643))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @real-life-stack/data-interface bumped to 0.1.3
+
 ## [0.1.2](https://github.com/real-life-org/real-life-stack/compare/toolkit-v0.1.1...toolkit-v0.1.2) (2026-08-17)
 
 

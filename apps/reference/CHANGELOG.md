@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.2.6](https://github.com/real-life-org/real-life-stack/compare/app-v0.2.5...app-v0.2.6) (2026-08-23)
+
+
+### Features
+
+* Erstsync auf neuen Geräten sichtbar machen ([#274](https://github.com/real-life-org/real-life-stack/issues/274)) ([dc02cf6](https://github.com/real-life-org/real-life-stack/commit/dc02cf6ffb255ae8aa90fba50f8209817c4d4641))
+* **module:** Modul-Register als einzige Quelle ([#277](https://github.com/real-life-org/real-life-stack/issues/277)) ([1d3ee58](https://github.com/real-life-org/real-life-stack/commit/1d3ee5837270ada76f1ffbac5d28b44e50bf856a))
+* **toolkit:** ErrorBoundary — ein kaputter Bereich reisst nicht die App ab ([#285](https://github.com/real-life-org/real-life-stack/issues/285)) ([e252911](https://github.com/real-life-org/real-life-stack/commit/e252911f0ec3a5f43a088d0e95e962b14fbf3643))
+
+
+### Bug Fixes
+
+* Feed zeigt alles Neue, nicht nur Posts, Events und Aussagen ([#278](https://github.com/real-life-org/real-life-stack/issues/278)) ([95b7397](https://github.com/real-life-org/real-life-stack/commit/95b73976c91d267112416cf4f4027fac5cb2f6cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @real-life-stack/data-interface bumped to 0.1.3
+    * @real-life-stack/local-connector bumped to 0.1.3
+    * @real-life-stack/mock-connector bumped to 0.1.3
+    * @real-life-stack/supabase-connector bumped to 0.1.3
+    * @real-life-stack/toolkit bumped to 0.1.3
+    * @real-life-stack/wot-connector bumped to 0.1.3
+
 ## [0.2.5](https://github.com/real-life-org/real-life-stack/compare/app-v0.2.4...app-v0.2.5) (2026-08-17)
 
 
