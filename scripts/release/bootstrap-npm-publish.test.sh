@@ -15,7 +15,7 @@
 set -euo pipefail
 
 SCRIPT_UNDER_TEST="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/bootstrap-npm-publish.sh"
-PACKAGES=(data-interface toolkit mock-connector local-connector graphql-connector wot-connector)
+PACKAGES=(data-interface toolkit mock-connector local-connector supabase-connector wot-connector)
 SCOPE=@real-life-stack
 VERSION=0.1.0
 

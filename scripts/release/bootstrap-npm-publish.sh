@@ -30,7 +30,7 @@ PACKAGES=(
   packages/toolkit
   packages/mock-connector
   packages/local-connector
-  packages/graphql-connector
+  packages/supabase-connector
   packages/wot-connector
 )
 

@@ -145,8 +145,7 @@ real-life-stack/
 │   ├── data-interface/    # @real-life-stack/data-interface - TypeScript types + capabilities
 │   ├── mock-connector/    # @real-life-stack/mock-connector - in-memory implementation
 │   ├── local-connector/   # @real-life-stack/local-connector - IndexedDB + cross-tab sync
-│   ├── graphql-connector/ # @real-life-stack/graphql-connector - GraphQL client
-│   ├── graphql-server/    # @real-life-stack/graphql-server - Fastify/Mercurius server
+│   ├── supabase-connector/ # @real-life-stack/supabase-connector - Supabase backend
 │   ├── wot-connector/     # @real-life-stack/wot-connector - WoT/Yjs/E2EE
 │   └── toolkit/           # @real-life-stack/toolkit - UI components + hooks
 ├── apps/

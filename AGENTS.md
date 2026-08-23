@@ -16,6 +16,8 @@ App Shell / Space Modules -> hooks -> DataInterface -> connector -> data source
 
 The DataInterface and connector boundaries are the most important contracts in this repository.
 
+This file is about contributing to the stack itself. If you are building an app **on top of** the published packages, start with [docs/templates/AGENTS.md](./docs/templates/AGENTS.md) and the machine-readable overview in [llms.txt](./llms.txt).
+
 ## Source of Truth
 
 - Spec index: [docs/spec/README.md](./docs/spec/README.md)

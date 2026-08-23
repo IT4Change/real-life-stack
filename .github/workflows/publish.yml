@@ -34,7 +34,6 @@ jobs:
             mock-connector-v*)    kind=package; dir=packages/mock-connector ;;
             local-connector-v*)   kind=package; dir=packages/local-connector ;;
             wot-connector-v*)     kind=package; dir=packages/wot-connector ;;
-            graphql-connector-v*) kind=package; dir=packages/graphql-connector ;;
             supabase-connector-v*) kind=package; dir=packages/supabase-connector ;;
             app-v*)
               # App-Releases sind eine ERWARTETE Tag-Klasse, aber kein npm-Paket.
