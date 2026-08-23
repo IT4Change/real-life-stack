@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.3](https://github.com/real-life-org/real-life-stack/compare/supabase-connector-v0.1.2...supabase-connector-v0.1.3) (2026-08-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @real-life-stack/data-interface bumped to 0.1.3
+
 ## [0.1.2](https://github.com/real-life-org/real-life-stack/compare/supabase-connector-v0.1.1...supabase-connector-v0.1.2) (2026-08-17)
 
 
