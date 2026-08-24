@@ -46,6 +46,18 @@ export interface RuntimeConfig {
   /** Voreingestellter Connector; `?connector=` in der URL sticht ihn. */
   defaultConnector?: string
   branding?: Branding
+  /**
+   * Sprach-Vorgabe der Instanz (`"de"`, `"en"`). Greift nur, solange der
+   * Nutzer nie selbst gewählt hat — Auswertung in `applyLanguageConfig`,
+   * das auch unbekannte Werte dort verwirft, nicht hier.
+   */
+  defaultLanguage?: string
+  /**
+   * Instanz-eigene Texte je Sprache (`{ de: { "userMenu.contacts": "Vertraute" } }`).
+   * Oberste Stufe der Text-Vorrangkette — der White-Label-Hebel, mit dem eine
+   * Instanz Begriffe umbenennt, ohne einen Build anzufassen.
+   */
+  strings?: Record<string, Record<string, string>>
 }
 
 /** Stufe 3 der Vorrangkette. Eine Instanz ohne jede Konfiguration startet hiermit. */
@@ -229,10 +241,20 @@ export async function loadRuntimeConfig(opts: LoadOptions = {}): Promise<Runtime
       if (colors) branding = { ...branding, colors: colors as BrandingColors }
     }
 
+    // Sprache: nur Formprüfung — ob der Wert eine unterstützte Sprache ist,
+    // entscheidet die i18n-Laufzeit (applyLanguageConfig), die die Liste kennt.
+    const defaultLanguage =
+      typeof fromFile.defaultLanguage === "string" ? fromFile.defaultLanguage : undefined
+    const strings = isPlainObject(fromFile.strings)
+      ? (fromFile.strings as Record<string, Record<string, string>>)
+      : undefined
+
     loaded = Object.freeze({
       endpoints: Object.freeze(endpoints),
       defaultConnector: connector,
       branding: branding ? freezeBranding(branding) : undefined,
+      defaultLanguage,
+      strings,
     }) as RuntimeConfig
     return loaded
   })()

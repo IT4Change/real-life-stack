@@ -1,38 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
+
+import { useI18n } from "@/i18n"
 import { cn } from "@/lib/utils"
 
-/** Format a date as a relative time string (German). */
-export function formatRelativeTime(date: string | Date): string {
-  const now = Date.now()
-  const then = new Date(date).getTime()
-  const diffMs = now - then
-  const diffMin = Math.floor(diffMs / 60000)
-  const diffH = Math.floor(diffMin / 60)
-  const diffD = Math.floor(diffH / 24)
-
-  if (diffMin < 1) return "gerade eben"
-  if (diffMin < 60) return `vor ${diffMin} Min.`
-  if (diffH < 24) return `vor ${diffH} Std.`
-  if (diffD === 1) return "gestern"
-  if (diffD < 7) return `vor ${diffD} Tagen`
-
-  const d = new Date(date)
-  const now_ = new Date()
-  if (d.getFullYear() === now_.getFullYear()) {
-    return d.toLocaleDateString("de-DE", { day: "numeric", month: "long" })
-  }
-  return d.toLocaleDateString("de-DE", { day: "numeric", month: "long", year: "numeric" })
-}
-
-/** Format a date as a full date/time string for tooltips (German). */
-export function formatFullDateTime(date: string | Date): string {
-  const d = new Date(date)
-  const dateStr = d.toLocaleDateString("de-DE", { day: "numeric", month: "long", year: "numeric" })
-  const timeStr = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
-  return `${dateStr}, ${timeStr} Uhr`
-}
+// Die Formatierer leben seit der i18n-Laufzeit in `@/i18n` und folgen der
+// aktiven Sprache — hier stand vorher eine deutsche Handfassung („vor 3
+// Tagen" aus selbst zusammengesetzten Wörtern), die beim Sprachwechsel
+// stehen geblieben wäre.
 
 /** Returns the appropriate auto-update interval in ms based on the age of the timestamp. */
 function getUpdateInterval(date: string | Date): number | null {
@@ -53,12 +29,13 @@ export interface RelativeTimeProps {
 }
 
 /**
- * Displays a relative timestamp (e.g. "vor 2 Stunden") with a native
- * HTML tooltip showing the full date and time on hover.
+ * Displays a relative timestamp (e.g. "vor 2 Stunden" / "2 hr. ago") with a
+ * native HTML tooltip showing the full date and time on hover.
  * Auto-updates periodically to keep the relative time current.
  */
 export function RelativeTime({ date, className }: RelativeTimeProps) {
   const [, setTick] = useState(0)
+  const { formatFullDateTime, formatRelativeTime } = useI18n()
 
   useEffect(() => {
     const interval = getUpdateInterval(date)

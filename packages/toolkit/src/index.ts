@@ -66,6 +66,8 @@ export {
 } from "./lib/geocode"
 
 // Components
+export * from "./i18n"
+
 export * from "./components"
 
 // Hooks

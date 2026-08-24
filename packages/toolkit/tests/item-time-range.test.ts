@@ -1,7 +1,18 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
-import { formatTimeRange } from "../src/components/preview/item-time-range"
-import { formatEventRange } from "../src/components/preview/item-meta-row"
+import { formatTimeRange as formatTimeRangeImpl } from "../src/components/preview/item-time-range"
+import { formatEventRange as formatEventRangeImpl } from "../src/components/preview/item-meta-row"
+import { getI18n, resetI18nForTests, setLanguage } from "../src/i18n"
+
+// Diese Erwartungen sind deutsche Literale — die Sprache wird deshalb
+// FESTGENAGELT statt vom System geerbt. Vorher liefen die Tests nur auf
+// deutschen Maschinen grün: CI-Node meldet navigator.language "en-US",
+// und die Suite bekam "All day"/"Jul 24" (Blocker aus dem Review von #288).
+beforeEach(() => setLanguage("de"))
+afterEach(() => resetI18nForTests())
+
+const formatTimeRange = (start: string, end?: string) => formatTimeRangeImpl(getI18n(), start, end)
+const formatEventRange = (start: string, end?: string) => formatEventRangeImpl(getI18n(), start, end)
 
 describe("formatTimeRange", () => {
   it("shows a single all-day event as Ganztägig", () => {

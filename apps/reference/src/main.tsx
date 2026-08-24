@@ -11,7 +11,7 @@ import './index.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { checkForLiveUpdate } from './live-update'
 import { prefetchMapLibre } from '@real-life-stack/toolkit/maplibre'
-import { loadRuntimeConfig, applyBranding } from '@real-life-stack/toolkit'
+import { loadRuntimeConfig, applyBranding, applyLanguageConfig } from '@real-life-stack/toolkit'
 import { RootError } from './root-error'
 
 // Check for OTA updates before rendering (no-op in browser/dev)
@@ -63,6 +63,10 @@ async function start() {
     },
   })
   applyBranding(config.branding)
+  // Sprache gehört zur selben Vorrangkette wie Branding und Endpoints:
+  // Instanz-Vorgabe und Instanz-Texte kommen aus config.json, die Nutzerwahl
+  // (localStorage) bleibt ranghöher.
+  applyLanguageConfig(config)
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

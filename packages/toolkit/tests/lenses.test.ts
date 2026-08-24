@@ -39,6 +39,7 @@ import {
   selectionFocusScrollMarginBlockEnd,
 } from "../src/lib/selection-focus"
 import { formatEventRange } from "../src/components/preview/item-meta-row"
+import { getI18n } from "../src/i18n"
 import { GridView } from "../src/components/lens/grid-view"
 import { ListView } from "../src/components/lens/list-view"
 import { CollectionView, collectionFocusGateKey } from "../src/components/lens/collection-view"
@@ -128,7 +129,9 @@ describe("read-only lenses", () => {
     expect(markup).toContain("Repo: https://github.com/real-life-org/real-life-stack")
     expect(markup).toContain(">tool<")
     expect(markup).toContain("frei nutzbar")
-    expect(markup).toContain(formatEventRange("2026-07-08T19:00:00+02:00"))
+    // Erwartung und Komponente formatieren über dieselbe aktive Sprache —
+    // der Vergleich ist damit unabhängig von der Systemsprache konsistent.
+    expect(markup).toContain(formatEventRange(getI18n(), "2026-07-08T19:00:00+02:00"))
     expect(markup).toContain(">initiative<")
     expect(markup).not.toContain("Unsichtbare Kante")
     expect(markup.match(/data-preview-density="comfortable"/g)).toHaveLength(5)

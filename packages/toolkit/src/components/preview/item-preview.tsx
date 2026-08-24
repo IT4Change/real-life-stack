@@ -11,6 +11,7 @@ import { cn, getActivePanelGlow } from "../../lib/utils"
 import { useItemTags } from "../../hooks/use-item-tags"
 import { useUserNameResolver } from "../../hooks/use-user-names"
 import { useCommentCount } from "../../hooks/use-comment-count"
+import { useI18n } from "@/i18n"
 import { MessageSquare } from "lucide-react"
 
 /**
@@ -136,6 +137,7 @@ export function ItemPreview({
   className,
   style,
 }: ItemPreviewProps) {
+  const { t, formatFullDateTime } = useI18n()
   const data = item.data as Record<string, unknown>
   const title = typeof data.title === "string" ? data.title : undefined
   const description =
@@ -157,7 +159,10 @@ export function ItemPreview({
   // Who edited it, resolved like any other user id; falls back to the raw id.
   const resolveName = useUserNameResolver()
   const editedTitle = item.updatedAt
-    ? `Bearbeitet von ${resolveName(item.updatedBy ?? item.createdBy)} am ${new Date(item.updatedAt).toLocaleString("de-DE")}`
+    ? t("item.editedBy", {
+        name: resolveName(item.updatedBy ?? item.createdBy),
+        date: formatFullDateTime(item.updatedAt),
+      })
     : undefined
   const isCompact = density === "compact"
 
@@ -220,7 +225,7 @@ export function ItemPreview({
                     className="text-xs text-muted-foreground"
                     title={editedTitle}
                   >
-                    · bearbeitet
+                    · {t("item.edited")}
                   </span>
                 )}
               </span>
