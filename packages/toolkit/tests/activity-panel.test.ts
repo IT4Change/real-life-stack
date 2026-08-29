@@ -13,4 +13,15 @@ describe("ActivityPanel", () => {
     expect(html).toContain("Visible update")
     expect(html).not.toContain("Must not render")
   })
+
+  it("A0 renders an unknown target type neutrally and never as an item link", () => {
+    const html = renderToStaticMarkup(createElement(ActivityPanel, {
+      entries: [{ id: "membership", ts: "2026-01-01T00:00:00.000Z", actor: "maria", action: "create", targetId: "did:example:toni", targetType: "membership", summary: "Toni" }],
+      onOpenTarget: () => {}, isTargetOpenable: () => true,
+    }))
+
+    expect(html).toContain("maria</strong> · membership-Ereignis")
+    expect(html).not.toContain("Toni")
+    expect(html).not.toContain("<button")
+  })
 })

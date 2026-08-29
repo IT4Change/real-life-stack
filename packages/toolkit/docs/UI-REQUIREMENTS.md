@@ -42,6 +42,7 @@ Jede Checkbox repräsentiert eine einzelne, aktivierbare Entscheidung.
 ## Benachrichtigungen
 
 - [x] **notification-center-primitives**: Filter-Tabs und Gruppenaktionen verwenden die gemeinsamen Radix-Primitives; die Glocke behält den einheitlichen `focus-visible`-Ring.
+- [x] **activity-unknown-targets**: Unbekannte Activity-`targetType`s erscheinen im Center und im Verlauf neutral als „Akteur · targetType-Ereignis“, ohne Item-Navigation oder Item-Zitat.
 
 ---
 
